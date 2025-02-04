@@ -1,0 +1,73 @@
+name: Run SQLite Task
+on:
+  schedule:
+    - cron: '0 * * * *' # Run every hour
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+jobs:
+  sqlite-job:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '23'
+
+      - name: Add mask for secrets
+        run: |
+          echo '${{ secrets.ENV_SECRETS }}' | jq -r 'to_entries | .[] | .value' | while read -r value; do
+            echo "::add-mask::$value"
+          done          
+
+      - name: Set environment variables
+        run: |
+          echo '${{ secrets.ENV_SECRETS }}' | jq -r 'to_entries | .[] | "echo \(.key)=\(.value) >> $GITHUB_ENV"' | sh
+
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Run index.js
+        run: npm run dev
+        env:
+          RUN_ONCE: true
+
+      - name: Copy latest JSON to daily.json
+        run: |
+          LATEST_JSON=$(ls ./json/*2025-*-*.json | sort -V | tail -n1)
+          cp "$LATEST_JSON" ./json/daily.json
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+          retention-days: 5
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Commit and Push Changes
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add ./data/db.sqlite
+          git add ./json/
+          git commit -m "Update from collection"
+          git push
