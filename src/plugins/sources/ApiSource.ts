@@ -1,7 +1,7 @@
 // src/plugins/sources/ApiSource.ts
 
-import { BaseSource } from "./BaseSource";
-import { Article } from "../../types";
+import { ContentSource } from "./ContentSource";
+import { ContentItem } from "../../types";
 import fetch from "node-fetch";
 
 interface ApiSourceConfig {
@@ -20,17 +20,18 @@ interface ApiResponse {
   }>;
 }
 
-export class ApiSource extends BaseSource {
+export class ApiSource implements ContentSource {
+  public name: string;
   private endpoint: string;
   private apiKey: string;
 
-  constructor({ name, endpoint, apiKey }: ApiSourceConfig) {
-    super(name);
-    this.endpoint = endpoint;
-    this.apiKey = apiKey;
+  constructor(config: ApiSourceConfig) {
+    this.name = config.name
+    this.endpoint = config.endpoint;
+    this.apiKey = config.apiKey;
   }
 
-  public async fetchArticles(): Promise<Article[]> {
+  public async fetchItems(): Promise<ContentItem[]> {
     console.log(`Fetching data from API endpoint: ${this.endpoint}`);
 
     const url = `${this.endpoint}&apiKey=${this.apiKey}`;
@@ -41,14 +42,15 @@ export class ApiSource extends BaseSource {
     }
     const jsonData = (await response.json()) as ApiResponse;
     
-    const articles: Article[] = jsonData.articles.map(item => ({
-      source: this.name,
-      title: item.title,
-      link: item.url,
-      date: item.publishedAt ? new Date(item.publishedAt) : null,
-      content: item.content,
-      description: item.description,
-    }));
+    const articles: ContentItem[] = []
+    // jsonData.articles.map(item => ({
+    //   source: this.name,
+    //   title: item.title,
+    //   link: item.url,
+    //   date: item.publishedAt ? new Date(item.publishedAt) : null,
+    //   content: item.content,
+    //   description: item.description,
+    // }));
 
     return articles;
   }

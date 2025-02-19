@@ -8,7 +8,7 @@ interface SolanaTokenAnalyticsSourceConfig {
   tokenAddresses: string[];
 }
 
-export class SolanaTokenAnalyticsSource implements ContentSource {
+export class SolanaAnalyticsSource implements ContentSource {
   public name: string;
   private apiKey: string;
   private tokenAddresses: string[];

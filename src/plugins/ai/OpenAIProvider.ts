@@ -4,6 +4,7 @@ import { AiProvider } from "../../types";
 import OpenAI from "openai";
 
 interface OpenAIProviderConfig {
+  name: string;
   apiKey: string;
   model?: string;          
   temperature?: number;    
@@ -13,6 +14,7 @@ interface OpenAIProviderConfig {
 }
 
 export class OpenAIProvider implements AiProvider {
+  public name: string;
   private openai: OpenAI;
   private openaiDirect: OpenAI | null = null;  // For image generation
   private canGenerateImages: boolean = false;
@@ -21,6 +23,7 @@ export class OpenAIProvider implements AiProvider {
   private useOpenRouter: boolean;
 
   constructor(config: OpenAIProviderConfig) {
+    this.name = config.name;
     this.useOpenRouter = config.useOpenRouter || false;
     
     // Initialize main client (OpenRouter or OpenAI)

@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Github, ArrowRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export function Hero() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -24,31 +25,61 @@ export function Hero() {
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(50, ( window.innerWidth / 2) / window.innerHeight, 0.1, 1000);
-    camera.position.set(0,0,5);
+    camera.position.set(0,-10,400);
     const renderer = new THREE.WebGLRenderer({ 
       canvas: canvasRef.current,
       alpha: true,
       antialias: true
     });
+    let mesh;
+    let points;
+    const loader = new GLTFLoader();
+    loader.load('/ai-news/mask.gltf', (gltf) => {
+      gltf.scene.traverse((child) => {
+        if (child.isMesh) {
+          const geometry = child.geometry.clone(); // Clone to avoid modifying the original
+          geometry.computeBoundingBox(); // Compute bounding box
+      
+          const center = new THREE.Vector3();
+          geometry.boundingBox.getCenter(center); // Get center of bounding box
+          geometry.translate(-center.x, -center.y, -center.z); // Shift to origin
+      
+          const material = new THREE.MeshBasicMaterial({
+            color: 0x6366f1,
+            wireframe: true,
+            transparent: false,
+            opacity: 0.3
+          });
+          mesh = new THREE.Mesh(geometry, material);
+          scene.add(mesh);
+        }
+      })
 
-    renderer.setSize(window.innerWidth/2, window.innerHeight);
+      mesh.rotation.x -= 5.75;
+      mesh.rotation.y += 6;
+      animate();
+    });
+
+    renderer.setSize(window.innerWidth / 2, window.innerHeight);
 
     // Create abstract geometric shapes
-    const geometry = new THREE.IcosahedronGeometry(1, 0);
-    const material = new THREE.MeshBasicMaterial({
-      color: 0x6366f1,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.3
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    scene.add(mesh);
+    // const geometry = new THREE.IcosahedronGeometry(1, 0);
+    // const material = new THREE.MeshBasicMaterial({
+    //   color: 0x6366f1,
+    //   wireframe: true,
+    //   transparent: true,
+    //   opacity: 0.3
+    // });
+    // const mesh = new THREE.Mesh(geometry, material);
+    // scene.add(mesh);
 
     // Animation
     const animate = () => {
       requestAnimationFrame(animate);
-      mesh.rotation.x += 0.001;
-      mesh.rotation.y += 0.002;
+      if ( mesh ) {
+        // mesh.rotation.x += 0.0001;
+        // mesh.rotation.y += 0.002;
+      }
       renderer.render(scene, camera);
     };
     animate();
@@ -57,8 +88,8 @@ export function Hero() {
 
     return () => {
       scene.remove(mesh);
-      geometry.dispose();
-      material.dispose();
+      // geometry.dispose();
+      // material.dispose();
       renderer.dispose();
     };
   }, []);
@@ -68,12 +99,12 @@ export function Hero() {
     if (!containerRef.current || !scene) return;
     const { left, top, width, height } = containerRef.current.getBoundingClientRect();
     const x = (e.clientX - left) / width * 2 - 1;
-    const y = -((e.clientY - top) / height) * 2 + 1;
+    const y = ((e.clientY - top) / height) * 2 + 1;
     setMousePos({ x, y });
 
     if (scene.children[0]) {
-      scene.children[0].rotation.x = y * 0.5;
-      scene.children[0].rotation.y = x * 0.5;
+      scene.children[0].rotation.x = y * 0.25;
+      scene.children[0].rotation.y = x * 0.75;
     }
   };
 
@@ -86,7 +117,7 @@ export function Hero() {
       {/* 3D Background */}
       <canvas
         ref={canvasRef}
-        className="absolute left-[40vw] top-0 inset-0 h-full"
+        className="absolute left-[50vw] top-0 inset-0 h-full"
       />
 
       {/* Content */}

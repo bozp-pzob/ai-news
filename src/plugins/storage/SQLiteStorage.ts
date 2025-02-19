@@ -3,17 +3,15 @@
 import { StoragePlugin } from "./StoragePlugin"; // a small interface if you like
 import { open, Database } from "sqlite";
 import sqlite3 from "sqlite3";
-import { ContentItem, SummaryItem } from "../../types";
-
-export interface UnifiedStorageConfig {
-  dbPath: string;
-}
+import { ContentItem, SummaryItem, StorageConfig } from "../../types";
 
 export class SQLiteStorage implements StoragePlugin {
+  public name: string;
   private db: Database<sqlite3.Database, sqlite3.Statement> | null = null;
   private dbPath: string;
 
-  constructor(config: UnifiedStorageConfig) {
+  constructor(config: StorageConfig) {
+    this.name = config.name;
     this.dbPath = config.dbPath;
   }
 

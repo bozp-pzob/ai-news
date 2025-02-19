@@ -1,216 +1,99 @@
 import { ContentAggregator } from "./aggregator/ContentAggregator";
-import { TwitterSource } from "./plugins/sources/TwitterSource";
-import { GitHubDataSource } from "./plugins/sources/GitHubDataSource";
-import { SQLiteStorage } from "./plugins/storage/SQLiteStorage";
-import { OpenAIProvider } from "./plugins/ai/OpenAIProvider";
-import { AiTopicsEnricher } from "./plugins/enrichers/AiTopicEnricher";
-import { DiscordChannelSource } from "./plugins/sources/DiscordChannelSource";
-import { DiscordAnnouncementSource } from "./plugins/sources/DiscordAnnouncementSource";
-import { SolanaTokenAnalyticsSource } from "./plugins/sources/SolanaAnalyticsSource";
-import { CoinGeckoMarketAnalyticsSource } from "./plugins/sources/CoinGeckoAnalyticsSource";
-import { DailySummaryGenerator } from "./plugins/generators/DailySummaryGenerator";
-
+import { loadDirectoryModules, loadItems, loadProviders, loadStorage, } from "./helpers/configHelper";
 import dotenv from "dotenv";
-import { SummaryItem } from "./types";
+import fs from "fs";
+import path from "path";
 
 dotenv.config();
 
-type Interval = number;
-
-interface SourceConfig {
-  source: any;
-  interval: Interval;
-}
-
-let hour = 60 * 60 * 1000;
-
-let dailySummaryInterval;
-
-let runOnce = process.env.RUN_ONCE === 'true';
-
-const sourceConfigs: SourceConfig[] = [
-  {
-    source: new TwitterSource({
-      name: "twitter",
-      username: process.env.TWITTER_USERNAME,
-      password: process.env.TWITTER_PASSWORD,
-      email: process.env.TWITTER_EMAIL,
-      accounts: ["daosdotfun", "ai16zdao", "shawmakesmagic"]
-    }),
-    interval: 0.5 * hour // 30 minutes
-  },
-  {
-    source: new DiscordChannelSource({
-      name: "discordChannel",
-      botToken: process.env.DISCORD_TOKEN || '',
-      channelIds: ["1326603270893867064"],
-      provider: undefined,
-    }),
-    interval: 0.1 * hour // 6 minutes
-  },
-  {
-    source: new DiscordAnnouncementSource({
-      name: "discordAnnouncement",
-      botToken: process.env.DISCORD_TOKEN || '',
-      channelIds: ["1299473809166045357"]
-    }),
-    interval: hour
-  },
-  {
-    source: new GitHubDataSource({
-      name: "eliza_github",
-      contributorsUrl: "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/contributors.json",
-      summaryUrl: "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/summary.json",
-      githubCompany: "elizaOS",
-      githubRepo: "eliza"
-    }),
-    interval: 6 * hour // 6 hours
-  },
-  {
-    source: new SolanaTokenAnalyticsSource({
-      name: "solana_token_analytics",
-      apiKey: process.env.BIRDEYE_API_KEY || '',
-      tokenAddresses: ['HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC']
-    }),
-    interval: 12 * hour // 12 hours
-  },
-  {
-    source: new CoinGeckoMarketAnalyticsSource({
-      name: "coin_gecko_token_analytics",
-      tokenSymbols: ['bitcoin', 'ethereum', 'solana']
-    }),
-    interval: 12 * hour // 12 hours
-  }
-];
-
 (async () => {
   try {
-    const openAiProvider = new OpenAIProvider({
-      apiKey: process.env.OPENAI_API_KEY || '',
-      model: process.env.USE_OPENROUTER === 'true' ? `openai/gpt-4o-mini` : `gpt-4o-mini`,
-      temperature: 0.1,
-      useOpenRouter: process.env.USE_OPENROUTER === 'true',
-      siteUrl: process.env.SITE_URL,
-      siteName: process.env.SITE_NAME
+    // Fetch overide args to get run specific source config
+    const args = process.argv.slice(2);
+    let sourceFile = "sources.json"
+    args.forEach(arg => {
+      if (arg.startsWith('--source=')) {
+        sourceFile = arg.split('=')[1];
+      }
     });
+
+    const sourceClasses = await loadDirectoryModules("sources");
+    const aiClasses = await loadDirectoryModules("ai");
+    const enricherClasses = await loadDirectoryModules("enrichers");
+    const generatorClasses = await loadDirectoryModules("generators");
+    const storageClasses = await loadDirectoryModules("storage");
     
-    const summaryOpenAiProvider = new OpenAIProvider({
-      apiKey: process.env.OPENAI_API_KEY || '',
-      model: "gpt-4o",
-      temperature: 0,
-    });
+    // Load the JSON configuration file
+    const configPath = path.join(__dirname, "../config", sourceFile);
+    const configFile = fs.readFileSync(configPath, "utf8");
+    const configJSON = JSON.parse(configFile);
+    
+    let runOnce = configJSON?.settings?.runOnce || false;
+    
+    let aiConfigs = await loadItems(configJSON.ai, aiClasses, "ai");
+    let sourceConfigs = await loadItems(configJSON.sources, sourceClasses, "source");
+    let enricherConfigs = await loadItems(configJSON.enrichers, enricherClasses, "enrichers");
+    let generatorConfigs = await loadItems(configJSON.generators, generatorClasses, "generators");
+    let storageConfigs = await loadItems(configJSON.storage, storageClasses, "storage");
+
+    // If any configs depends on the AI provider, set it here
+    sourceConfigs = await loadProviders(sourceConfigs, aiConfigs);
+    enricherConfigs = await loadProviders(enricherConfigs, aiConfigs);
+    generatorConfigs = await loadProviders(generatorConfigs, aiConfigs);
+
+    // If any configs depends on the storage, set it here
+    generatorConfigs = await loadStorage(generatorConfigs, storageConfigs);
   
-    // 1. Create aggregator
     const aggregator = new ContentAggregator();
   
-    sourceConfigs.forEach((config) => aggregator.registerSource(config.source));
+    // Register Sources under Aggregator
+    sourceConfigs.forEach((config) => aggregator.registerSource(config.instance));
+
+    // Register Enrichers under Aggregator
+    enricherConfigs.forEach((config) => aggregator.registerEnricher(config.instance));
   
-    // If any source depends on the AI provider, set it here
-    const discordChannelSource = sourceConfigs.find(
-      (cfg) => cfg.source instanceof DiscordChannelSource
-    )?.source as DiscordChannelSource | undefined;
-  
-    if (discordChannelSource) {
-      discordChannelSource.provider = openAiProvider;
-    }
-  
-    aggregator.registerEnricher(
-      new AiTopicsEnricher({
-        provider: openAiProvider,
-        thresholdLength: 30
-      })
-    );
-    
-    const storage = new SQLiteStorage({ dbPath: "data/db.sqlite" });
-    await storage.init();
-  
-    const summaryGenerator = new DailySummaryGenerator({
-      openAiProvider: summaryOpenAiProvider,
-      storage,
-      summaryType: "dailySummary",
-      source: "aiSummary",
+    // Initialize and Register Storage, Should just be one Storage Plugin for now.
+    storageConfigs.forEach(async (storage : any) => {
+      await storage.instance.init();
+      aggregator.registerStorage(storage.instance);
     });
 
-    const fetchAndStore = async (sourceName: string) => {
-      try {
-        console.log(`Fetching data from source: ${sourceName}`);
-        const items = await aggregator.fetchSource(sourceName);
-        if (items.length > 0) {
-          await storage.save(items);
-          console.log(`Stored ${items.length} items from source: ${sourceName}`);
-        } else {
-          console.log(`No new items fetched from source: ${sourceName}`);
-        }
-      } catch (error) {
-        console.error(`Error fetching/storing data from source ${sourceName}:`, error);
-      }
+    //Fetch Sources
+    for ( const config of sourceConfigs ) {
+      await aggregator.fetchAndStore(config.instance.name);
+
+      setInterval(() => {
+        aggregator.fetchAndStore(config.instance.name);
+      }, config.interval);
+    };
+    
+    //Generate Content
+    for ( const generator of generatorConfigs ) {
+      generator.instance.generateContent();
+
+      setInterval(() => {
+        generator.instance.generateContent();
+      }, generator.interval);
     };
 
-    const summarizeDaily = async () => {
-      try {
-        const today = new Date();
-
-        let summary: SummaryItem[] = await storage.getSummaryBetweenEpoch((today.getTime() - ( hour * 24 )) / 1000,today.getTime() / 1000);
-        
-        if ( summary && summary.length <= 0 ) {
-          const summaryDate = new Date(today);
-          summaryDate.setDate(summaryDate.getDate() - 1)
-          
-          const dateStr = summaryDate.toISOString().slice(0, 10);
-          console.log(`Summarizing data from for daily report`);
-        
-          await summaryGenerator.generateAndStoreSummary(dateStr);
-          
-          console.log(`Daily report is complete`);
-        }
-        else {
-          console.log('Summary already generated for today, validating file is correct');
-          const summaryDate = new Date(today);
-          summaryDate.setDate(summaryDate.getDate() - 1)
-          
-          const dateStr = summaryDate.toISOString().slice(0, 10);
-
-          await summaryGenerator.checkIfFileMatchesDB(dateStr, summary[0]);
-        }
-      } catch (error) {
-        console.error(`Error creating daily report:`, error);
-      }
-    };
-  
+    console.log("Content aggregator is running and scheduled.");
+    
     const shutdown = async () => {
       console.log("Shutting down...");
-      await storage.close();
+      storageConfigs.forEach(async (storage : any) => {
+        await storage.close();
+      });
       process.exit(0);
     };
 
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
 
-    sourceConfigs.forEach(async (config) => {
-      fetchAndStore(config.source.name);
-
-      setInterval(() => {
-        fetchAndStore(config.source.name);
-      }, config.interval);
-    });
-    
-    if (runOnce) {
-      await new Promise(resolve => setTimeout(resolve, 90000))
-    }
-
-    await summarizeDaily()
-    dailySummaryInterval = setInterval(() => {
-      summarizeDaily()
-    }, hour * 1);
-
-    console.log("Content aggregator is running and scheduled.");
-
     if (runOnce) {
       await shutdown();
       console.log("Content aggregator is complete.");
     }
   } catch (error) {
-    clearInterval(dailySummaryInterval);
     console.error("Error initializing the content aggregator:", error);
     process.exit(1);
   }

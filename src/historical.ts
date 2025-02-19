@@ -1,10 +1,8 @@
 import { HistoricalAggregator } from "./aggregator/HistoricalAggregator";
-import { TwitterSource } from "./plugins/sources/TwitterSource";
-import { SQLiteStorage } from "./plugins/storage/SQLiteStorage";
-import { OpenAIProvider } from "./plugins/ai/OpenAIProvider";
-import { AiTopicsEnricher } from "./plugins/enrichers/AiTopicEnricher";
-
 import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
+import { loadDirectoryModules, loadItems, loadProviders } from "./helpers/configHelper";
 
 dotenv.config();
 
@@ -15,59 +13,61 @@ let dailySummaryInterval;
 
 (async () => {
   try {
-    const aggregator = new HistoricalAggregator();
-  
-    const twitterSource = new TwitterSource({
-        name: "twitter",
-        username: process.env.TWITTER_USERNAME,
-        password: process.env.TWITTER_PASSWORD,
-        email: process.env.TWITTER_EMAIL,
-        accounts: ["daosdotfun", "ai16zdao", "shawmakesmagic"]
-    });
-
-    const openAiProvider = new OpenAIProvider({
-    apiKey: process.env.OPENAI_API_KEY || '',
-    model: process.env.USE_OPENROUTER === 'true' ? `openai/gpt-4o-mini` : `gpt-4o-mini`,
-    temperature: 0,
-    });
-
-    aggregator.registerSource(twitterSource)
-  
-    aggregator.registerEnricher(
-      new AiTopicsEnricher({
-        provider: openAiProvider,
-        thresholdLength: 30
-      })
-    );
-    
-    const storage = new SQLiteStorage({ dbPath: "data/db.sqlite" });
-    await storage.init();
-
-    const fetchAndStore = async (sourceName: string, daysToFetch: number = 60) => {
-      try {
-        console.log(`Fetching historical data from source: ${sourceName}`);
-        const items = await aggregator.fetchSource(sourceName, daysToFetch * day);
-        if (items.length > 0) {
-          await storage.save(items);
-          console.log(`Stored ${items.length} items from source: ${sourceName}`);
-        } else {
-          console.log(`No new items fetched from source: ${sourceName}`);
-        }
-      } catch (error) {
-        console.error(`Error fetching/storing data from source ${sourceName}:`, error);
-      }
-    };
-
-    
-    // Fetch overide args to get specific date
+    // Fetch overide args to get run specific source config
     const args = process.argv.slice(2);
+    let sourceFile = "sources.json"
     let days = 60;
     args.forEach(arg => {
-        if (arg.startsWith('--days=')) {
-            days = parseInt(arg.split('=')[1] || "60");
-        }
+      if (arg.startsWith('--source=')) {
+        sourceFile = arg.split('=')[1];
+      }
+      if (arg.startsWith('--days=')) {
+        days = parseInt(arg.split('=')[1] || "60");
+      }
     });
-    await fetchAndStore("twitter", days);
+
+    const sourceClasses = await loadDirectoryModules("sources");
+    const aiClasses = await loadDirectoryModules("ai");
+    const enricherClasses = await loadDirectoryModules("enrichers");
+    const storageClasses = await loadDirectoryModules("storage");
+    
+    // Load the JSON configuration file
+    const configPath = path.join(__dirname, "../config", sourceFile);
+    const configFile = fs.readFileSync(configPath, "utf8");
+    const configJSON = JSON.parse(configFile);
+    
+    let aiConfigs = await loadItems(configJSON.ai, aiClasses, "ai");
+    let sourceConfigs = await loadItems(configJSON.sources, sourceClasses, "source");
+    let enricherConfigs = await loadItems(configJSON.enrichers, enricherClasses, "enrichers");
+    let storageConfigs = await loadItems(configJSON.storage, storageClasses, "storage");
+
+    // If any configs depends on the AI provider, set it here
+    sourceConfigs = await loadProviders(sourceConfigs, aiConfigs);
+    enricherConfigs = await loadProviders(enricherConfigs, aiConfigs);
+  
+    const aggregator = new HistoricalAggregator();
+  
+    // Register Sources under Aggregator
+    sourceConfigs.forEach((config) => {
+      if ( config.instance?.fetchHistorical) {
+        aggregator.registerSource(config.instance)
+      }
+    });
+
+    // Register Enrichers under Aggregator
+    enricherConfigs.forEach((config) => aggregator.registerEnricher(config.instance));
+  
+    // Initialize and Register Storage, Should just be one Storage Plugin for now.
+    storageConfigs.forEach(async (storage : any) => {
+      await storage.instance.init();
+      aggregator.registerStorage(storage.instance);
+    });
+
+    for ( const config of sourceConfigs ) {
+      await aggregator.fetchAndStore(config.instance.name, days);
+    };
+
+    console.log("Content aggregator is finished fetching historical.");
 
   } catch (error) {
     clearInterval(dailySummaryInterval);

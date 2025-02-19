@@ -52,3 +52,20 @@ export interface AiProvider {
   topics(text: string): Promise<string[]>;
   image(text: string): Promise<string[]>;
 }
+
+export interface ConfigItem {
+  type: string;
+  name: string;
+  params: Record<string, any>;
+  interval?: number;
+}
+
+export interface InstanceConfig {
+  instance: any;
+  interval?: number;
+}
+
+export interface StorageConfig {
+  name: string;
+  dbPath: string;
+}

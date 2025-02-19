@@ -1,11 +1,13 @@
 // src/aggregator/ContentAggregator.ts
 
 import { ContentSource } from "../plugins/sources/ContentSource";
+import { StoragePlugin } from "../plugins/storage/StoragePlugin";
 import { ContentItem, EnricherPlugin } from "../types";
 
 export class HistoricalAggregator {
   private sources: ContentSource[] = [];
   private enrichers: EnricherPlugin[] = [];
+  private storage: StoragePlugin | undefined = undefined;
 
   public registerSource(source: ContentSource) {
     this.sources.push(source);
@@ -13,6 +15,31 @@ export class HistoricalAggregator {
   
   public registerEnricher(enricher: EnricherPlugin): void {
     this.enrichers.push(enricher);
+  }
+  
+  public registerStorage(storage: StoragePlugin): void {
+    this.storage = storage;
+  }
+  
+  /**
+   * Save items source
+   */
+  public async saveItems(items : ContentItem[], sourceName : string) {
+    if (! this.storage) {
+      console.error(`Error aggregator storage hasn't be set.`);
+      return
+    }
+
+    try {
+      if (items.length > 0) {
+        await this.storage.save(items);
+        console.log(`Stored ${items.length} items from source: ${sourceName}`);
+      } else {
+        console.log(`No new items fetched from source: ${sourceName}`);
+      }
+    } catch (error) {
+      console.error(`Error fetching/storing data from source ${sourceName}:`, error);
+    }
   }
 
   /**
@@ -49,7 +76,6 @@ export class HistoricalAggregator {
         if ( source.name === sourceName ) {
           if ( source.fetchHistorical ) {
             const items = await source.fetchHistorical(days);
-            console.log( items );
             allItems = allItems.concat(items);
           }
         }
@@ -65,4 +91,14 @@ export class HistoricalAggregator {
 
     return allItems;
   }
+  
+  public async fetchAndStore(sourceName: string, days : number) {
+    try {
+      console.log(`Fetching data from source: ${sourceName}`);
+      const items = await this.fetchSource(sourceName, days);
+      await this.saveItems(items, sourceName);
+    } catch (error) {
+      console.error(`Error fetching/storing data from source ${sourceName}:`, error);
+    }
+  };
 }
