@@ -77,6 +77,7 @@ CODEX_API_KEY=            # Market Data
   "TWITTER_USERNAME": "",
   "TWITTER_PASSWORD": "",
   "TWITTER_EMAIL": "",
+  "TWITTER_COOKIES": "",
   "OPENAI_API_KEY": "",
   "OPENAI_DIRECT_KEY": "",
   "USE_OPENROUTER": "",
@@ -255,6 +256,7 @@ The application runs hourly tasks via GitHub Actions:
 TWITTER_USERNAME=           # Account username
 TWITTER_PASSWORD=           # Account password
 TWITTER_EMAIL=              # Account email
+TWITTER_COOKIES='[{"key":"auth_token","value":"<value>","domain":".twitter.com"},{"key":"ct0","value":"<value>","domain":".twitter.com"},{"key":"guest_id","value":"<value>","domain":".twitter.com"}]'
 
 # OpenAI Configuration
 OPENAI_API_KEY=            # API key for GPT models

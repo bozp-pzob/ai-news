@@ -12,6 +12,7 @@ interface TwitterSourceConfig {
   username: string | undefined;
   password: string | undefined;
   email: string | undefined;
+  cookies: string | undefined;
   accounts: string[];          // e.g., user to watch
 }
 
@@ -21,6 +22,7 @@ export class TwitterSource implements ContentSource {
   private accounts: string[];
   private username: string | undefined;
   private password: string | undefined;
+  private cookies: string | undefined;
   private email: string | undefined;
   private cache: TwitterCache;
 
@@ -30,8 +32,55 @@ export class TwitterSource implements ContentSource {
     this.accounts = config.accounts;
     this.username = config.username;
     this.password = config.password;
+    this.cookies = config.cookies;
     this.email = config.email;
     this.cache = new TwitterCache();
+  }
+
+  private async init() {
+    let retries = 5;
+
+    if (!this.username) {
+      throw new Error("Twitter username not configured");
+    }
+    if (this.cookies) {
+      const cookiesArray = JSON.parse(this.cookies);
+
+      await this.setCookiesFromArray(cookiesArray);
+    } else {
+      const cachedCookies = await this.getCachedCookies(this.username);
+      if (cachedCookies) {
+          await this.setCookiesFromArray(cachedCookies);
+      }
+    }
+
+    while (retries > 0) {
+      const cookies = await this.client.getCookies();
+      if ((await this.client.isLoggedIn()) && !!cookies) {
+        console.info("Already logged in.");
+        await this.cacheCookies(this.username, cookies);
+        console.info("Successfully logged in and cookies cached.");
+        break;
+      }
+
+      try {
+        await this.client.login(
+          this.username,
+          this.password || '',
+          this.email
+        );
+      } catch (error:any) {
+        console.error(`Login attempt failed: ${error?.message || ''}`);
+      }
+
+      retries--;
+
+      if (retries === 0) {
+        throw new Error("Twitter login failed after maximum retries.");
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
   }
 
   private async processTweets(tweets: any[]): Promise<any> {
@@ -71,9 +120,7 @@ export class TwitterSource implements ContentSource {
     const isLoggedIn = await this.client.isLoggedIn();
     
     if ( ! isLoggedIn ) {
-        if ( this.username && this.password && this.email ) {
-            await this.client.login(this.username, this.password, this.email);
-        }
+      await this.init();
     }
 
     let resultTweets: ContentItem[] = [];
@@ -132,21 +179,46 @@ export class TwitterSource implements ContentSource {
     const isLoggedIn = await this.client.isLoggedIn();
     
     if ( ! isLoggedIn ) {
-        if ( this.username && this.password && this.email ) {
-            await this.client.login(this.username, this.password, this.email);
-        }
+      await this.init();
     }
 
     let tweetsResponse : any[] = [];
 
     for await (const account of this.accounts) {
-        const tweets : AsyncGenerator<any> = await this.client.getTweets(account, 10);
-
-        for await (const tweet of tweets) {
-          tweetsResponse = tweetsResponse.concat(await this.processTweets([tweet]));
-        }
+      const tweets : AsyncGenerator<any> = await this.client.getTweets(account, 10);
+      
+      for await (const tweet of tweets) {
+        tweetsResponse = tweetsResponse.concat(await this.processTweets([tweet]));
+      }
     }
     
     return tweetsResponse
+  }
+  
+  private async setCookiesFromArray(cookiesArray: any[]) {
+    const cookieStrings = cookiesArray.map(
+        (cookie) =>
+            `${cookie.key}=${cookie.value}; Domain=${cookie.domain}; Path=${cookie.path}; ${
+                cookie.secure ? "Secure" : ""
+            }; ${cookie.httpOnly ? "HttpOnly" : ""}; SameSite=${
+                cookie.sameSite || "Lax"
+            }`
+    );
+    await this.client.setCookies(cookieStrings);
+  }
+
+  private async getCachedCookies(username: string) {
+    return await this.cache.get(
+      `twitter/${username}/cookies`,
+      new Date().toISOString()
+    );
+  }
+  
+  private async cacheCookies(username: string, cookies: any[]) {
+    await this.cache.set(
+      `twitter/${username}/cookies`,
+      new Date().toISOString(),
+      cookies
+    );
   }
 }
