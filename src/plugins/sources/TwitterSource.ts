@@ -41,45 +41,45 @@ export class TwitterSource implements ContentSource {
     let retries = 5;
 
     if (!this.username) {
-        throw new Error("Twitter username not configured");
+      throw new Error("Twitter username not configured");
     }
     if (this.cookies) {
-        const cookiesArray = JSON.parse(this.cookies);
+      const cookiesArray = JSON.parse(this.cookies);
 
-        await this.setCookiesFromArray(cookiesArray);
+      await this.setCookiesFromArray(cookiesArray);
     } else {
-        const cachedCookies = await this.getCachedCookies(this.username);
-        if (cachedCookies) {
-            await this.setCookiesFromArray(cachedCookies);
-        }
+      const cachedCookies = await this.getCachedCookies(this.username);
+      if (cachedCookies) {
+          await this.setCookiesFromArray(cachedCookies);
+      }
     }
 
     while (retries > 0) {
-        const cookies = await this.client.getCookies();
-        if ((await this.client.isLoggedIn()) && !!cookies) {
-          console.info("Already logged in.");
-          await this.cacheCookies(this.username, cookies);
-          console.info("Successfully logged in and cookies cached.");
-          break;
-        }
+      const cookies = await this.client.getCookies();
+      if ((await this.client.isLoggedIn()) && !!cookies) {
+        console.info("Already logged in.");
+        await this.cacheCookies(this.username, cookies);
+        console.info("Successfully logged in and cookies cached.");
+        break;
+      }
 
-        try {
-          await this.client.login(
-            this.username,
-            this.password || '',
-            this.email
-          );
-        } catch (error:any) {
-          console.error(`Login attempt failed: ${error?.message || ''}`);
-        }
+      try {
+        await this.client.login(
+          this.username,
+          this.password || '',
+          this.email
+        );
+      } catch (error:any) {
+        console.error(`Login attempt failed: ${error?.message || ''}`);
+      }
 
-        retries--;
+      retries--;
 
-        if (retries === 0) {
-            throw new Error("Twitter login failed after maximum retries.");
-        }
+      if (retries === 0) {
+        throw new Error("Twitter login failed after maximum retries.");
+      }
 
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
 
