@@ -21,6 +21,7 @@ export interface SummaryItem {
   type: string;          // e.g. "tweet", "newsArticle", "discordMessage", "githubIssue"
   title?: string;        // optional – for articles, maybe a tweet "title" is same as text
   categories?: string;         // main content (tweet text, article abstract, etc.)
+  markdown?: string;      //optional - Markdown version of main content
   date?: number;           // When it was created/published
 }
   

@@ -3,6 +3,7 @@
 import { OpenAIProvider } from "../ai/OpenAIProvider";
 import { SQLiteStorage } from "../storage/SQLiteStorage";
 import { ContentItem, SummaryItem } from "../../types";
+import { createJSONPromptForTopics, createMarkdownPromptForJSON } from "../../helpers/promptHelper";
 import fs from "fs";
 
 const hour = 60 * 60 * 1000;
@@ -53,7 +54,7 @@ export class DailySummaryGenerator {
           
           if (!topic || !objects || objects.length <= 0 || maxTopicsToSummarize >= 10) continue;
 
-          const prompt = this.createAIPromptForTopic(topic, objects, dateStr);
+          const prompt = createJSONPromptForTopics(topic, objects, dateStr);
           const summaryText = await this.provider.summarize(prompt);
           const summaryJSONString = summaryText.replace(/```json\n|```/g, "");
           let summaryJSON = JSON.parse(summaryJSONString);
@@ -67,16 +68,23 @@ export class DailySummaryGenerator {
         }
       }
 
+      const mdPrompt = createMarkdownPromptForJSON(allSummaries, dateStr);
+      const markdownReport = await this.provider.summarize(mdPrompt);
+      const markdownString = markdownReport.replace(/```markdown\n|```/g, "");
+
       const summaryItem: SummaryItem = {
         type: this.summaryType,
         title: `Daily Summary for ${dateStr}`,
         categories: JSON.stringify(allSummaries, null, 2),
+        markdown: markdownString,
         date: currentTime,
       };
 
       await this.storage.saveSummaryItem(summaryItem);
 
       await this.writeSummaryToFile(dateStr, currentTime, allSummaries);
+
+      await this.writeMDToFile(dateStr, markdownString);
 
       console.log(`Daily summary for ${dateStr} generated and stored successfully.`);
     } catch (error) {
@@ -161,6 +169,14 @@ export class DailySummaryGenerator {
       }, null, 2));
     }
     catch (error) {
+      console.error(`Error saving daily summary to json file ${dateStr}:`, error);
+    }
+  }
+
+  private async writeMDToFile(dateStr: string, content: string) {
+    try {
+      fs.writeFileSync(`./md/${dateStr}.md`, content);
+    } catch (error) {
       console.error(`Error saving daily summary to json file ${dateStr}:`, error);
     }
   }
@@ -255,60 +271,5 @@ export class DailySummaryGenerator {
     groupedTopics.push( miscTopics );
 
     return groupedTopics;
-  }
-
-  private createAIPromptForTopic(topic: string, objects: any[], dateStr: string): string {
-    let prompt = `Generate a summary for the topic. Focus on the following details:\n\n`;
-    objects.forEach((item) => {
-      prompt += `\n***source***\n`;
-      if (item.text) prompt += `text: ${item.text}\n`;
-      if (item.link) prompt += `sources: ${item.link}\n`;
-      if (item.metadata?.photos) prompt += `photos: ${item.metadata?.photos}\n`;
-      if (item.metadata?.videos) prompt += `videos: ${item.metadata?.videos}\n`;
-      prompt += `\n***source_end***\n\n`;
-    });
-  
-    prompt += `Provide a clear and concise summary based on the ***sources*** above for the topic. DO NOT PULL DATA FROM OUTSIDE SOURCES'${topic}'. Combine similar sources into a longer summary if it makes sense.\n\n`;
-  
-    prompt += `Response MUST be a valid JSON object containing:\n- 'title': The title of the topic.\n- 'content': A list of messages with keys 'text', 'sources', 'images', and 'videos'.\n\n`;
-  
-    return prompt;
-  }
-
-  private createAIPrompt(groupedContent: Record<string, any>[], dateStr: string): string {
-    let prompt = `Generate a comprehensive daily newsletter for ${dateStr} based on the following topics. Make sure to combine topics that are related, and OUTLINE on these Topics ( News, Dev, Events, Market Conditions ). The newsletter must be a bulleted list for the popular topics with bullet points of the content under that topic. For Market Conditions BE SPECIFIC and summarize daily changes\n\n`;
-
-    for (const [topic, items] of Object.entries(groupedContent)) {
-      if (items && items.objects && items.objects.length > 0) {
-        prompt += `**${topic}:**\n`;
-        items.objects.forEach((item:any) => {
-          if ( (item.metadata?.photos || []).length > 0 || (item.metadata?.videos || []).length > 0 || item.type === 'solanaTokenAnalytics' || item.type === 'coinGeckoMarketAnalytics') {
-            prompt += `***item***\n`
-            if (item.text) {
-              prompt += `text: ${item.text}\n`;
-            }
-            if (item.link) {
-              prompt += `sources: ${item.link}\n`;
-            }
-            if (item.metadata?.photos) {
-              prompt += `photos: ${item.metadata?.photos}\n`;
-            }
-            if (item.metadata?.videos) {
-              prompt += `videos: ${item.metadata?.videos}\n`;
-            }
-            prompt += `***item_end***\n`
-            prompt += `\n`;
-          }
-        });
-        prompt += `**topic_end**`
-        prompt += `\n\n`;
-      }
-    }
-
-    prompt += `Provide a clear and concise summary that highlights the key activities and developments of the day.\n\n`;
-
-    prompt += `Response MUST be a valid JSON array containing the values in a JSON block of topics formatted for markdown with this structure:\n\n\{\n  'value',\n  'value'\n\}\n\nYour response must include the JSON block. Each JSON block should include the title of the topic, and the message content. Each message content MUST be a list of json objct of "text","sources","images","videos". the sources for references (sources MUST only be under the source key, its okay if no sources under a topic), the images/videos for references (images/videos MUST only be under the source key), and the messages.`
-
-    return prompt;
   }
 }
