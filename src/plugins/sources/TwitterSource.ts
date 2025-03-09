@@ -185,10 +185,15 @@ export class TwitterSource implements ContentSource {
     let tweetsResponse : any[] = [];
 
     for await (const account of this.accounts) {
-      const tweets : AsyncGenerator<any> = await this.client.getTweets(account, 10);
-      
-      for await (const tweet of tweets) {
-        tweetsResponse = tweetsResponse.concat(await this.processTweets([tweet]));
+      try {
+        const tweets : AsyncGenerator<any> = await this.client.getTweets(account, 10);
+        
+        for await (const tweet of tweets) {
+          tweetsResponse = tweetsResponse.concat(await this.processTweets([tweet]));
+        }
+      }
+      catch( e ) {
+        console.log(`ERROR: Fetching account - ${account}`)
       }
     }
     
