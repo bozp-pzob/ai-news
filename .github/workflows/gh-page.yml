@@ -1,0 +1,49 @@
+name: Deploy JSON Directory to Pages
+on:
+  # Run when the elizaos branch is updated
+  push:
+    branches:
+      - elizaos
+  # Allow manual triggering
+  workflow_dispatch:
+  # Run after the main workflow completes
+  workflow_run:
+    workflows: ["Run Daily SQLite Task"]
+    branches: [main]
+    types:
+      - completed
+
+jobs:
+  pages-directory-listing:
+    runs-on: ubuntu-latest
+    name: Generate Directory Listing and Deploy
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout elizaos branch
+        uses: actions/checkout@v4
+        with:
+          ref: elizaos
+
+      - name: Generate Directory Listings for JSON folder
+        uses: jayanta525/github-pages-directory-listing@v4.0.0
+        with:
+          FOLDER: json  # directory to generate index
+
+      # Setup and deploy to GitHub Pages
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'json'  # upload the json folder
+          
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,60 +1,138 @@
-name: Run SQLite Task
+name: Run Daily SQLite Task
 on:
   schedule:
-    - cron: '0 * * * *' # Run every hour
-  workflow_dispatch:
+    - cron: '0 0 * * *' # Run at midnight UTC every day
+  workflow_dispatch:  # Keep manual trigger option
   push:
     branches:
       - main
 jobs:
   sqlite-job:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pages: write
       id-token: write
-
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      # Fetch existing DB from elizaos branch if it exists
+      - name: Check and fetch database
+        run: |
+          mkdir -p data
+          
+          # Check if elizaos branch exists
+          if git ls-remote --heads origin elizaos | grep -q elizaos; then
+            echo "elizaos branch exists, fetching database"
+            git fetch origin elizaos:elizaos || true
+            
+            # Check if db.sqlite exists in the branch
+            if git ls-tree -r --name-only elizaos | grep -q "data/db.sqlite"; then
+              git show elizaos:data/db.sqlite > data/db.sqlite
+              echo "Restored database from elizaos branch"
+            else
+              echo "No existing database found in elizaos branch"
+            fi
+          else
+            echo "elizaos branch does not exist yet, will be created on first deployment"
+          fi
       
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '23'
-
-      - name: Add mask for secrets
+          
+      - name: Process secrets securely
         run: |
-          echo '${{ secrets.ENV_SECRETS }}' | jq -r 'to_entries | .[] | .value' | while read -r value; do
-            echo "::add-mask::$value"
-          done          
-
-      - name: Set environment variables
-        run: |
-          echo '${{ secrets.ENV_SECRETS }}' | jq -r 'to_entries | .[] | "echo \(.key)=\(.value) >> $GITHUB_ENV"' | sh
-
+          echo '${{ secrets.ENV_SECRETS }}' > env_secrets.json
+          chmod 600 env_secrets.json
+          
+          # Mask values
+          jq -r 'to_entries[] | .value' env_secrets.json | while read -r value; do
+            if [ -n "$value" ]; then
+              echo "::add-mask::$value"
+            fi
+          done
+          
+          # Set environment variables
+          jq -r 'to_entries[] | select(.key != "TWITTER_COOKIES") | "\(.key)=\(.value)"' env_secrets.json > env_vars.txt
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              echo "$line" >> $GITHUB_ENV
+            fi
+          done < env_vars.txt
+          
+          # Handle Twitter cookies specially
+          if jq -e '.TWITTER_COOKIES' env_secrets.json > /dev/null 2>&1; then
+            TWITTER_COOKIES=$(jq -r '.TWITTER_COOKIES' env_secrets.json)
+            { echo "TWITTER_COOKIES<<EOF"; echo "$TWITTER_COOKIES"; echo "EOF"; } >> $GITHUB_ENV
+          fi
+          
+          # Clean up
+          rm env_secrets.json env_vars.txt
+      
       - name: Install dependencies
         run: npm install
+      
+      - name: Get yesterday's date
+        id: date
+        run: echo "YESTERDAY=$(date -d "yesterday" +'%Y-%m-%d')" >> $GITHUB_OUTPUT
         
-      - name: Run index.js
-        run: npm run dev -- --source=${{ env.SOURCE }}
+      - name: Run historical with yesterday's date
+        run: npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --debug
         env:
           RUN_ONCE: true
-
-      - name: Copy latest JSON to daily.json
+          NODE_ENV: production
+          
+      - name: Handle data files
         run: |
-          LATEST_JSON=$(ls ./json/*2025-*-*.json | sort -V | tail -n1)
-          cp "$LATEST_JSON" ./json/daily.json
-
-      - name: Commit and Push Changes
+          if [ -d "./json" ] && [ "$(find ./json -name "*2025-*-*.json" | wc -l)" -gt 0 ]; then
+            LATEST_JSON=$(find ./json -name "*2025-*-*.json" | sort -V | tail -n1)
+            cp "$LATEST_JSON" ./json/daily.json
+            echo "Copied $LATEST_JSON to daily.json"
+          else
+            echo "No JSON files found in ./json directory"
+            mkdir -p ./json
+            echo '{"status":"no_data","date":"${{ steps.date.outputs.YESTERDAY }}"}' > ./json/daily.json
+          fi
+          
+      - name: Validate JSON files
+        run: find ./json -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
+          
+      # Create a clean deployment directory with only what we need
+      - name: Prepare deployment
         run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add ./data/db.sqlite
-          git add ./json/
-          git commit -m "Update from collection"
-          git push
+          # Create a clean directory for deployment
+          mkdir -p ./public
+          
+          # Copy only the necessary directories/files
+          cp -r ./json ./public/
+          cp -r ./data ./public/
+          
+      # Deploy to elizaos branch from clean directory
+      - name: Deploy to elizaos branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          publish_branch: elizaos
+          force_orphan: false
+          keep_files: true
+          
+      # Deploy only JSON to GitHub Pages
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+        
+      - name: Build with GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './json'
+          
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
