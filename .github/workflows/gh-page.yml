@@ -1,9 +1,9 @@
 name: Deploy JSON Directory to Pages
 on:
-  # Run when the elizaos branch is updated
+  # Run when the gh-pages branch is updated
   push:
     branches:
-      - elizaos
+      - gh-pages
   # Allow manual triggering
   workflow_dispatch:
   # Run after the main workflow completes
@@ -25,10 +25,10 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout elizaos branch
+      - name: Checkout gh-pages branch
         uses: actions/checkout@v4
         with:
-          ref: elizaos
+          ref: gh-pages
 
       - name: Generate Directory Listings for JSON folder
         uses: jayanta525/github-pages-directory-listing@v4.0.0

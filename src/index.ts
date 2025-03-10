@@ -80,7 +80,7 @@ dotenv.config();
     if ( ! onlyFetch ) {
     //Generate Content
       for ( const generator of generatorConfigs ) {
-        generator.instance.generateContent();
+        await generator.instance.generateContent();
 
         setInterval(() => {
           generator.instance.generateContent();
