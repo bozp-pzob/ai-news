@@ -120,7 +120,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
-          #publish_branch: gh-pages
+          #publish_branch: custom-branch
           force_orphan: false
           keep_files: true
           
