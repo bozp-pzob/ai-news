@@ -4,23 +4,24 @@
     },
     "sources": [
       {
-        "type": "TwitterSource",
-        "name": "twitter",
-        "interval": 1800000,
-        "params": {
-          "username": "process.env.TWITTER_USERNAME",
-          "password": "process.env.TWITTER_PASSWORD",
-          "email": "process.env.TWITTER_EMAIL",
-          "accounts": ["daosdotfun", "elizaOS", "ai16zdao", "dankvr", "0xwitchy", "shawmakesmagic"] 
-        }
-      },
-      {
         "type": "DiscordChannelSource",
         "name": "discordChannel",
         "interval": 360000,
         "params": {
           "botToken": "process.env.DISCORD_TOKEN",
-          "channelIds": ["1326603270893867064"],
+          "channelIds": [
+	    "1326603270893867064",
+	    "1253563209462448241",
+	    "1299989396874854440",
+	    "1300025221834739744",
+	    "1300756641406521416",
+	    "1308149076893630555",
+	    "1341224194687500402",
+	    "1328592959444095038",
+	    "1301363808421543988",
+	    "1309395998870605844",
+	    "1313222089271939102"
+	  ],
           "provider": "summaryOpenAiProvider"
         }
       },
@@ -31,28 +32,6 @@
         "params": {
           "botToken": "process.env.DISCORD_TOKEN",
           "channelIds": ["1299473809166045357"]
-        }
-      },
-      {
-        "type": "GitHubDataSource",
-        "name": "elizaGithub",
-        "interval": 21600000,
-        "params": {
-            "contributorsUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/contributors.json",
-            "summaryUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/summary.json",
-            "historicalContributorUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/history/contributors_<year>_<month>_<day>.json",
-            "historicalSummaryUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/history/summary_<year>_<month>_<day>.json",
-            "githubCompany": "elizaOS",
-            "githubRepo": "eliza"
-        }
-      },
-      {
-        "type": "CodexAnalyticsSource",
-        "name": "codexAnalytics",
-        "interval": 43200000,
-        "params": {
-            "apiKey": "process.env.CODEX_API_KEY",
-            "tokenAddresses": ["0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2","0x2260fac5e5542a773aa44fbcfedf7c193bc2c599","HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC","So11111111111111111111111111111111111111112"]
         }
       }
     ],
@@ -97,7 +76,7 @@
             "type": "SQLiteStorage",
             "name": "SQLiteStorage",
             "params": {
-                "dbPath": "data/db.sqlite"
+                "dbPath": "data/elizaos-discord.sqlite"
             }
         }
     ],
@@ -105,7 +84,7 @@
         {
           "type": "DailySummaryGenerator",
           "name": "DailySummaryGenerator",
-          "interval": 86400000,
+          "interval": 3600000,
           "params": {
             "provider": "summaryOpenAiProvider",
             "storage": "SQLiteStorage",
