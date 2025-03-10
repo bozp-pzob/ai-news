@@ -21,25 +21,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Fetch existing DB from elizaos branch if it exists
+      # Fetch existing DB from gh-pages branch if it exists
       - name: Check and fetch database
         run: |
           mkdir -p data
           
-          # Check if elizaos branch exists
-          if git ls-remote --heads origin elizaos | grep -q elizaos; then
-            echo "elizaos branch exists, fetching database"
-            git fetch origin elizaos:elizaos || true
+          # Check if gh-pages branch exists
+          if git ls-remote --heads origin gh-pages | grep -q gh-pages; then
+            echo "gh-pages branch exists, fetching database"
+            git fetch origin gh-pages:gh-pages || true
             
             # Check if db.sqlite exists in the branch
-            if git ls-tree -r --name-only elizaos | grep -q "data/db.sqlite"; then
-              git show elizaos:data/db.sqlite > data/db.sqlite
-              echo "Restored database from elizaos branch"
+            if git ls-tree -r --name-only gh-pages | grep -q "data/db.sqlite"; then
+              git show gh-pages:data/db.sqlite > data/db.sqlite
+              echo "Restored database from gh-pages branch"
             else
-              echo "No existing database found in elizaos branch"
+              echo "No existing database found in gh-pages branch"
             fi
           else
-            echo "elizaos branch does not exist yet, will be created on first deployment"
+            echo "gh-pages branch does not exist yet, will be created on first deployment"
           fi
       
       - name: Set up Node.js
@@ -114,13 +114,13 @@ jobs:
           cp -r ./json ./public/
           cp -r ./data ./public/
           
-      # Deploy to elizaos branch from clean directory
-      - name: Deploy to elizaos branch
+      # Deploy to gh-pages branch (default) from clean directory
+      - name: Deploy to gh-pages branch
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
-          publish_branch: elizaos
+          #publish_branch: custom-branch
           force_orphan: false
           keep_files: true
           
