@@ -105,7 +105,7 @@
         {
           "type": "DailySummaryGenerator",
           "name": "DailySummaryGenerator",
-          "interval": 86400000,
+          "interval": 3600000,
           "params": {
             "provider": "summaryOpenAiProvider",
             "storage": "SQLiteStorage",
