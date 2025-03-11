@@ -24,12 +24,21 @@ jobs:
           ref: gh-pages
 
       - run: |
-          echo '<!DOCTYPE html><html><head><title>Directory Listing</title><style>body{font-family:Arial}</style></head><body><h1>Files</h1>' > index.html
+          cat > index.html << 'EOF'
+          <!DOCTYPE html><html><head><title>Directory Listing</title><style>
+            body{font-family:Arial;margin:20px}
+            a{display:block;padding:2px}
+            .dir{font-weight:bold}
+          </style></head><body><h1>Files</h1>
+          EOF
           find . -type d -not -path "*/\.*" | sort | while read -r dir; do
             dirname=${dir#./}
-            echo "<div><a href=\"$dirname/\">$dirname/</a></div>" >> index.html
+            echo "<a href=\"/$dirname/\" class=\"dir\">$dirname/</a>" >> index.html
           done
-          find . -type f -not -path "*/\.*" | sort >> index.html
+          find . -type f -not -path "*/\.*" -not -name "index.html" | sort | while read -r file; do
+            filename=${file#./}
+            echo "<a href=\"/$filename\">$filename</a>" >> index.html
+          done
           echo '</body></html>' >> index.html
           touch .nojekyll
 
