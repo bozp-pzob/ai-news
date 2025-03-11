@@ -33,7 +33,7 @@ jobs:
       - name: Generate Directory Listings for JSON folder
         uses: jayanta525/github-pages-directory-listing@v4.0.0
         with:
-          FOLDER: json  # directory to generate index
+          FOLDER: .  # directory to generate index
 
       # Setup and deploy to GitHub Pages
       - name: Setup Pages
@@ -42,7 +42,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'json'  # upload the json folder
+          path: '.'
           
       - name: Deploy to GitHub Pages
         id: deployment
