@@ -1,20 +1,15 @@
 name: Deploy to GitHub Pages
 on:
-  # Run when the gh-pages branch is updated
   push:
-    branches:
-      - gh-pages
-  # Allow manual triggering
+    branches: [gh-pages]
   workflow_dispatch:
-  # Run after the workflows complete
   workflow_run:
     workflows: ["Run ElizaOS Daily Task", "Run Hyperfy Discord Daily Task"]
     branches: [main]
-    types:
-      - completed
+    types: [completed]
 
 jobs:
-  deploy-pages:
+  deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -24,62 +19,23 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: gh-pages
 
-      - name: Create .nojekyll file
-        run: touch .nojekyll
-
-      - name: Create dynamic index page
-        run: |
-          # Start the HTML file
-          cat > index.html << 'EOL'
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>AI News Aggregator</title>
-            <style>
-              body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-              h1 { color: #333; }
-              a { color: #0366d6; text-decoration: none; }
-              a:hover { text-decoration: underline; }
-              .project { margin: 10px 0; }
-            </style>
-          </head>
-          <body>
-            <h1>Projects</h1>
-            <div id="projects">
-          EOL
-          
-          # Find directories (excluding hidden ones) and add them to the index
-          find . -maxdepth 1 -type d -not -path "*/\.*" -not -path "." | sort | while read -r dir; do
-            # Extract directory name
+      - run: |
+          echo '<!DOCTYPE html><html><head><title>Directory Listing</title><style>body{font-family:Arial}</style></head><body><h1>Files</h1>' > index.html
+          find . -type d -not -path "*/\.*" | sort | while read -r dir; do
             dirname=${dir#./}
-            
-            # Skip data directory and any other "utility" directories you want to exclude
-            if [[ "$dirname" != "data" && "$dirname" != "node_modules" ]]; then
-              echo "<div class=\"project\"><a href=\"$dirname/\">$dirname</a></div>" >> index.html
-            fi
+            echo "<div><a href=\"$dirname/\">$dirname/</a></div>" >> index.html
           done
-          
-          # Close the HTML file
-          cat >> index.html << 'EOL'
-            </div>
-          </body>
-          </html>
-          EOL
+          find . -type f -not -path "*/\.*" | sort >> index.html
+          echo '</body></html>' >> index.html
+          touch .nojekyll
 
-      # Setup and deploy to GitHub Pages
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v4
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
-          
-      - name: Deploy to GitHub Pages
-        id: deployment
+      - id: deployment
         uses: actions/deploy-pages@v4
