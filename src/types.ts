@@ -77,3 +77,7 @@ export interface DateConfig {
   after?: string;
   before?: string;
 }
+
+export interface OutputConfig {
+  path: string;  // Directory path for output files
+}
