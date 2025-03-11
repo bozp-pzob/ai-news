@@ -1,11 +1,8 @@
-name: Run Hyperfy Discord Daily Task
+name: Run hyperfy Daily Task
 on:
   schedule:
-    - cron: '0 0 * * *' # Run at midnight UTC every day
+    - cron: '30 23 * * *' # Run at 11:30 PM UTC every day
   workflow_dispatch:  # Keep manual trigger option
-  push:
-    branches:
-      - main
 jobs:
   sqlite-job:
     timeout-minutes: 30
@@ -32,8 +29,8 @@ jobs:
             git fetch origin gh-pages:gh-pages || true
             
             # Check if db.sqlite exists in the branch
-            if git ls-tree -r --name-only gh-pages | grep -q "data/hyperfy-discord.sqlite"; then
-              git show gh-pages:data/hyperfy-discord.sqlite > data/hyperfy-discord.sqlite
+            if git ls-tree -r --name-only gh-pages | grep -q "data/db.sqlite"; then
+              git show gh-pages:data/db.sqlite > data/db.sqlite
               echo "Restored database from gh-pages branch"
             else
               echo "No existing database found in gh-pages branch"
@@ -97,7 +94,7 @@ jobs:
           
           # Copy SQLite database
           mkdir -p ./public/data
-          cp data/hyperfy-discord.sqlite ./public/data/
+          cp data/db.sqlite ./public/data/
           
           # Copy output files
           if [ -d "./output/hyperfy/json" ] && [ "$(find ./output/hyperfy/json -name "*2025-*-*.json" | wc -l)" -gt 0 ]; then

@@ -1,16 +1,22 @@
-name: Deploy to GitHub Pages
+name: Deploy JSON Directory to Pages
 on:
+  # Run when the gh-pages branch is updated
   push:
-    branches: [gh-pages]
+    branches:
+      - gh-pages
+  # Allow manual triggering
   workflow_dispatch:
+  # Run after the main workflow completes
   workflow_run:
-    workflows: ["Run ElizaOS Daily Task", "Run Hyperfy Discord Daily Task"]
+    workflows: ["Run ElizaOS Daily Task"]
     branches: [main]
-    types: [completed]
+    types:
+      - completed
 
 jobs:
-  deploy:
+  pages-directory-listing:
     runs-on: ubuntu-latest
+    name: Generate Directory Listing and Deploy
     permissions:
       contents: read
       pages: write
@@ -19,32 +25,25 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
         with:
           ref: gh-pages
 
-      - run: |
-          cat > index.html << 'EOF'
-          <!DOCTYPE html><html><head><title>Directory Listing</title><style>
-            body{font-family:Arial;margin:20px}
-            a{display:block;padding:2px}
-            .dir{font-weight:bold}
-          </style></head><body><h1>Files</h1>
-          EOF
-          find . -type d -not -path "*/\.*" | sort | while read -r dir; do
-            dirname=${dir#./}
-            echo "<a href=\"/$dirname/\" class=\"dir\">$dirname/</a>" >> index.html
-          done
-          find . -type f -not -path "*/\.*" -not -name "index.html" | sort | while read -r file; do
-            filename=${file#./}
-            echo "<a href=\"/$filename\">$filename</a>" >> index.html
-          done
-          echo '</body></html>' >> index.html
-          touch .nojekyll
+      - name: Generate Directory Listings for JSON folder
+        uses: jayanta525/github-pages-directory-listing@v4.0.0
+        with:
+          FOLDER: .  # directory to generate index
 
-      - uses: actions/configure-pages@v4
-      - uses: actions/upload-pages-artifact@v3
+      # Setup and deploy to GitHub Pages
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
-      - id: deployment
+          
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4

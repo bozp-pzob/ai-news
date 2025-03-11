@@ -3,9 +3,6 @@ on:
   schedule:
     - cron: '0 0 * * *' # Run at midnight UTC every day
   workflow_dispatch:  # Keep manual trigger option
-  push:
-    branches:
-      - main
 jobs:
   sqlite-job:
     timeout-minutes: 30
