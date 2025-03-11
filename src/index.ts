@@ -8,17 +8,22 @@ dotenv.config();
 
 (async () => {
   try {
-    // Fetch overide args to get run specific source config
+    // Fetch override args to get run specific source config
     const args = process.argv.slice(2);
     let sourceFile = "sources.json";
     let runOnce = false;
     let onlyFetch = false;
+    let outputPath = './'; // Default output path
+    
     args.forEach(arg => {
       if (arg.startsWith('--source=')) {
         sourceFile = arg.split('=')[1];
       }
       if (arg.startsWith('--onlyFetch=')) {
         onlyFetch = arg.split('=')[1].toLowerCase() == 'true';
+      }
+      if (arg.startsWith('--output=') || arg.startsWith('-o=')) {
+        outputPath = arg.split('=')[1];
       }
     });
 
@@ -53,6 +58,13 @@ dotenv.config();
 
     // If any configs depends on the storage, set it here
     generatorConfigs = await loadStorage(generatorConfigs, storageConfigs);
+    
+    // Set output path for generators
+    generatorConfigs.forEach(config => {
+      if (config.instance && typeof config.instance.outputPath === 'undefined') {
+        config.instance.outputPath = outputPath;
+      }
+    });
   
     const aggregator = new ContentAggregator();
   
@@ -69,26 +81,26 @@ dotenv.config();
     });
 
     //Fetch Sources
-    for ( const config of sourceConfigs ) {
+    for (const config of sourceConfigs) {
       await aggregator.fetchAndStore(config.instance.name);
 
       setInterval(() => {
         aggregator.fetchAndStore(config.instance.name);
       }, config.interval);
-    };
+    }
     
-    if ( ! onlyFetch ) {
-    //Generate Content
-      for ( const generator of generatorConfigs ) {
+    if (!onlyFetch) {
+      //Generate Content
+      for (const generator of generatorConfigs) {
         await generator.instance.generateContent();
 
         setInterval(() => {
           generator.instance.generateContent();
         }, generator.interval);
-      };
+      }
     }
     else {
-      console.log( "Summary will not be generated." )
+      console.log("Summary will not be generated.");
     }
 
     console.log("Content aggregator is running and scheduled.");

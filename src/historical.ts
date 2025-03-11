@@ -9,15 +9,16 @@ dotenv.config();
 
 (async () => {
   try {
-    // Fetch overide args to get run specific source config
+    // Fetch override args to get run specific source config
     const args = process.argv.slice(2);
     const today = new Date();
-    let sourceFile = "sources.json"
+    let sourceFile = "sources.json";
     let dateStr = today.toISOString().slice(0, 10);
     let onlyFetch = false;
     let beforeDate;
     let afterDate;
     let duringDate;
+    let outputPath = './'; // Default output path
 
     args.forEach(arg => {
       if (arg.startsWith('--source=')) {
@@ -32,6 +33,8 @@ dotenv.config();
         afterDate = arg.split('=')[1];
       } else if (arg.startsWith('--during=')) {
         duringDate = arg.split('=')[1];
+      } else if (arg.startsWith('--output=') || arg.startsWith('-o=')) {
+        outputPath = arg.split('=')[1];
       }
     });
 
@@ -63,13 +66,20 @@ dotenv.config();
 
     // If any configs depends on the storage, set it here
     generatorConfigs = await loadStorage(generatorConfigs, storageConfigs);
+    
+    // Set output path for generators
+    generatorConfigs.forEach(config => {
+      if (config.instance && typeof config.instance.outputPath === 'undefined') {
+        config.instance.outputPath = outputPath;
+      }
+    });
 
     const aggregator = new HistoricalAggregator();
   
     // Register Sources under Aggregator
     sourceConfigs.forEach((config) => {
-      if ( config.instance?.fetchHistorical) {
-        aggregator.registerSource(config.instance)
+      if (config.instance?.fetchHistorical) {
+        aggregator.registerSource(config.instance);
       }
     });
 
@@ -95,7 +105,7 @@ dotenv.config();
       }
     }
       
-    if (filter.filterType || ( filter.after && filter.before )) {
+    if (filter.filterType || (filter.after && filter.before)) {
       for (const config of sourceConfigs) {
         await aggregator.fetchAndStoreRange(config.instance.name, filter);
       }
@@ -105,25 +115,24 @@ dotenv.config();
       }
     }
     
-
     console.log("Content aggregator is finished fetching historical.");
 
-    if ( ! onlyFetch ) {
-      if (filter.filterType || ( filter.after && filter.before )) {
-        for ( const generator of generatorConfigs ) {
+    if (!onlyFetch) {
+      if (filter.filterType || (filter.after && filter.before)) {
+        for (const generator of generatorConfigs) {
           await generator.instance.storage.init();
-          await callbackDateRangeLogic(filter, (dateStr:string) => generator.instance.generateAndStoreSummary(dateStr))
-        };
+          await callbackDateRangeLogic(filter, (dateStr:string) => generator.instance.generateAndStoreSummary(dateStr));
+        }
       } else {
         console.log(`Creating summary for date ${dateStr}`);
-        for ( const generator of generatorConfigs ) {
+        for (const generator of generatorConfigs) {
           await generator.instance.storage.init();
           await generator.instance.generateAndStoreSummary(dateStr);
-        };
+        }
       }
     }
     else {
-      console.log("Historical Data succesfully saved. Summary wasn't generated")
+      console.log("Historical Data successfully saved. Summary wasn't generated");
     }
 
     console.log("Shutting down...");
