@@ -1,4 +1,4 @@
-name: Run Daily SQLite Task
+name: Run ElizaOS Daily Task
 on:
   schedule:
     - cron: '0 0 * * *' # Run at midnight UTC every day
@@ -84,36 +84,43 @@ jobs:
         run: echo "YESTERDAY=$(date -d "yesterday" +'%Y-%m-%d')" >> $GITHUB_OUTPUT
         
       - name: Run historical with yesterday's date
-        run: npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --debug
+        run: npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/elizaos
         env:
           RUN_ONCE: true
           NODE_ENV: production
           
       - name: Handle data files
         run: |
-          if [ -d "./json" ] && [ "$(find ./json -name "*2025-*-*.json" | wc -l)" -gt 0 ]; then
-            LATEST_JSON=$(find ./json -name "*2025-*-*.json" | sort -V | tail -n1)
-            cp "$LATEST_JSON" ./json/daily.json
+          # Create target directories
+          mkdir -p ./public/elizaos/json
+          mkdir -p ./public/elizaos/md
+          
+          # Copy SQLite database
+          mkdir -p ./public/data
+          cp data/db.sqlite ./public/data/
+          
+          # Copy output files
+          if [ -d "./output/elizaos/json" ] && [ "$(find ./output/elizaos/json -name "*2025-*-*.json" | wc -l)" -gt 0 ]; then
+            # Copy all JSON files
+            cp -r ./output/elizaos/json/* ./public/elizaos/json/
+            
+            # Create daily.json symlink
+            LATEST_JSON=$(find ./output/elizaos/json -name "*2025-*-*.json" | sort -V | tail -n1)
+            LATEST_FILENAME=$(basename "$LATEST_JSON")
+            cp "$LATEST_JSON" ./public/elizaos/json/daily.json
             echo "Copied $LATEST_JSON to daily.json"
           else
-            echo "No JSON files found in ./json directory"
-            mkdir -p ./json
-            echo '{"status":"no_data","date":"${{ steps.date.outputs.YESTERDAY }}"}' > ./json/daily.json
+            echo "No JSON files found in ./output/elizaos/json directory"
+            echo '{"status":"no_data","date":"${{ steps.date.outputs.YESTERDAY }}"}' > ./public/elizaos/json/daily.json
+          fi
+          
+          # Copy Markdown files
+          if [ -d "./output/elizaos/md" ]; then
+            cp -r ./output/elizaos/md/* ./public/elizaos/md/
           fi
           
       - name: Validate JSON files
-        run: find ./json -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
-          
-      # Create a clean deployment directory with only what we need
-      - name: Prepare deployment
-        run: |
-          # Create a clean directory for deployment
-          mkdir -p ./public
-          
-          # Copy only the necessary directories/files
-          cp -r ./json ./public/
-          cp -r ./data ./public/
-          cp -r ./md ./public/
+        run: find ./public -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
           
       # Deploy to gh-pages branch (default) from clean directory
       - name: Deploy to gh-pages branch
@@ -121,19 +128,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
-          #publish_branch: custom-branch
           force_orphan: false
           keep_files: true
-          
-      # Deploy only JSON to GitHub Pages
-      #- name: Setup Pages
-      #  uses: actions/configure-pages@v4
-      #  
-      #- name: Build with GitHub Pages
-      #  uses: actions/upload-pages-artifact@v3
-      #  with:
-      #    path: './json'
-      #    
-      #- name: Deploy to GitHub Pages
-      #  id: deployment
-      #  uses: actions/deploy-pages@v4

@@ -82,7 +82,8 @@
             "provider": "summaryOpenAiProvider",
             "storage": "SQLiteStorage",
             "summaryType": "dailySummary",
-            "source": "aiSummary"
+            "source": "aiSummary",
+	    "outputPath": "./output/hyperfy"
           }
         }
     ]
