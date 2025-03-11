@@ -1,4 +1,4 @@
-name: Deploy JSON Directory to Pages
+name: Deploy to GitHub Pages
 on:
   # Run when the gh-pages branch is updated
   push:
@@ -6,17 +6,16 @@ on:
       - gh-pages
   # Allow manual triggering
   workflow_dispatch:
-  # Run after the main workflow completes
+  # Run after the workflows complete
   workflow_run:
-    workflows: ["Run Daily SQLite Task"]
+    workflows: ["Run ElizaOS Daily Task", "Run Hyperfy Discord Daily Task"]
     branches: [main]
     types:
       - completed
 
 jobs:
-  pages-directory-listing:
+  deploy-pages:
     runs-on: ubuntu-latest
-    name: Generate Directory Listing and Deploy
     permissions:
       contents: read
       pages: write
@@ -30,10 +29,47 @@ jobs:
         with:
           ref: gh-pages
 
-      - name: Generate Directory Listings for JSON folder
-        uses: jayanta525/github-pages-directory-listing@v4.0.0
-        with:
-          FOLDER: .  # directory to generate index
+      - name: Create .nojekyll file
+        run: touch .nojekyll
+
+      - name: Create dynamic index page
+        run: |
+          # Start the HTML file
+          cat > index.html << 'EOL'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>AI News Aggregator</title>
+            <style>
+              body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+              h1 { color: #333; }
+              a { color: #0366d6; text-decoration: none; }
+              a:hover { text-decoration: underline; }
+              .project { margin: 10px 0; }
+            </style>
+          </head>
+          <body>
+            <h1>Projects</h1>
+            <div id="projects">
+          EOL
+          
+          # Find directories (excluding hidden ones) and add them to the index
+          find . -maxdepth 1 -type d -not -path "*/\.*" -not -path "." | sort | while read -r dir; do
+            # Extract directory name
+            dirname=${dir#./}
+            
+            # Skip data directory and any other "utility" directories you want to exclude
+            if [[ "$dirname" != "data" && "$dirname" != "node_modules" ]]; then
+              echo "<div class=\"project\"><a href=\"$dirname/\">$dirname</a></div>" >> index.html
+            fi
+          done
+          
+          # Close the HTML file
+          cat >> index.html << 'EOL'
+            </div>
+          </body>
+          </html>
+          EOL
 
       # Setup and deploy to GitHub Pages
       - name: Setup Pages
