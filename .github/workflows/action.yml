@@ -113,6 +113,7 @@ jobs:
           # Copy only the necessary directories/files
           cp -r ./json ./public/
           cp -r ./data ./public/
+          cp -r ./md ./public/
           
       # Deploy to gh-pages branch (default) from clean directory
       - name: Deploy to gh-pages branch
@@ -125,14 +126,14 @@ jobs:
           keep_files: true
           
       # Deploy only JSON to GitHub Pages
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-        
-      - name: Build with GitHub Pages
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: './json'
-          
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      #- name: Setup Pages
+      #  uses: actions/configure-pages@v4
+      #  
+      #- name: Build with GitHub Pages
+      #  uses: actions/upload-pages-artifact@v3
+      #  with:
+      #    path: './json'
+      #    
+      #- name: Deploy to GitHub Pages
+      #  id: deployment
+      #  uses: actions/deploy-pages@v4
