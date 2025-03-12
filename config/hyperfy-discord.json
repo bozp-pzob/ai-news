@@ -8,7 +8,7 @@
         "name": "discordChannel",
         "interval": 360000,
         "params": {
-          "botToken": "process.env.DISCORD_TOKEN",
+          "botToken": "process.env.HYPERFY_DISCORD_TOKEN",
           "channelIds": [
 	    "994775534733115412",
 	    "1330373197203505185",
@@ -26,7 +26,16 @@
           "botToken": "process.env.DISCORD_TOKEN",
           "channelIds": ["958214956426350652","1347905902937767997"]
         }
-      }
+      },
+      {                                                                                                                                                       
+        "type": "CodexAnalyticsSource",                                                                                                                       
+        "name": "codexAnalytics",                                                                                                                             
+        "interval": 43200000,                                                                                                                                 
+        "params": {                                                                                                                                           
+            "apiKey": "process.env.CODEX_API_KEY",                                                                                                            
+            "tokenAddresses": ["8vBMibwpn8wpfYKbQ9xqzodymg3LjmYec2tSNGRy23K8","So11111111111111111111111111111111111111112"]                                  
+        }                                                                                                                                                     
+      }                                                                                                                                                       
     ],
     "ai": [
         {

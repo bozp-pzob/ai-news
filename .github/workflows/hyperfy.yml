@@ -46,7 +46,7 @@ jobs:
           
       - name: Process secrets securely
         run: |
-          echo '${{ secrets.ENV_SECRETS }}' > env_secrets.json
+          echo '${{ secrets.HYPERFY_SECRETS }}' > env_secrets.json
           chmod 600 env_secrets.json
           
           # Mask values
