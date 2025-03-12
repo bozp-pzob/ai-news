@@ -28,9 +28,9 @@ jobs:
             echo "gh-pages branch exists, fetching database"
             git fetch origin gh-pages:gh-pages || true
             
-            # Check if db.sqlite exists in the branch
-            if git ls-tree -r --name-only gh-pages | grep -q "data/db.sqlite"; then
-              git show gh-pages:data/db.sqlite > data/db.sqlite
+            # Check if sqlite db exists in the branch
+            if git ls-tree -r --name-only gh-pages | grep -q "data/hyperfy-discord.sqlite"; then
+              git show gh-pages:data/hyperfy-discord.sqlite > data/hyperfy-discord.sqlite
               echo "Restored database from gh-pages branch"
             else
               echo "No existing database found in gh-pages branch"
@@ -94,7 +94,7 @@ jobs:
           
           # Copy SQLite database
           mkdir -p ./public/data
-          cp data/db.sqlite ./public/data/
+          cp data/hyperfy-discord.sqlite ./public/data/
           
           # Copy output files
           if [ -d "./output/hyperfy/json" ] && [ "$(find ./output/hyperfy/json -name "*2025-*-*.json" | wc -l)" -gt 0 ]; then
