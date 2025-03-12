@@ -78,7 +78,7 @@ export class DailySummaryGenerator {
 
       const summaryItem: SummaryItem = {
         type: this.summaryType,
-        title: `Daily Report ${dateStr}`,
+        title: `Daily Report - ${dateStr}`,
         categories: JSON.stringify(allSummaries, null, 2),
         markdown: markdownString,
         date: currentTime,
@@ -177,7 +177,7 @@ export class DailySummaryGenerator {
       const filePath = path.join(jsonDir, `${dateStr}.json`);
       fs.writeFileSync(filePath, JSON.stringify({
         type: this.summaryType,
-        title: `Daily Report ${dateStr}`,
+        title: `Daily Report - ${dateStr}`,
         categories: allSummaries,
         date: currentTime,
       }, null, 2));
