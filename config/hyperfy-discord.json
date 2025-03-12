@@ -8,7 +8,7 @@
         "name": "discordChannel",
         "interval": 360000,
         "params": {
-          "botToken": "process.env.HYPERFY_DISCORD_TOKEN",
+          "botToken": "process.env.DISCORD_TOKEN",
           "channelIds": [
 	    "994775534733115412",
 	    "1330373197203505185",
