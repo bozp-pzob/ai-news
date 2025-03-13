@@ -4,25 +4,24 @@
     },
     "sources": [
       {
-        "type": "TwitterSource",
-        "name": "twitter",
-        "interval": 1800000,
-        "params": {
-          "username": "process.env.TWITTER_USERNAME",
-          "password": "process.env.TWITTER_PASSWORD",
-          "email": "process.env.TWITTER_EMAIL",
-          "accounts": ["daosdotfun", "elizaOS", "ai16zdao", "dankvr", "0xwitchy", "shawmakesmagic"] 
-        }
-      },
-      {
-        "type": "DiscordChannelSource",
-        "name": "discordChannel",
-        "interval": 360000,
-        "params": {
-          "botToken": "process.env.DISCORD_TOKEN",
-          "channelIds": ["1326603270893867064"],
-          "provider": "summaryOpenAiProvider"
-        }
+        "type": "DiscordChannelSource",                                                                                                        
+        "name": "discordChannel",                                                                                                              
+        "interval": 360000,                                                                                                                    
+        "params": {                                                                                                                            
+          "botToken": "process.env.DISCORD_TOKEN",                                                                                             
+          "channelIds": [                                                                                                                      
+            "1326603270893867064",                                                                                                             
+            "1253563209462448241",                                                                                                             
+            "1299989396874854440",                                                                                                             
+            "1300025221834739744",                                                                                                             
+            "1300756641406521416",                                                                                                             
+            "1308149076893630555",                                                                                                             
+            "1328592959444095038",                                                                                                             
+            "1301363808421543988",                                                                                                             
+            "1313222089271939102"                                                                                                              
+          ],                                                                                                                                   
+          "provider": "summaryOpenAiProvider"                                                                                                  
+        }                                                                                                                                      
       },
       {
         "type": "DiscordAnnouncementSource",
@@ -110,7 +109,8 @@
             "provider": "summaryOpenAiProvider",
             "storage": "SQLiteStorage",
             "summaryType": "dailySummary",
-            "source": "aiSummary"
+            "source": "aiSummary",
+            "outputPath": "./output/elizaos"
           }
         }
     ]

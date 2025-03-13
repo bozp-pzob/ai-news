@@ -1,10 +1,11 @@
-// src/plugins/DailySummaryGenerator.ts
+// src/plugins/generators/DailySummaryGenerator.ts
 
 import { OpenAIProvider } from "../ai/OpenAIProvider";
 import { SQLiteStorage } from "../storage/SQLiteStorage";
 import { ContentItem, SummaryItem } from "../../types";
 import { createJSONPromptForTopics, createMarkdownPromptForJSON } from "../../helpers/promptHelper";
 import fs from "fs";
+import path from "path";
 
 const hour = 60 * 60 * 1000;
 
@@ -13,6 +14,7 @@ interface DailySummaryGeneratorConfig {
   storage: SQLiteStorage;
   summaryType: string;
   source: string;
+  outputPath?: string; // New optional parameter for output path
 }
 
 export class DailySummaryGenerator {
@@ -20,13 +22,15 @@ export class DailySummaryGenerator {
   private storage: SQLiteStorage;
   private summaryType: string;
   private source: string;
-  private blockedTopics: string[] = ['open source']
+  private blockedTopics: string[] = ['open source'];
+  private outputPath: string;
 
   constructor(config: DailySummaryGeneratorConfig) {
     this.provider = config.provider;
     this.storage = config.storage;
     this.summaryType = config.summaryType;
     this.source = config.source;
+    this.outputPath = config.outputPath || './'; // Default to current directory if not specified
   }
 
   
@@ -64,7 +68,7 @@ export class DailySummaryGenerator {
           maxTopicsToSummarize++;
         }
         catch (e) {
-          console.log( e )
+          console.log( e );
         }
       }
 
@@ -74,7 +78,7 @@ export class DailySummaryGenerator {
 
       const summaryItem: SummaryItem = {
         type: this.summaryType,
-        title: `Daily Summary for ${dateStr}`,
+        title: `Daily Report - ${dateStr}`,
         categories: JSON.stringify(allSummaries, null, 2),
         markdown: markdownString,
         date: currentTime,
@@ -86,7 +90,7 @@ export class DailySummaryGenerator {
 
       await this.writeMDToFile(dateStr, markdownString);
 
-      console.log(`Daily summary for ${dateStr} generated and stored successfully.`);
+      console.log(`Daily report for ${dateStr} generated and stored successfully.`);
     } catch (error) {
       console.error(`Error generating daily summary for ${dateStr}:`, error);
     }
@@ -101,11 +105,11 @@ export class DailySummaryGenerator {
         title: summary.title,
         categories: JSON.parse(summary.categories || "[]"),
         date: summary.date
-      }
+      };
 
       if (!this.deepEqual(jsonParsed, summaryParsed)) {
-        console.log("JSON file didn't match database, resaving summary to file.")
-        await this.writeSummaryToFile(dateStr, summary.date || new Date().getTime(), summaryParsed.categories)
+        console.log("JSON file didn't match database, resaving summary to file.");
+        await this.writeSummaryToFile(dateStr, summary.date || new Date().getTime(), summaryParsed.categories);
       }
     }
     catch (error) {
@@ -121,7 +125,7 @@ export class DailySummaryGenerator {
       
       if ( summary && summary.length <= 0 ) {
         const summaryDate = new Date(today);
-        summaryDate.setDate(summaryDate.getDate() - 1)
+        summaryDate.setDate(summaryDate.getDate() - 1);
         
         const dateStr = summaryDate.toISOString().slice(0, 10);
         console.log(`Summarizing data from for daily report`);
@@ -133,7 +137,7 @@ export class DailySummaryGenerator {
       else {
         console.log('Summary already generated for today, validating file is correct');
         const summaryDate = new Date(today);
-        summaryDate.setDate(summaryDate.getDate() - 1)
+        summaryDate.setDate(summaryDate.getDate() - 1);
         
         const dateStr = summaryDate.toISOString().slice(0, 10);
 
@@ -150,7 +154,12 @@ export class DailySummaryGenerator {
 
   private async readSummaryFromFile(dateStr: string) {
     try {
-      const data = fs.readFileSync(`./json/${dateStr}.json`, 'utf8');
+      // Ensure directories exist
+      const jsonDir = path.join(this.outputPath, 'json');
+      this.ensureDirectoryExists(jsonDir);
+      
+      const filePath = path.join(jsonDir, `${dateStr}.json`);
+      const data = fs.readFileSync(filePath, 'utf8');
 
       return JSON.parse(data);
     }
@@ -161,9 +170,14 @@ export class DailySummaryGenerator {
 
   private async writeSummaryToFile(dateStr: string, currentTime: number, allSummaries: any[]) {
     try {
-      fs.writeFileSync(`./json/${dateStr}.json`, JSON.stringify({
+      // Ensure directories exist
+      const jsonDir = path.join(this.outputPath, 'json');
+      this.ensureDirectoryExists(jsonDir);
+      
+      const filePath = path.join(jsonDir, `${dateStr}.json`);
+      fs.writeFileSync(filePath, JSON.stringify({
         type: this.summaryType,
-        title: `Daily Summary for ${dateStr}`,
+        title: `Daily Report - ${dateStr}`,
         categories: allSummaries,
         date: currentTime,
       }, null, 2));
@@ -175,9 +189,20 @@ export class DailySummaryGenerator {
 
   private async writeMDToFile(dateStr: string, content: string) {
     try {
-      fs.writeFileSync(`./md/${dateStr}.md`, content);
+      // Ensure directories exist
+      const mdDir = path.join(this.outputPath, 'md');
+      this.ensureDirectoryExists(mdDir);
+      
+      const filePath = path.join(mdDir, `${dateStr}.md`);
+      fs.writeFileSync(filePath, content);
     } catch (error) {
-      console.error(`Error saving daily summary to json file ${dateStr}:`, error);
+      console.error(`Error saving daily summary to markdown file ${dateStr}:`, error);
+    }
+  }
+
+  private ensureDirectoryExists(dirPath: string) {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
     }
   }
 
@@ -224,13 +249,13 @@ export class DailySummaryGenerator {
     });
 
     const sortedTopics = Array.from(topicMap.entries()).sort((a, b) => b[1].length - a[1].length);
-    const alreadyAdded : any = {}
+    const alreadyAdded : any = {};
 
     const miscTopics : any = {
       topic: 'Misceleanous',
       objects: [],
       allTopics: []
-    }
+    };
 
     let groupedTopics : any[] = [];
 
@@ -245,16 +270,16 @@ export class DailySummaryGenerator {
             topicAlreadyAdded = true;
           }
           else {
-            mergedTopics.add(lower)
+            mergedTopics.add(lower);
           }
         });
       });
       if ( associatedObjects && associatedObjects.length  <= 1 ) {
         let objectIds = associatedObjects.map((object: any) => object.id);
-        let alreadyAddedToMisc = miscTopics["objects"].find((object: any) => objectIds.indexOf(object.id) >= 0 )
+        let alreadyAddedToMisc = miscTopics["objects"].find((object: any) => objectIds.indexOf(object.id) >= 0 );
         if ( ! alreadyAddedToMisc ) {
-          miscTopics["objects"] = miscTopics["objects"].concat(associatedObjects)
-          miscTopics["allTopics"] = miscTopics["allTopics"].concat(Array.from(mergedTopics))
+          miscTopics["objects"] = miscTopics["objects"].concat(associatedObjects);
+          miscTopics["allTopics"] = miscTopics["allTopics"].concat(Array.from(mergedTopics));
         }
       } 
       else if ( ! topicAlreadyAdded ) {

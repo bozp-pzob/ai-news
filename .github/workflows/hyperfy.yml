@@ -1,0 +1,129 @@
+name: Run hyperfy Daily Task
+on:
+  schedule:
+    - cron: '30 23 * * *' # Run at 11:30 PM UTC every day
+  workflow_dispatch:  # Keep manual trigger option
+jobs:
+  sqlite-job:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Fetch existing DB from gh-pages branch if it exists
+      - name: Check and fetch database
+        run: |
+          mkdir -p data
+          
+          # Check if gh-pages branch exists
+          if git ls-remote --heads origin gh-pages | grep -q gh-pages; then
+            echo "gh-pages branch exists, fetching database"
+            git fetch origin gh-pages:gh-pages || true
+            
+            # Check if sqlite db exists in the branch
+            if git ls-tree -r --name-only gh-pages | grep -q "data/hyperfy-discord.sqlite"; then
+              git show gh-pages:data/hyperfy-discord.sqlite > data/hyperfy-discord.sqlite
+              echo "Restored database from gh-pages branch"
+            else
+              echo "No existing database found in gh-pages branch"
+            fi
+          else
+            echo "gh-pages branch does not exist yet, will be created on first deployment"
+          fi
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '23'
+          
+      - name: Process secrets securely
+        run: |
+          echo '${{ secrets.HYPERFY_SECRETS }}' > env_secrets.json
+          chmod 600 env_secrets.json
+          
+          # Mask values
+          jq -r 'to_entries[] | .value' env_secrets.json | while read -r value; do
+            if [ -n "$value" ]; then
+              echo "::add-mask::$value"
+            fi
+          done
+          
+          # Set environment variables
+          jq -r 'to_entries[] | select(.key != "TWITTER_COOKIES") | "\(.key)=\(.value)"' env_secrets.json > env_vars.txt
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              echo "$line" >> $GITHUB_ENV
+            fi
+          done < env_vars.txt
+          
+          # Handle Twitter cookies specially
+          if jq -e '.TWITTER_COOKIES' env_secrets.json > /dev/null 2>&1; then
+            TWITTER_COOKIES=$(jq -r '.TWITTER_COOKIES' env_secrets.json)
+            { echo "TWITTER_COOKIES<<EOF"; echo "$TWITTER_COOKIES"; echo "EOF"; } >> $GITHUB_ENV
+          fi
+          
+          # Clean up
+          rm env_secrets.json env_vars.txt
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Get yesterday's date
+        id: date
+        run: echo "YESTERDAY=$(date -d "yesterday" +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+        
+      - name: Run historical with yesterday's date
+        run: npm run historical -- --source=hyperfy-discord.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/hyperfy
+        env:
+          RUN_ONCE: true
+          NODE_ENV: production
+          
+      - name: Handle data files
+        run: |
+          # Create target directories
+          mkdir -p ./public/hyperfy/json
+          mkdir -p ./public/hyperfy/md
+          
+          # Copy SQLite database
+          mkdir -p ./public/data
+          cp data/hyperfy-discord.sqlite ./public/data/
+          
+          # Copy output files
+          if [ -d "./output/hyperfy/json" ] && [ "$(find ./output/hyperfy/json -name "*2025-*-*.json" | wc -l)" -gt 0 ]; then
+            # Copy all JSON files
+            cp -r ./output/hyperfy/json/* ./public/hyperfy/json/
+            
+            # Create daily.json symlink
+            LATEST_JSON=$(find ./output/hyperfy/json -name "*2025-*-*.json" | sort -V | tail -n1)
+            LATEST_FILENAME=$(basename "$LATEST_JSON")
+            cp "$LATEST_JSON" ./public/hyperfy/json/daily.json
+            echo "Copied $LATEST_JSON to daily.json"
+          else
+            echo "No JSON files found in ./output/hyperfy/json directory"
+            echo '{"status":"no_data","date":"${{ steps.date.outputs.YESTERDAY }}"}' > ./public/hyperfy/json/daily.json
+          fi
+          
+          # Copy Markdown files
+          if [ -d "./output/hyperfy/md" ]; then
+            cp -r ./output/hyperfy/md/* ./public/hyperfy/md/
+          fi
+          
+      - name: Validate JSON files
+        run: find ./public -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
+          
+      # Deploy to gh-pages branch (default) from clean directory
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          force_orphan: false
+          keep_files: true

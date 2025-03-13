@@ -1,0 +1,96 @@
+{
+    "settings": {
+        "runOnce": true
+    },
+    "sources": [
+      {
+        "type": "DiscordChannelSource",
+        "name": "discordChannel",
+        "interval": 360000,
+        "params": {
+          "botToken": "process.env.DISCORD_TOKEN",
+          "channelIds": [
+	    "1326603270893867064",
+	    "1253563209462448241",
+	    "1299989396874854440",
+	    "1300025221834739744",
+	    "1300756641406521416",
+	    "1308149076893630555",
+	    "1341224194687500402",
+	    "1328592959444095038",
+	    "1301363808421543988",
+	    "1309395998870605844",
+	    "1313222089271939102"
+	  ],
+          "provider": "summaryOpenAiProvider"
+        }
+      },
+      {
+        "type": "DiscordAnnouncementSource",
+        "name": "discordAnnouncement",
+        "interval": 3600000,
+        "params": {
+          "botToken": "process.env.DISCORD_TOKEN",
+          "channelIds": ["1299473809166045357"]
+        }
+      }
+    ],
+    "ai": [
+        {
+          "type": "OpenAIProvider",
+          "name": "summaryOpenAiProvider",
+          "params": {
+            "apiKey": "process.env.OPENAI_API_KEY",
+            "model": "openai/chatgpt-4o-latest",
+            "temperature": 0,
+            "useOpenRouter": true,
+            "siteUrl": "process.env.SITE_URL",
+            "siteName": "process.env.SITE_NAME"
+          }
+        },
+        {
+          "type": "OpenAIProvider",
+          "name": "miniOpenAiProvider",
+          "params": {
+            "apiKey": "process.env.OPENAI_API_KEY",
+            "model": "openai/gpt-4o-mini",
+            "temperature": 0,
+            "useOpenRouter": true,
+            "siteUrl": "process.env.SITE_URL",
+            "siteName": "process.env.SITE_NAME"
+          }
+        }
+    ],
+    "enrichers": [
+        {
+          "type": "AiTopicsEnricher",
+          "name": "topicEnricher",
+          "params": {
+            "provider": "miniOpenAiProvider",
+            "thresholdLength": 30
+          }
+        }
+    ],
+    "storage": [
+        {
+            "type": "SQLiteStorage",
+            "name": "SQLiteStorage",
+            "params": {
+                "dbPath": "data/elizaos-discord.sqlite"
+            }
+        }
+    ],
+    "generators": [
+        {
+          "type": "DailySummaryGenerator",
+          "name": "DailySummaryGenerator",
+          "interval": 3600000,
+          "params": {
+            "provider": "summaryOpenAiProvider",
+            "storage": "SQLiteStorage",
+            "summaryType": "dailySummary",
+            "source": "aiSummary"
+          }
+        }
+    ]
+}

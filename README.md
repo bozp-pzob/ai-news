@@ -102,16 +102,24 @@ npm run dev
 # Development mode using the sources.json config
 npm run dev -- --source=sources.json
 
+# Development mode with a specific output directory
+npm run dev -- --source=sources.json --output=./output/eliza
+
 # Build and run production
 npm run build
 npm start
 
-# Grab Historical Data from sources ( default 60 days )
+# Specify output directory with shorthand
+npm start -- -o=./output/hyperfy
+
+# Grab Historical Data from sources (default 60 days)
 npm run historical
 
 # Grab Historical Data for specific date from the sources.json config
 npm run historical -- --source=sources.json --date=2025-01-01
 
+# Grab Historical Data with a specific output directory
+npm run historical -- --source=sources.json --date=2025-01-01 --output=./output/eliza
 
 # Grab Historical Data for specific date range from the sources.json config
 npm run historical -- --source=sources.json --after=2025-01-01 --before=2025-01-06
