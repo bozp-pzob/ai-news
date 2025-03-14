@@ -1,0 +1,148 @@
+{
+  "type": "dailySummary",
+  "title": "Daily Report - 2025-03-13",
+  "categories": [
+    {
+      "title": "Crypto Market Overview",
+      "content": [
+        {
+          "text": "The current cryptocurrency market shows varying prices across different tokens. Wrapped Bitcoin (WBTC) is trading at $83,502.71, while Wrapped Ethereum (WETH) is priced at $1,908.05. Solana (SOL) is valued at $126.59, and ai16z is at $0.1758.",
+          "sources": [
+            "WBTC: $83,502.71",
+            "WETH: $1,908.05",
+            "SOL: $126.59",
+            "ai16z: $0.1758"
+          ],
+          "images": [],
+          "videos": []
+        }
+      ],
+      "topic": "crypto market"
+    },
+    {
+      "title": "Core Package Fixes and Improvements",
+      "content": [
+        {
+          "text": "A fix has been implemented for core DTS generation to address existing issues.",
+          "sources": [
+            "https://github.com/elizaOS/eliza/pull/3898"
+          ],
+          "images": [
+            "https://opengraph.githubassets.com/1/elizaOS/eliza/pull/3898"
+          ],
+          "videos": []
+        },
+        {
+          "text": "A minor typo in the core package has been corrected as part of routine maintenance.",
+          "sources": [
+            "https://github.com/elizaOS/eliza/pull/3903"
+          ],
+          "images": [
+            "https://opengraph.githubassets.com/1/elizaOS/eliza/pull/3903"
+          ],
+          "videos": []
+        }
+      ],
+      "topic": "core"
+    },
+    {
+      "title": "Optimization Improvements in ElizaOS",
+      "content": [
+        {
+          "text": "A recent update to the cleanup script in ElizaOS improves performance by replacing `-exec rm -rf {} +` with `xargs -0 rm -rf`. This change enhances efficiency when handling large lists of directories. No new tests are required as the script's behavior remains unchanged.",
+          "sources": [
+            "https://github.com/elizaOS/eliza/pull/3900"
+          ],
+          "images": [
+            "https://opengraph.githubassets.com/1/elizaOS/eliza/pull/3900"
+          ],
+          "videos": []
+        },
+        {
+          "text": "A suggestion was made to improve the `sitemap.xml` file for better SEO by assigning different priority levels to various pages. The homepage and main documentation sections receive the highest priority, while blog posts and other pages are assigned lower values. This change aims to enhance search engine visibility and indexing efficiency.",
+          "sources": [
+            "https://github.com/elizaOS/eliza/issues/3904"
+          ],
+          "images": [
+            "https://opengraph.githubassets.com/1/elizaOS/eliza/issues/3904"
+          ],
+          "videos": []
+        }
+      ],
+      "topic": "optimization"
+    },
+    {
+      "title": "Recent Updates and Fixes in ElizaOS",
+      "content": [
+        {
+          "text": "A fix was implemented for core DTS generation.",
+          "sources": [
+            "https://github.com/elizaOS/eliza/pull/3898"
+          ],
+          "images": [
+            "https://opengraph.githubassets.com/1/elizaOS/eliza/pull/3898"
+          ],
+          "videos": []
+        },
+        {
+          "text": "A user reported that the Twitter Agent plugin does not start due to a missing 'clients' field in the plugin definition.",
+          "sources": [
+            "https://github.com/elizaOS/eliza/issues/3901"
+          ],
+          "images": [
+            "https://opengraph.githubassets.com/1/elizaOS/eliza/issues/3901"
+          ],
+          "videos": []
+        },
+        {
+          "text": "A minor typo fix was made in the core package.",
+          "sources": [
+            "https://github.com/elizaOS/eliza/pull/3903"
+          ],
+          "images": [
+            "https://opengraph.githubassets.com/1/elizaOS/eliza/pull/3903"
+          ],
+          "videos": []
+        },
+        {
+          "text": "The cleanup script was optimized by replacing `-exec rm -rf {} +` with `xargs -0 rm -rf`, improving performance when handling large lists of directories.",
+          "sources": [
+            "https://github.com/elizaOS/eliza/pull/3900"
+          ],
+          "images": [
+            "https://opengraph.githubassets.com/1/elizaOS/eliza/pull/3900"
+          ],
+          "videos": []
+        },
+        {
+          "text": "A new feature was introduced to handle client messages using WebSockets, ensuring each agent/user in the chat has their own socket connection. Additionally, room message memory display in the UI chat was fixed.",
+          "sources": [
+            "https://github.com/elizaOS/eliza/pull/3902"
+          ],
+          "images": [
+            "https://opengraph.githubassets.com/1/elizaOS/eliza/pull/3902"
+          ],
+          "videos": []
+        },
+        {
+          "text": "A suggestion was made to improve the sitemap.xml priority for better SEO, prioritizing key pages such as the homepage, documentation, and blog posts.",
+          "sources": [
+            "https://github.com/elizaOS/eliza/issues/3904"
+          ],
+          "images": [
+            "https://opengraph.githubassets.com/1/elizaOS/eliza/issues/3904"
+          ],
+          "videos": []
+        },
+        {
+          "text": "Six contributors merged one pull request, with major work including various improvements.",
+          "sources": [],
+          "images": [],
+          "videos": []
+        }
+      ],
+      "topic": "Misceleanous"
+    }
+  ],
+  "date": 1741824000
+}
