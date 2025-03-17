@@ -59,6 +59,25 @@ export const loadProviders = async (instances: InstanceConfig[], providers: Inst
   return instances;
 }
 
+export const loadParsers = async (instances: InstanceConfig[], parsers: InstanceConfig[]): Promise<InstanceConfig[]> => {
+  instances.forEach(({ instance }) => {
+    if ("parser" in instance && instance.parser) {
+      const chosenParser = parsers.find((parser : any) => {
+        return parser.instance.name === instance.parser
+      });
+
+      if ( ! chosenParser ) {
+        throw(`Error: Invalid Parser Name ${instance.parser}`);
+      }
+      else {
+        instance.parser = chosenParser.instance;
+      }
+    }
+  });
+
+  return instances;
+}
+
 export const loadStorage = async (instances: InstanceConfig[], storages: InstanceConfig[]): Promise<InstanceConfig[]> => {
   instances.forEach(({ instance }) => {
     if ("storage" in instance && instance.storage) {

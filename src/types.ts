@@ -78,6 +78,10 @@ export interface DateConfig {
   before?: string;
 }
 
+export interface ParserConfig {
+  provider?: AiProvider | undefined;
+}
+
 export interface OutputConfig {
   path: string;  // Directory path for output files
 }

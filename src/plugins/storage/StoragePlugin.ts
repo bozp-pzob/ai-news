@@ -7,6 +7,7 @@ export interface StoragePlugin {
   close(): Promise<void>;
   saveContentItems(items: ContentItem[]): Promise<ContentItem[]>;
   getContentItem(cid: string): Promise<ContentItem | null>;
+  getContentItemByLink(link: string): Promise<ContentItem | null>;
   saveSummaryItem(item: SummaryItem): Promise<void>;
   getSummaryBetweenEpoch(startEpoch: number,endEpoch: number,excludeType?: string): Promise<SummaryItem[]>;
 }

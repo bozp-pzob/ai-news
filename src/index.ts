@@ -1,5 +1,5 @@
 import { ContentAggregator } from "./aggregator/ContentAggregator";
-import { loadDirectoryModules, loadItems, loadProviders, loadStorage, } from "./helpers/configHelper";
+import { loadDirectoryModules, loadItems, loadProviders, loadStorage, loadParsers } from "./helpers/configHelper";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -32,6 +32,7 @@ dotenv.config();
     const enricherClasses = await loadDirectoryModules("enrichers");
     const generatorClasses = await loadDirectoryModules("generators");
     const storageClasses = await loadDirectoryModules("storage");
+    const parserClasses = await loadDirectoryModules("parsers");
     
     // Load the JSON configuration file
     const configPath = path.join(__dirname, "../config", sourceFile);
@@ -46,6 +47,7 @@ dotenv.config();
     }
     
     let aiConfigs = await loadItems(configJSON.ai, aiClasses, "ai");
+    let parserConfigs = await loadItems(configJSON.parsers, parserClasses, "parsers");
     let sourceConfigs = await loadItems(configJSON.sources, sourceClasses, "source");
     let enricherConfigs = await loadItems(configJSON.enrichers, enricherClasses, "enrichers");
     let generatorConfigs = await loadItems(configJSON.generators, generatorClasses, "generators");
@@ -55,9 +57,14 @@ dotenv.config();
     sourceConfigs = await loadProviders(sourceConfigs, aiConfigs);
     enricherConfigs = await loadProviders(enricherConfigs, aiConfigs);
     generatorConfigs = await loadProviders(generatorConfigs, aiConfigs);
+    parserConfigs = await loadProviders(parserConfigs, aiConfigs);
 
     // If any configs depends on the storage, set it here
+    sourceConfigs = await loadStorage(sourceConfigs, storageConfigs);
     generatorConfigs = await loadStorage(generatorConfigs, storageConfigs);
+
+    // If any configs depends on a parser, set it here
+    sourceConfigs = await loadParsers(sourceConfigs, parserConfigs);
     
     // Set output path for generators
     generatorConfigs.forEach(config => {

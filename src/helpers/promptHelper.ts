@@ -1,3 +1,5 @@
+import * as cheerio from "cheerio";
+
 export const createMarkdownPromptForJSON = (summaryData: any, dateStr: string): string => {
     const jsonStr = JSON.stringify(summaryData, null, 2);
     return `You are an expert at converting structured JSON data into a highly optimized markdown report for language model processing.
@@ -33,4 +35,13 @@ export const createJSONPromptForTopics = (topic: string, objects: any[], dateStr
     prompt += `Response MUST be a valid JSON object containing:\n- 'title': The title of the topic.\n- 'content': A list of messages with keys 'text', 'sources', 'images', and 'videos'.\n\n`;
   
     return prompt;
+}
+
+export const cleanHTML = (rawHTML:string): any => {
+  const $ = cheerio.load(rawHTML);
+  let text = $.text();
+  text = text.replace(/\s+/g, ' ').trim();
+  text = text.replace(/[^a-zA-Z0-9.,!?;:'"()\- ]/g, "");
+
+  return text;
 }

@@ -1,16 +1,36 @@
 {
     "settings": {
-        "runOnce": true,
+        "runOnce": false,
         "onlyFetch": false
     },
     "sources": [
         {
-          "type": "CodexAnalyticsSource",
-          "name": "codexAnalytics",
-          "interval": 43200000,
+          "type": "RSSSource",
+          "name": "rssSource",
+          "interval": 900000,
           "params": {
-              "apiKey": "process.env.CODEX_API_KEY",
-              "tokenAddresses": ["0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2","0x2260fac5e5542a773aa44fbcfedf7c193bc2c599","HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC","So11111111111111111111111111111111111111112"]
+              "feeds": ["https://www.realtor.com/realestateandhomes-detail/sitemap-rss-new/rss-new-ut.xml"],
+              "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+              "headers": {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "Accept-Encoding": "gzip, deflate, br, zstd",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Cache-control": "no-cache",
+                "Cookie": "split=n; __vst=063e93c6-713b-4a5d-878c-17664e615c0a; __ssn=48f74b08-a8b6-4d03-9683-2fc8711fd31c; __ssnstarttime=1741582356; __bot=false; isAuth0GnavEnabled=C; G_ENABLED_IDPS=google; pxcts=7d398622-fd6b-11ef-873e-e84170817d00; _pxvid=7d3979f3-fd6b-11ef-873d-ea3dae82936e; _lr_env_src_ats=false; permutive-id=0dc0ef91-8369-4574-9af5-12b25a90e578; kampyle_userid=88f4-fd54-41e1-e599-c938-8d95-af31-438d; srchID=a76407406cc44c248359b1cbae3be359; criteria=sprefix%3D%252Fnewhomecommunities%26area_type%3Dcity%26city%3DSalt%2520Lake%2520City%26pg%3D1%26state_code%3DUT%26state_id%3DUT%26loc%3DSalt%2520Lake%2520City%252C%2520UT%26locSlug%3DSalt-Lake-City_UT%26county_fips%3D49035%26county_fips_multi%3D49035; _parsely_visitor={%22id%22:%22pid=e388107d-5a66-44f2-a58b-50348e68398c%22%2C%22session_count%22:1%2C%22last_session_ts%22:1741585126561}; _cq_duid=1.1741585127.IP26pHBPBjtiIs68; _cq_suid=1.1741585127.ikteLvizlKrgsGl3; _ncg_domain_id_=7611b7fe-7bac-4162-b4bb-6c9f3474664b.0.1741585127528.1804657127528; _ncg_sp_id.cc72=7611b7fe-7bac-4162-b4bb-6c9f3474664b.1741585128.1.1741585128.1741585128.dc10a821-31b2-4139-a7e6-543c71a431a0; _ncg_id_=7611b7fe-7bac-4162-b4bb-6c9f3474664b; ldp-property-details=true; ldp-property-history=true; ldp-neighborhood=true; ldp-real-estimates=true; split_tcv=164; _px3=ae8cade659ee41c65c46c19c4d869778bf04b84d5c5cfc83016de21c4fe2dddd:msV0reoKNZ+5BOrAVn8uOPzk/LhVAGZeLBFNnrL6XWYfxtT5+QFbJJU6X4BOapiKMvCSIK6/p83aLVJ8rsoaYA==:1000:JKsrWbDGcn5iuvvYPhzGbniQ7kZFVMRUm60XYM1tpY5tV0OjZx97LinJUTncCWqRw/tyRkJ1fssqU/a+UvL1evnOl+k5QOZzt3klJDSqRNyCzEgewFj2NZVRI1sAmPilNUphZt6oC70yBC7XYNlCJMGF3i8SHQnbh6EZRy4FQlaOxXu7GEX1Di0PUBk87/B7CL3gce3WR3wp4FNzETvHaYhnZgq6sVG4FlRlO97NDyA=; KP_UIDz-ssn=02r6tMT86YQgvQVTiKkEMGtg4bAltSHbP5Qux2Y4hjARilAaEccFOmnPmbMqkyOn1imNGDke0yK7aNQvCSiX4Jq60qUhUCXV5FnlUZXQoW5rqtYdwkQxeaJp4j3qlvi8WXCDyE3yiJSsYyAkf9l2qiyUiNwbQH52Uo7KMEcDTf; KP_UIDz=02r6tMT86YQgvQVTiKkEMGtg4bAltSHbP5Qux2Y4hjARilAaEccFOmnPmbMqkyOn1imNGDke0yK7aNQvCSiX4Jq60qUhUCXV5FnlUZXQoW5rqtYdwkQxeaJp4j3qlvi8WXCDyE3yiJSsYyAkf9l2qiyUiNwbQH52Uo7KMEcDTf; _lr_retry_request=true; kampyleUserSession=1742010676933; kampyleUserSessionsCount=8; kampyleSessionPageCounter=1; kampyleUserPercentile=59.40896107478115; _lr_geo_location_state=UT; _lr_geo_location=US",
+                "Pragma": "no-cache",
+                "Priority": "u=0, i",
+                "Sec-Ch-Ua": "\"Not(A:Brand\";v=\"99\", \"Google Chrome\";v=\"133\", \"Chromium\";v=\"133\"",
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": "Windows",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "same-origin",
+                "Sec-Fetch-User": "?1",
+                "Upgrade-Insecure-Requests": "1",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+              },
+              "parser": "RealtorParser",
+              "storage": "SQLiteStorage"
           }
         }
     ],
@@ -41,35 +61,25 @@
         }
     ],
     "enrichers": [
-        {
-          "type": "AiTopicsEnricher",
-          "name": "topicEnricher",
-          "params": {
-            "provider": "miniOpenAiProvider",
-            "thresholdLength": 30
-          }
-        }
     ],
     "storage": [
         {
             "type": "SQLiteStorage",
             "name": "SQLiteStorage",
             "params": {
-                "dbPath": "data/db.sqlite"
+              "dbPath": "data/db.sqlite"
             }
         }
     ],
     "generators": [
-        {
-          "type": "DailySummaryGenerator",
-          "name": "DailySummaryGenerator",
-          "interval": 3600000,
-          "params": {
-            "provider": "summaryOpenAiProvider",
-            "storage": "SQLiteStorage",
-            "summaryType": "dailySummary",
-            "source": "aiSummary"
-          }
+    ],
+    "parsers": [
+      {
+        "type": "RealtorParser",
+        "name": "RealtorParser",
+        "params": {
+          "provider": "summaryOpenAiProvider"
         }
+      }
     ]
 }
