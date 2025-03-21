@@ -5,6 +5,8 @@ import { ContentItem } from "../../types";
 import Parser from 'rss-parser';
 import { ContentParser } from "../parsers/ContentParser";
 import { StoragePlugin } from "../storage/StoragePlugin";
+import { getCookies,getKasadaProtectedCookies } from "../../helpers/cookieHelper";
+import { bypassRealtorProtection, debugRealtorAccess } from "../../helpers/realtorHelper";
 
 interface RSSSourceConfig {
   name: string;
@@ -86,6 +88,14 @@ export class RSSSource implements ContentSource {
 
   public async fetchItems(): Promise<ContentItem[]> {
     for (const feedUrl of this.feeds) {
+      // let websiteData = await getKasadaProtectedCookies('https://realtor.com')
+      let websiteData = await debugRealtorAccess()
+      console.log( websiteData )
+      // console.log( websiteData.cookies, websiteData.headers, websiteData.rawCookieString )
+
+      // let _headers = {
+      //   "Cookie": websiteData.rawCookieString,
+      // }
       let resultItems: ContentItem[] = [];
       let parsedItems: ContentItem[] = [];
 
