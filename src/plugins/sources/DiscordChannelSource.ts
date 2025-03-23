@@ -26,6 +26,35 @@ export class DiscordChannelSource implements ContentSource {
   private stateFilePath: string;
   private lastProcessed: LastProcessedState;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'name',
+        type: 'string',
+        required: true,
+        description: 'Name of the Discord Channel source'
+      },
+      {
+        name: 'botToken',
+        type: 'string',
+        required: true,
+        description: 'Discord bot token for authentication'
+      },
+      {
+        name: 'channelIds',
+        type: 'string[]',
+        required: true,
+        description: 'Array of Discord channel IDs to monitor'
+      },
+      {
+        name: 'provider',
+        type: 'AiProvider',
+        required: false,
+        description: 'Optional AI provider for content processing'
+      }
+    ]
+  };
+
   constructor(config: DiscordChannelSourceConfig) {
     this.name = config.name;
     this.provider = config.provider;

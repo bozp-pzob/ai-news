@@ -29,6 +29,53 @@ export class GitHubDataSource implements ContentSource {
   private baseGithubUrl: string;
   private baseGithubImageUrl: string;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'name',
+        type: 'string',
+        required: true,
+        description: 'Name of the GitHub data source'
+      },
+      {
+        name: 'contributorsUrl',
+        type: 'string',
+        required: true,
+        description: 'URL for contributors data JSON endpoint'
+      },
+      {
+        name: 'summaryUrl',
+        type: 'string',
+        required: true,
+        description: 'URL for summary data JSON endpoint'
+      },
+      {
+        name: 'historicalSummaryUrl',
+        type: 'string',
+        required: true,
+        description: 'URL template for historical summary data (includes date placeholders)'
+      },
+      {
+        name: 'historicalContributorUrl',
+        type: 'string',
+        required: true,
+        description: 'URL template for historical contributor data (includes date placeholders)'
+      },
+      {
+        name: 'githubCompany',
+        type: 'string',
+        required: true,
+        description: 'GitHub company/organization name'
+      },
+      {
+        name: 'githubRepo',
+        type: 'string',
+        required: true,
+        description: 'GitHub repository name'
+      }
+    ]
+  };
+
   constructor(config: GithubDataSourceConfig) {
     this.name = config.name;
     this.contributorsUrl = config.contributorsUrl;

@@ -9,11 +9,10 @@ import path from "path";
 
 const hour = 60 * 60 * 1000;
 
-interface DailySummaryGeneratorConfig {
+interface Config {
   provider: OpenAIProvider;
   storage: SQLiteStorage;
   summaryType: string;
-  source: string;
   outputPath?: string; // New optional parameter for output path
 }
 
@@ -21,15 +20,42 @@ export class DailySummaryGenerator {
   private provider: OpenAIProvider;
   private storage: SQLiteStorage;
   private summaryType: string;
-  private source: string;
   private blockedTopics: string[] = ['open source'];
   private outputPath: string;
 
-  constructor(config: DailySummaryGeneratorConfig) {
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'provider',
+        type: 'AIProvider',
+        required: true,
+        description: 'AI Provider plugin for the generator to use to create the Daily Summary.'
+      },
+      {
+        name: 'storage',
+        type: 'StoragePlugin',
+        required: true,
+        description: 'Storage Plugin to store the generated Daily Summary.'
+      },
+      {
+        name: 'summaryType',
+        type: 'string',
+        required: true,
+        description: 'Type for summary to store in the database.'
+      },
+      {
+        name: 'outputPath',
+        type: 'string',
+        required: false,
+        description: 'Location to store summary for md and json generation'
+      }
+    ]
+  };
+
+  constructor(config: Config) {
     this.provider = config.provider;
     this.storage = config.storage;
     this.summaryType = config.summaryType;
-    this.source = config.source;
     this.outputPath = config.outputPath || './'; // Default to current directory if not specified
   }
 

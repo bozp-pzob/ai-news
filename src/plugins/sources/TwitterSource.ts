@@ -26,6 +26,47 @@ export class TwitterSource implements ContentSource {
   private email: string | undefined;
   private cache: TwitterCache;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'name',
+        type: 'string',
+        required: true,
+        description: 'Name of the Twitter source'
+      },
+      {
+        name: 'username',
+        type: 'string',
+        required: false,
+        description: 'Twitter username for authentication'
+      },
+      {
+        name: 'password',
+        type: 'string',
+        required: false,
+        description: 'Twitter password for authentication'
+      },
+      {
+        name: 'email',
+        type: 'string',
+        required: false,
+        description: 'Email associated with Twitter account'
+      },
+      {
+        name: 'cookies',
+        type: 'string',
+        required: false,
+        description: 'JSON string of Twitter cookies'
+      },
+      {
+        name: 'accounts',
+        type: 'string[]',
+        required: true,
+        description: 'Array of Twitter accounts to monitor'
+      }
+    ]
+  };
+
   constructor(config: TwitterSourceConfig) {
     this.name = config.name;
     this.client = new Scraper();

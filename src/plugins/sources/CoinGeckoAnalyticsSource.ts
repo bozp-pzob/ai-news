@@ -12,6 +12,23 @@ export class CoinGeckoAnalyticsSource implements ContentSource {
     public name: string;
     private tokenSymbols: string[];
   
+    static constructorInterface = {
+      parameters: [
+        {
+          name: 'name',
+          type: 'string',
+          required: true,
+          description: 'Name of the CoinGecko Analytics source'
+        },
+        {
+          name: 'tokenSymbols',
+          type: 'string[]',
+          required: true,
+          description: 'Array of cryptocurrency symbols to track (e.g., ["bitcoin", "ethereum"])'
+        }
+      ]
+    };
+  
     constructor(config : CoinGeckoAnalyticsSourceConfig) {
         this.name = config.name;
         this.tokenSymbols = config.tokenSymbols;

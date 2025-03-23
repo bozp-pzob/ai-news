@@ -2,7 +2,7 @@ import { ContentItem } from "../../types";
 import { ContentSource } from "./ContentSource";
 import fetch from "node-fetch";
 
-interface CodexAnalyticsSourceConfig {
+interface Config {
   name: string;
   apiKey: string;
   tokenAddresses: string[];
@@ -13,7 +13,30 @@ export class CodexAnalyticsSource implements ContentSource {
   private apiKey: string;
   private tokenAddresses: string[];
 
-  constructor(config: CodexAnalyticsSourceConfig) {
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'name',
+        type: 'string',
+        required: true,
+        description: 'Name of the Codex Analytics source'
+      },
+      {
+        name: 'apiKey',
+        type: 'string',
+        required: true,
+        description: 'API key for Codex Analytics'
+      },
+      {
+        name: 'tokenAddresses',
+        type: 'string[]',
+        required: true,
+        description: 'Array of token addresses to track'
+      }
+    ]
+  };
+
+  constructor(config: Config) {
     this.name = config.name;
     this.apiKey = config.apiKey;
     this.tokenAddresses = config.tokenAddresses;

@@ -7,6 +7,29 @@ export class AiImageEnricher implements EnricherPlugin {
   private maxTokens?: number;
   private thresholdLength?: number;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'provider',
+        type: 'AiProvider',
+        required: true,
+        description: 'AI provider to use for image generation'
+      },
+      {
+        name: 'maxTokens',
+        type: 'number',
+        required: false,
+        description: 'Maximum number of tokens to use for image generation'
+      },
+      {
+        name: 'thresholdLength',
+        type: 'number',
+        required: false,
+        description: 'Minimum text length required for image generation (default: 300)'
+      }
+    ]
+  };
+
   constructor(config: AiEnricherConfig) {
     this.provider = config.provider;
     this.maxTokens = config.maxTokens;

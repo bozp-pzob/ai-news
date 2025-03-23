@@ -10,6 +10,23 @@ export class SQLiteStorage implements StoragePlugin {
   private db: Database<sqlite3.Database, sqlite3.Statement> | null = null;
   private dbPath: string;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'name',
+        type: 'string',
+        required: true,
+        description: 'Name of the SQLite storage instance'
+      },
+      {
+        name: 'dbPath',
+        type: 'string',
+        required: true,
+        description: 'Path to the SQLite database file'
+      }
+    ]
+  };
+
   constructor(config: StorageConfig) {
     this.name = config.name;
     this.dbPath = config.dbPath;
