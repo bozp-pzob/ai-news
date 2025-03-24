@@ -10,6 +10,7 @@ A modular TypeScript-based news aggregator that collects, enriches, and analyzes
   - GitHub activity tracking
   - Solana token analytics
   - CoinGecko market data
+  - Telegram channel messages
 
 - **Content Enrichment**
   - AI-powered topic extraction
@@ -60,6 +61,10 @@ TWITTER_EMAIL=            # Account email
 DISCORD_APP_ID=
 DISCORD_TOKEN=
 
+TELEGRAM_API_ID=            # Telegram api Id
+TELEGRAM_API_HASH=          # Telegram api hash
+TELEGRAM_SESSION=           # Generate session string from running `npm run createToken`
+
 CODEX_API_KEY=            # Market Data
 ```
 
@@ -87,7 +92,10 @@ CODEX_API_KEY=            # Market Data
   "DISCORD_TOKEN": "",
   "BIRDEYE_API_KEY": "",
   "CODEX_API_KEY": "",
-  "SOURCE": "sources.json"
+  "SOURCE": "sources.json",
+  "TELEGRAM_API_ID": "",
+  "TELEGRAM_API_HASH": "",
+  "TELEGRAM_SESSION": ""
 }
 ```
 
@@ -129,6 +137,9 @@ npm run historical -- --source=sources.json --after=2025-01-01
 
 # Grab Historical Data for before specific date from the sources.json config //Limited to Jan 1, 2024
 npm run historical -- --source=sources.json --before=2025-01-01
+
+# Script to Manual Grab Token to run sources that require extra steps. 
+npm run createToken
 ```
 
 ## Project Structure
@@ -144,6 +155,7 @@ src/
 │   ├── sources/        # Data source implementations
 │   └── storage/        # Database storage handlers
 ├── types.ts            # TypeScript type definitions
+├── createToken.ts      # Create Tokens for Sources
 ├── index.ts            # Main application entry
 └── historical.ts       # Grab historical data entry and Generate Summary on Historical Data
 ```
@@ -164,6 +176,11 @@ class NewSource implements ContentSource {
   }
   async fetchHistorical(date:string): Promise<ContentItem[]> {
     // Implementation for historical fetching if source allows
+  }
+  async createToken(): Promise<string> {
+    // Optional function for Sources where a manual 
+    // step is required to run. 
+    // Example: Telegram requires a SMS code.
   }
 }
 ```
@@ -231,6 +248,10 @@ Daily summaries are stored in JSON files with this structure:
 - Captures tweets, retweets, media
 - Metadata includes engagement metrics
 
+### Telegram
+- Channel messages monitoring
+- Server activity summaries
+
 ### Discord
 - Channel messages monitoring
 - Announcement tracking
@@ -252,6 +273,7 @@ Daily summaries are stored in JSON files with this structure:
 The application runs hourly tasks via GitHub Actions:
 - Twitter monitoring: every 30 minutes
 - Discord monitoring: every 6 minutes
+- Telegram monitoring: every 6 minutes
 - Announcements: hourly
 - GitHub data: every 6 hours
 - Market analytics: every 12 hours
@@ -272,6 +294,11 @@ OPENAI_API_KEY=            # API key for GPT models
 # Discord Integration
 DISCORD_APP_ID=            # Discord application ID
 DISCORD_TOKEN=             # Bot token
+
+# Telegram Integration
+TELEGRAM_API_ID=            # Telegram api ID
+TELEGRAM_API_HASH=          # Telegram api hash
+TELEGRAM_SESSION=           # Generate session string from running `npm run createToken`
 
 # Analytics
 BIRDEYE_API_KEY=           # Optional: For Solana token analytics
