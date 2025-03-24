@@ -8,4 +8,5 @@ export interface ContentSource {
    */
   fetchItems(): Promise<ContentItem[]>;
   fetchHistorical?(date:string): Promise<ContentItem[]>;
+  createToken?(): Promise<string>;
 }

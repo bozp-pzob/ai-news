@@ -64,6 +64,11 @@ export class OpenAIProvider implements AiProvider {
         temperature: this.temperature
       });
 
+      if ( ! completion || ! completion.choices || completion.choices.length <= 0  ) {
+        console.log( completion )
+        return "";
+      }
+
       return completion.choices[0]?.message?.content || "";
     } catch (e) {
       console.error("Error in summarize:", e);
