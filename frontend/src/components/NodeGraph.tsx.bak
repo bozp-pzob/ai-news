@@ -3,10 +3,9 @@ import { Config } from '../types';
 import { PluginParamDialog } from './PluginParamDialog';
 import { ConfigDialog } from './ConfigDialog';
 import { drawConnection, drawConnectionLine, drawNode, drawGrid } from '../utils/nodeRenderer';
-import { findPortAtCoordinates, isPointInNode, removeNodeConnection, handleNodeConnection, findNodeAtCoordinates, findNodeRecursive, isPointInCollapseButton, syncNodePortsWithParams, cleanupStaleConnections } from '../utils/nodeHandlers';
+import { findPortAtCoordinates, isPointInNode, removeNodeConnection, handleNodeConnection, findNodeAtCoordinates, findNodeRecursive, isPointInCollapseButton } from '../utils/nodeHandlers';
 import { Node, Connection, PortInfo } from '../types/nodeTypes';
 import { configStateManager } from '../services/ConfigStateManager';
-import { animateCenterView } from '../utils/animation/centerViewAnimation';
 
 interface NodeGraphProps {
   config: Config;
@@ -71,115 +70,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
       setSelectedNode(configStateManager.getSelectedNode());
       
       console.log("🔄 NodeGraph: nodes after initialization:", configStateManager.getNodes().length);
-      
-      // Schedule auto-centering after the canvas and nodes are ready
-      const nodesLoaded = configStateManager.getNodes().length > 0;
-      if (nodesLoaded) {
-        console.log("Scheduling auto-center after config load");
-        
-        // Use timeout to ensure the component is fully rendered
-        setTimeout(() => {
-          if (canvasRef.current) {
-            console.log("Auto-centering after config load");
-            // Define a local function to handle centering
-            const autoCenterOnLoad = () => {
-              if (!canvasRef.current) return;
-              
-              console.log("Running auto-center calculation");
-              
-              // Calculate the bounds of all nodes
-              let minX = Infinity;
-              let minY = Infinity;
-              let maxX = -Infinity;
-              let maxY = -Infinity;
-              
-              const nodesToProcess = configStateManager.getNodes();
-              
-              // Helper function to process each node
-              const processNode = (node: Node) => {
-                const nodeWidth = 200;
-                const nodeHeight = node.isParent ? 
-                  (node.expanded ? (25 + node.inputs.length * 20) : 80) : 
-                  (25 + Math.max(node.inputs.length, node.outputs.length) * 20);
-                
-                minX = Math.min(minX, node.position.x);
-                minY = Math.min(minY, node.position.y);
-                maxX = Math.max(maxX, node.position.x + nodeWidth);
-                maxY = Math.max(maxY, node.position.y + nodeHeight);
-                
-                if (node.isParent && node.children && node.expanded) {
-                  node.children.forEach(processNode);
-                }
-              };
-              
-              nodesToProcess.forEach(processNode);
-              
-              if (minX === Infinity || minY === Infinity || maxX === -Infinity || maxY === -Infinity) {
-                console.warn('Invalid node bounds calculated');
-                return;
-              }
-              
-              // Add padding to the bounds
-              const padding = 200;
-              minX -= padding;
-              minY -= padding;
-              maxX += padding;
-              maxY += padding;
-              
-              // Calculate the dimensions and center of the node bounds
-              const nodeWidth = maxX - minX;
-              const nodeHeight = maxY - minY;
-              const centerX = (minX + maxX) / 2;
-              const centerY = (minY + maxY) / 2;
-              
-              // Get canvas dimensions
-              const canvasWidth = canvasRef.current.width;
-              const canvasHeight = canvasRef.current.height;
-              
-              console.log(`Canvas dimensions: ${canvasWidth}x${canvasHeight}`);
-              console.log(`Node bounds: (${minX},${minY}) to (${maxX},${maxY})`);
-              
-              // Calculate scale to fit nodes in view with padding
-              const scaleX = canvasWidth / nodeWidth;
-              const scaleY = canvasHeight / nodeHeight;
-              const targetScale = Math.min(Math.max(Math.min(scaleX, scaleY) * 0.9, 0.1), 2.0);
-              
-              // Calculate target offset to center the nodes
-              const targetOffset = {
-                x: (canvasWidth / 2) - (centerX * targetScale),
-                y: (canvasHeight / 2) - (centerY * targetScale)
-              };
-              
-              console.log(`Setting scale=${targetScale}, offset=(${targetOffset.x},${targetOffset.y})`);
-              
-              // Apply changes directly
-              setScale(targetScale);
-              setOffset(targetOffset);
-              
-              // Force immediate redraw
-              drawToBackBuffer();
-              drawToScreen();
-            };
-            
-            // Make sure canvas size is set before centering
-            if (canvasRef.current.width === 0 || canvasRef.current.height === 0) {
-              const updateCanvasAndCenter = () => {
-                if (canvasRef.current && containerRef.current) {
-                  canvasRef.current.width = containerRef.current.clientWidth;
-                  canvasRef.current.height = containerRef.current.clientHeight;
-                  autoCenterOnLoad();
-                }
-              };
-              
-              // Try to update canvas size and then center
-              updateCanvasAndCenter();
-            } else {
-              // Canvas already has size, just center
-              autoCenterOnLoad();
-            }
-          }
-        }, 500); // Give canvas time to initialize
-      }
     } catch (error) {
       console.error("Error initializing ConfigStateManager:", error);
     }
@@ -498,13 +388,10 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
           // Draw grid, connections, and nodes
           drawGrid(ctx, canvasRef.current.width, canvasRef.current.height, scale, offset);
           
-          // Sync node ports with parameters to ensure we're not showing invalid connections
-          const syncedNodes = syncNodePortsWithParams(updatedNodes);
-          
           // Draw connections
           connections.forEach(connection => {
-            const fromNode = findNodeRecursive(syncedNodes, connection.from.nodeId);
-            const toNode = findNodeRecursive(syncedNodes, connection.to.nodeId);
+            const fromNode = findNodeRecursive(updatedNodes, connection.from.nodeId);
+            const toNode = findNodeRecursive(updatedNodes, connection.to.nodeId);
             
             if (fromNode && toNode) {
               try {
@@ -516,7 +403,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
           });
           
           // Draw nodes
-          syncedNodes.forEach(node => {
+          updatedNodes.forEach(node => {
             drawNode(ctx, node, scale, hoveredPort, selectedNode);
           });
           
@@ -575,14 +462,11 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
     // Draw grid
     drawGrid(ctx, backBufferRef.current.width, backBufferRef.current.height, scale, offset);
     
-    // Sync node ports with parameters to ensure we're not showing invalid connections
-    const syncedNodes = syncNodePortsWithParams(nodes);
-    
     // Draw connections
     if (connections.length > 0) {
       connections.forEach(connection => {
-        const fromNode = findNodeRecursive(syncedNodes, connection.from.nodeId);
-        const toNode = findNodeRecursive(syncedNodes, connection.to.nodeId);
+        const fromNode = findNodeRecursive(nodes, connection.from.nodeId);
+        const toNode = findNodeRecursive(nodes, connection.to.nodeId);
         
         if (fromNode && toNode) {
           try {
@@ -595,15 +479,15 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
     }
     
     // Draw nodes
-    if (syncedNodes.length > 0) {
-      syncedNodes.forEach(node => {
+    if (nodes.length > 0) {
+      nodes.forEach(node => {
         drawNode(ctx, node, scale, hoveredPort, selectedNode);
       });
     }
     
     // Draw connection line if currently connecting
     if (connectingFrom && mousePosition) {
-      const fromNode = findNodeRecursive(syncedNodes, connectingFrom.nodeId);
+      const fromNode = findNodeRecursive(nodes, connectingFrom.nodeId);
       if (fromNode) {
         const fromPort = connectingFrom.isOutput ? 
           fromNode.outputs.find(o => o.name === connectingFrom.port) :
@@ -654,19 +538,18 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
   
   // Enhanced centering function with proper padding and smooth animation
   const centerView = useCallback(() => {
-    console.log("Center view clicked");
-    
-    if (nodes.length === 0 || !canvasRef.current) {
-      console.warn('Cannot center view: no nodes or canvas not available');
+    if (nodes.length === 0 || !canvasRef.current || isAnimatingRef.current) {
       return;
     }
-    
+
+    isAnimatingRef.current = true;
+
     // Calculate the bounds of all nodes
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
-    
+
     // Helper function to process each node
     const processNode = (node: Node) => {
       const nodeWidth = 200;
@@ -678,63 +561,86 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
       minY = Math.min(minY, node.position.y);
       maxX = Math.max(maxX, node.position.x + nodeWidth);
       maxY = Math.max(maxY, node.position.y + nodeHeight);
-      
+
       if (node.isParent && node.children && node.expanded) {
         node.children.forEach(processNode);
       }
     };
-    
+
     nodes.forEach(processNode);
-    
+
     if (minX === Infinity || minY === Infinity || maxX === -Infinity || maxY === -Infinity) {
-      console.warn('Invalid node bounds calculated');
+      isAnimatingRef.current = false;
       return;
     }
-    
-    // Add padding to the bounds
-    const padding = 75;
-    minX -= padding;
-    minY -= padding;
-    maxX += padding;
-    maxY += padding;
-    
-    // Calculate the dimensions and center of the node bounds
-    const nodeWidth = maxX - minX;
-    const nodeHeight = maxY - minY;
+
+    const boundsPadding = 800;
+    setCanvasBounds({
+      minX: minX - boundsPadding,
+      minY: minY - boundsPadding,
+      maxX: maxX + boundsPadding,
+      maxY: maxY + boundsPadding
+    });
+
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
-    
-    // Get canvas dimensions
-    const canvasWidth = canvasRef.current.width;
-    const canvasHeight = canvasRef.current.height;
-    
-    // Calculate scale to fit nodes in view with padding
-    const scaleX = canvasWidth / nodeWidth;
-    const scaleY = canvasHeight / nodeHeight;
-    const targetScale = Math.min(Math.max(Math.min(scaleX, scaleY) * 0.9, 0.1), 2.0);
-    
-    // Calculate target offset to center the nodes
+    const canvasCenterX = canvasRef.current.width / 2;
+    const canvasCenterY = canvasRef.current.height / 2;
+
+    const nodeWidth = maxX - minX;
+    const nodeHeight = maxY - minY;
+    const viewPadding = 0.3;
+    const paddedWidth = nodeWidth * (1 + viewPadding * 2);
+    const paddedHeight = nodeHeight * (1 + viewPadding * 2);
+
+    const scaleX = canvasRef.current.width / paddedWidth;
+    const scaleY = canvasRef.current.height / paddedHeight;
+    let newScale = Math.min(scaleX, scaleY);
+    newScale = Math.min(Math.max(newScale, 0.2), 2.0);
+
     const targetOffset = {
-      x: (canvasWidth / 2) - (centerX * targetScale),
-      y: (canvasHeight / 2) - (centerY * targetScale)
+      x: canvasCenterX - centerX * newScale,
+      y: canvasCenterY - centerY * newScale
     };
     
-    // Cancel any existing animation
-    if (animationFrameRef.current !== null) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
+    const startScale = scale;
+    const startOffset = { ...offset };
+    const duration = 800;
+    const startTime = performance.now();
     
-    // Apply changes directly for the first click
-    setScale(targetScale);
-    setOffset(targetOffset);
+    const cubicEaseInOut = (t: number): number => {
+      return t < 0.5
+        ? 4 * t * t * t
+        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    };
     
-    // Force immediate redraw
-    requestAnimationFrame(() => {
-      drawToBackBuffer();
-      drawToScreen();
-    });
-  }, [nodes, canvasRef, drawToBackBuffer, drawToScreen]);
+    const animate = () => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easeProgress = cubicEaseInOut(progress);
+      
+      setScale(startScale + (newScale - startScale) * easeProgress);
+      setOffset({
+        x: startOffset.x + (targetOffset.x - startOffset.x) * easeProgress,
+        y: startOffset.y + (targetOffset.y - startOffset.y) * easeProgress
+      });
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        // Set exact final values to prevent snapping
+        setScale(newScale);
+        setOffset(targetOffset);
+        
+        setTimeout(() => {
+          forceRedraw();
+          isAnimatingRef.current = false;
+        }, 50);
+      }
+    };
+    
+    requestAnimationFrame(animate);
+  }, [nodes, scale, offset, canvasRef, forceRedraw]);
 
   // Subscribe to state changes from ConfigStateManager
   useEffect(() => {
@@ -818,11 +724,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
 
   // Add a specific effect to handle scale and offset changes
   useEffect(() => {
-    // Skip redrawing during animation to prevent interference
-    if (isAnimatingRef.current) {
-      return;
-    }
-    
     // Cancel any existing animation frame
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -925,23 +826,22 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
       // Force a synchronization before opening the dialog
       configStateManager.forceSync();
       
-      // Wait longer to ensure sync has completed
+      // Wait briefly to ensure sync has completed
       setTimeout(() => {
         // Ensure we get the most up-to-date state for the node
         const latestNode = configStateManager.findNodeById(actualNode.id);
-        let nodeParams = {};
+        let nodeParams = actualNode.params || {};
         
         if (latestNode && latestNode.params) {
           console.log('🔍 Using latest node state from ConfigStateManager for dialog');
-          nodeParams = { ...latestNode.params }; // Make a deep copy to avoid reference issues
+          nodeParams = latestNode.params;
         } else {
           console.log('🔍 Using state from node object for dialog');
-          nodeParams = { ...(actualNode.params || {}) }; // Make a deep copy
         }
         
         // Create plugin info structure based on node type
         let plugin: any = {
-          name: latestNode?.name || actualNode.name,
+          name: actualNode.name,
           params: nodeParams,
           id: actualNode.id,
           isChild: isChild,
@@ -977,7 +877,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
         // Open dialog to edit params
         setSelectedPlugin(plugin);
         setShowPluginDialog(true);
-      }, 200); // Increase timeout to ensure sync is complete
+      }, 100);
     }
   };
 
@@ -1189,18 +1089,9 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
   const handleAddPlugin = async (updatedPlugin: any) => {
     console.log('🔥 NodeGraph: RECEIVED PLUGIN UPDATE:', JSON.stringify(updatedPlugin));
     
-    // First force ConfigStateManager to sync before applying the update
-    configStateManager.forceSync();
-    
-    // Small delay to ensure sync is complete
-    await new Promise(resolve => setTimeout(resolve, 50));
-    
     // Update the state via ConfigStateManager
     const result = configStateManager.updatePlugin(updatedPlugin);
     console.log('🔥 NodeGraph: Plugin update result:', result);
-    
-    // Force sync again to propagate the change to all components
-    configStateManager.forceSync();
     
     // Force redraw to show the changes
     forceRedraw();
@@ -1222,11 +1113,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
               console.log(`Configuration ${configName} saved after plugin update`);
               // Update the parent component's config state
               onConfigUpdate(currentConfig);
-              
-              // Force one final sync to ensure all components have the latest state
-              setTimeout(() => {
-                configStateManager.forceSync();
-              }, 100);
             })
             .catch(error => {
               console.error('Error saving config after plugin update:', error);
@@ -1235,7 +1121,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
       } catch (error) {
         console.error('Error in save after plugin update:', error);
       }
-    }, 200); // Increased delay to ensure sync has time to complete
+    }, 100);
   };
 
   // Handle config save
@@ -1275,90 +1161,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
     }
   };
 
-  // Subscribe to node updates for debugging
-  useEffect(() => {
-    // Subscribe to node updates for debugging
-    const unsubscribeNodes = configStateManager.subscribe('nodes-updated', (updatedNodes) => {
-      console.log('🔍 NodeGraph: Nodes updated notification received');
-      
-      // If we have a selected plugin, check if its node was updated
-      if (selectedPlugin && selectedPlugin.id) {
-        const updatedNode = findNodeRecursive(updatedNodes, selectedPlugin.id);
-        if (updatedNode) {
-          console.log('🔍 NodeGraph: Selected node has been updated:', updatedNode.params);
-          
-          // Only update if params have actually changed to prevent unnecessary rerenders
-          const currentParamsJson = JSON.stringify(selectedPlugin.params || {});
-          const newParamsJson = JSON.stringify(updatedNode.params || {});
-          
-          if (currentParamsJson !== newParamsJson) {
-            // Update the selectedPlugin with the latest params to ensure dialog stays in sync
-            setSelectedPlugin((prevPlugin: any) => {
-              if (prevPlugin && prevPlugin.id === updatedNode.id) {
-                // Create a deep copy for the new plugin
-                const updatedSelectedPlugin = { 
-                  ...prevPlugin,
-                  params: JSON.parse(JSON.stringify(updatedNode.params || {}))
-                };
-                
-                console.log('🔍 NodeGraph: Updated selected plugin:', updatedSelectedPlugin);
-                return updatedSelectedPlugin;
-              }
-              return prevPlugin;
-            });
-          } else {
-            console.log('🔍 NodeGraph: No params change detected, skipping update');
-          }
-        }
-      }
-    });
-    
-    // Subscribe to plugin updates for debugging
-    const unsubscribePlugins = configStateManager.subscribe('plugin-updated', (updatedPlugin) => {
-      console.log('🔍 NodeGraph: Plugin update notification received:', updatedPlugin.id);
-      
-      // If this is our selected plugin, log the update
-      if (selectedPlugin && selectedPlugin.id === updatedPlugin.id) {
-        console.log('🔍 NodeGraph: Our selected plugin was updated:', updatedPlugin.params);
-        
-        // Only update if params have actually changed to prevent unnecessary rerenders
-        const currentParamsJson = JSON.stringify(selectedPlugin.params || {});
-        const newParamsJson = JSON.stringify(updatedPlugin.params || {});
-        
-        if (currentParamsJson !== newParamsJson) {
-          // Update the selected plugin with the latest params
-          setSelectedPlugin((prevPlugin: any) => {
-            if (prevPlugin && prevPlugin.id === updatedPlugin.id) {
-              // Create a deep copy for the new plugin
-              const updatedSelectedPlugin = { 
-                ...prevPlugin,
-                params: JSON.parse(JSON.stringify(updatedPlugin.params || {}))
-              };
-              
-              console.log('🔍 NodeGraph: Updated selected plugin:', updatedSelectedPlugin);
-              return updatedSelectedPlugin;
-            }
-            return prevPlugin;
-          });
-        } else {
-          console.log('🔍 NodeGraph: No params change detected, skipping update');
-        }
-        
-        // If the dialog is open, manually trigger a re-sync
-        // But only do it if we actually updated the plugin params
-        if (showPluginDialog && currentParamsJson !== newParamsJson) {
-          console.log('🔍 NodeGraph: Dialog is open, forcing sync...');
-          configStateManager.forceSync();
-        }
-      }
-    });
-    
-    return () => {
-      unsubscribeNodes();
-      unsubscribePlugins();
-    };
-  }, [selectedPlugin, showPluginDialog]);
-
   return (
     <div className="flex flex-col h-full w-full">
       <div 
@@ -1395,61 +1197,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
             }}
           >
             Refresh
-          </button>
-          <button
-            className="px-3 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700 shadow-md"
-            onClick={() => {
-              // First, sync node ports with parameters to ensure ports exist
-              const syncedNodes = syncNodePortsWithParams(nodes);
-              
-              // Now update any connections we have 
-              const cleanedConnections = cleanupStaleConnections(syncedNodes, connections);
-              
-              // Now repair the connections to ensure they match between nodes
-              const repairedConnections = [...cleanedConnections];
-              
-              // For each connection, make sure both sides of the connection are properly connected
-              repairedConnections.forEach(connection => {
-                // Find the source and target nodes
-                const sourceNode = findNodeRecursive(syncedNodes, connection.from.nodeId);
-                const targetNode = findNodeRecursive(syncedNodes, connection.to.nodeId);
-                
-                if (sourceNode && targetNode) {
-                  // Fix the source output port
-                  const sourceOutput = sourceNode.outputs.find(output => output.name === connection.from.output);
-                  if (sourceOutput) {
-                    sourceOutput.connectedTo = connection.to.nodeId;
-                  }
-                  
-                  // Fix the target input port
-                  const targetInput = targetNode.inputs.find(input => input.name === connection.to.input);
-                  if (targetInput) {
-                    targetInput.connectedTo = connection.from.nodeId;
-                  }
-                }
-              });
-              
-              // Update state with the fixed nodes and connections
-              setNodes(syncedNodes);
-              setConnections(repairedConnections);
-              
-              // Update state via ConfigStateManager
-              configStateManager.setNodes(syncedNodes);
-              configStateManager.setConnections(repairedConnections);
-              
-              // Force synchronization of state
-              configStateManager.forceSync();
-              
-              // Force redraw
-              drawToBackBuffer();
-              drawToScreen();
-              
-              // User feedback
-              console.log('🔧 Fixed connections');
-              alert('Connections have been repaired');
-            }}
-          >
-            Fix Connections
           </button>
         </div>
         <div className="absolute bottom-4 right-4">

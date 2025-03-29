@@ -1,82 +1,124 @@
 import { Node, Connection, PortInfo } from '../types/nodeTypes';
+import { shouldShowPort } from './nodeHandlers';
 
 // Draw a connection between two nodes
-export const drawConnection = (
-  ctx: CanvasRenderingContext2D,
-  fromNode: Node,
-  toNode: Node,
-  connection: Connection
-) => {
+export const drawConnection = (ctx: CanvasRenderingContext2D, fromNode: Node, toNode: Node, connection: Connection) => {
+  console.log("CRITICAL RENDER: Drawing connection:", JSON.stringify(connection));
+  console.log(`CRITICAL RENDER: From node ID: ${fromNode.id}, To node ID: ${toNode.id}`);
+  
   // Find the actual target node if it's a child node
   let actualToNode = toNode;
-  if (toNode.isParent && toNode.children) {
+  let parentOffset = { x: 0, y: 0 };
+  
+  if (connection.to.nodeId !== toNode.id && toNode.isParent && toNode.children) {
+    // Look for the target node in children
     const childNode = toNode.children.find(child => child.id === connection.to.nodeId);
     if (childNode) {
+      console.log(`CRITICAL RENDER: Found actual child node ${connection.to.nodeId} inside parent ${toNode.id}`);
       actualToNode = childNode;
+      
+      // For child nodes, we need to add the parent's position as an offset
+      parentOffset = {
+        x: toNode.position.x,
+        y: toNode.position.y + 40 // Add header height offset
+      };
     }
   }
 
   // Find the actual source node if it's a child node
   let actualFromNode = fromNode;
-  if (fromNode.isParent && fromNode.children) {
+  let fromParentOffset = { x: 0, y: 0 };
+  
+  if (connection.from.nodeId !== fromNode.id && fromNode.isParent && fromNode.children) {
+    // Look for the source node in children
     const childNode = fromNode.children.find(child => child.id === connection.from.nodeId);
     if (childNode) {
+      console.log(`CRITICAL RENDER: Found actual child node ${connection.from.nodeId} inside parent ${fromNode.id}`);
       actualFromNode = childNode;
+      
+      // For child nodes, we need to add the parent's position as an offset
+      fromParentOffset = {
+        x: fromNode.position.x,
+        y: fromNode.position.y + 40 // Add header height offset
+      };
     }
   }
-
-  // Calculate port positions
-  const fromPort = actualFromNode.outputs.find(output => output.name === connection.from.output);
-  const toPort = actualToNode.inputs.find(input => input.name === connection.to.input);
-
-  if (!fromPort || !toPort) {
-    console.warn(`Cannot find ports for connection: ${connection.from.nodeId}.${connection.from.output} → ${connection.to.nodeId}.${connection.to.input}`);
-    return;
+  
+  // Find the output port on the from node
+  let fromPort = actualFromNode.outputs.find(output => output.name === connection.from.output);
+  if (!fromPort) {
+    console.warn(`CRITICAL RENDER: Could not find output port ${connection.from.output} on node ${actualFromNode.id}`);
+    console.log(`CRITICAL RENDER: Available output ports: ${JSON.stringify(actualFromNode.outputs.map(o => o.name))}`);
+    
+    // Try to recover by using the first available output port
+    if (actualFromNode.outputs.length > 0) {
+      console.log(`CRITICAL RENDER: Using first available output port instead: ${actualFromNode.outputs[0].name}`);
+      fromPort = actualFromNode.outputs[0];
+    } else {
+      console.error(`CRITICAL RENDER: Node ${actualFromNode.id} has no output ports, cannot draw connection`);
+      return; // Exit without drawing
+    }
   }
-
+  
+  // Find the input port on the to node
+  let toPort = actualToNode.inputs.find(input => input.name === connection.to.input);
+  if (!toPort) {
+    console.warn(`CRITICAL RENDER: Could not find input port ${connection.to.input} on node ${actualToNode.id}`);
+    console.log(`CRITICAL RENDER: Available input ports: ${JSON.stringify(actualToNode.inputs.map(i => i.name))}`);
+    
+    // Try to recover by using the first available input port
+    if (actualToNode.inputs.length > 0) {
+      console.log(`CRITICAL RENDER: Using first available input port instead: ${actualToNode.inputs[0].name}`);
+      toPort = actualToNode.inputs[0];
+    } else {
+      console.error(`CRITICAL RENDER: Node ${actualToNode.id} has no input ports, cannot draw connection`);
+      return; // Exit without drawing
+    }
+  }
+  
+  // Calculate port positions (relative to node position)
   const fromPortIndex = actualFromNode.outputs.indexOf(fromPort);
   const toPortIndex = actualToNode.inputs.indexOf(toPort);
-
+  
+  // If either port index is -1, it means we didn't find the port
   if (fromPortIndex === -1 || toPortIndex === -1) {
-    console.warn(`Invalid port indices for connection: ${connection.from.nodeId}.${connection.from.output} → ${connection.to.nodeId}.${connection.to.input}`);
-    return;
+    console.error(`CRITICAL RENDER: Invalid port index, from: ${fromPortIndex}, to: ${toPortIndex} - from node: ${actualFromNode.id}, to node: ${actualToNode.id}`);
+    return; // Exit without drawing
   }
 
-  const startX = actualFromNode.position.x + 200;
-  const startY = actualFromNode.position.y + 25 + fromPortIndex * 20;
-  const endX = actualToNode.position.x;
-  const endY = actualToNode.position.y + 25 + toPortIndex * 20;
-  
-  // Set connection line color based on type
-  ctx.strokeStyle = fromPort.type === 'storage' ? '#10b981' : '#4f46e5';
-  ctx.lineWidth = 2;
-  
-  // Draw connection line
-  ctx.beginPath();
-  ctx.moveTo(startX, startY);
-  
-  // Create a curved path
-  const controlPoint1X = startX + (endX - startX) / 2;
-  const controlPoint1Y = startY;
-  const controlPoint2X = startX + (endX - startX) / 2;
-  const controlPoint2Y = endY;
-  
-  ctx.bezierCurveTo(
-    controlPoint1X, controlPoint1Y,
-    controlPoint2X, controlPoint2Y,
-    endX, endY
-  );
-  
-  ctx.stroke();
+  // Log port details for debugging
+  console.log('CRITICAL RENDER: From port:', fromPort.name, 'index:', fromPortIndex);
+  console.log('CRITICAL RENDER: To port:', toPort.name, 'index:', toPortIndex);
 
-  // Draw arrow with the same strokeStyle
-  const angle = Math.atan2(endY - startY, endX - startX);
-  const arrowSize = 10;
-  ctx.beginPath();
-  ctx.moveTo(endX - arrowSize * Math.cos(angle - Math.PI / 6), endY - arrowSize * Math.sin(angle - Math.PI / 6));
-  ctx.lineTo(endX, endY);
-  ctx.lineTo(endX - arrowSize * Math.cos(angle + Math.PI / 6), endY - arrowSize * Math.sin(angle + Math.PI / 6));
-  ctx.stroke();
+  // CRITICAL FIX: Validate that both ports should be shown on their respective nodes
+  if (!shouldShowPort(actualFromNode, fromPort.name, false)) {
+    console.log(`CRITICAL RENDER: Output port ${fromPort.name} should not be shown on node ${actualFromNode.id}, skipping connection`);
+    return; // Skip drawing this connection
+  }
+  
+  if (!shouldShowPort(actualToNode, toPort.name, true)) {
+    console.log(`CRITICAL RENDER: Input port ${toPort.name} should not be shown on node ${actualToNode.id}, skipping connection`);
+    return; // Skip drawing this connection
+  }
+
+  // Calculate actual coordinates including parent offsets
+  const nodeWidth = 200; // Standard width of nodes
+  const portOffsetY = 25; // Y offset of first port from node top
+  const portSpacing = 20; // Spacing between ports
+  
+  // Calculate the positions including parent offsets
+  const startX = (actualFromNode.position.x + fromParentOffset.x) + nodeWidth; // right side of from node
+  const startY = (actualFromNode.position.y + fromParentOffset.y) + portOffsetY + (fromPortIndex * portSpacing);
+  const endX = (actualToNode.position.x + parentOffset.x); // left side of to node
+  const endY = (actualToNode.position.y + parentOffset.y) + portOffsetY + (toPortIndex * portSpacing);
+  
+  console.log(`CRITICAL RENDER: Drawing connection from ${actualFromNode.id} at (${startX},${startY}) to ${actualToNode.id} at (${endX},${endY})`);
+  
+  // Use the port type to determine the connection color
+  const portType = fromPort.type || 'default';
+  drawConnectionLine(ctx, startX, startY, endX, endY, portType);
+  
+  console.log(`CRITICAL RENDER: Successfully drew connection from ${actualFromNode.id}.${fromPort.name} to ${actualToNode.id}.${toPort.name}`);
 };
 
 // Draw a temporary connection line
@@ -86,21 +128,31 @@ export const drawConnectionLine = (
   startY: number,
   endX: number,
   endY: number,
-  portType?: string
+  portType: string
 ) => {
   // Set color based on port type
-  const color = portType === 'storage' ? '#10b981' : '#4f46e5';
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
+  if (portType === 'provider') {
+    ctx.strokeStyle = '#4f46e5'; // Brighter blue for provider connections
+  } else if (portType === 'storage') {
+    ctx.strokeStyle = '#10b981'; // Green for storage connections
+  } else {
+    ctx.strokeStyle = '#d97706'; // Orange for other connections
+  }
+  
+  // Use thicker lines
+  ctx.lineWidth = 3;
   
   // Draw connection line
   ctx.beginPath();
   ctx.moveTo(startX, startY);
   
-  // Create a curved path
-  const controlPoint1X = startX + (endX - startX) / 2;
+  // Create a curved path with better control points
+  const distance = Math.abs(endX - startX);
+  const curvature = Math.min(distance * 0.5, 100); // Limit the curvature
+  
+  const controlPoint1X = startX + curvature;
   const controlPoint1Y = startY;
-  const controlPoint2X = startX + (endX - startX) / 2;
+  const controlPoint2X = endX - curvature;
   const controlPoint2Y = endY;
   
   ctx.bezierCurveTo(
@@ -110,15 +162,18 @@ export const drawConnectionLine = (
   );
   
   ctx.stroke();
-
-  // Draw arrow with the same color
-  const angle = Math.atan2(endY - startY, endX - startX);
-  const arrowSize = 10;
+  
+  // Draw arrow with the same strokeStyle
+  const arrowSize = 12; // Larger arrow
+  const angle = Math.atan2(endY - controlPoint2Y, endX - controlPoint2X);
+  
   ctx.beginPath();
-  ctx.moveTo(endX - arrowSize * Math.cos(angle - Math.PI / 6), endY - arrowSize * Math.sin(angle - Math.PI / 6));
-  ctx.lineTo(endX, endY);
+  ctx.moveTo(endX, endY);
+  ctx.lineTo(endX - arrowSize * Math.cos(angle - Math.PI / 6), endY - arrowSize * Math.sin(angle - Math.PI / 6));
   ctx.lineTo(endX - arrowSize * Math.cos(angle + Math.PI / 6), endY - arrowSize * Math.sin(angle + Math.PI / 6));
-  ctx.stroke();
+  ctx.closePath();
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.fill();
 };
 
 // Draw a node
@@ -183,8 +238,120 @@ export const drawNode = (
     ctx.fillText(paramCount.toString(), node.position.x + nodeWidth - 15, node.position.y + 15);
   }
 
-  // Draw ports based on node type
-  if (node.type === 'provider' && node.isProvider) {
+  // CRITICAL FIX: Handle parent nodes with special attention for their input ports
+  // This ensures that input ports on parent nodes are always visible
+  if (node.isParent) {
+    console.log(`Drawing parent node ${node.id} with ${node.inputs.length} inputs`);
+    
+    // Draw parent node input ports at the top
+    node.inputs.forEach((input, index) => {
+      // Only draw if this port should be shown for this node type
+      if (!shouldShowPort(node, input.name, true)) return;
+      
+      const portY = node.position.y + 25 + index * 20;
+      
+      // Port border and hover effect
+      const isHovered = hoveredPort?.nodeId === node.id && hoveredPort?.port === input.name && !hoveredPort?.isOutput;
+      
+      if (isHovered) {
+        // Draw outer glow effect
+        ctx.beginPath();
+        ctx.arc(node.position.x, portY, 12, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(99, 102, 241, 0.15)';
+        ctx.fill();
+        
+        // Draw inner glow effect
+        ctx.beginPath();
+        ctx.arc(node.position.x, portY, 8, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(99, 102, 241, 0.3)';
+        ctx.fill();
+      }
+      
+      // PARENT NODE FIX: Make parent node ports extra visible
+      let portColor = '#666'; // Default gray color
+      
+      // Use strong colors for parent node ports to ensure they're always visible
+      if (input.type === 'provider') {
+        portColor = input.connectedTo ? '#4338ca' : '#818cf8'; // Stronger blue for parent nodes
+      } else if (input.type === 'storage') {
+        portColor = input.connectedTo ? '#065f46' : '#10b981'; // Stronger green for parent nodes
+      } else if (input.type === 'data') {
+        portColor = input.connectedTo ? '#b45309' : '#f59e0b'; // Stronger orange for parent nodes
+      }
+      
+      // Port background with a larger size for parent nodes
+      ctx.beginPath();
+      ctx.arc(node.position.x, portY, 7, 0, Math.PI * 2); // Slightly larger for parent nodes
+      ctx.fillStyle = '#374151';
+      ctx.fill();
+      
+      // Port border with improved visibility for parent nodes
+      ctx.strokeStyle = isHovered ? '#6366f1' : portColor;
+      ctx.lineWidth = isHovered ? 3 : 2.5; // Thicker lines for parent nodes
+      ctx.stroke();
+      
+      // Port label
+      ctx.fillStyle = isHovered ? '#60a5fa' : '#d1d5db'; // Brighter text color
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(input.name, node.position.x - 8, portY + 4);
+    });
+    
+    // Also draw parent output ports
+    node.outputs.forEach((output, index) => {
+      // Only draw if this port should be shown for this node type
+      if (!shouldShowPort(node, output.name, false)) return;
+      
+      const portY = node.position.y + 25 + index * 20;
+      
+      // Port border and hover effect
+      const isHovered = hoveredPort?.nodeId === node.id && hoveredPort?.port === output.name && hoveredPort?.isOutput;
+      
+      if (isHovered) {
+        // Draw outer glow effect
+        ctx.beginPath();
+        ctx.arc(node.position.x + nodeWidth, portY, 12, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(99, 102, 241, 0.15)';
+        ctx.fill();
+        
+        // Draw inner glow effect
+        ctx.beginPath();
+        ctx.arc(node.position.x + nodeWidth, portY, 8, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(99, 102, 241, 0.3)';
+        ctx.fill();
+      }
+      
+      // PARENT NODE FIX: Make parent node ports extra visible
+      let portColor = '#666'; // Default gray color
+      
+      // Use strong colors for parent node ports to ensure they're always visible
+      if (output.type === 'provider') {
+        portColor = output.connectedTo ? '#4338ca' : '#818cf8'; // Stronger blue for parent nodes
+      } else if (output.type === 'storage') {
+        portColor = output.connectedTo ? '#065f46' : '#10b981'; // Stronger green for parent nodes
+      } else if (output.type === 'data') {
+        portColor = output.connectedTo ? '#b45309' : '#f59e0b'; // Stronger orange for parent nodes
+      }
+      
+      // Port background with a larger size for parent nodes
+      ctx.beginPath();
+      ctx.arc(node.position.x + nodeWidth, portY, 7, 0, Math.PI * 2); // Slightly larger for parent nodes
+      ctx.fillStyle = '#374151';
+      ctx.fill();
+      
+      // Port border with improved visibility for parent nodes
+      ctx.strokeStyle = isHovered ? '#6366f1' : portColor;
+      ctx.lineWidth = isHovered ? 3 : 2.5; // Thicker lines for parent nodes
+      ctx.stroke();
+      
+      // Port label
+      ctx.fillStyle = isHovered ? '#60a5fa' : '#d1d5db'; // Brighter text color
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(output.name, node.position.x + nodeWidth + 8, portY + 4);
+    });
+  }
+  else if (node.type === 'provider' && node.isProvider) {
     // For provider nodes, only draw the provider output port on the right
     const output = node.outputs[0];
     const portY = node.position.y + 25;
@@ -206,18 +373,22 @@ export const drawNode = (
       ctx.fill();
     }
     
+    // CRITICAL FIX: Always use a distinct color for provider ports
+    // This ensures the port is always visible with a consistent color
+    const portColor = output.connectedTo ? '#4f46e5' : '#6366f1'; // Connected vs. disconnected blue
+    
     // Port background
     ctx.beginPath();
     ctx.arc(node.position.x + nodeWidth, portY, 6, 0, Math.PI * 2);
     ctx.fillStyle = '#374151';
     ctx.fill();
     
-    // Port border
-    ctx.strokeStyle = isHovered ? '#6366f1' : (output.connectedTo ? '#4f46e5' : '#666');
+    // Port border with improved visibility
+    ctx.strokeStyle = isHovered ? '#6366f1' : portColor;
     ctx.lineWidth = isHovered ? 3 : 2;
     ctx.stroke();
     
-    // Port label
+    // Port label with improved visibility
     ctx.fillStyle = isHovered ? '#60a5fa' : '#9ca3af';
     ctx.font = '12px sans-serif';
     ctx.textAlign = 'left';
@@ -225,6 +396,9 @@ export const drawNode = (
   } else if (!node.isParent) {
     // For all other non-parent nodes, draw their input and output ports
     node.inputs.forEach((input, index) => {
+      // Only draw if this port should be shown for this node type
+      if (!shouldShowPort(node, input.name, true)) return;
+      
       const portY = node.position.y + 25 + index * 20;
       
       // Port border and hover effect
@@ -244,14 +418,27 @@ export const drawNode = (
         ctx.fill();
       }
       
+      // CRITICAL FIX: Always draw the port with a special color based on type
+      // This ensures all ports are visible even after disconnection
+      let portColor = '#666'; // Default gray color
+      
+      // Use distinct colors for different port types to make them more visible
+      if (input.type === 'provider') {
+        portColor = input.connectedTo ? '#4f46e5' : '#6366f1'; // Connected vs. disconnected blue
+      } else if (input.type === 'storage') {
+        portColor = input.connectedTo ? '#10b981' : '#34d399'; // Connected vs. disconnected green
+      } else if (input.type === 'data') {
+        portColor = input.connectedTo ? '#d97706' : '#f59e0b'; // Connected vs. disconnected orange
+      }
+      
       // Port background
       ctx.beginPath();
       ctx.arc(node.position.x, portY, 6, 0, Math.PI * 2);
       ctx.fillStyle = '#374151';
       ctx.fill();
       
-      // Port border
-      ctx.strokeStyle = isHovered ? '#6366f1' : (input.connectedTo ? '#4f46e5' : '#666');
+      // Port border - always visible with distinct color
+      ctx.strokeStyle = isHovered ? '#6366f1' : portColor;
       ctx.lineWidth = isHovered ? 3 : 2;
       ctx.stroke();
       
@@ -263,6 +450,9 @@ export const drawNode = (
     });
 
     node.outputs.forEach((output, index) => {
+      // Only draw if this port should be shown for this node type
+      if (!shouldShowPort(node, output.name, false)) return;
+      
       const portY = node.position.y + 25 + index * 20;
       
       // Port border and hover effect
@@ -282,14 +472,27 @@ export const drawNode = (
         ctx.fill();
       }
       
+      // CRITICAL FIX: Always draw the port with a special color based on type
+      // This ensures all ports are visible even after disconnection
+      let portColor = '#666'; // Default gray color
+      
+      // Use distinct colors for different port types to make them more visible
+      if (output.type === 'provider') {
+        portColor = output.connectedTo ? '#4f46e5' : '#6366f1'; // Connected vs. disconnected blue
+      } else if (output.type === 'storage') {
+        portColor = output.connectedTo ? '#10b981' : '#34d399'; // Connected vs. disconnected green
+      } else if (output.type === 'data') {
+        portColor = output.connectedTo ? '#d97706' : '#f59e0b'; // Connected vs. disconnected orange
+      }
+      
       // Port background
       ctx.beginPath();
       ctx.arc(node.position.x + nodeWidth, portY, 6, 0, Math.PI * 2);
       ctx.fillStyle = '#374151';
       ctx.fill();
       
-      // Port border
-      ctx.strokeStyle = isHovered ? '#6366f1' : (output.connectedTo ? '#4f46e5' : '#666');
+      // Port border - always visible with distinct color
+      ctx.strokeStyle = isHovered ? '#6366f1' : portColor;
       ctx.lineWidth = isHovered ? 3 : 2;
       ctx.stroke();
       
@@ -308,23 +511,127 @@ export const drawNode = (
       const parentBottom = node.position.y + (node.isParent ? 80 : 50);
       const childTop = child.position.y;
       
-      // // Draw vertical line from parent to child
-      // ctx.beginPath();
-      // ctx.moveTo(node.position.x + nodeWidth / 2, parentBottom);
-      // ctx.lineTo(node.position.x + nodeWidth / 2, childTop);
-      // ctx.strokeStyle = '#374151';
-      // ctx.lineWidth = 2;
-      // ctx.stroke();
-
-      // // Draw horizontal line to child
-      // ctx.beginPath();
-      // ctx.moveTo(node.position.x + nodeWidth / 2, childTop);
-      // ctx.lineTo(child.position.x, childTop);
-      // ctx.stroke();
+      // Special debug logging to understand child structure
+      console.log(`Drawing child node ${child.id} of parent ${node.id}`);
+      console.log(`Child inputs: ${child.inputs.map(i => i.name).join(', ')}`);
     });
 
-    // Draw child nodes
+    // Draw child nodes with special enhanced rendering
     node.children.forEach(child => {
+      // CRITICAL FIX: Only add necessary ports that should be present
+      // based on the node type, rather than adding all ports uniformly
+      if (child.type.includes('enricher') || child.id.includes('enricher-')) {
+        // Enrichers should have provider, storage, and input ports
+        const hasProviderPort = child.inputs.some(input => input.name === 'provider');
+        if (!hasProviderPort) {
+          console.log(`CRITICAL RENDER FIX: Adding missing provider port to child ${child.id} for rendering`);
+          child.inputs.push({
+            name: 'provider',
+            type: 'provider',
+            connectedTo: undefined
+          });
+        }
+        
+        const hasStoragePort = child.inputs.some(input => input.name === 'storage');
+        if (!hasStoragePort) {
+          console.log(`CRITICAL RENDER FIX: Adding missing storage port to child ${child.id} for rendering`);
+          child.inputs.push({
+            name: 'storage',
+            type: 'storage',
+            connectedTo: undefined
+          });
+        }
+        
+        const hasInputPort = child.inputs.some(input => input.name === 'input');
+        if (!hasInputPort) {
+          console.log(`CRITICAL RENDER FIX: Adding missing input port to child ${child.id} for rendering`);
+          child.inputs.push({
+            name: 'input',
+            type: 'data',
+            connectedTo: undefined
+          });
+        }
+      }
+      else if (child.type.includes('generator') || child.id.includes('generator-')) {
+        // Generators have the same ports as enrichers
+        const hasProviderPort = child.inputs.some(input => input.name === 'provider');
+        if (!hasProviderPort) {
+          console.log(`CRITICAL RENDER FIX: Adding missing provider port to child ${child.id} for rendering`);
+          child.inputs.push({
+            name: 'provider',
+            type: 'provider',
+            connectedTo: undefined
+          });
+        }
+        
+        const hasStoragePort = child.inputs.some(input => input.name === 'storage');
+        if (!hasStoragePort) {
+          console.log(`CRITICAL RENDER FIX: Adding missing storage port to child ${child.id} for rendering`);
+          child.inputs.push({
+            name: 'storage',
+            type: 'storage',
+            connectedTo: undefined
+          });
+        }
+        
+        const hasInputPort = child.inputs.some(input => input.name === 'input');
+        if (!hasInputPort) {
+          console.log(`CRITICAL RENDER FIX: Adding missing input port to child ${child.id} for rendering`);
+          child.inputs.push({
+            name: 'input',
+            type: 'data',
+            connectedTo: undefined
+          });
+        }
+      }
+      else if (child.type.includes('source') || child.id.includes('source-')) {
+        // Sources only have provider and storage inputs, but no 'input' port
+        const hasProviderPort = child.inputs.some(input => input.name === 'provider');
+        if (!hasProviderPort) {
+          console.log(`CRITICAL RENDER FIX: Adding missing provider port to child ${child.id} for rendering`);
+          child.inputs.push({
+            name: 'provider',
+            type: 'provider',
+            connectedTo: undefined
+          });
+        }
+        
+        const hasStoragePort = child.inputs.some(input => input.name === 'storage');
+        if (!hasStoragePort) {
+          console.log(`CRITICAL RENDER FIX: Adding missing storage port to child ${child.id} for rendering`);
+          child.inputs.push({
+            name: 'storage',
+            type: 'storage',
+            connectedTo: undefined
+          });
+        }
+        
+        // Sources should NOT have an input port! Remove it if it exists
+        const inputPortIndex = child.inputs.findIndex(input => input.name === 'input');
+        if (inputPortIndex !== -1) {
+          console.log(`CRITICAL RENDER FIX: Removing incorrect input port from source ${child.id}`);
+          child.inputs.splice(inputPortIndex, 1);
+        }
+      }
+      
+      // Clean up any duplicate ports
+      const seenPorts = new Set<string>();
+      child.inputs = child.inputs.filter(input => {
+        if (seenPorts.has(input.name)) {
+          console.log(`CRITICAL RENDER FIX: Removing duplicate port ${input.name} from ${child.id}`);
+          return false;
+        }
+        seenPorts.add(input.name);
+        return true;
+      });
+      
+      // Add a parent reference to the child to make the relationship explicit
+      if (!('parentId' in child)) {
+        // Use a type-safe approach to add parentId
+        (child as any).parentId = node.id;
+      }
+      
+      // Now draw the child node
       drawNode(ctx, child, scale, hoveredPort, selectedNode);
     });
   }

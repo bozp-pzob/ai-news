@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Config, PluginConfig, PluginType } from '../types';
 import { Node, Connection, PortInfo, NodeCoordinates, ViewSettings, NodePort } from '../types/nodeTypes';
-import { findNodeRecursive } from '../utils/nodeHandlers';
+import { findNodeRecursive, findPortAtCoordinates, findNodeAtCoordinates, isPointInCollapseButton } from '../utils/nodeHandlers';
 
 interface UseNodeGraphProps {
   config: Config;
@@ -50,7 +50,7 @@ interface UseNodeGraphReturn {
   screenToCanvas: (x: number, y: number, canvasRect: DOMRect) => NodeCoordinates;
   handleWheel: (e: React.WheelEvent<HTMLCanvasElement>) => void;
   centerView: (canvasWidth: number, canvasHeight: number) => void;
-  handlePluginSave: (params: Record<string, any>, interval?: number) => void;
+  handlePluginSave: (plugin: any) => void;
   handleConfigSave: (name: string) => void;
 }
 
@@ -476,41 +476,518 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
     });
   };
 
-  // Handle saving a plugin's configuration
-  const handlePluginSave = useCallback((plugin: any) => {
-    console.log('Saving plugin:', plugin);
-    // Clone the current configuration
-    const updatedConfig = { ...config };
+  // Updated rebuildAllConnections to ensure proper connection synchronization
+  const rebuildAllConnections = useCallback(() => {
+    console.log("🔄 Rebuilding all connections from scratch");
     
-    // Get the node ID parts to determine type and index
-    const idParts = plugin.id.split('-');
-    const type = idParts[0];
-    const index = parseInt(idParts[1]);
+    // Create a new array for the connections
+    const newConnections: Connection[] = [];
     
-    // Determine if this is a child node
-    const isChild = plugin.isChild === true;
+    // This set will track connections we've already processed to avoid duplicates
+    const processedConnections = new Set<string>();
     
-    // Update the configuration based on type
-    if (isChild && plugin.parentId) {
-      // For child nodes, update the parent's children array
-      const parentIdParts = plugin.parentId.split('-');
-      const parentType = parentIdParts[0];
-      const parentIndex = parseInt(parentIdParts[1]);
+    // Helper function to create a connection ID
+    const getConnectionId = (fromId: string, outputName: string, toId: string, inputName: string) => {
+      return `${fromId}:${outputName}-->${toId}:${inputName}`;
+    };
+    
+    // Process all nodes and rebuild their connections
+    // This is the most important part - we build connections from parameters first
+    const processNodeParams = (node: any) => {
+      if (!node.params) return;
       
-      // Find the child index within the parent
-      const childNode = findNodeRecursive(nodes, plugin.id);
-      const parentNode = findNodeRecursive(nodes, plugin.parentId);
-      
-      if (parentNode && parentNode.children && childNode) {
-        const childIndex = parentNode.children.findIndex(child => child.id === plugin.id);
+      // Handle provider parameter
+      if (node.params.provider) {
+        const providerName = node.params.provider;
+        console.log(`Node ${node.id} has provider: ${providerName}`);
         
-        if (childIndex !== -1) {
-          // Update parameters in the config
-          switch (parentType) {
-            case 'source':
-            case 'sources':
-              if (updatedConfig.sources && updatedConfig.sources[parentIndex]) {
-                // Initialize the children array if it doesn't exist
+        // Find provider node by name
+        let providerId = '';
+        for (let i = 0; i < config.ai.length; i++) {
+          if (config.ai[i].name === providerName) {
+            providerId = `ai-${i}`;
+            break;
+          }
+        }
+        
+        if (providerId) {
+          console.log(`Found provider ${providerId} for node ${node.id}`);
+          // Create connection ID
+          const connectionId = getConnectionId(providerId, 'provider', node.id, 'provider');
+          
+          // Add the connection if not already processed
+          if (!processedConnections.has(connectionId)) {
+            const connection = {
+              from: { nodeId: providerId, output: 'provider' },
+              to: { nodeId: node.id, input: 'provider' }
+            };
+            
+            newConnections.push(connection);
+            processedConnections.add(connectionId);
+            
+            console.log(`Added parameter connection: ${providerId}.provider -> ${node.id}.provider`);
+          }
+        }
+      }
+      
+      // Handle storage parameter
+      if (node.params.storage) {
+        const storageName = node.params.storage;
+        console.log(`Node ${node.id} has storage: ${storageName}`);
+        
+        // Find storage node by name
+        let storageId = '';
+        for (let i = 0; i < config.storage.length; i++) {
+          if (config.storage[i].name === storageName) {
+            storageId = `storage-${i}`;
+            break;
+          }
+        }
+        
+        if (storageId) {
+          console.log(`Found storage ${storageId} for node ${node.id}`);
+          // Create connection ID
+          const connectionId = getConnectionId(storageId, 'storage', node.id, 'storage');
+          
+          // Add the connection if not already processed
+          if (!processedConnections.has(connectionId)) {
+            const connection = {
+              from: { nodeId: storageId, output: 'storage' },
+              to: { nodeId: node.id, input: 'storage' }
+            };
+            
+            newConnections.push(connection);
+            processedConnections.add(connectionId);
+            
+            console.log(`Added parameter connection: ${storageId}.storage -> ${node.id}.storage`);
+          }
+        }
+      }
+    };
+    
+    // After processing params, we'll process any explicit connections for non-provider/storage inputs
+    const processExplicitConnections = (node: any) => {
+      if (!node.inputs) return;
+      
+      node.inputs.forEach((input: any) => {
+        // Skip provider and storage inputs - we already handled those via params
+        if (input.name === 'provider' || input.name === 'storage') return;
+        
+        if (input.connectedTo) {
+          // Find the source node
+          const sourceNode = findNodeRecursive(nodes, input.connectedTo);
+          if (!sourceNode) {
+            console.warn(`Source node ${input.connectedTo} not found for connection to ${node.id}`);
+            return;
+          }
+          
+          // Determine output name
+          let outputName = 'default';
+          // Add any special mappings here
+          
+          // Verify source node has this output
+          const sourcePort = sourceNode.outputs?.find((o: any) => o.name === outputName);
+          if (!sourcePort) {
+            console.warn(`Source node ${sourceNode.id} does not have output '${outputName}'`);
+            return;
+          }
+          
+          // Create connection ID
+          const connectionId = getConnectionId(sourceNode.id, outputName, node.id, input.name);
+          
+          // Add the connection if not already processed
+          if (!processedConnections.has(connectionId)) {
+            const connection = {
+              from: { nodeId: sourceNode.id, output: outputName },
+              to: { nodeId: node.id, input: input.name }
+            };
+            
+            newConnections.push(connection);
+            processedConnections.add(connectionId);
+            
+            console.log(`Added explicit connection: ${sourceNode.id}.${outputName} -> ${node.id}.${input.name}`);
+          }
+        }
+      });
+    };
+    
+    // Now process all nodes
+    const processAllNodes = () => {
+      // First pass: build connections based on parameters
+      nodes.forEach((node: any) => {
+        processNodeParams(node);
+        
+        if (node.isParent && node.children) {
+          node.children.forEach((child: any) => {
+            processNodeParams(child);
+          });
+        }
+      });
+      
+      // Second pass: add explicit connections that aren't provider/storage
+      nodes.forEach((node: any) => {
+        processExplicitConnections(node);
+        
+        if (node.isParent && node.children) {
+          node.children.forEach((child: any) => {
+            processExplicitConnections(child);
+          });
+        }
+      });
+    };
+    
+    // Process all nodes
+    processAllNodes();
+    
+    // Update port connectedTo properties to match our connections
+    const updateNodePorts = () => {
+      // First clear all port connections
+      const clearConnections = (node: any) => {
+        if (node.inputs) {
+          node.inputs.forEach((input: any) => {
+            input.connectedTo = undefined;
+          });
+        }
+        if (node.outputs) {
+          node.outputs.forEach((output: any) => {
+            output.connectedTo = undefined;
+          });
+        }
+      };
+      
+      // Clear all existing connections
+      nodes.forEach((node: any) => {
+        clearConnections(node);
+        
+        if (node.isParent && node.children) {
+          node.children.forEach((child: any) => {
+            clearConnections(child);
+          });
+        }
+      });
+      
+      // Now set connections based on our new connection list
+      newConnections.forEach((conn: Connection) => {
+        const sourceNode = findNodeRecursive(nodes, conn.from.nodeId);
+        const targetNode = findNodeRecursive(nodes, conn.to.nodeId);
+        
+        if (sourceNode && targetNode) {
+          // Find the output port
+          const outputPort = sourceNode.outputs?.find((o: any) => o.name === conn.from.output);
+          if (outputPort) {
+            outputPort.connectedTo = conn.to.nodeId;
+          }
+          
+          // Find the input port
+          const inputPort = targetNode.inputs?.find((i: any) => i.name === conn.to.input);
+          if (inputPort) {
+            inputPort.connectedTo = conn.from.nodeId;
+          }
+        }
+      });
+    };
+    
+    // Update port connections
+    updateNodePorts();
+    
+    console.log(`✅ Rebuilt ${newConnections.length} connections:`, newConnections);
+    return newConnections;
+  }, [nodes, config]);
+  
+  // Modified version of handlePluginSave that works reliably
+  const handlePluginSave = useCallback((plugin: any) => {
+    console.log('🔄 ==========================================================');
+    console.log('🔄 SAVING PLUGIN:', JSON.stringify(plugin));
+    console.log('🔄 ==========================================================');
+    
+    try {
+      console.log('Plugin ID:', plugin.id);
+      console.log('Plugin Type:', plugin.type);
+      console.log('Plugin Params:', JSON.stringify(plugin.params));
+      
+      // Debug log the config.ai
+      console.log('Available AI providers in config:', JSON.stringify(config.ai));
+      
+      // Ensure params is an object
+      if (!plugin.params || typeof plugin.params !== 'object') {
+        console.error('Invalid plugin params:', plugin.params);
+        plugin.params = {};
+      }
+      
+      // Clone the current configuration to avoid modifying it directly
+      const updatedConfig = JSON.parse(JSON.stringify(config));
+      
+      // Get the node ID parts to determine type and index
+      const idParts = plugin.id.split('-');
+      const type = idParts[0];
+      const index = parseInt(idParts[1]);
+      
+      // Determine if this is a child node
+      const isChild = plugin.isChild === true;
+      
+      // Create a deep copy of the nodes array to update safely
+      const updatedNodes = JSON.parse(JSON.stringify(nodes));
+      
+      // Create a deep copy of connections to update
+      const updatedConnections = JSON.parse(JSON.stringify(connections));
+      
+      // Find the node to update
+      const nodeToUpdate = findNodeRecursive(updatedNodes, plugin.id);
+      if (!nodeToUpdate) {
+        console.error(`Could not find node with ID ${plugin.id}`);
+        return false;
+      }
+      
+      console.log('Found node to update:', nodeToUpdate);
+      
+      // Track connections to add and remove
+      let connectionsToRemove: Connection[] = [];
+      let connectionsToAdd: Connection[] = [];
+      
+      // Update node properties
+      nodeToUpdate.name = plugin.name;
+      nodeToUpdate.params = plugin.params || {};
+      
+      // Handle provider connections
+      if ('provider' in plugin.params) {
+        console.log('🔌 Processing PROVIDER parameter:', plugin.params.provider);
+        
+        // Find the current provider connection if any
+        const currentProviderConn = connections.find((conn: Connection) => 
+          conn.to.nodeId === plugin.id && conn.to.input === 'provider'
+        );
+        
+        // Remove current provider connection if it exists
+        if (currentProviderConn) {
+          console.log('🔌 Current provider connection:', currentProviderConn);
+          
+          // Get the current connected provider node
+          const currentProviderNode = findNodeRecursive(nodes, currentProviderConn.from.nodeId);
+          
+          if (currentProviderNode) {
+            console.log('🔌 Current provider node:', currentProviderNode.name);
+            
+            // Check if the provider has changed
+            if (currentProviderNode.name !== plugin.params.provider) {
+              console.log(`🔌 Provider changed from ${currentProviderNode.name} to ${plugin.params.provider}`);
+              
+              // Add the connection to our removal list
+              connectionsToRemove.push(currentProviderConn);
+              
+              // Remove the connection from our updated connections
+              const connIndex = updatedConnections.findIndex((conn: Connection) => 
+                conn.to.nodeId === plugin.id && conn.to.input === 'provider'
+              );
+              if (connIndex !== -1) {
+                updatedConnections.splice(connIndex, 1);
+              }
+              
+              // Clear the connectedTo property on the input port
+              const providerInput = nodeToUpdate.inputs.find((input: NodePort) => input.name === 'provider');
+              if (providerInput) {
+                console.log('🔌 Clearing provider input connection');
+                providerInput.connectedTo = undefined;
+              }
+              
+              // Clear the connection on the provider's output port
+              const providerOutput = currentProviderNode.outputs.find((output: NodePort) => 
+                output.name === 'provider' && output.connectedTo === plugin.id
+              );
+              if (providerOutput) {
+                console.log('🔌 Clearing provider output connection');
+                providerOutput.connectedTo = undefined;
+              }
+            } else {
+              console.log('🔌 Provider unchanged, keeping existing connection');
+            }
+          }
+        } else {
+          console.log('🔌 No existing provider connection found');
+        }
+        
+        // Find the new provider node if provider has changed or there was no connection
+        if (!currentProviderConn || 
+            (currentProviderConn && findNodeRecursive(nodes, currentProviderConn.from.nodeId)?.name !== plugin.params.provider)) {
+          
+          const newProviderNode = updatedNodes.find((node: Node) => 
+            node.type === 'ai' && node.name === plugin.params.provider
+          );
+          
+          if (newProviderNode) {
+            console.log('🔌 Found new provider node:', newProviderNode.name);
+            
+            // Check if we don't already have this connection
+            const existingConnection = updatedConnections.find((conn: Connection) => 
+              conn.from.nodeId === newProviderNode.id && 
+              conn.to.nodeId === plugin.id && 
+              conn.to.input === 'provider'
+            );
+            
+            if (!existingConnection) {
+              console.log('🔌 Adding new provider connection');
+              
+              // Create the new connection
+              const newConnection: Connection = {
+                from: { nodeId: newProviderNode.id, output: 'provider' },
+                to: { nodeId: plugin.id, input: 'provider' }
+              };
+              
+              connectionsToAdd.push(newConnection);
+              updatedConnections.push(newConnection);
+              
+              // Update the input port on the node
+              const providerInput = nodeToUpdate.inputs.find((input: NodePort) => input.name === 'provider');
+              if (providerInput) {
+                console.log('🔌 Updating existing provider input port');
+                providerInput.connectedTo = newProviderNode.id;
+              } else {
+                console.log('🔌 Creating new provider input port');
+                // If the input doesn't exist yet, create it
+                nodeToUpdate.inputs.push({
+                  name: 'provider',
+                  type: 'provider',
+                  connectedTo: newProviderNode.id
+                });
+              }
+              
+              // Update the output port on the provider
+              const providerOutput = newProviderNode.outputs.find((output: NodePort) => output.name === 'provider');
+              if (providerOutput) {
+                console.log('🔌 Updating provider output port');
+                providerOutput.connectedTo = plugin.id;
+              }
+            } else {
+              console.log('🔌 Connection already exists, no need to add');
+            }
+          } else {
+            console.error('🔌 Could not find provider node with name:', plugin.params.provider);
+          }
+        }
+      }
+      
+      // Handle storage connections (similar to provider)
+      if ('storage' in plugin.params) {
+        console.log('🔌 Processing STORAGE parameter:', plugin.params.storage);
+        
+        // Find the current storage connection if any
+        const currentStorageConn = connections.find((conn: Connection) => 
+          conn.to.nodeId === plugin.id && conn.to.input === 'storage'
+        );
+        
+        if (currentStorageConn) {
+          console.log('Current storage connection:', currentStorageConn);
+          
+          // Get the current connected storage node
+          const currentStorageNode = findNodeRecursive(nodes, currentStorageConn.from.nodeId);
+          
+          if (currentStorageNode) {
+            // Check if the storage has changed
+            if (currentStorageNode.name !== plugin.params.storage) {
+              console.log(`Storage changed from ${currentStorageNode.name} to ${plugin.params.storage}`);
+              
+              // Add the connection to our removal list
+              connectionsToRemove.push(currentStorageConn);
+              
+              // Remove the connection from our updated connections
+              const connIndex = updatedConnections.findIndex((conn: Connection) => 
+                conn.to.nodeId === plugin.id && conn.to.input === 'storage'
+              );
+              if (connIndex !== -1) {
+                updatedConnections.splice(connIndex, 1);
+              }
+              
+              // Clear the connectedTo property on the input port
+              const storageInput = nodeToUpdate.inputs.find((input: NodePort) => input.name === 'storage');
+              if (storageInput) {
+                storageInput.connectedTo = undefined;
+              }
+              
+              // Clear the connection on the storage's output port
+              const storageOutput = currentStorageNode.outputs.find((output: NodePort) => 
+                output.name === 'storage' && output.connectedTo === plugin.id
+              );
+              if (storageOutput) {
+                storageOutput.connectedTo = undefined;
+              }
+            }
+          }
+        }
+        
+        // Find the new storage node if storage has changed or there was no connection
+        if (!currentStorageConn || 
+            (currentStorageConn && findNodeRecursive(nodes, currentStorageConn.from.nodeId)?.name !== plugin.params.storage)) {
+            
+          const newStorageNode = updatedNodes.find((node: Node) => 
+            node.type === 'storage' && node.name === plugin.params.storage
+          );
+          
+          if (newStorageNode) {
+            console.log('Found new storage node:', newStorageNode);
+            
+            // Check if we don't already have this connection
+            const existingConnection = updatedConnections.find((conn: Connection) => 
+              conn.from.nodeId === newStorageNode.id && 
+              conn.to.nodeId === plugin.id && 
+              conn.to.input === 'storage'
+            );
+            
+            if (!existingConnection) {
+              console.log('🔌 Adding new storage connection');
+              
+              // Create the new connection
+              const newConnection: Connection = {
+                from: { nodeId: newStorageNode.id, output: 'storage' },
+                to: { nodeId: plugin.id, input: 'storage' }
+              };
+              
+              connectionsToAdd.push(newConnection);
+              updatedConnections.push(newConnection);
+              
+              // Update the input port on the node
+              const storageInput = nodeToUpdate.inputs.find((input: NodePort) => input.name === 'storage');
+              if (storageInput) {
+                console.log('🔌 Updating existing storage input port');
+                storageInput.connectedTo = newStorageNode.id;
+              } else {
+                console.log('🔌 Creating new storage input port');
+                // If the input doesn't exist yet, create it
+                nodeToUpdate.inputs.push({
+                  name: 'storage',
+                  type: 'storage',
+                  connectedTo: newStorageNode.id
+                });
+              }
+              
+              // Update the output port on the storage
+              const storageOutput = newStorageNode.outputs.find((output: NodePort) => output.name === 'storage');
+              if (storageOutput) {
+                console.log('🔌 Updating storage output port');
+                storageOutput.connectedTo = plugin.id;
+              }
+            } else {
+              console.log('🔌 Connection already exists, no need to add');
+            }
+          } else {
+            console.error('🔌 Could not find storage node with name:', plugin.params.storage);
+          }
+        }
+      }
+        
+      // Update the node configuration in the config object
+      switch (type) {
+        case 'source':
+        case 'sources':
+          if (isChild && plugin.parentId) {
+            // Handle child node of a parent
+            const parentIdParts = plugin.parentId.split('-');
+            const parentIndex = parseInt(parentIdParts[1]);
+            
+            // Find the index of the child within its parent
+            const parentNode = updatedNodes.find((n: Node) => n.id === plugin.parentId);
+            if (parentNode && parentNode.children) {
+              const childIndex = parentNode.children.findIndex((c: Node) => c.id === plugin.id);
+              if (childIndex !== -1 && updatedConfig.sources && updatedConfig.sources[parentIndex]) {
+                // Ensure the children params array exists
                 if (!updatedConfig.sources[parentIndex].params) {
                   updatedConfig.sources[parentIndex].params = {};
                 }
@@ -518,19 +995,40 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
                   updatedConfig.sources[parentIndex].params.children = [];
                 }
                 
-                // Ensure there's an entry for this child index
+                // Ensure the child index exists in the array
                 while (updatedConfig.sources[parentIndex].params.children.length <= childIndex) {
                   updatedConfig.sources[parentIndex].params.children.push({});
                 }
                 
-                // Update the child's params
-                updatedConfig.sources[parentIndex].params.children[childIndex] = plugin.params;
+                // Update child params
+                updatedConfig.sources[parentIndex].params.children[childIndex] = {
+                  ...updatedConfig.sources[parentIndex].params.children[childIndex],
+                  ...plugin.params
+                };
               }
-              break;
-            case 'enricher':
-            case 'enrichers':
-              if (updatedConfig.enrichers && updatedConfig.enrichers[parentIndex]) {
-                // Initialize the children array if it doesn't exist
+            }
+          } else if (updatedConfig.sources && updatedConfig.sources[index]) {
+            // Update params
+            updatedConfig.sources[index].params = plugin.params;
+            // Update name if it's changed
+            if (updatedConfig.sources[index].name !== plugin.name) {
+              updatedConfig.sources[index].name = plugin.name;
+            }
+          }
+          break;
+        case 'enricher':
+        case 'enrichers':
+          if (isChild && plugin.parentId) {
+            // Handle child node of a parent
+            const parentIdParts = plugin.parentId.split('-');
+            const parentIndex = parseInt(parentIdParts[1]);
+            
+            // Find the index of the child within its parent
+            const parentNode = updatedNodes.find((n: Node) => n.id === plugin.parentId);
+            if (parentNode && parentNode.children) {
+              const childIndex = parentNode.children.findIndex((c: Node) => c.id === plugin.id);
+              if (childIndex !== -1 && updatedConfig.enrichers && updatedConfig.enrichers[parentIndex]) {
+                // Ensure the children params array exists
                 if (!updatedConfig.enrichers[parentIndex].params) {
                   updatedConfig.enrichers[parentIndex].params = {};
                 }
@@ -538,19 +1036,40 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
                   updatedConfig.enrichers[parentIndex].params.children = [];
                 }
                 
-                // Ensure there's an entry for this child index
+                // Ensure the child index exists in the array
                 while (updatedConfig.enrichers[parentIndex].params.children.length <= childIndex) {
                   updatedConfig.enrichers[parentIndex].params.children.push({});
                 }
                 
-                // Update the child's params
-                updatedConfig.enrichers[parentIndex].params.children[childIndex] = plugin.params;
+                // Update child params
+                updatedConfig.enrichers[parentIndex].params.children[childIndex] = {
+                  ...updatedConfig.enrichers[parentIndex].params.children[childIndex],
+                  ...plugin.params
+                };
               }
-              break;
-            case 'generator':
-            case 'generators':
-              if (updatedConfig.generators && updatedConfig.generators[parentIndex]) {
-                // Initialize the children array if it doesn't exist
+            }
+          } else if (updatedConfig.enrichers && updatedConfig.enrichers[index]) {
+            // Update params
+            updatedConfig.enrichers[index].params = plugin.params;
+            // Update name if it's changed
+            if (updatedConfig.enrichers[index].name !== plugin.name) {
+              updatedConfig.enrichers[index].name = plugin.name;
+            }
+          }
+          break;
+        case 'generator':
+        case 'generators':
+          if (isChild && plugin.parentId) {
+            // Handle child node of a parent
+            const parentIdParts = plugin.parentId.split('-');
+            const parentIndex = parseInt(parentIdParts[1]);
+            
+            // Find the index of the child within its parent
+            const parentNode = updatedNodes.find((n: Node) => n.id === plugin.parentId);
+            if (parentNode && parentNode.children) {
+              const childIndex = parentNode.children.findIndex((c: Node) => c.id === plugin.id);
+              if (childIndex !== -1 && updatedConfig.generators && updatedConfig.generators[parentIndex]) {
+                // Ensure the children params array exists
                 if (!updatedConfig.generators[parentIndex].params) {
                   updatedConfig.generators[parentIndex].params = {};
                 }
@@ -558,69 +1077,44 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
                   updatedConfig.generators[parentIndex].params.children = [];
                 }
                 
-                // Ensure there's an entry for this child index
+                // Ensure the child index exists in the array
                 while (updatedConfig.generators[parentIndex].params.children.length <= childIndex) {
                   updatedConfig.generators[parentIndex].params.children.push({});
                 }
                 
-                // Update the child's params
-                updatedConfig.generators[parentIndex].params.children[childIndex] = plugin.params;
+                // Update child params
+                updatedConfig.generators[parentIndex].params.children[childIndex] = {
+                  ...updatedConfig.generators[parentIndex].params.children[childIndex],
+                  ...plugin.params
+                };
               }
-              break;
-          }
-          
-          // Also update the node's params in the state
-          if (childNode) {
-            childNode.params = plugin.params;
-          }
-        }
-      }
-    } else {
-      // Handle regular nodes
-      switch (type) {
-        case 'source':
-        case 'sources':
-          if (updatedConfig.sources && updatedConfig.sources[index]) {
-            updatedConfig.sources[index].params = plugin.params;
-          }
-          break;
-        case 'enricher':
-        case 'enrichers':
-          if (updatedConfig.enrichers && updatedConfig.enrichers[index]) {
-            updatedConfig.enrichers[index].params = plugin.params;
-          }
-          break;
-        case 'generator':
-        case 'generators':
-          if (updatedConfig.generators && updatedConfig.generators[index]) {
+            }
+          } else if (updatedConfig.generators && updatedConfig.generators[index]) {
+            // Update params
             updatedConfig.generators[index].params = plugin.params;
+            // Update name if it's changed
+            if (updatedConfig.generators[index].name !== plugin.name) {
+              updatedConfig.generators[index].name = plugin.name;
+            }
           }
           break;
-        case 'ai':
-          if (updatedConfig.ai && updatedConfig.ai[index]) {
-            updatedConfig.ai[index].params = plugin.params;
-          }
-          break;
-        case 'storage':
-          if (updatedConfig.storage && updatedConfig.storage[index]) {
-            updatedConfig.storage[index].params = plugin.params;
-          }
-          break;
+        // Add cases for other node types (ai, storage) if needed
       }
       
-      // Also update the node's params in the state
-      const node = findNodeRecursive(nodes, plugin.id);
-      if (node) {
-        node.params = plugin.params;
-      }
+      // Update the configurations if changed
+      onConfigUpdate(updatedConfig);
+      
+      // Update the state with the new nodes and connections
+      setNodes(updatedNodes);
+      setConnections(updatedConnections);
+      
+      console.log("Plugin updates applied. Nodes:", updatedNodes.length, "Connections:", updatedConnections.length);
+      return true;
+    } catch (error) {
+      console.error("Error in handlePluginSave:", error);
+      return false;
     }
-    
-    // Update the configuration
-    onConfigUpdate(updatedConfig);
-    
-    // Force a re-render of the nodes
-    setNodes([...nodes]);
-  }, [config, nodes, onConfigUpdate]);
+  }, [config, nodes, connections, findNodeRecursive]);
 
   const handleConfigSave = (name: string) => {
     const newConfig = { ...config, name };

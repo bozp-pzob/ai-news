@@ -25,6 +25,8 @@ export interface PluginConfig {
   params: Record<string, any>;
   interval?: number;
   id?: string;
+  isChild?: boolean;
+  parentId?: string;
 }
 
 export interface Config {

@@ -19,11 +19,64 @@ export const getConfigs = async (): Promise<string[]> => {
 };
 
 export const getConfig = async (name: string): Promise<Config> => {
-  const response = await fetch(`${API_BASE_URL}/config/${name}`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch config');
+  console.log(`Getting config with name: ${name}`);
+  
+  if (!name) {
+    console.error("getConfig called with empty name");
+    throw new Error("Config name is required");
   }
-  return response.json();
+  
+  // Maximum number of retry attempts
+  const maxRetries = 2;
+  let retryCount = 0;
+  let lastError: any;
+  
+  while (retryCount <= maxRetries) {
+    try {
+      const url = `${API_BASE_URL}/config/${encodeURIComponent(name)}`;
+      console.log(`Fetching from URL: ${url} (attempt ${retryCount + 1}/${maxRetries + 1})`);
+      
+      const response = await fetch(url);
+      console.log(`Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Error fetching config: ${errorText}`);
+        throw new Error(`Failed to fetch config: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      
+      // Validate that we received a proper config object
+      if (!data || typeof data !== 'object') {
+        throw new Error("Invalid config data received");
+      }
+      
+      // Ensure the config has a name property matching the requested name
+      data.name = name;
+      
+      console.log(`Successfully fetched config data for ${name}`);
+      return data;
+    } catch (error) {
+      lastError = error;
+      console.error(`Error in getConfig for ${name} (attempt ${retryCount + 1}/${maxRetries + 1}):`, error);
+      
+      // If we've reached max retries, don't wait
+      if (retryCount === maxRetries) {
+        break;
+      }
+      
+      // Wait before retrying (exponential backoff: 1s, 2s)
+      const waitTime = 1000 * Math.pow(2, retryCount);
+      console.log(`Waiting ${waitTime}ms before retry...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      
+      retryCount++;
+    }
+  }
+  
+  // If we get here, all retries failed
+  throw lastError || new Error(`Failed to fetch config after ${maxRetries + 1} attempts`);
 };
 
 export const saveConfig = async (name: string, config: Config): Promise<void> => {

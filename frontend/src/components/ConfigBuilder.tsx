@@ -248,11 +248,12 @@ export const ConfigBuilder: React.FC<ConfigBuilderProps> = ({
             setShowPluginDialog(false);
             setSelectedPlugin(null);
           }}
-          onAdd={(params, interval) => {
+          onAdd={(plugin) => {
+            // Extract params and interval from the plugin object
             const updatedPlugin = {
               ...selectedPlugin!,
-              params,
-              interval,
+              params: plugin.params,
+              interval: plugin.interval,
             };
             if (selectedPlugin) {
               handlePluginUpdate(updatedPlugin);
