@@ -410,16 +410,20 @@ class ConfigStateManager {
     const newConnections: Connection[] = [];
     
     // Base spacing between nodes
-    const nodeSpacing = 45; // Restored to original 45px spacing
+    const nodeSpacing = 45;
+    const groupSpacing = 80; // Fixed spacing between parent groups
     
     // Define columns for better organization
     const leftColumnX = 50;    // Left side for Storage and AI/Provider nodes
-    const sourceColumnX = 500; // Sources, Enrichers, Generators in middle - increased from 350 to 500
+    const sourceColumnX = 500; // Sources, Enrichers, Generators in middle
     
     // Calculate max height of storage nodes to position AI nodes below them
     const storageHeight = this.config.storage && this.config.storage.length > 0 
       ? 100 + (this.config.storage.length * nodeSpacing)
       : 100;
+    
+    // Track vertical positions for parent groups
+    let currentY = 50; // Starting Y position
     
     // Add Storage nodes on left side of canvas (top)
     if (this.config.storage && this.config.storage.length > 0) {
@@ -447,7 +451,7 @@ class ConfigStateManager {
           id: `ai-${index}`,
           type: 'ai',
           name: ai.name,
-          position: { x: leftColumnX, y: storageHeight + 50 + index * nodeSpacing },
+          position: { x: leftColumnX, y: storageHeight + 50 + index * (nodeSpacing * 3) },
           inputs: [],
           outputs: [this.createNodeOutput('provider', 'provider')],
           isProvider: true,
@@ -458,7 +462,7 @@ class ConfigStateManager {
       console.log('🏗️ No AI provider nodes to create');
     }
     
-    // Add Sources nodes in middle column (keep heights the same)
+    // Add Sources group - first parent node at the top
     if (this.config.sources && this.config.sources.length > 0) {
       console.log('🏗️ Creating source nodes:', this.config.sources.length);
       const sourceChildren = this.config.sources.map((source, index) => {
@@ -467,7 +471,7 @@ class ConfigStateManager {
           id: `source-${index}`,
           type: 'source',
           name: source.name,
-          position: { x: sourceColumnX, y: 100 + index * nodeSpacing },
+          position: { x: sourceColumnX, y: currentY + 50 + index * nodeSpacing },
           inputs: [
             ...(source.params?.provider ? [this.createNodeInput('provider', 'provider')] : []),
             ...(source.params?.storage ? [this.createNodeInput('storage', 'storage')] : [])
@@ -488,22 +492,25 @@ class ConfigStateManager {
         return node;
       });
       
+      // Add the sources group
       newNodes.push({
         id: 'sources-group',
         type: 'group',
         name: 'Sources',
-        position: { x: sourceColumnX, y: 50 },
+        position: { x: sourceColumnX, y: currentY },
         inputs: [],
         outputs: [],
         isParent: true,
         expanded: true,
         children: sourceChildren
       });
-    } else {
-      console.log('🏗️ No source nodes to create');
+      
+      // Update current Y position based on the height of this group
+      const sourceGroupHeight = 50 + (sourceChildren.length * nodeSpacing);
+      currentY += sourceGroupHeight + groupSpacing;
     }
     
-    // Add Enrichers nodes in middle column below sources
+    // Add Enrichers group below Sources
     if (this.config.enrichers && this.config.enrichers.length > 0) {
       console.log('🏗️ Creating enricher nodes:', this.config.enrichers.length);
       const enricherChildren = this.config.enrichers.map((enricher, index) => {
@@ -512,7 +519,7 @@ class ConfigStateManager {
           id: `enricher-${index}`,
           type: 'enricher',
           name: enricher.name,
-          position: { x: sourceColumnX, y: 300 + index * nodeSpacing },
+          position: { x: sourceColumnX, y: currentY + 50 + index * nodeSpacing },
           inputs: [
             ...(enricher.params?.provider ? [this.createNodeInput('provider', 'provider')] : []),
             ...(enricher.params?.storage ? [this.createNodeInput('storage', 'storage')] : [])
@@ -533,22 +540,25 @@ class ConfigStateManager {
         return node;
       });
       
+      // Add the enrichers group
       newNodes.push({
         id: 'enrichers-group',
         type: 'group',
         name: 'Enrichers',
-        position: { x: sourceColumnX, y: 250 },
+        position: { x: sourceColumnX, y: currentY },
         inputs: [],
         outputs: [],
         isParent: true,
         expanded: true,
         children: enricherChildren
       });
-    } else {
-      console.log('🏗️ No enricher nodes to create');
+      
+      // Update current Y position based on the height of this group
+      const enricherGroupHeight = 50 + (enricherChildren.length * nodeSpacing);
+      currentY += enricherGroupHeight + groupSpacing;
     }
     
-    // Add Generators nodes in middle column below enrichers
+    // Add Generators group below Enrichers
     if (this.config.generators && this.config.generators.length > 0) {
       console.log('🏗️ Creating generator nodes:', this.config.generators.length);
       const generatorChildren = this.config.generators.map((generator, index) => {
@@ -557,7 +567,7 @@ class ConfigStateManager {
           id: `generator-${index}`,
           type: 'generator',
           name: generator.name,
-          position: { x: sourceColumnX, y: 500 + index * nodeSpacing },
+          position: { x: sourceColumnX, y: currentY + 50 + index * nodeSpacing },
           inputs: [
             ...(generator.params?.provider ? [this.createNodeInput('provider', 'provider')] : []),
             ...(generator.params?.storage ? [this.createNodeInput('storage', 'storage')] : [])
@@ -578,19 +588,18 @@ class ConfigStateManager {
         return node;
       });
       
+      // Add the generators group
       newNodes.push({
         id: 'generators-group',
         type: 'group',
         name: 'Generators',
-        position: { x: sourceColumnX, y: 450 },
+        position: { x: sourceColumnX, y: currentY },
         inputs: [],
         outputs: [],
         isParent: true,
         expanded: true,
         children: generatorChildren
       });
-    } else {
-      console.log('🏗️ No generator nodes to create');
     }
     
     // Log the results before updating state
