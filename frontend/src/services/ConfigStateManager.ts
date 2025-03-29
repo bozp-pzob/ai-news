@@ -410,12 +410,18 @@ class ConfigStateManager {
     const newConnections: Connection[] = [];
     
     // Base spacing between nodes
-    const nodeSpacing = 45;
-    const leftColumnX = 50;   // Storage
-    const centerColumnX = 350; // AI
-    const rightColumnX = 650;  // Sources, Enrichers, Generators
+    const nodeSpacing = 45; // Restored to original 45px spacing
     
-    // Add Storage nodes
+    // Define columns for better organization
+    const leftColumnX = 50;    // Left side for Storage and AI/Provider nodes
+    const sourceColumnX = 500; // Sources, Enrichers, Generators in middle - increased from 350 to 500
+    
+    // Calculate max height of storage nodes to position AI nodes below them
+    const storageHeight = this.config.storage && this.config.storage.length > 0 
+      ? 100 + (this.config.storage.length * nodeSpacing)
+      : 100;
+    
+    // Add Storage nodes on left side of canvas (top)
     if (this.config.storage && this.config.storage.length > 0) {
       console.log('🏗️ Creating storage nodes:', this.config.storage.length);
       this.config.storage.forEach((storage, index) => {
@@ -433,7 +439,7 @@ class ConfigStateManager {
       console.log('🏗️ No storage nodes to create');
     }
     
-    // Add AI Provider nodes
+    // Add AI Provider nodes on left side of canvas (below storage)
     if (this.config.ai && this.config.ai.length > 0) {
       console.log('🏗️ Creating AI provider nodes:', this.config.ai.length);
       this.config.ai.forEach((ai, index) => {
@@ -441,7 +447,7 @@ class ConfigStateManager {
           id: `ai-${index}`,
           type: 'ai',
           name: ai.name,
-          position: { x: centerColumnX, y: 100 + index * nodeSpacing },
+          position: { x: leftColumnX, y: storageHeight + 50 + index * nodeSpacing },
           inputs: [],
           outputs: [this.createNodeOutput('provider', 'provider')],
           isProvider: true,
@@ -452,7 +458,7 @@ class ConfigStateManager {
       console.log('🏗️ No AI provider nodes to create');
     }
     
-    // Add Sources nodes
+    // Add Sources nodes in middle column (keep heights the same)
     if (this.config.sources && this.config.sources.length > 0) {
       console.log('🏗️ Creating source nodes:', this.config.sources.length);
       const sourceChildren = this.config.sources.map((source, index) => {
@@ -461,7 +467,7 @@ class ConfigStateManager {
           id: `source-${index}`,
           type: 'source',
           name: source.name,
-          position: { x: rightColumnX, y: 100 + index * nodeSpacing },
+          position: { x: sourceColumnX, y: 100 + index * nodeSpacing },
           inputs: [
             ...(source.params?.provider ? [this.createNodeInput('provider', 'provider')] : []),
             ...(source.params?.storage ? [this.createNodeInput('storage', 'storage')] : [])
@@ -486,7 +492,7 @@ class ConfigStateManager {
         id: 'sources-group',
         type: 'group',
         name: 'Sources',
-        position: { x: rightColumnX, y: 50 },
+        position: { x: sourceColumnX, y: 50 },
         inputs: [],
         outputs: [],
         isParent: true,
@@ -497,7 +503,7 @@ class ConfigStateManager {
       console.log('🏗️ No source nodes to create');
     }
     
-    // Add Enrichers nodes
+    // Add Enrichers nodes in middle column below sources
     if (this.config.enrichers && this.config.enrichers.length > 0) {
       console.log('🏗️ Creating enricher nodes:', this.config.enrichers.length);
       const enricherChildren = this.config.enrichers.map((enricher, index) => {
@@ -506,7 +512,7 @@ class ConfigStateManager {
           id: `enricher-${index}`,
           type: 'enricher',
           name: enricher.name,
-          position: { x: rightColumnX, y: 300 + index * nodeSpacing },
+          position: { x: sourceColumnX, y: 300 + index * nodeSpacing },
           inputs: [
             ...(enricher.params?.provider ? [this.createNodeInput('provider', 'provider')] : []),
             ...(enricher.params?.storage ? [this.createNodeInput('storage', 'storage')] : [])
@@ -531,7 +537,7 @@ class ConfigStateManager {
         id: 'enrichers-group',
         type: 'group',
         name: 'Enrichers',
-        position: { x: rightColumnX, y: 250 },
+        position: { x: sourceColumnX, y: 250 },
         inputs: [],
         outputs: [],
         isParent: true,
@@ -542,7 +548,7 @@ class ConfigStateManager {
       console.log('🏗️ No enricher nodes to create');
     }
     
-    // Add Generators nodes
+    // Add Generators nodes in middle column below enrichers
     if (this.config.generators && this.config.generators.length > 0) {
       console.log('🏗️ Creating generator nodes:', this.config.generators.length);
       const generatorChildren = this.config.generators.map((generator, index) => {
@@ -551,7 +557,7 @@ class ConfigStateManager {
           id: `generator-${index}`,
           type: 'generator',
           name: generator.name,
-          position: { x: rightColumnX, y: 500 + index * nodeSpacing },
+          position: { x: sourceColumnX, y: 500 + index * nodeSpacing },
           inputs: [
             ...(generator.params?.provider ? [this.createNodeInput('provider', 'provider')] : []),
             ...(generator.params?.storage ? [this.createNodeInput('storage', 'storage')] : [])
@@ -576,7 +582,7 @@ class ConfigStateManager {
         id: 'generators-group',
         type: 'group',
         name: 'Generators',
-        position: { x: rightColumnX, y: 450 },
+        position: { x: sourceColumnX, y: 450 },
         inputs: [],
         outputs: [],
         isParent: true,

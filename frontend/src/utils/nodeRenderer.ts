@@ -134,7 +134,7 @@ export const drawConnectionLine = (
   if (portType === 'provider') {
     ctx.strokeStyle = '#4f46e5'; // Brighter blue for provider connections
   } else if (portType === 'storage') {
-    ctx.strokeStyle = '#10b981'; // Green for storage connections
+    ctx.strokeStyle = '#ec4899'; // Light pink for storage connections
   } else {
     ctx.strokeStyle = '#d97706'; // Orange for other connections
   }
@@ -206,14 +206,31 @@ export const drawNode = (
     node.position.x,
     node.position.y + (node.isParent ? 80 : 50)
   );
-  gradient.addColorStop(0, selectedNode === node.id ? '#374151' : '#1f2937');
-  gradient.addColorStop(1, selectedNode === node.id ? '#1f2937' : '#111827');
-  ctx.fillStyle = gradient;
+  
+  // Use darker shades for parent nodes to visually differentiate them
+  if (node.isParent) {
+    gradient.addColorStop(0, selectedNode === node.id ? '#1e293b' : '#0f172a'); // Even darker top for parent nodes
+    gradient.addColorStop(1, selectedNode === node.id ? '#0f172a' : '#020617'); // Even darker bottom for parent nodes
+    ctx.fillStyle = gradient;
+  } else if (node.type === 'ai' || (node.isProvider === true)) {
+    // Special color for provider nodes that matches connection line color
+    ctx.fillStyle = selectedNode === node.id ? '#3730a3' : '#312e81'; // Darker indigo for more dim appearance
+  } else if (node.type === 'storage') {
+    // Special color for storage nodes that matches storage connection line color
+    ctx.fillStyle = selectedNode === node.id ? '#db2777' : '#f472b6'; // Lighter pink for more visibility
+  } else {
+    // Solid color for child nodes instead of gradient
+    ctx.fillStyle = selectedNode === node.id ? '#374151' : '#1f2937';
+  }
+  
   ctx.fill();
 
   // Node border
-  ctx.strokeStyle = selectedNode === node.id ? '#4f46e5' : '#374151';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = selectedNode === node.id ? '#4f46e5' : 
+                   (node.isParent ? '#4b5563' : 
+                   (node.type === 'ai' || node.isProvider === true) ? '#818cf8' : 
+                   (node.type === 'storage') ? '#ec4899' : '#374151');
+  ctx.lineWidth = node.isParent ? 2.5 : 2; // Slightly thicker border for parent nodes
   ctx.stroke();
 
   // Node title
@@ -274,7 +291,7 @@ export const drawNode = (
       if (input.type === 'provider') {
         portColor = input.connectedTo ? '#4338ca' : '#818cf8'; // Stronger blue for parent nodes
       } else if (input.type === 'storage') {
-        portColor = input.connectedTo ? '#065f46' : '#10b981'; // Stronger green for parent nodes
+        portColor = input.connectedTo ? '#be185d' : '#ec4899'; // Stronger pink for parent nodes
       } else if (input.type === 'data') {
         portColor = input.connectedTo ? '#b45309' : '#f59e0b'; // Stronger orange for parent nodes
       }
@@ -328,7 +345,7 @@ export const drawNode = (
       if (output.type === 'provider') {
         portColor = output.connectedTo ? '#4338ca' : '#818cf8'; // Stronger blue for parent nodes
       } else if (output.type === 'storage') {
-        portColor = output.connectedTo ? '#065f46' : '#10b981'; // Stronger green for parent nodes
+        portColor = output.connectedTo ? '#be185d' : '#ec4899'; // Stronger pink for parent nodes
       } else if (output.type === 'data') {
         portColor = output.connectedTo ? '#b45309' : '#f59e0b'; // Stronger orange for parent nodes
       }
@@ -426,7 +443,7 @@ export const drawNode = (
       if (input.type === 'provider') {
         portColor = input.connectedTo ? '#4f46e5' : '#6366f1'; // Connected vs. disconnected blue
       } else if (input.type === 'storage') {
-        portColor = input.connectedTo ? '#10b981' : '#34d399'; // Connected vs. disconnected green
+        portColor = input.connectedTo ? '#be185d' : '#ec4899'; // Connected vs. disconnected pink
       } else if (input.type === 'data') {
         portColor = input.connectedTo ? '#d97706' : '#f59e0b'; // Connected vs. disconnected orange
       }
@@ -480,7 +497,7 @@ export const drawNode = (
       if (output.type === 'provider') {
         portColor = output.connectedTo ? '#4f46e5' : '#6366f1'; // Connected vs. disconnected blue
       } else if (output.type === 'storage') {
-        portColor = output.connectedTo ? '#10b981' : '#34d399'; // Connected vs. disconnected green
+        portColor = output.connectedTo ? '#be185d' : '#ec4899'; // Connected vs. disconnected pink
       } else if (output.type === 'data') {
         portColor = output.connectedTo ? '#d97706' : '#f59e0b'; // Connected vs. disconnected orange
       }
