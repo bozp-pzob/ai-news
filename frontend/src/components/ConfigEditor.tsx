@@ -279,7 +279,7 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
                     ...config,
                     settings: { ...config.settings, runOnce: e.target.checked }
                   })}
-                  className="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                  className="rounded border-gray-300 text-amber-500 shadow-sm focus:border-amber-400 focus:ring-amber-400"
                 />
                 <span className="ml-2 text-sm text-gray-700">Run Once</span>
               </label>
@@ -293,7 +293,7 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
                     ...config,
                     settings: { ...config.settings, onlyFetch: e.target.checked }
                   })}
-                  className="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                  className="rounded border-gray-300 text-amber-500 shadow-sm focus:border-amber-400 focus:ring-amber-400"
                 />
                 <span className="ml-2 text-sm text-gray-700">Only Fetch</span>
               </label>
@@ -316,7 +316,7 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
                 setSelectedPlugin(plugin);
                 setIsPluginDialogOpen(true);
               }}
-              className="px-3 py-1 text-sm text-indigo-600 hover:text-indigo-900"
+              className="px-3 py-1 text-sm text-amber-500 hover:text-amber-700"
             >
               Edit
             </button>
@@ -356,14 +356,14 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
         <div className="flex space-x-4">
           <button
             onClick={handleSave}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+            className="px-4 py-2 bg-amber-500 text-gray-900 rounded-md hover:bg-amber-400"
           >
             Save Changes
           </button>
           {status === 'stopped' ? (
             <button
               onClick={handleStartAggregation}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              className="px-4 py-2 bg-amber-500 text-gray-900 rounded-md hover:bg-amber-400"
             >
               Start Aggregation
             </button>

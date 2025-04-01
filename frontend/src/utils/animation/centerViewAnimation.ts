@@ -59,7 +59,7 @@ export const animateCenterView = (
   }
 
   // Add padding to the bounds
-  const padding = 200;
+  const padding = 75;
   minX -= padding;
   minY -= padding;
   maxX += padding;

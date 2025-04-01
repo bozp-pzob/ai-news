@@ -29,12 +29,6 @@ export class TwitterSource implements ContentSource {
   static constructorInterface = {
     parameters: [
       {
-        name: 'name',
-        type: 'string',
-        required: true,
-        description: 'Name of the Twitter source'
-      },
-      {
         name: 'username',
         type: 'string',
         required: false,

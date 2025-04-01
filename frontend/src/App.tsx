@@ -18,6 +18,7 @@ function App() {
       onlyFetch: false
     }
   });
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
     loadConfigs();
@@ -76,68 +77,77 @@ function App() {
   };
 
   const handleConfigUpdate = (config: Config) => {
-    console.log('Config update received:', config);
-    
-    // Update the local state
     setConfig(config);
     
-    // Save the config to the server automatically whenever there's an update
+    // Set unsaved changes flag when config is updated
+    setHasUnsavedChanges(true);
+    
+    // Automatically enable the Save Config button when changes are made
     if (selectedConfig) {
-      console.log('Auto-saving config update to server:', selectedConfig);
-      saveConfig(selectedConfig, config)
-        .then(() => {
-          console.log(`Configuration ${selectedConfig} auto-saved successfully`);
-        })
-        .catch(error => {
-          console.error('Error auto-saving config:', error);
-          alert('Failed to save configuration changes. Please try the Save button or refresh the page.');
-        });
+      console.log(`Config "${selectedConfig}" updated, ready to save`);
     }
   };
+  
+  // Function to save the current configuration that can be called by child components
+  const saveConfiguration = async () => {
+    return await handleSave();
+  };
 
+  // Handle saving the configuration
   const handleSave = async () => {
-    if (!selectedConfig || !config) {
-      alert('No configuration is selected or loaded.');
-      return;
-    }
-    
     try {
-      console.log(`Manually saving configuration: ${selectedConfig}`);
+      if (!config) {
+        console.error('No configuration to save');
+        return false;
+      }
       
-      // Ensure the config has the correct name
-      const configToSave = {
-        ...config,
-        name: selectedConfig
-      };
+      // If the configuration needs a name, prompt for it
+      let configName = selectedConfig || '';
+      if (!configName || configName.trim() === '') {
+        const userInput = prompt('Please enter a name for this configuration:', 'my-config');
+        if (!userInput || userInput.trim() === '') {
+          return false; // User cancelled or provided empty name
+        }
+        configName = userInput.trim();
+      }
       
-      // Save to the server
-      await saveConfig(selectedConfig, configToSave);
-      console.log(`Configuration ${selectedConfig} saved successfully`);
+      // Save the config with the proper name
+      config.name = configName;
+      await saveConfig(configName, config);
       
-      // Refresh the config list in case a new one was created
-      await loadConfigs();
+      // Update the selected config name if it was a new config
+      if (!selectedConfig) {
+        setSelectedConfig(configName);
+        
+        // Also refresh the list of configs
+        await loadConfigs();
+      }
       
-      // Show success message
-      alert(`Configuration "${selectedConfig}" saved successfully.`);
+      // Clear unsaved changes flag
+      setHasUnsavedChanges(false);
+      
+      alert(`Configuration ${configName} saved successfully`);
+      return true;
     } catch (error) {
       console.error('Error saving config:', error);
-      alert(`Failed to save configuration "${selectedConfig}". ${error instanceof Error ? error.message : 'Please try again.'}`);
+      alert('Failed to save configuration. Please try again.');
+      return false;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-stone-950 text-white">
       {/* Top Bar */}
-      <div className="bg-gray-800 border-b border-gray-700">
+      <div className="bg-stone-900 border-b border-amber-100/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
               <h1 className="text-xl font-bold">AI News Configuration</h1>
-              <div className="ml-8">
+              <div className="ml-8 flex items-center space-x-4">
                 <select
                   value={selectedConfig || ''}
                   onChange={(e) => handleConfigSelect(e.target.value)}
-                  className="bg-gray-700 text-white rounded-md border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                  className="px-2 py-1 bg-stone-500 text-white rounded-md border-gray-600 shadow-sm focus:border-amber-400 focus:ring-amber-400"
                 >
                   <option value="">Select a configuration</option>
                   {configs.map((config) => (
@@ -146,17 +156,31 @@ function App() {
                     </option>
                   ))}
                 </select>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              {selectedConfig && (
+                
                 <button
-                  onClick={handleSave}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800"
+                  onClick={() => {
+                    // Clear selected config and reset state to empty
+                    setSelectedConfig(null);
+                    setConfig({
+                      name: '',
+                      sources: [],
+                      ai: [],
+                      enrichers: [],
+                      generators: [],
+                      providers: [],
+                      storage: [],
+                      settings: {
+                        runOnce: false,
+                        onlyFetch: false
+                      }
+                    });
+                    setHasUnsavedChanges(false);
+                  }}
+                  className="px-3 py-1 bg-amber-500 text-gray-900 rounded-md hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-gray-800"
                 >
-                  Save Config
+                  New Config
                 </button>
-              )}
+              </div>
             </div>
           </div>
         </div>
@@ -164,21 +188,25 @@ function App() {
 
       {/* Main Content */}
       <div className="h-[calc(100vh-4rem)]">
-        {selectedConfig && config ? (
-          <div className="h-full">
-            <NodeGraph
-              config={config}
-              onConfigUpdate={handleConfigUpdate}
-            />
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <h2 className="text-2xl font-semibold mb-4">Welcome to AI News Configuration</h2>
-              <p className="text-gray-400">Select a configuration from the dropdown above to get started</p>
-            </div>
-          </div>
-        )}
+        <div className="h-full">
+          <NodeGraph
+            config={selectedConfig ? config : {
+              name: '',
+              sources: [],
+              ai: [],
+              enrichers: [],
+              generators: [],
+              providers: [],
+              storage: [],
+              settings: {
+                runOnce: false,
+                onlyFetch: false
+              }
+            }}
+            onConfigUpdate={handleConfigUpdate}
+            saveConfiguration={saveConfiguration}
+          />
+        </div>
       </div>
     </div>
   );

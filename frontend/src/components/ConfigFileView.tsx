@@ -17,16 +17,16 @@ export const ConfigFileView: React.FC<ConfigFileViewProps> = ({
 
     return (
       <div className="mb-4">
-        <h3 className="text-sm font-medium text-gray-500 mb-2">{title}</h3>
+        <h3 className="text-sm font-medium text-amber-400/80 mb-2">{title}</h3>
         <ul className="space-y-1">
           {plugins.map((plugin, index) => (
             <li
               key={`${plugin.type}-${index}`}
-              className="flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md cursor-pointer"
+              className="flex items-center justify-between px-3 py-2 text-sm text-gray-200 hover:bg-gray-800 rounded-md cursor-pointer border border-gray-800 hover:border-amber-500/50"
               onClick={() => onConfigSelect({ ...config, activePlugin: plugin })}
             >
               <span>{plugin.name}</span>
-              <span className="text-xs text-gray-500">{plugin.type}</span>
+              <span className="text-xs text-amber-500/70">{plugin.type}</span>
             </li>
           ))}
         </ul>
@@ -35,13 +35,13 @@ export const ConfigFileView: React.FC<ConfigFileViewProps> = ({
   };
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 h-full flex flex-col">
-      <div className="p-4 border-b border-gray-200">
+    <div className="w-64 bg-gray-900 border-r border-gray-800 h-full flex flex-col">
+      <div className="p-4 border-b border-gray-800">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-medium text-gray-900">Configurations</h2>
+          <h2 className="text-lg font-medium text-amber-300">Configurations</h2>
           <button
             onClick={onNewConfig}
-            className="p-1 text-gray-400 hover:text-gray-500 rounded-full hover:bg-gray-100"
+            className="p-1 text-amber-400 hover:text-amber-300 rounded-full hover:bg-gray-800"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -58,12 +58,12 @@ export const ConfigFileView: React.FC<ConfigFileViewProps> = ({
         {renderPluginList(config.storage, 'Storage')}
       </div>
 
-      <div className="p-4 border-t border-gray-200">
+      <div className="p-4 border-t border-gray-800">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-500">Settings</span>
+          <span className="text-sm text-gray-400">Settings</span>
           <button
             onClick={() => onConfigSelect({ ...config, activePlugin: { type: 'settings', name: 'Settings' } })}
-            className="text-sm text-indigo-600 hover:text-indigo-900"
+            className="text-sm text-amber-500 hover:text-amber-300"
           >
             Edit
           </button>

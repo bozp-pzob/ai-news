@@ -195,6 +195,29 @@ class ConfigStateManager {
   private updatePortConnectionsFromConnections(): void {
     console.log('🔄 Updating port connections from connections array');
     
+    // Keep track of nodes that previously had provider/storage connections
+    const nodesWithProviderStorage = new Map<string, {provider?: boolean, storage?: boolean}>();
+    
+    // Before clearing connections, record which nodes have provider/storage parameters
+    const recordNodeParams = (node: Node) => {
+      if (node.params) {
+        if ('provider' in node.params || 'storage' in node.params) {
+          nodesWithProviderStorage.set(node.id, {
+            provider: 'provider' in node.params,
+            storage: 'storage' in node.params
+          });
+        }
+      }
+      
+      // Process children if this is a parent node
+      if (node.isParent && node.children) {
+        node.children.forEach(recordNodeParams);
+      }
+    };
+    
+    // Record existing provider/storage params
+    this.nodes.forEach(recordNodeParams);
+    
     // Clear existing port connections
     const clearNodeConnections = (node: Node) => {
       node.inputs.forEach(input => {
@@ -265,6 +288,65 @@ class ConfigStateManager {
         }
       }
     });
+    
+    // Check for nodes that previously had provider/storage params but now don't have connections
+    // This ensures we emit plugin-updated events for nodes whose connections were removed
+    const checkForRemovedConnections = (node: Node) => {
+      if (!node.id) return;
+      
+      const prevState = nodesWithProviderStorage.get(node.id);
+      if (prevState) {
+        let shouldEmitUpdate = false;
+        
+        // Check if provider connection was removed
+        if (prevState.provider) {
+          const hasProviderConnection = node.inputs.some(input => 
+            input.name === 'provider' && input.connectedTo !== undefined
+          );
+          
+          // Don't delete the parameter, just emit an update if the connection changed
+          if (!hasProviderConnection && node.params && 'provider' in node.params) {
+            // Mark that we need to emit an update because the connection changed
+            console.log(`🔄 Connection to provider removed for node ${node.id} - will emit update`);
+            shouldEmitUpdate = true;
+          }
+        }
+        
+        // Check if storage connection was removed
+        if (prevState.storage) {
+          const hasStorageConnection = node.inputs.some(input => 
+            input.name === 'storage' && input.connectedTo !== undefined
+          );
+          
+          // Don't delete the parameter, just emit an update if the connection changed
+          if (!hasStorageConnection && node.params && 'storage' in node.params) {
+            // Mark that we need to emit an update because the connection changed
+            console.log(`🔄 Connection to storage removed for node ${node.id} - will emit update`);
+            shouldEmitUpdate = true;
+          }
+        }
+        
+        // Emit plugin-updated event if needed
+        if (shouldEmitUpdate) {
+          setTimeout(() => {
+            this.eventEmitter.emit('plugin-updated', {
+              id: node.id,
+              type: node.type,
+              name: node.name,
+              params: { ...node.params }
+            });
+          }, 0);
+        }
+      }
+      
+      // Process children if this is a parent node
+      if (node.isParent && node.children) {
+        node.children.forEach(checkForRemovedConnections);
+      }
+    };
+    
+    // Check all nodes for removed connections
+    this.nodes.forEach(checkForRemovedConnections);
   }
 
   // Set the selected node
@@ -372,20 +454,6 @@ class ConfigStateManager {
       setTimeout(() => {
         this.eventEmitter.emit('plugin-updated', updatedPlugin);
         console.log("🔄 Plugin update event emitted for:", updatedPlugin.id);
-        
-        // Save the config to the server after updating the plugin
-        if (this.config.name && typeof this.config.name === 'string') {
-          // Dynamic import to avoid circular dependencies
-          import('../services/api').then(({ saveConfig }) => {
-            saveConfig(this.config.name as string, this.config)
-              .then(() => {
-                console.log(`🔄 Plugin update: Configuration ${this.config.name} saved to server`);
-              })
-              .catch(error => {
-                console.error('🔄 Plugin update: Error saving config to server:', error);
-              });
-          });
-        }
       }, 0);
       
       console.log("Plugin updates applied. Nodes:", updatedNodes.length, "Connections:", updatedConnections.length);
@@ -413,19 +481,22 @@ class ConfigStateManager {
     const nodeSpacing = 45;
     const groupSpacing = 80; // Fixed spacing between parent groups
     
+    // Use a larger spacing for storage nodes to prevent overlap
+    const storageNodeSpacing = 100;
+    
     // Define columns for better organization
     const leftColumnX = 50;    // Left side for Storage and AI/Provider nodes
     const sourceColumnX = 500; // Sources, Enrichers, Generators in middle
     
     // Calculate max height of storage nodes to position AI nodes below them
     const storageHeight = this.config.storage && this.config.storage.length > 0 
-      ? 100 + (this.config.storage.length * nodeSpacing)
+      ? 100 + (this.config.storage.length * storageNodeSpacing)
       : 100;
     
     // Track vertical positions for parent groups
     let currentY = 50; // Starting Y position
     
-    // Add Storage nodes on left side of canvas (top)
+    // Add Storage nodes on left side of canvas (top) with increased spacing
     if (this.config.storage && this.config.storage.length > 0) {
       console.log('🏗️ Creating storage nodes:', this.config.storage.length);
       this.config.storage.forEach((storage, index) => {
@@ -433,7 +504,7 @@ class ConfigStateManager {
           id: `storage-${index}`,
           type: 'storage',
           name: storage.name,
-          position: { x: leftColumnX, y: 100 + index * nodeSpacing },
+          position: { x: leftColumnX, y: 100 + index * storageNodeSpacing },
           inputs: [],
           outputs: [this.createNodeOutput('storage', 'storage')],
           params: storage.params || {},
@@ -443,15 +514,22 @@ class ConfigStateManager {
       console.log('🏗️ No storage nodes to create');
     }
     
-    // Add AI Provider nodes on left side of canvas (below storage)
+    // Add AI Provider nodes on left side of canvas with adequate spacing below storage
     if (this.config.ai && this.config.ai.length > 0) {
       console.log('🏗️ Creating AI provider nodes:', this.config.ai.length);
+      
+      // Use a consistent spacing for AI nodes too
+      const aiNodeSpacing = 80;
+      
+      // Add extra padding between storage and AI sections
+      const sectionPadding = 50;
+      
       this.config.ai.forEach((ai, index) => {
         newNodes.push({
           id: `ai-${index}`,
           type: 'ai',
           name: ai.name,
-          position: { x: leftColumnX, y: storageHeight + 50 + index * (nodeSpacing * 3) },
+          position: { x: leftColumnX, y: storageHeight + sectionPadding + index * aiNodeSpacing },
           inputs: [],
           outputs: [this.createNodeOutput('provider', 'provider')],
           isProvider: true,
@@ -462,6 +540,9 @@ class ConfigStateManager {
       console.log('🏗️ No AI provider nodes to create');
     }
     
+    // Define a consistent child node spacing
+    const childNodeSpacing = 45;
+    
     // Add Sources group - first parent node at the top
     if (this.config.sources && this.config.sources.length > 0) {
       console.log('🏗️ Creating source nodes:', this.config.sources.length);
@@ -471,7 +552,7 @@ class ConfigStateManager {
           id: `source-${index}`,
           type: 'source',
           name: source.name,
-          position: { x: sourceColumnX, y: currentY + 50 + index * nodeSpacing },
+          position: { x: sourceColumnX, y: currentY + 50 + index * childNodeSpacing },
           inputs: [
             ...(source.params?.provider ? [this.createNodeInput('provider', 'provider')] : []),
             ...(source.params?.storage ? [this.createNodeInput('storage', 'storage')] : [])
@@ -506,7 +587,7 @@ class ConfigStateManager {
       });
       
       // Update current Y position based on the height of this group
-      const sourceGroupHeight = 50 + (sourceChildren.length * nodeSpacing);
+      const sourceGroupHeight = 50 + (sourceChildren.length * childNodeSpacing);
       currentY += sourceGroupHeight + groupSpacing;
     }
     
@@ -519,7 +600,7 @@ class ConfigStateManager {
           id: `enricher-${index}`,
           type: 'enricher',
           name: enricher.name,
-          position: { x: sourceColumnX, y: currentY + 50 + index * nodeSpacing },
+          position: { x: sourceColumnX, y: currentY + 50 + index * childNodeSpacing },
           inputs: [
             ...(enricher.params?.provider ? [this.createNodeInput('provider', 'provider')] : []),
             ...(enricher.params?.storage ? [this.createNodeInput('storage', 'storage')] : [])
@@ -554,7 +635,7 @@ class ConfigStateManager {
       });
       
       // Update current Y position based on the height of this group
-      const enricherGroupHeight = 50 + (enricherChildren.length * nodeSpacing);
+      const enricherGroupHeight = 50 + (enricherChildren.length * childNodeSpacing);
       currentY += enricherGroupHeight + groupSpacing;
     }
     
@@ -567,7 +648,7 @@ class ConfigStateManager {
           id: `generator-${index}`,
           type: 'generator',
           name: generator.name,
-          position: { x: sourceColumnX, y: currentY + 50 + index * nodeSpacing },
+          position: { x: sourceColumnX, y: currentY + 50 + index * childNodeSpacing },
           inputs: [
             ...(generator.params?.provider ? [this.createNodeInput('provider', 'provider')] : []),
             ...(generator.params?.storage ? [this.createNodeInput('storage', 'storage')] : [])
@@ -696,6 +777,7 @@ class ConfigStateManager {
         // Clear the connectedTo property
         const providerInput = nodeToUpdate.inputs.find(input => input.name === 'provider');
         if (providerInput) {
+          console.log('🔌 Clearing provider input connection');
           providerInput.connectedTo = undefined;
         }
       }
@@ -1356,7 +1438,9 @@ class ConfigStateManager {
         configNode.params.provider = providerNode.name;
       }
     } else if (configNode.params.provider) {
-      // If there's no connection but the param exists, clear it
+      // If there's no connection but the param exists in the config, remove it from config only
+      // This is critical: we remove it from the config but NOT from the node.params in memory
+      console.log(`Clearing provider param from config for node ${node.id}`);
       delete configNode.params.provider;
     }
     
@@ -1368,26 +1452,243 @@ class ConfigStateManager {
         configNode.params.storage = storageNode.name;
       }
     } else if (configNode.params.storage) {
-      // If there's no connection but the param exists, clear it
+      // If there's no connection but the param exists in the config, remove it from config only
+      // This is critical: we remove it from the config but NOT from the node.params in memory
+      console.log(`Clearing storage param from config for node ${node.id}`);
       delete configNode.params.storage;
     }
   }
 
-  // Helper method to save the current config to the server
+  // Helper method that previously saved to server - now disabled to only save on explicit user action
   private saveToServer(): void {
-    if (this.config.name && typeof this.config.name === 'string') {
-      // Dynamic import to avoid circular dependencies
-      setTimeout(() => {
-        import('../services/api').then(({ saveConfig }) => {
-          saveConfig(this.config.name as string, this.config)
-            .then(() => {
-              console.log(`🔄 Configuration ${this.config.name} saved to server`);
-            })
-            .catch(error => {
-              console.error('🔄 Error saving config to server:', error);
-            });
+    // No longer automatically saving to server
+    console.log('🔄 Configuration updated locally but not saved to server (awaiting explicit save action)');
+  }
+
+  // Remove a node from the configuration and graph
+  removeNode(nodeId: string): boolean {
+    try {
+      console.log(`🗑️ Removing node: ${nodeId}`);
+
+      // Parse the node ID to determine its type and index
+      const idParts = nodeId.split('-');
+      const nodeType = idParts[0];
+      const nodeIndex = parseInt(idParts[1]);
+
+      // Determine if this is a child node
+      const node = this.findNodeById(nodeId);
+      if (!node) {
+        console.error(`Node with ID ${nodeId} not found`);
+        return false;
+      }
+
+      // Check if this is a child node (part of a parent)
+      let isChildNode = false;
+      let parentNode: Node | undefined;
+      let parentId: string | undefined;
+
+      // Look for a parent node that contains this child
+      for (const n of this.nodes) {
+        if (n.isParent && n.children) {
+          const childIndex = n.children.findIndex(child => child.id === nodeId);
+          if (childIndex !== -1) {
+            isChildNode = true;
+            parentNode = n;
+            parentId = n.id;
+            break;
+          }
+        }
+      }
+
+      // Create deep copies of the current state
+      const updatedConfig = JSON.parse(JSON.stringify(this.config));
+      let updatedNodes = JSON.parse(JSON.stringify(this.nodes));
+      
+      // Find all connections involving this node
+      const connectionsToRemove = this.connections.filter(conn => 
+        conn.from.nodeId === nodeId || conn.to.nodeId === nodeId
+      );
+
+      // Remove connections
+      let updatedConnections = this.connections.filter(conn => 
+        conn.from.nodeId !== nodeId && conn.to.nodeId !== nodeId
+      );
+
+      // Handle node removal based on its type
+      if (isChildNode && parentNode && parentId) {
+        // Handle child node removal
+        
+        // 1. Get parent ID parts
+        const parentIdParts = parentId.split('-');
+        const parentType = parentIdParts[0]; 
+        const parentIndex = parseInt(parentIdParts[1]);
+        
+        // 2. Find child index in parent
+        const childIndex = parentNode.children!.findIndex(child => child.id === nodeId);
+        
+        // 3. Remove from config's appropriate array's params.children
+        if (parentType === 'sources' || parentType === 'source') {
+          if (updatedConfig.sources[parentIndex].params?.children) {
+            // Remove the child from the children array
+            updatedConfig.sources[parentIndex].params.children.splice(childIndex, 1);
+            
+            // If it was the last child, remove the children array
+            if (updatedConfig.sources[parentIndex].params.children.length === 0) {
+              delete updatedConfig.sources[parentIndex].params.children;
+            }
+          }
+        } else if (parentType === 'enrichers' || parentType === 'enricher') {
+          if (updatedConfig.enrichers[parentIndex].params?.children) {
+            updatedConfig.enrichers[parentIndex].params.children.splice(childIndex, 1);
+            if (updatedConfig.enrichers[parentIndex].params.children.length === 0) {
+              delete updatedConfig.enrichers[parentIndex].params.children;
+            }
+          }
+        } else if (parentType === 'generators' || parentType === 'generator') {
+          if (updatedConfig.generators[parentIndex].params?.children) {
+            updatedConfig.generators[parentIndex].params.children.splice(childIndex, 1);
+            if (updatedConfig.generators[parentIndex].params.children.length === 0) {
+              delete updatedConfig.generators[parentIndex].params.children;
+            }
+          }
+        }
+        
+        // 4. Remove from parent node's children array
+        updatedNodes = updatedNodes.map((n: Node) => {
+          if (n.id === parentId && n.children) {
+            return {
+              ...n,
+              children: n.children.filter((child: Node) => child.id !== nodeId)
+            };
+          }
+          return n;
         });
-      }, 100); // Small delay to ensure state is settled
+      } else {
+        // Handle main node removal
+        switch(nodeType) {
+          case 'storage':
+            // Remove from storage array
+            updatedConfig.storage.splice(nodeIndex, 1);
+            
+            // Clear storage references in other nodes
+            const storageNodeGroups = ['sources', 'enrichers', 'generators'] as const;
+            storageNodeGroups.forEach((nodeGroup) => {
+              updatedConfig[nodeGroup].forEach((plugin: PluginConfig) => {
+                if (plugin.params?.storage === node.name) {
+                  delete plugin.params.storage;
+                }
+                // Also check children
+                if (plugin.params?.children) {
+                  plugin.params.children.forEach((child: Record<string, any>) => {
+                    if (child.storage === node.name) {
+                      delete child.storage;
+                    }
+                  });
+                }
+              });
+            });
+            break;
+          
+          case 'ai':
+            // Remove from AI array
+            updatedConfig.ai.splice(nodeIndex, 1);
+            
+            // Clear provider references in other nodes
+            const providerNodeGroups = ['sources', 'enrichers', 'generators'] as const;
+            providerNodeGroups.forEach((nodeGroup) => {
+              updatedConfig[nodeGroup].forEach((plugin: PluginConfig) => {
+                if (plugin.params?.provider === node.name) {
+                  delete plugin.params.provider;
+                }
+                // Also check children
+                if (plugin.params?.children) {
+                  plugin.params.children.forEach((child: Record<string, any>) => {
+                    if (child.provider === node.name) {
+                      delete child.provider;
+                    }
+                  });
+                }
+              });
+            });
+            break;
+          
+          case 'source':
+          case 'sources':
+            if (nodeType === 'sources') {
+              // Remove the entire group
+              updatedConfig.sources.splice(nodeIndex, 1);
+            } else {
+              // Handle individual source
+              for (let i = 0; i < updatedConfig.sources.length; i++) {
+                if (updatedConfig.sources[i].name === node.name) {
+                  updatedConfig.sources.splice(i, 1);
+                  break;
+                }
+              }
+            }
+            break;
+          
+          case 'enricher':
+          case 'enrichers':
+            if (nodeType === 'enrichers') {
+              // Remove the entire group
+              updatedConfig.enrichers.splice(nodeIndex, 1);
+            } else {
+              // Handle individual enricher
+              for (let i = 0; i < updatedConfig.enrichers.length; i++) {
+                if (updatedConfig.enrichers[i].name === node.name) {
+                  updatedConfig.enrichers.splice(i, 1);
+                  break;
+                }
+              }
+            }
+            break;
+          
+          case 'generator':
+          case 'generators':
+            if (nodeType === 'generators') {
+              // Remove the entire group
+              updatedConfig.generators.splice(nodeIndex, 1);
+            } else {
+              // Handle individual generator
+              for (let i = 0; i < updatedConfig.generators.length; i++) {
+                if (updatedConfig.generators[i].name === node.name) {
+                  updatedConfig.generators.splice(i, 1);
+                  break;
+                }
+              }
+            }
+            break;
+          
+          default:
+            console.error(`Unknown node type: ${nodeType}`);
+            return false;
+        }
+        
+        // Remove the node from nodes array
+        updatedNodes = updatedNodes.filter((n: Node) => n.id !== nodeId);
+      }
+
+      // Update internal state
+      this.config = updatedConfig;
+      this.nodes = updatedNodes;
+      this.connections = updatedConnections;
+      
+      // If the selected node was removed, clear selection
+      if (this.selectedNode === nodeId) {
+        this.selectedNode = null;
+        this.eventEmitter.emit('node-selected', null);
+      }
+      
+      // Emit events
+      this.eventEmitter.emit('config-updated', this.config);
+      this.eventEmitter.emit('nodes-updated', this.nodes);
+      this.eventEmitter.emit('connections-updated', this.connections);
+      
+      return true;
+    } catch (error) {
+      console.error("Error in removeNode:", error);
+      return false;
     }
   }
 }

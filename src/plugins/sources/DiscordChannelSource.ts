@@ -29,12 +29,6 @@ export class DiscordChannelSource implements ContentSource {
   static constructorInterface = {
     parameters: [
       {
-        name: 'name',
-        type: 'string',
-        required: true,
-        description: 'Name of the Discord Channel source'
-      },
-      {
         name: 'botToken',
         type: 'string',
         required: true,

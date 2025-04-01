@@ -184,6 +184,12 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
     // Base spacing between nodes
     const nodeSpacing = 45;
     
+    // Use a larger spacing for storage nodes to prevent overlap
+    const storageNodeSpacing = 100;
+    
+    // Use a consistent spacing for AI nodes too
+    const aiNodeSpacing = 80;
+    
     // X position for left column (storage)
     const leftColumnX = 50;
     
@@ -193,14 +199,14 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
     // X position for right column (Sources, Enrichers, Generators)
     const rightColumnX = 650;
     
-    // Add Storage nodes
+    // Add Storage nodes with increased spacing
     if (config.storage && config.storage.length > 0) {
       config.storage.forEach((storage, index) => {
         newNodes.push({
           id: `storage-${index}`,
           type: 'storage',
           name: storage.name,
-          position: { x: leftColumnX, y: 100 + index * nodeSpacing },
+          position: { x: leftColumnX, y: 100 + index * storageNodeSpacing },
           inputs: [],
           outputs: [createNodeOutput('storage', 'storage')],
           params: storage.params, // Add params from config
@@ -208,14 +214,21 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
       });
     }
     
-    // Add AI Provider nodes
+    // Calculate storage section height to position AI nodes below
+    const storageHeight = config.storage && config.storage.length > 0 
+      ? 100 + (config.storage.length * storageNodeSpacing)
+      : 100;
+    
+    // Add AI Provider nodes with adequate spacing
     if (config.ai && config.ai.length > 0) {
+      const sectionPadding = 50; // Extra padding between sections
+      
       config.ai.forEach((ai, index) => {
         newNodes.push({
           id: `ai-${index}`,
           type: 'ai',
           name: ai.name,
-          position: { x: centerColumnX, y: 100 + index * nodeSpacing },
+          position: { x: centerColumnX, y: storageHeight + sectionPadding + index * aiNodeSpacing },
           inputs: [],
           outputs: [createNodeOutput('provider', 'provider')],
           isProvider: true,
@@ -224,6 +237,9 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
       });
     }
     
+    // Define a consistent child node spacing
+    const childNodeSpacing = 45;
+
     // Starting Y position for right column
     if (config.sources && config.sources.length > 0) {
       const sourceChildren = config.sources.map((source, index) => {
@@ -232,7 +248,7 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
           id: `source-${index}`,
           type: 'source',
           name: source.name,
-          position: { x: rightColumnX, y: 100 + index * nodeSpacing },
+          position: { x: rightColumnX, y: 100 + index * childNodeSpacing },
           inputs: [
             ...(source.params?.provider ? [createNodeInput('provider', 'provider')] : []),
             ...(source.params?.storage ? [createNodeInput('storage', 'storage')] : [])
@@ -289,6 +305,11 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
       });
     }
     
+    // Calculate the Y position based on source nodes (if any)
+    const sourceNodeHeight = config.sources && config.sources.length > 0
+      ? 100 + (config.sources.length * childNodeSpacing) + 100 // add 100px padding between groups
+      : 300;
+    
     // Add Enrichers
     if (config.enrichers && config.enrichers.length > 0) {
       const enricherChildren = config.enrichers.map((enricher, index) => {
@@ -297,7 +318,7 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
           id: `enricher-${index}`,
           type: 'enricher',
           name: enricher.name,
-          position: { x: rightColumnX, y: 300 + index * nodeSpacing },
+          position: { x: rightColumnX, y: sourceNodeHeight + index * childNodeSpacing },
           inputs: [
             ...(enricher.params?.provider ? [createNodeInput('provider', 'provider')] : []),
             ...(enricher.params?.storage ? [createNodeInput('storage', 'storage')] : [])
@@ -345,7 +366,7 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
         id: 'enrichers-group',
         type: 'group',
         name: 'Enrichers',
-        position: { x: rightColumnX, y: 250 },
+        position: { x: rightColumnX, y: sourceNodeHeight },
         inputs: [],
         outputs: [],
         isParent: true,
@@ -356,13 +377,18 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
     
     // Add Generators
     if (config.generators && config.generators.length > 0) {
+      // Calculate the Y position based on previous node groups
+      const enricherNodeHeight = config.enrichers && config.enrichers.length > 0
+        ? sourceNodeHeight + (config.enrichers.length * childNodeSpacing) + 100 // add 100px padding between groups
+        : sourceNodeHeight + 100;
+
       const generatorChildren = config.generators.map((generator, index) => {
         // Create node
         const node = {
           id: `generator-${index}`,
           type: 'generator',
           name: generator.name,
-          position: { x: rightColumnX, y: 500 + index * nodeSpacing },
+          position: { x: rightColumnX, y: enricherNodeHeight + index * childNodeSpacing },
           inputs: [
             ...(generator.params?.provider ? [createNodeInput('provider', 'provider')] : []),
             ...(generator.params?.storage ? [createNodeInput('storage', 'storage')] : [])
@@ -410,7 +436,7 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
         id: 'generators-group',
         type: 'group',
         name: 'Generators',
-        position: { x: rightColumnX, y: 450 },
+        position: { x: rightColumnX, y: enricherNodeHeight },
         inputs: [],
         outputs: [],
         isParent: true,

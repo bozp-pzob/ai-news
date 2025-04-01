@@ -16,17 +16,17 @@ export const PluginSelector: React.FC<PluginSelectorProps> = ({ plugin, onAdd })
 
   return (
     <>
-      <div className="bg-white rounded-lg shadow">
+      <div className="bg-gray-900 rounded-lg shadow border border-gray-800">
         <button
           type="button"
           onClick={() => setIsDialogOpen(true)}
-          className="w-full px-4 py-3 flex justify-between items-center hover:bg-gray-50 rounded-lg"
+          className="w-full px-4 py-3 flex justify-between items-center hover:bg-gray-800 rounded-lg"
         >
           <div className="text-left">
-            <h4 className="text-lg font-medium text-gray-900">{plugin.name}</h4>
-            <p className="text-sm text-gray-500">{plugin.description}</p>
+            <h4 className="text-lg font-medium text-amber-300">{plugin.name}</h4>
+            <p className="text-sm text-gray-400">{plugin.description}</p>
           </div>
-          <span className="text-gray-400">▶</span>
+          <span className="text-amber-500">▶</span>
         </button>
       </div>
 

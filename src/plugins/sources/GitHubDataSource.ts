@@ -32,12 +32,6 @@ export class GitHubDataSource implements ContentSource {
   static constructorInterface = {
     parameters: [
       {
-        name: 'name',
-        type: 'string',
-        required: true,
-        description: 'Name of the GitHub data source'
-      },
-      {
         name: 'contributorsUrl',
         type: 'string',
         required: true,

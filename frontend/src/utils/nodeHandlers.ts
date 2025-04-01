@@ -651,6 +651,9 @@ function updateNodesWithRemovedConnection(
       if (inputPort && inputPort.connectedTo === sourceNodeId) {
         console.log(`CRITICAL PORT FIX: Disconnecting input port ${targetPortName} on ${targetNodeId}`);
         inputPort.connectedTo = undefined;
+        
+        // Don't clear the provider/storage param here
+        // Let ConfigStateManager handle this through syncConfigWithNodes
       }
       return true;
     }
@@ -785,6 +788,25 @@ export function shouldShowPort(node: Node, portName: string, isInput: boolean): 
   // Debug logging to track port display issues
   const nodeTypeStr = `${node.id} (type: ${node.type})`;
   
+  // Check if this is a child node inside a parent (based on hierarchy properties)
+  const isChildNodeOfParent = node.id && (
+    (node.id.includes('source-') && node.id !== 'sources-group') ||
+    (node.id.includes('enricher-') && node.id !== 'enrichers-group') ||
+    (node.id.includes('generator-') && node.id !== 'generators-group')
+  );
+  
+  // Child nodes should never show output ports - they only pass data to their parent
+  if (!isInput && isChildNodeOfParent && portName === 'output') {
+    console.log(`PORT FILTER: ${nodeTypeStr} - rejecting output port on child node`);
+    return false;
+  }
+  
+  // Child nodes should never show input ports named 'input' - they only get data from providers/storage
+  if (isInput && isChildNodeOfParent && portName === 'input') {
+    console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port 'input' on child node`);
+    return false;
+  }
+  
   // Storage nodes only have output ports
   if (node.type === 'storage' || node.id.includes('storage-')) {
     if (isInput) {
@@ -814,14 +836,40 @@ export function shouldShowPort(node: Node, portName: string, isInput: boolean): 
   // Source nodes
   if (node.type.includes('source') || node.id.includes('source-')) {
     if (isInput) {
-      // Sources have provider and storage inputs only
-      const shouldShow = portName === 'provider' || portName === 'storage';
+      // Explicitly reject input ports for source nodes
+      if (portName === 'input') {
+        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port 'input' (source nodes don't need input ports)`);
+        return false;
+      }
+      
+      // Sources have provider and storage inputs only if they have corresponding parameters
+      const hasProviderParam = node.params && 'provider' in node.params && node.params.provider;
+      const hasStorageParam = node.params && 'storage' in node.params && node.params.storage;
+      
+      if (portName === 'provider' && !hasProviderParam) {
+        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting provider port (no provider parameter)`);
+        return false;
+      }
+      
+      if (portName === 'storage' && !hasStorageParam) {
+        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting storage port (no storage parameter)`);
+        return false;
+      }
+      
+      const shouldShow = (portName === 'provider' && hasProviderParam) || 
+                         (portName === 'storage' && hasStorageParam);
+      
       if (!shouldShow) {
         console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port ${portName} (only provider/storage allowed)`);
       }
       return shouldShow;
     } else {
-      // Sources have output port
+      // Only parent source nodes should show output ports
+      if (isChildNodeOfParent) {
+        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting output port on child source node`);
+        return false;
+      }
+      
       const shouldShow = portName === 'output';
       if (!shouldShow) {
         console.log(`PORT FILTER: ${nodeTypeStr} - rejecting output port ${portName} (only 'output' allowed)`);
@@ -833,14 +881,35 @@ export function shouldShowPort(node: Node, portName: string, isInput: boolean): 
   // Enricher nodes
   if (node.type.includes('enricher') || node.id.includes('enricher-')) {
     if (isInput) {
-      // Enrichers have provider, storage, and input ports
-      const shouldShow = portName === 'provider' || portName === 'storage' || portName === 'input';
+      // Enrichers have provider, storage, and input ports, but provider/storage only if params exist
+      const hasProviderParam = node.params && 'provider' in node.params && node.params.provider;
+      const hasStorageParam = node.params && 'storage' in node.params && node.params.storage;
+      
+      if (portName === 'provider' && !hasProviderParam) {
+        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting provider port (no provider parameter)`);
+        return false;
+      }
+      
+      if (portName === 'storage' && !hasStorageParam) {
+        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting storage port (no storage parameter)`);
+        return false;
+      }
+      
+      const shouldShow = (portName === 'provider' && hasProviderParam) || 
+                         (portName === 'storage' && hasStorageParam) || 
+                         portName === 'input';
+                         
       if (!shouldShow) {
         console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port ${portName} (only provider/storage/input allowed)`);
       }
       return shouldShow;
     } else {
-      // Enrichers have output port
+      // Only parent enricher nodes should show output ports
+      if (isChildNodeOfParent) {
+        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting output port on child enricher node`);
+        return false;
+      }
+      
       const shouldShow = portName === 'output';
       if (!shouldShow) {
         console.log(`PORT FILTER: ${nodeTypeStr} - rejecting output port ${portName} (only 'output' allowed)`);
@@ -852,14 +921,35 @@ export function shouldShowPort(node: Node, portName: string, isInput: boolean): 
   // Generator nodes
   if (node.type.includes('generator') || node.id.includes('generator-')) {
     if (isInput) {
-      // Generators have provider, storage, and input ports
-      const shouldShow = portName === 'provider' || portName === 'storage' || portName === 'input';
+      // Generators have provider, storage, and input ports, but provider/storage only if params exist
+      const hasProviderParam = node.params && 'provider' in node.params && node.params.provider;
+      const hasStorageParam = node.params && 'storage' in node.params && node.params.storage;
+      
+      if (portName === 'provider' && !hasProviderParam) {
+        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting provider port (no provider parameter)`);
+        return false;
+      }
+      
+      if (portName === 'storage' && !hasStorageParam) {
+        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting storage port (no storage parameter)`);
+        return false;
+      }
+      
+      const shouldShow = (portName === 'provider' && hasProviderParam) || 
+                         (portName === 'storage' && hasStorageParam) || 
+                         portName === 'input';
+                         
       if (!shouldShow) {
         console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port ${portName} (only provider/storage/input allowed)`);
       }
       return shouldShow;
     } else {
-      // Generators have output port
+      // Only parent generator nodes should show output ports
+      if (isChildNodeOfParent) {
+        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting output port on child generator node`);
+        return false;
+      }
+      
       const shouldShow = portName === 'output';
       if (!shouldShow) {
         console.log(`PORT FILTER: ${nodeTypeStr} - rejecting output port ${portName} (only 'output' allowed)`);
@@ -1061,66 +1151,78 @@ function updateNodesWithNewConnection(
   targetNodeId: string,
   targetPortName: string
 ): Node[] {
-  // Clone the nodes array to avoid mutating the original
+  console.log(`Updating nodes with new connection: ${sourceNodeId}.${sourcePortName} -> ${targetNodeId}.${targetPortName}`);
+  
+  // Create a deep copy of the nodes array
   const updatedNodes = JSON.parse(JSON.stringify(nodes));
   
-  let sourceNodeUpdated = false;
-  let targetNodeUpdated = false;
-  
-  // First check for main nodes
-  for (let i = 0; i < updatedNodes.length; i++) {
-    const node = updatedNodes[i];
-    
-    // Update source node if found
+  const updateSourceNode = (node: Node): boolean => {
     if (node.id === sourceNodeId) {
-      const outputIndex = node.outputs.findIndex((o: NodePort) => o.name === sourcePortName);
-      if (outputIndex !== -1) {
-        node.outputs[outputIndex].connectedTo = targetNodeId;
-        sourceNodeUpdated = true;
+      // Find the output port
+      const outputPort = node.outputs.find(output => output.name === sourcePortName);
+      if (outputPort) {
+        outputPort.connectedTo = targetNodeId;
+        console.log(`Set output port ${sourcePortName} on node ${sourceNodeId} to connect to ${targetNodeId}`);
+        return true;
       }
     }
     
-    // Update target node if found
-    if (node.id === targetNodeId) {
-      const inputIndex = node.inputs.findIndex((i: NodePort) => i.name === targetPortName);
-      if (inputIndex !== -1) {
-        node.inputs[inputIndex].connectedTo = sourceNodeId;
-        targetNodeUpdated = true;
-      }
-    }
-    
-    // Check this node's children
+    // If this is a parent node, try to update its children
     if (node.isParent && node.children) {
-      for (let j = 0; j < node.children.length; j++) {
-        const child = node.children[j];
-        
-        // Update source node if found in children
-        if (!sourceNodeUpdated && child.id === sourceNodeId) {
-          const outputIndex = child.outputs.findIndex((o: NodePort) => o.name === sourcePortName);
-          if (outputIndex !== -1) {
-            child.outputs[outputIndex].connectedTo = targetNodeId;
-            sourceNodeUpdated = true;
-          }
-        }
-        
-        // Update target node if found in children
-        if (!targetNodeUpdated && child.id === targetNodeId) {
-          const inputIndex = child.inputs.findIndex((i: NodePort) => i.name === targetPortName);
-          if (inputIndex !== -1) {
-            child.inputs[inputIndex].connectedTo = sourceNodeId;
-            targetNodeUpdated = true;
-          }
+      for (const child of node.children) {
+        if (updateSourceNode(child)) {
+          return true;
         }
       }
     }
     
-    // If both nodes have been updated, stop searching
-    if (sourceNodeUpdated && targetNodeUpdated) {
-      break;
-    }
-  }
+    return false;
+  };
   
-  return updatedNodes;
+  const updateTargetNode = (node: Node): boolean => {
+    if (node.id === targetNodeId) {
+      // Find the input port
+      const inputPort = node.inputs.find(input => input.name === targetPortName);
+      if (inputPort) {
+        // For provider and storage connections, check if the parameter exists
+        if (targetPortName === 'provider' || targetPortName === 'storage') {
+          const sourceNode = findNodeRecursive(nodes, sourceNodeId);
+          if (!sourceNode) {
+            console.error(`Source node ${sourceNodeId} not found when updating connection`);
+            return false;
+          }
+          
+          // Add/update the param in the target node
+          if (!node.params) node.params = {};
+          node.params[targetPortName] = sourceNode.name;
+        }
+        
+        inputPort.connectedTo = sourceNodeId;
+        console.log(`Set input port ${targetPortName} on node ${targetNodeId} to connect to ${sourceNodeId}`);
+        return true;
+      }
+    }
+    
+    // If this is a parent node, try to update its children
+    if (node.isParent && node.children) {
+      for (const child of node.children) {
+        if (updateTargetNode(child)) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  };
+  
+  // Update nodes
+  updatedNodes.forEach((node: Node) => {
+    updateSourceNode(node);
+    updateTargetNode(node);
+  });
+  
+  // After setting up the connection, ensure all node ports are in sync
+  return syncNodePortsWithParams(updatedNodes);
 }
 
 // Helper function to create a standard NodePort input
@@ -1224,6 +1326,13 @@ function syncSingleNodePorts(
 ): void {
   if (!node.params) return;
   
+  // Check if this is a child node inside a parent
+  const isChildNodeOfParent = node.id && (
+    (node.id.includes('source-') && node.id !== 'sources-group') ||
+    (node.id.includes('enricher-') && node.id !== 'enrichers-group') ||
+    (node.id.includes('generator-') && node.id !== 'generators-group')
+  );
+  
   // Ensure the node has the required ports for its type
   ensureRequiredPorts(node);
   
@@ -1232,7 +1341,7 @@ function syncSingleNodePorts(
   const sourceConnections = connectionsBySource.get(node.id) || new Map<string, string>();
   
   // Check provider parameter and port
-  if ('provider' in node.params) {
+  if ('provider' in node.params && node.params.provider) {
     // Make sure the node has a provider input port
     const providerPort = node.inputs.find(input => input.name === 'provider');
     if (!providerPort) {
@@ -1247,10 +1356,17 @@ function syncSingleNodePorts(
       // Port exists, update its connectedTo property from known connections
       providerPort.connectedTo = targetConnections.get('provider');
     }
+  } else {
+    // Remove provider port if parameter doesn't exist
+    const providerPortIndex = node.inputs.findIndex(input => input.name === 'provider');
+    if (providerPortIndex !== -1) {
+      console.log(`🔄 SYNC: Removing provider port from ${node.id} - no provider parameter`);
+      node.inputs.splice(providerPortIndex, 1);
+    }
   }
   
   // Check storage parameter and port
-  if ('storage' in node.params) {
+  if ('storage' in node.params && node.params.storage) {
     // Make sure the node has a storage input port
     const storagePort = node.inputs.find(input => input.name === 'storage');
     if (!storagePort) {
@@ -1265,10 +1381,35 @@ function syncSingleNodePorts(
       // Port exists, update its connectedTo property from known connections
       storagePort.connectedTo = targetConnections.get('storage');
     }
+  } else {
+    // Remove storage port if parameter doesn't exist
+    const storagePortIndex = node.inputs.findIndex(input => input.name === 'storage');
+    if (storagePortIndex !== -1) {
+      console.log(`🔄 SYNC: Removing storage port from ${node.id} - no storage parameter`);
+      node.inputs.splice(storagePortIndex, 1);
+    }
   }
   
-  // For other inputs like 'input', make sure they exist and have connections
-  if (node.type.includes('enricher') || node.type.includes('generator')) {
+  // Child nodes should never have an input port
+  if (isChildNodeOfParent) {
+    // Remove any input port from child nodes
+    const inputPortIndex = node.inputs.findIndex(input => input.name === 'input');
+    if (inputPortIndex !== -1) {
+      console.log(`🔄 SYNC: Removing input port from child node ${node.id}`);
+      node.inputs.splice(inputPortIndex, 1);
+    }
+  }
+  // Source nodes should never have an input port
+  else if (node.type.includes('source') || node.id.includes('source-')) {
+    // Remove any input port
+    const inputPortIndex = node.inputs.findIndex(input => input.name === 'input');
+    if (inputPortIndex !== -1) {
+      console.log(`🔄 SYNC: Removing input port from source node ${node.id}`);
+      node.inputs.splice(inputPortIndex, 1);
+    }
+  }
+  // For other inputs like 'input', make sure they exist and have connections for parent enrichers and generators
+  else if ((node.type.includes('enricher') || node.type.includes('generator')) && !isChildNodeOfParent) {
     const inputPort = node.inputs.find(input => input.name === 'input');
     if (!inputPort) {
       // Add the input port if it's missing
@@ -1288,14 +1429,34 @@ function syncSingleNodePorts(
   node.outputs.forEach(output => {
     output.connectedTo = sourceConnections.get(output.name);
   });
+  
+  // Child nodes should never have output ports
+  if (isChildNodeOfParent) {
+    // Remove output ports from child nodes
+    const outputPortIndex = node.outputs.findIndex(output => output.name === 'output');
+    if (outputPortIndex !== -1) {
+      console.log(`🔄 SYNC: Removing output port from child node ${node.id}`);
+      node.outputs.splice(outputPortIndex, 1);
+    }
+  }
 }
 
 // Helper function to ensure a node has all required ports based on its type
 function ensureRequiredPorts(node: Node): void {
-  // Source nodes need provider, storage inputs and output output
+  // Check if this is a child node inside a parent (based on hierarchy properties)
+  const isChildNodeOfParent = node.id && (
+    (node.id.includes('source-') && node.id !== 'sources-group') ||
+    (node.id.includes('enricher-') && node.id !== 'enrichers-group') ||
+    (node.id.includes('generator-') && node.id !== 'generators-group')
+  );
+  
+  // Source nodes need provider, storage inputs and output output (but not for child nodes)
   if (node.type.includes('source') || node.id.includes('source-')) {
-    // Check for required input ports
-    if (!node.inputs.some(input => input.name === 'provider')) {
+    // Check for required input ports - only if they exist in parameters
+    const needsProvider = node.params && 'provider' in node.params && node.params.provider;
+    const needsStorage = node.params && 'storage' in node.params && node.params.storage;
+    
+    if (needsProvider && !node.inputs.some(input => input.name === 'provider')) {
       node.inputs.push({
         name: 'provider',
         type: 'provider',
@@ -1303,7 +1464,7 @@ function ensureRequiredPorts(node: Node): void {
       });
     }
     
-    if (!node.inputs.some(input => input.name === 'storage')) {
+    if (needsStorage && !node.inputs.some(input => input.name === 'storage')) {
       node.inputs.push({
         name: 'storage',
         type: 'storage',
@@ -1311,8 +1472,15 @@ function ensureRequiredPorts(node: Node): void {
       });
     }
     
-    // Check for required output port
-    if (!node.outputs.some(output => output.name === 'output')) {
+    // Remove any incorrect 'input' ports from source nodes
+    const inputPortIndex = node.inputs.findIndex(input => input.name === 'input');
+    if (inputPortIndex !== -1) {
+      console.log(`Removing incorrect input port from source node ${node.id}`);
+      node.inputs.splice(inputPortIndex, 1);
+    }
+    
+    // Check for required output port - only for parent nodes, not child nodes
+    if (!isChildNodeOfParent && !node.outputs.some(output => output.name === 'output')) {
       node.outputs.push({
         name: 'output',
         type: 'data',
@@ -1321,11 +1489,14 @@ function ensureRequiredPorts(node: Node): void {
     }
   }
   
-  // Enricher/Generator nodes need provider, storage, input inputs and output output
+  // Enricher/Generator nodes need provider, storage, input inputs and output output (but not for child nodes)
   if (node.type.includes('enricher') || node.type.includes('generator') || 
       node.id.includes('enricher-') || node.id.includes('generator-')) {
-    // Check for required input ports
-    if (!node.inputs.some(input => input.name === 'provider')) {
+    // Check for required input ports - only add provider/storage if they exist in parameters
+    const needsProvider = node.params && 'provider' in node.params && node.params.provider;
+    const needsStorage = node.params && 'storage' in node.params && node.params.storage;
+    
+    if (needsProvider && !node.inputs.some(input => input.name === 'provider')) {
       node.inputs.push({
         name: 'provider',
         type: 'provider',
@@ -1333,7 +1504,7 @@ function ensureRequiredPorts(node: Node): void {
       });
     }
     
-    if (!node.inputs.some(input => input.name === 'storage')) {
+    if (needsStorage && !node.inputs.some(input => input.name === 'storage')) {
       node.inputs.push({
         name: 'storage',
         type: 'storage',
@@ -1341,16 +1512,24 @@ function ensureRequiredPorts(node: Node): void {
       });
     }
     
-    if (!node.inputs.some(input => input.name === 'input')) {
+    // Only add the input port for parent nodes, not for child nodes
+    if (!isChildNodeOfParent && !node.inputs.some(input => input.name === 'input')) {
       node.inputs.push({
         name: 'input',
         type: 'data',
         connectedTo: undefined
       });
+    } else if (isChildNodeOfParent) {
+      // Remove any input port from child nodes
+      const inputPortIndex = node.inputs.findIndex(input => input.name === 'input');
+      if (inputPortIndex !== -1) {
+        console.log(`Removing input port from child enricher/generator node ${node.id}`);
+        node.inputs.splice(inputPortIndex, 1);
+      }
     }
     
-    // Check for required output port
-    if (!node.outputs.some(output => output.name === 'output')) {
+    // Check for required output port - only for parent nodes, not child nodes
+    if (!isChildNodeOfParent && !node.outputs.some(output => output.name === 'output')) {
       node.outputs.push({
         name: 'output',
         type: 'data',
@@ -1378,6 +1557,15 @@ function ensureRequiredPorts(node: Node): void {
         type: 'storage',
         connectedTo: undefined
       });
+    }
+  }
+  
+  // Remove output ports from child nodes
+  if (isChildNodeOfParent) {
+    const outputIndex = node.outputs.findIndex(output => output.name === 'output');
+    if (outputIndex !== -1) {
+      console.log(`🔄 SYNC: Removing output port from child node ${node.id}`);
+      node.outputs.splice(outputIndex, 1);
     }
   }
 }
@@ -1424,6 +1612,28 @@ export function cleanupStaleConnections(nodes: Node[], connections: Connection[]
     
     if (!shouldShowPort(targetNode, connection.to.input, true)) {
       console.log(`🧹 CLEANUP: Removing connection - input port ${connection.to.input} should not be shown on node ${connection.to.nodeId}`);
+      return false;
+    }
+    
+    // For provider and storage connections, validate that they exist in params
+    if (inputPort.name === 'provider' && (!targetNode.params || !targetNode.params.provider)) {
+      console.log(`🧹 CLEANUP: Removing provider connection - target node ${targetNode.id} has no provider parameter`);
+      return false;
+    }
+    
+    if (inputPort.name === 'storage' && (!targetNode.params || !targetNode.params.storage)) {
+      console.log(`🧹 CLEANUP: Removing storage connection - target node ${targetNode.id} has no storage parameter`);
+      return false;
+    }
+    
+    // Also validate that the provider/storage name matches the source node name
+    if (inputPort.name === 'provider' && targetNode.params && targetNode.params.provider !== sourceNode.name) {
+      console.log(`🧹 CLEANUP: Removing provider connection - parameter (${targetNode.params.provider}) doesn't match source node name (${sourceNode.name})`);
+      return false;
+    }
+    
+    if (inputPort.name === 'storage' && targetNode.params && targetNode.params.storage !== sourceNode.name) {
+      console.log(`🧹 CLEANUP: Removing storage connection - parameter (${targetNode.params.storage}) doesn't match source node name (${sourceNode.name})`);
       return false;
     }
     

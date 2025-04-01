@@ -1,19 +1,22 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { Config } from '../types';
+import { Config, PluginInfo } from '../types';
 import { PluginParamDialog } from './PluginParamDialog';
 import { ConfigDialog } from './ConfigDialog';
+import { PluginPalette } from './PluginPalette';
 import { drawConnection, drawConnectionLine, drawNode, drawGrid } from '../utils/nodeRenderer';
 import { findPortAtCoordinates, isPointInNode, removeNodeConnection, handleNodeConnection, findNodeAtCoordinates, findNodeRecursive, isPointInCollapseButton, syncNodePortsWithParams, cleanupStaleConnections } from '../utils/nodeHandlers';
 import { Node, Connection, PortInfo } from '../types/nodeTypes';
 import { configStateManager } from '../services/ConfigStateManager';
+import { pluginRegistry } from '../services/PluginRegistry';
 import { animateCenterView } from '../utils/animation/centerViewAnimation';
 
 interface NodeGraphProps {
   config: Config;
   onConfigUpdate: (config: Config) => void;
+  saveConfiguration?: () => Promise<boolean>;
 }
 
-export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) => {
+export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, saveConfiguration }) => {
   // Get the initial state from the ConfigStateManager
   const [nodes, setNodes] = useState<Node[]>(configStateManager.getNodes());
   const [connections, setConnections] = useState<Connection[]>(configStateManager.getConnections());
@@ -36,6 +39,12 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
     minX: -1000, maxX: 1000, 
     minY: -1000, maxY: 1000
   });
+  const [pluginsLoaded, setPluginsLoaded] = useState(pluginRegistry.isPluginsLoaded());
+  const [draggedPlugin, setDraggedPlugin] = useState<PluginInfo | null>(null);
+  const [dragPosition, setDragPosition] = useState<{ x: number, y: number } | null>(null);
+  const [showPalette, setShowPalette] = useState(true);
+  const [paletteAnimation, setPaletteAnimation] = useState<'opening' | 'closing' | 'idle'>('idle');
+  const [paletteVisible, setPaletteVisible] = useState(true);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const backBufferRef = useRef<HTMLCanvasElement | null>(null);
@@ -51,19 +60,87 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
   // Add lastClickTime for tracking double clicks
   const lastClickTimeRef = useRef<number>(0);
 
+  // Add a useRef to track animation
+  const emptyStateAnimationRef = useRef<number | null>(null);
+  const emptyStateOpacityRef = useRef(0.8);
+  const emptyStateIncreasingRef = useRef(true);
+
+  // Load plugins when component mounts
+  useEffect(() => {
+    // Subscribe to plugin loading events
+    const unsubscribe = pluginRegistry.subscribe(() => {
+      setPluginsLoaded(true);
+    });
+
+    // Load plugins if not already loaded
+    if (!pluginRegistry.isPluginsLoaded()) {
+      pluginRegistry.loadPlugins()
+        .then(() => {
+          console.log("NodeGraph: Plugins loaded successfully");
+        })
+        .catch(error => {
+          console.error("NodeGraph: Error loading plugins:", error);
+        });
+    }
+
+    return () => {
+      // Clean up subscription
+      unsubscribe();
+    };
+  }, []);
+
   // Initialize ConfigStateManager with the current config
   useEffect(() => {
     console.log("🔄 NodeGraph: initializing with config", config);
     
-    // First check if config is valid before trying to load it
+    // Check if config is valid - if not, create an empty graph for drag and drop
     if (!config || !config.name) {
-      console.log("🔄 NodeGraph: invalid config, skipping initialization");
+      console.log("🔄 NodeGraph: invalid config, initializing empty graph for drag and drop");
+      
+      // Create a minimal default config that satisfies the Config type
+      const emptyConfig: Config = {
+        name: 'new-config',
+        sources: [],
+        enrichers: [],
+        generators: [],
+        ai: [],
+        storage: [],
+        providers: [],
+        settings: {
+          runOnce: false,
+          onlyFetch: false
+        }
+      };
+      
+      // Initialize state manager with empty config
+      configStateManager.loadConfig(emptyConfig);
+      configStateManager.forceSync();
+      
+      // Update local state
+      setNodes([]);
+      setConnections([]);
+      setSelectedNode(null);
+      
+      // Always show palette when starting with empty graph
+      setShowPalette(true);
+      
+      // Force a redraw to show empty graph
+      setTimeout(() => {
+        if (canvasRef.current) {
+          drawToBackBuffer();
+          drawToScreen();
+        }
+      }, 0);
+      
       return;
     }
     
     try {
       // Load the config into the state manager
       configStateManager.loadConfig(config);
+      
+      // Force immediate cleanup of connections and synchronization of node ports
+      configStateManager.forceSync();
       
       // Immediately update our local state with the latest from the state manager
       setNodes(configStateManager.getNodes());
@@ -120,7 +197,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
               }
               
               // Add padding to the bounds
-              const padding = 200;
+              const padding = 75;
               minX -= padding;
               minY -= padding;
               maxX += padding;
@@ -152,7 +229,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
               
               console.log(`Setting scale=${targetScale}, offset=(${targetOffset.x},${targetOffset.y})`);
               
-              // Apply changes directly
+              // Apply changes directly without animation
               setScale(targetScale);
               setOffset(targetOffset);
               
@@ -178,7 +255,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
               autoCenterOnLoad();
             }
           }
-        }, 500); // Give canvas time to initialize
+        }, 0); // Reduced timeout to 0 to prevent initial zoom
       }
     } catch (error) {
       console.error("Error initializing ConfigStateManager:", error);
@@ -234,7 +311,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
 
   // Check if node is outside current canvas bounds and expand if needed
   const checkAndExpandCanvasBounds = useCallback((nodePosition: { x: number, y: number }, nodeWidth = 200, nodeHeight = 80) => {
-    const padding = 200; // Padding around nodes to prevent them from being right at the edge
+    const padding = 75; // Padding around nodes to prevent them from being right at the edge
     
     // Only check bounds without immediately updating state for smoother performance
     let needsUpdate = false;
@@ -562,8 +639,9 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
     const ctx = backBufferRef.current.getContext('2d');
     if (!ctx) return;
     
-    // Clear the back buffer
-    ctx.clearRect(0, 0, backBufferRef.current.width, backBufferRef.current.height);
+    // Clear the back buffer with a dark background
+    ctx.fillStyle = '#121212'; // Very dark background
+    ctx.fillRect(0, 0, backBufferRef.current.width, backBufferRef.current.height);
     
     // Save canvas state for transformations
     ctx.save();
@@ -577,6 +655,31 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
     
     // Sync node ports with parameters to ensure we're not showing invalid connections
     const syncedNodes = syncNodePortsWithParams(nodes);
+    
+    // Show help message if graph is empty
+    if (syncedNodes.length === 0 && !draggedPlugin) {
+      // Reset transformations to draw in screen coordinates
+      ctx.restore();
+      ctx.save();
+      
+      // Draw empty state message
+      const centerX = backBufferRef.current.width / 2;
+      const centerY = backBufferRef.current.height / 2;
+      
+      ctx.font = '18px Arial';
+      ctx.fillStyle = `rgba(251, 191, 36, ${emptyStateOpacityRef.current})`; // Brighter yellow amber color
+      ctx.textAlign = 'center';
+      
+      ctx.fillText('Drag plugins from the sidebar to build your graph', centerX, centerY);
+      
+      // Restore transformations for further drawing
+      ctx.restore();
+      ctx.save();
+      
+      // Re-apply zoom and pan for subsequent drawing
+      ctx.translate(offset.x, offset.y);
+      ctx.scale(scale, scale);
+    }
     
     // Draw connections
     if (connections.length > 0) {
@@ -599,6 +702,25 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
       syncedNodes.forEach(node => {
         drawNode(ctx, node, scale, hoveredPort, selectedNode);
       });
+    }
+    
+    // Draw dragged plugin ghost/preview
+    if (draggedPlugin && dragPosition) {
+      // Create a simple temporary node object for the dragged plugin
+      const tempNode: Node = {
+        id: 'temp-dragged-node',
+        name: draggedPlugin.name,
+        type: draggedPlugin.type,
+        position: { x: dragPosition.x, y: dragPosition.y },
+        inputs: [],
+        outputs: [],
+        params: {}
+      };
+      
+      // Draw a semi-transparent node to indicate it's being dragged
+      ctx.globalAlpha = 0.7;
+      drawNode(ctx, tempNode, scale, null, null);
+      ctx.globalAlpha = 1.0;
     }
     
     // Draw connection line if currently connecting
@@ -625,7 +747,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
     }
     
     ctx.restore();
-  }, [nodes, connections, selectedNode, scale, offset, hoveredPort, connectingFrom, mousePosition]);
+  }, [nodes, connections, selectedNode, scale, offset, hoveredPort, connectingFrom, mousePosition, draggedPlugin, dragPosition]);
 
   // Draw back buffer to the screen
   const drawToScreen = useCallback(() => {
@@ -972,6 +1094,18 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
             plugin.type = nodeType;
         }
         
+        // Get plugin schema from the registry based on the node's plugin name and type
+        const pluginSchema = pluginRegistry.findPlugin(plugin.name, plugin.type);
+        if (pluginSchema) {
+          console.log('Found plugin schema from registry:', pluginSchema);
+          // Add schema information to the plugin
+          plugin.constructorInterface = pluginSchema.constructorInterface;
+          plugin.configSchema = pluginSchema.configSchema;
+          plugin.description = pluginSchema.description;
+        } else {
+          console.log('Plugin schema not found in registry for:', plugin.name, plugin.type);
+        }
+        
         console.log('Opening plugin dialog for:', plugin);
         
         // Open dialog to edit params
@@ -980,6 +1114,8 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
       }, 200); // Increase timeout to ensure sync is complete
     }
   };
+
+  // Update handleMouseDown to handle clicks on the delete button:
 
   // Update handleMouseDown to handle single vs double clicks
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1035,7 +1171,10 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
               // Remove the connection
               const result = removeNodeConnection(nodes, connectionToRemove);
               if (result) {
-                const [updatedNodes, updatedConnections] = result;
+                let [updatedNodes, updatedConnections] = result;
+                
+                // Don't clear provider/storage params directly
+                // Let ConfigStateManager handle this through syncConfigWithNodes
                 
                 // First update our local state for immediate visual feedback
                 setNodes(updatedNodes);
@@ -1148,27 +1287,12 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
               drawToBackBuffer();
               drawToScreen();
               
-              // Then sync with server without disturbing the UI
+              // Then sync without saving to server
               setTimeout(() => {
                 configStateManager.forceSync();
                 
-                try {
-                  const configName = config.name || 'default';
-                  const currentConfig = configStateManager.getConfig();
-                  
-                  // Import the API function and save
-                  import('../services/api').then(({ saveConfig }) => {
-                    saveConfig(configName, currentConfig)
-                      .then(() => {
-                        onConfigUpdate(currentConfig);
-                      })
-                      .catch(error => {
-                        console.error('Error saving config after connection update:', error);
-                      });
-                  });
-                } catch (error) {
-                  console.error('Error in save after connection update:', error);
-                }
+                // Update the parent component with the latest config
+                onConfigUpdate(configStateManager.getConfig());
               }, 100);
             }
           } catch (error) {
@@ -1178,6 +1302,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
       }
 
       setConnectingFrom(null);
+      setMousePosition(null);
     }
 
     handlePanEnd();
@@ -1187,55 +1312,115 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
 
   // Handle adding/editing a plugin
   const handleAddPlugin = async (updatedPlugin: any) => {
-    console.log('🔥 NodeGraph: RECEIVED PLUGIN UPDATE:', JSON.stringify(updatedPlugin));
+    // Update with the modified plugin
+    console.log("Adding/Updating plugin:", updatedPlugin);
     
-    // First force ConfigStateManager to sync before applying the update
-    configStateManager.forceSync();
-    
-    // Small delay to ensure sync is complete
-    await new Promise(resolve => setTimeout(resolve, 50));
-    
-    // Update the state via ConfigStateManager
-    const result = configStateManager.updatePlugin(updatedPlugin);
-    console.log('🔥 NodeGraph: Plugin update result:', result);
-    
-    // Force sync again to propagate the change to all components
-    configStateManager.forceSync();
-    
-    // Force redraw to show the changes
-    forceRedraw();
-    
-    // Close the dialog after a short delay to ensure state is updated
-    setTimeout(() => {
-      setShowPluginDialog(false);
-      setSelectedPlugin(null);
+    // Check if this is a new plugin (no ID) - typically from drag and drop
+    if (!updatedPlugin.id) {
+      // Generate an ID based on plugin type
+      let pluginType = updatedPlugin.type;
+      let targetArray: keyof Config;
       
-      // After the dialog is closed, save the config to the server
-      try {
-        const configName = config.name || 'default';
-        const currentConfig = configStateManager.getConfig();
-        
-        // Get the saveConfig API function
-        import('../services/api').then(({ saveConfig }) => {
-          saveConfig(configName, currentConfig)
-            .then(() => {
-              console.log(`Configuration ${configName} saved after plugin update`);
-              // Update the parent component's config state
-              onConfigUpdate(currentConfig);
-              
-              // Force one final sync to ensure all components have the latest state
-              setTimeout(() => {
-                configStateManager.forceSync();
-              }, 100);
-            })
-            .catch(error => {
-              console.error('Error saving config after plugin update:', error);
-            });
-        });
-      } catch (error) {
-        console.error('Error in save after plugin update:', error);
+      // Map the plugin type to the appropriate config array
+      switch (pluginType) {
+        case 'source':
+          pluginType = 'source';
+          targetArray = 'sources';
+          break;
+        case 'enricher':
+          pluginType = 'enricher';
+          targetArray = 'enrichers';
+          break;
+        case 'generator':
+          pluginType = 'generator';
+          targetArray = 'generators';
+          break;
+        case 'ai':
+          pluginType = 'ai';
+          targetArray = 'ai';
+          break;
+        case 'storage':
+          pluginType = 'storage';
+          targetArray = 'storage';
+          break;
+        default:
+          pluginType = updatedPlugin.type;
+          // Default to a known config key
+          targetArray = 'sources';
       }
-    }, 200); // Increased delay to ensure sync has time to complete
+      
+      // Get updated config to add the new plugin
+      const currentConfig = configStateManager.getConfig();
+      
+      // If we're working with an empty config, make sure it has a temporary name
+      if (!currentConfig.name) {
+        currentConfig.name = 'new-config';
+      }
+      
+      // Ensure the target array exists in the config
+      if (!Array.isArray(currentConfig[targetArray])) {
+        currentConfig[targetArray] = [];
+      }
+      
+      // Generate index based on current array length
+      const index = currentConfig[targetArray].length;
+      
+      // Generate ID for the new plugin
+      updatedPlugin.id = `${pluginType}-${index}`;
+      
+      // Include position data from the drop location
+      const pluginConfig = {
+        name: updatedPlugin.name,
+        type: pluginType,
+        params: updatedPlugin.params || {},
+        position: updatedPlugin.position || { x: 300, y: 300 },
+      };
+      
+      // Add the new plugin to the config
+      currentConfig[targetArray].push(pluginConfig as any);
+      
+      // Update the config
+      configStateManager.updateConfig(currentConfig);
+      
+      // Force a sync to rebuild nodes from the config
+      configStateManager.forceSync();
+      
+      console.log(`Added new plugin "${updatedPlugin.name}" to ${targetArray}`, pluginConfig);
+      
+      // Update local state directly for new plugins
+      setNodes(configStateManager.getNodes());
+      setConnections(configStateManager.getConnections());
+      
+      // Update parent component's config
+      onConfigUpdate(configStateManager.getConfig());
+    }
+    else {
+      // For existing plugins, use updatePlugin
+      // Try to update the plugin in the config state manager
+      const updated = configStateManager.updatePlugin(updatedPlugin);
+      
+      if (!updated) {
+        console.error("Failed to update plugin in state manager");
+        return;
+      }
+      
+      console.log("Plugin updated successfully in state manager");
+      
+      // Update local state
+      setNodes(configStateManager.getNodes());
+      setConnections(configStateManager.getConnections());
+      
+      // Update parent component's config
+      onConfigUpdate(configStateManager.getConfig());
+    }
+    
+    // Close the plugin dialog
+    setShowPluginDialog(false);
+    setSelectedPlugin(null);
+    
+    // Ensure the changes are immediately visible
+    drawToBackBuffer();
+    drawToScreen();
   };
 
   // Handle config save
@@ -1254,11 +1439,22 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
       // Small delay to ensure sync has completed
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      // Get the current config name from the existing config
-      const configName = config.name || 'default';
-      
-      // Get the latest state from ConfigStateManager - single source of truth
+      // Get the current config from ConfigStateManager - single source of truth
       const currentConfig = configStateManager.getConfig();
+      
+      // If the config doesn't have a name or has the default empty name, prompt for a name
+      let configName = currentConfig.name;
+      if (!configName || configName === 'new-config') {
+        const userProvidedName = prompt('Please enter a name for this configuration', 'my-configuration');
+        // If user cancels the prompt, abort saving
+        if (!userProvidedName) {
+          return;
+        }
+        configName = userProvidedName;
+        // Update the config with the new name
+        currentConfig.name = configName;
+        configStateManager.updateConfig(currentConfig);
+      }
       
       // Call the API to save the config to the server
       const { saveConfig } = await import('../services/api');
@@ -1359,122 +1555,245 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate }) 
     };
   }, [selectedPlugin, showPluginDialog]);
 
+  // Handle plugin drag from palette
+  const handleDragPlugin = (plugin: PluginInfo, clientX: number, clientY: number) => {
+    setDraggedPlugin(plugin);
+    
+    // Convert client coordinates to canvas coordinates
+    if (canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = (clientX - rect.left - offset.x) / scale;
+      const y = (clientY - rect.top - offset.y) / scale;
+      setDragPosition({ x, y });
+    }
+  };
+  
+  // Handle drop of a plugin from palette
+  const handleDropPlugin = (e: React.DragEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    
+    if (!draggedPlugin) return;
+    
+    // Get drop position in canvas coordinates
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const dropX = (e.clientX - rect.left - offset.x) / scale;
+    const dropY = (e.clientY - rect.top - offset.y) / scale;
+    
+    // Create new plugin instance with the full schema from the draggedPlugin
+    const newPlugin = {
+      type: draggedPlugin.type,
+      name: draggedPlugin.name,
+      params: {},
+      position: { x: dropX, y: dropY },
+      // Include constructor interface and config schema from the original plugin definition
+      constructorInterface: draggedPlugin.constructorInterface,
+      configSchema: draggedPlugin.configSchema,
+      description: draggedPlugin.description
+    };
+    
+    console.log('Creating new plugin from drag and drop:', newPlugin);
+    
+    // Set as selected plugin
+    setSelectedPlugin(newPlugin);
+    
+    // Show plugin dialog for configuration
+    setShowPluginDialog(true);
+    
+    // Clear drag state
+    setDraggedPlugin(null);
+    setDragPosition(null);
+  };
+  
+  // Allow dropping on canvas
+  const handleDragOver = (e: React.DragEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    
+    // Update drag position for visual feedback
+    if (draggedPlugin && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left - offset.x) / scale;
+      const y = (e.clientY - rect.top - offset.y) / scale;
+      setDragPosition({ x, y });
+    }
+  };
+  
+  // Handle drag leaving canvas
+  const handleDragLeave = () => {
+    // Clear drag position but keep dragged plugin
+    setDragPosition(null);
+  };
+  
+  // Toggle palette visibility with animation
+  const togglePalette = () => {
+    if (paletteAnimation === 'idle') {
+      if (paletteVisible) {
+        // Start closing animation
+        setPaletteAnimation('closing');
+        setShowPalette(false);
+        // After animation completes, hide palette completely
+        setTimeout(() => {
+          setPaletteVisible(false);
+          setPaletteAnimation('idle');
+        }, 300); // Match animation duration
+      } else {
+        // Make palette visible but start with animation
+        setPaletteVisible(true);
+        setShowPalette(true);
+        setPaletteAnimation('opening');
+        // After animation completes, set to idle
+        setTimeout(() => {
+          setPaletteAnimation('idle');
+        }, 300); // Match animation duration
+      }
+    }
+  };
+
+  // Add animation effect for empty state
+  useEffect(() => {
+    // Only animate when graph is empty and not dragging
+    if (nodes.length === 0 && !draggedPlugin) {
+      let animationFrameId: number | null = null;
+      
+      const animateEmptyState = () => {
+        // Update opacity value for pulsing effect
+        if (emptyStateIncreasingRef.current) {
+          emptyStateOpacityRef.current += 0.005;
+          if (emptyStateOpacityRef.current >= 0.95) {
+            emptyStateIncreasingRef.current = false;
+          }
+        } else {
+          emptyStateOpacityRef.current -= 0.005;
+          if (emptyStateOpacityRef.current <= 0.6) {
+            emptyStateIncreasingRef.current = true;
+          }
+        }
+        
+        // Redraw with updated opacity
+        drawToBackBuffer();
+        drawToScreen();
+        
+        // Continue animation
+        animationFrameId = requestAnimationFrame(animateEmptyState);
+      };
+      
+      // Start animation
+      animationFrameId = requestAnimationFrame(animateEmptyState);
+      emptyStateAnimationRef.current = animationFrameId;
+      
+      // Clean up animation on unmount or when nodes are added
+      return () => {
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+        }
+      };
+    }
+  }, [nodes.length, draggedPlugin, drawToBackBuffer, drawToScreen]);
+
   return (
-    <div className="flex flex-col h-full w-full">
+    <div className="w-full h-full flex relative">
       <div 
-        ref={containerRef} 
-        className="flex-1 relative w-full h-full" 
-        style={{ minHeight: '500px', border: '1px solid #2d3748' }}
+        className={`${paletteVisible ? 'block' : 'hidden'} absolute top-0 left-0 bottom-0 z-10 transition-all duration-300 ease-in-out ${
+          paletteAnimation === 'opening' ? 'animate-slide-in-left' : 
+          paletteAnimation === 'closing' ? 'animate-slide-out-left' : ''
+        }`}
+        style={{
+          width: '20rem', // 320px same as w-80
+          transform: paletteAnimation === 'closing' ? 'translateX(-100%)' : 
+                     paletteAnimation === 'opening' ? 'translateX(0)' : '',
+          transition: 'transform 300ms ease-in-out',
+          boxShadow: '5px 0 15px rgba(0, 0, 0, 0.5)'
+        }}
       >
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0"
-          style={{ 
-            width: '100%', 
-            height: '100%', 
-            background: '#1a202c',
-            cursor: isPanning ? 'grabbing' : hoveredPort ? 'pointer' : 'default' 
-          }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-        />
-        <div className="absolute top-2 right-2 flex space-x-2">
+        <PluginPalette onDragPlugin={handleDragPlugin} />
+      </div>
+      
+      <div 
+        className="flex-1 flex flex-col relative transition-all duration-300 ease-in-out"
+        style={{
+          marginLeft: paletteVisible && paletteAnimation !== 'closing' ? '20rem' : '0'
+        }}
+      >
+        <div className="absolute top-4 left-4 z-10 flex space-x-2">
           <button
-            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 shadow-md"
+            onClick={togglePalette}
+            className="w-10 h-10 bg-stone-700 text-amber-300 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30 transition-colors duration-300"
+            title={paletteVisible ? "Hide plugin palette" : "Show plugin palette"}
+            disabled={paletteAnimation !== 'idle'}
+          >
+            {paletteVisible ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 4 16 16" stroke="currentColor" className="transition-transform duration-300">
+                <rect x="3" y="4" width="2" height="16" rx="1" fill="currentColor" />
+                <polyline points="14,8 10,12 14,16" fill="none" stroke="currentColor" strokeWidth="2" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 4 16 16" stroke="currentColor" className="transition-transform duration-300">
+                <rect x="3" y="4" width="2" height="16" rx="1" fill="currentColor" />
+                <polyline points="10,8 14,12 10,16" fill="none" stroke="currentColor" strokeWidth="2" />
+              </svg>
+            )}
+          </button>
+          
+          <button
+            onClick={() => {
+              centerView();
+            }}
+            className="w-10 h-10 bg-stone-700 text-amber-300 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30"
+            title="Center view"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+              <line x1="12" y1="3" x2="12" y2="6" stroke="currentColor" strokeWidth="2" />
+              <line x1="12" y1="18" x2="12" y2="21" stroke="currentColor" strokeWidth="2" />
+              <line x1="3" y1="12" x2="6" y2="12" stroke="currentColor" strokeWidth="2" />
+              <line x1="18" y1="12" x2="21" y2="12" stroke="currentColor" strokeWidth="2" />
+              <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="2" fill="none" />
+            </svg>
+          </button>
+          
+          <button
+            onClick={() => setShowConfigDialog(true)}
+            className="w-10 h-10 bg-stone-700 text-amber-300 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30"
+            title="Configure node graph"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/>
+            </svg>
+          </button>
+          
+          <button
             onClick={handleSaveToServer}
+            className="w-10 h-10 bg-amber-500 text-gray-900 rounded hover:bg-amber-400 focus:outline-none flex items-center justify-center shadow-md"
+            title="Save configuration to server"
           >
-            Save
-          </button>
-          <button
-            className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 shadow-md"
-            onClick={() => {
-              drawToBackBuffer();
-              drawToScreen();
-            }}
-          >
-            Refresh
-          </button>
-          <button
-            className="px-3 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700 shadow-md"
-            onClick={() => {
-              // First, sync node ports with parameters to ensure ports exist
-              const syncedNodes = syncNodePortsWithParams(nodes);
-              
-              // Now update any connections we have 
-              const cleanedConnections = cleanupStaleConnections(syncedNodes, connections);
-              
-              // Now repair the connections to ensure they match between nodes
-              const repairedConnections = [...cleanedConnections];
-              
-              // For each connection, make sure both sides of the connection are properly connected
-              repairedConnections.forEach(connection => {
-                // Find the source and target nodes
-                const sourceNode = findNodeRecursive(syncedNodes, connection.from.nodeId);
-                const targetNode = findNodeRecursive(syncedNodes, connection.to.nodeId);
-                
-                if (sourceNode && targetNode) {
-                  // Fix the source output port
-                  const sourceOutput = sourceNode.outputs.find(output => output.name === connection.from.output);
-                  if (sourceOutput) {
-                    sourceOutput.connectedTo = connection.to.nodeId;
-                  }
-                  
-                  // Fix the target input port
-                  const targetInput = targetNode.inputs.find(input => input.name === connection.to.input);
-                  if (targetInput) {
-                    targetInput.connectedTo = connection.from.nodeId;
-                  }
-                }
-              });
-              
-              // Update state with the fixed nodes and connections
-              setNodes(syncedNodes);
-              setConnections(repairedConnections);
-              
-              // Update state via ConfigStateManager
-              configStateManager.setNodes(syncedNodes);
-              configStateManager.setConnections(repairedConnections);
-              
-              // Force synchronization of state
-              configStateManager.forceSync();
-              
-              // Force redraw
-              drawToBackBuffer();
-              drawToScreen();
-              
-              // User feedback
-              console.log('🔧 Fixed connections');
-              alert('Connections have been repaired');
-            }}
-          >
-            Fix Connections
-          </button>
-        </div>
-        <div className="absolute bottom-4 right-4">
-          <button
-            className="w-12 h-12 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 flex items-center justify-center shadow-lg"
-            onClick={centerView}
-            title="Center Nodes (Spacebar)"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M10 3.5a1.5 1.5 0 013 0V4a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-.5a1.5 1.5 0 000 3h.5a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-.5a1.5 1.5 0 00-3 0v.5a1 1 0 01-1 1H6a1 1 0 01-1-1v-3a1 1 0 00-1-1h-.5a1.5 1.5 0 010-3H4a1 1 0 001-1V6a1 1 0 011-1h3a1 1 0 001-1v-.5z" />
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H9.5a1 1 0 0 0-1 1v7.293l2.646-2.647a.5.5 0 0 1 .708.708l-3.5 3.5a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L7.5 9.293V2a2 2 0 0 1 2-2H14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h2.5a.5.5 0 0 1 0 1H2z"/>
             </svg>
           </button>
         </div>
+        
+        <div className="flex-1 overflow-hidden" ref={containerRef}>
+          <canvas
+            ref={canvasRef}
+            className="w-full h-full"
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onDragOver={handleDragOver}
+            onDrop={handleDropPlugin}
+            onDragLeave={handleDragLeave}
+          ></canvas>
+        </div>
       </div>
+      
       {showPluginDialog && selectedPlugin && (
         <PluginParamDialog
           plugin={selectedPlugin}
           isOpen={showPluginDialog}
-          onClose={() => {
-            setShowPluginDialog(false);
-            setSelectedPlugin(null);
-          }}
+          onClose={() => setShowPluginDialog(false)}
           onAdd={handleAddPlugin}
         />
       )}
+      
       {showConfigDialog && (
         <ConfigDialog
           config={config}

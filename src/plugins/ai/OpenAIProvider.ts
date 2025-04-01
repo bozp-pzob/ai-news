@@ -25,12 +25,6 @@ export class OpenAIProvider implements AiProvider {
   static constructorInterface = {
     parameters: [
       {
-        name: 'name',
-        type: 'string',
-        required: true,
-        description: 'Name of the OpenAI provider'
-      },
-      {
         name: 'apiKey',
         type: 'string',
         required: true,

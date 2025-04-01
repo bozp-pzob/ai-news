@@ -13,12 +13,6 @@ export class SQLiteStorage implements StoragePlugin {
   static constructorInterface = {
     parameters: [
       {
-        name: 'name',
-        type: 'string',
-        required: true,
-        description: 'Name of the SQLite storage instance'
-      },
-      {
         name: 'dbPath',
         type: 'string',
         required: true,

@@ -16,12 +16,6 @@ export class SolanaAnalyticsSource implements ContentSource {
   static constructorInterface = {
     parameters: [
       {
-        name: 'name',
-        type: 'string',
-        required: true,
-        description: 'Name of the Solana Analytics source'
-      },
-      {
         name: 'apiKey',
         type: 'string',
         required: true,

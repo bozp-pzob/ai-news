@@ -111,7 +111,7 @@ export function Hero() {
   return (
     <div 
       ref={containerRef}
-      className="relative min-h-screen overflow-hidden bg-zinc-950"
+      className="relative min-h-screen overflow-hidden bg-stone-950"
       onMouseMove={handleMouseMove}
     >
       {/* 3D Background */}
@@ -124,7 +124,7 @@ export function Hero() {
       <div className="relative grid grid-cols-1 lg:grid-cols-2 min-h-screen">
         {/* Left Section */}
         <div className="relative flex flex-col justify-center p-8 lg:p-16">
-          <div className="absolute inset-0 bg-gradient-to-br from-zinc-950/90 to-transparent transform -skew-x-12" />
+          <div className="absolute inset-0 bg-gradient-to-br from-stone-950/90 to-transparent transform -skew-x-12" />
 
           <div className="relative space-y-8">
             <motion.div
@@ -132,8 +132,8 @@ export function Hero() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.8 }}
             >
-              <div className="inline-block px-4 py-1 mb-4 border border-zinc-800 rounded-full">
-                <span className="text-sm font-mono text-zinc-400">v1.0.0 BETA</span>
+              <div className="inline-block px-4 py-1 mb-4 border border-stone-800 rounded-full">
+                <span className="text-sm font-mono text-stone-400">v1.0.0 BETA</span>
               </div>
               <h1 className="text-5xl lg:text-7xl font-bold tracking-tighter mb-4">
                 <span className="block text-white">AI-News</span>
@@ -141,7 +141,7 @@ export function Hero() {
                   Aggregator
                 </span>
               </h1>
-              <p className="text-lg text-zinc-400 max-w-md">
+              <p className="text-lg text-stone-400 max-w-md">
                 Experience content aggregation reimagined through the lens of artificial intelligence.
               </p>
             </motion.div>
@@ -168,7 +168,7 @@ export function Hero() {
                 onClick={openGithub}
                 size="lg"
                 variant="outline"
-                className="relative group border-zinc-800 hover:border-zinc-700"
+                className="relative group border-stone-800 hover:border-stone-700"
               >
                 <Github className="w-4 h-4 mr-2" />
                 <span>View Source</span>
@@ -180,7 +180,7 @@ export function Hero() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.6 }}
-              className="grid grid-cols-3 gap-8 pt-12 mt-12 border-t border-zinc-800/50"
+              className="grid grid-cols-3 gap-8 pt-12 mt-12 border-t border-stone-800/50"
             >
               {[
                 // { value: "10K+", label: "Active Users" },
@@ -189,7 +189,7 @@ export function Hero() {
               ].map((stat, index) => (
                 <div key={index} className="text-center">
                   <div className="text-2xl font-bold text-white">{stat.value}</div>
-                  <div className="text-sm text-zinc-500">{stat.label}</div>
+                  <div className="text-sm text-stone-500">{stat.label}</div>
                 </div>
               ))}
             </motion.div>

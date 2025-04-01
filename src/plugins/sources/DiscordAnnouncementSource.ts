@@ -19,12 +19,6 @@ export class DiscordAnnouncementSource implements ContentSource {
   static constructorInterface = {
     parameters: [
       {
-        name: 'name',
-        type: 'string',
-        required: true,
-        description: 'Name of the Discord Announcement source'
-      },
-      {
         name: 'botToken',
         type: 'string',
         required: true,

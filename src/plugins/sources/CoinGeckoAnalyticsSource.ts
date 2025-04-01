@@ -15,12 +15,6 @@ export class CoinGeckoAnalyticsSource implements ContentSource {
     static constructorInterface = {
       parameters: [
         {
-          name: 'name',
-          type: 'string',
-          required: true,
-          description: 'Name of the CoinGecko Analytics source'
-        },
-        {
           name: 'tokenSymbols',
           type: 'string[]',
           required: true,
