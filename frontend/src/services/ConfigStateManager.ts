@@ -1212,6 +1212,7 @@ class ConfigStateManager {
     // Force update all subscribers with the current state
     // Use setTimeout to ensure this happens asynchronously
     setTimeout(() => {
+      // Emit events in a specific order to ensure proper update sequence
       this.eventEmitter.emit('config-updated', this.config);
       this.eventEmitter.emit('nodes-updated', this.nodes);
       this.eventEmitter.emit('connections-updated', this.connections);
@@ -1282,6 +1283,9 @@ class ConfigStateManager {
         connectionMap.get(toNodeId)?.push(connection);
       }
       
+      // Create a set of existing node IDs for quick lookup
+      const existingNodeIds = new Set(this.nodes.map(node => node.id));
+      
       // Process all nodes to ensure their data is reflected in the config
       for (const node of this.nodes) {
         if (!node.id) continue;
@@ -1303,6 +1307,41 @@ class ConfigStateManager {
               updatedConfig.sources[index].name = node.name;
               // Update connections (provider and storage)
               this.updateNodeConnections(node, updatedConfig.sources[index], connectionMap);
+              
+              // Handle children if this is a parent node
+              if (node.isParent && node.children) {
+                if (!updatedConfig.sources[index].params) {
+                  updatedConfig.sources[index].params = {};
+                }
+                if (!updatedConfig.sources[index].params.children) {
+                  updatedConfig.sources[index].params.children = [];
+                }
+                
+                // Update each child
+                for (let i = 0; i < node.children.length; i++) {
+                  const child = node.children[i];
+                  if (child && existingNodeIds.has(child.id)) {
+                    // Ensure space for this child
+                    while (updatedConfig.sources[index].params.children.length <= i) {
+                      updatedConfig.sources[index].params.children.push({});
+                    }
+                    
+                    // Update the child params
+                    updatedConfig.sources[index].params.children[i] = {
+                      ...updatedConfig.sources[index].params.children[i],
+                      ...child.params
+                    };
+                  }
+                }
+                
+                // Clean up any deleted children
+                if (updatedConfig.sources[index].params.children) {
+                  updatedConfig.sources[index].params.children = updatedConfig.sources[index].params.children.filter((_: Record<string, any>, i: number) => {
+                    const child = node.children?.[i];
+                    return child && existingNodeIds.has(child.id);
+                  });
+                }
+              }
             }
             break;
           case 'enricher':
@@ -1312,6 +1351,41 @@ class ConfigStateManager {
               updatedConfig.enrichers[index].name = node.name;
               // Update connections (provider and storage)
               this.updateNodeConnections(node, updatedConfig.enrichers[index], connectionMap);
+              
+              // Handle children if this is a parent node
+              if (node.isParent && node.children) {
+                if (!updatedConfig.enrichers[index].params) {
+                  updatedConfig.enrichers[index].params = {};
+                }
+                if (!updatedConfig.enrichers[index].params.children) {
+                  updatedConfig.enrichers[index].params.children = [];
+                }
+                
+                // Update each child
+                for (let i = 0; i < node.children.length; i++) {
+                  const child = node.children[i];
+                  if (child && existingNodeIds.has(child.id)) {
+                    // Ensure space for this child
+                    while (updatedConfig.enrichers[index].params.children.length <= i) {
+                      updatedConfig.enrichers[index].params.children.push({});
+                    }
+                    
+                    // Update the child params
+                    updatedConfig.enrichers[index].params.children[i] = {
+                      ...updatedConfig.enrichers[index].params.children[i],
+                      ...child.params
+                    };
+                  }
+                }
+                
+                // Clean up any deleted children
+                if (updatedConfig.enrichers[index].params.children) {
+                  updatedConfig.enrichers[index].params.children = updatedConfig.enrichers[index].params.children.filter((_: Record<string, any>, i: number) => {
+                    const child = node.children?.[i];
+                    return child && existingNodeIds.has(child.id);
+                  });
+                }
+              }
             }
             break;
           case 'generator':
@@ -1321,6 +1395,41 @@ class ConfigStateManager {
               updatedConfig.generators[index].name = node.name;
               // Update connections (provider and storage)
               this.updateNodeConnections(node, updatedConfig.generators[index], connectionMap);
+              
+              // Handle children if this is a parent node
+              if (node.isParent && node.children) {
+                if (!updatedConfig.generators[index].params) {
+                  updatedConfig.generators[index].params = {};
+                }
+                if (!updatedConfig.generators[index].params.children) {
+                  updatedConfig.generators[index].params.children = [];
+                }
+                
+                // Update each child
+                for (let i = 0; i < node.children.length; i++) {
+                  const child = node.children[i];
+                  if (child && existingNodeIds.has(child.id)) {
+                    // Ensure space for this child
+                    while (updatedConfig.generators[index].params.children.length <= i) {
+                      updatedConfig.generators[index].params.children.push({});
+                    }
+                    
+                    // Update the child params
+                    updatedConfig.generators[index].params.children[i] = {
+                      ...updatedConfig.generators[index].params.children[i],
+                      ...child.params
+                    };
+                  }
+                }
+                
+                // Clean up any deleted children
+                if (updatedConfig.generators[index].params.children) {
+                  updatedConfig.generators[index].params.children = updatedConfig.generators[index].params.children.filter((_: Record<string, any>, i: number) => {
+                    const child = node.children?.[i];
+                    return child && existingNodeIds.has(child.id);
+                  });
+                }
+              }
             }
             break;
           case 'ai':
@@ -1335,79 +1444,6 @@ class ConfigStateManager {
               updatedConfig.storage[index].name = node.name;
             }
             break;
-        }
-      }
-      
-      // Handle parent nodes with children separately
-      for (const node of this.nodes) {
-        if (node.isParent && node.children && node.children.length > 0) {
-          const idParts = node.id.split('-');
-          const type = idParts[0];
-          const index = parseInt(idParts[1]);
-          
-          // Skip non-group nodes or invalid indices
-          if (!type.includes('group') || isNaN(index)) continue;
-          
-          // Determine the actual config array to update
-          let configArray: any[] | undefined;
-          let configKey: string;
-          
-          if (type === 'sources-group') {
-            configArray = updatedConfig.sources;
-            configKey = 'sources';
-          } else if (type === 'enrichers-group') {
-            configArray = updatedConfig.enrichers;
-            configKey = 'enrichers';
-          } else if (type === 'generators-group') {
-            configArray = updatedConfig.generators;
-            configKey = 'generators';
-          } else {
-            continue;
-          }
-          
-          // Update children params in the parent
-          if (configArray && configArray[index]) {
-            // Initialize children params array if needed
-            if (!configArray[index].params) {
-              configArray[index].params = {};
-            }
-            if (!configArray[index].params.children) {
-              configArray[index].params.children = [];
-            }
-            
-            // Update each child
-            for (let i = 0; i < node.children.length; i++) {
-              const child = node.children[i];
-              if (child) {
-                // Ensure space for this child
-                while (configArray[index].params.children.length <= i) {
-                  configArray[index].params.children.push({});
-                }
-                
-                // Update the child params
-                configArray[index].params.children[i] = {
-                  ...configArray[index].params.children[i],
-                  ...child.params
-                };
-                
-                // Update child connections
-                const nodeConnections = connectionMap.get(child.id) || [];
-                for (const connection of nodeConnections) {
-                  if (connection.to.input === 'provider') {
-                    const providerNode = this.findNodeById(connection.from.nodeId);
-                    if (providerNode) {
-                      configArray[index].params.children[i].provider = providerNode.name;
-                    }
-                  } else if (connection.to.input === 'storage') {
-                    const storageNode = this.findNodeById(connection.from.nodeId);
-                    if (storageNode) {
-                      configArray[index].params.children[i].storage = storageNode.name;
-                    }
-                  }
-                }
-              }
-            }
-          }
         }
       }
       
@@ -1528,7 +1564,15 @@ class ConfigStateManager {
         
         // 3. Remove from config's appropriate array's params.children
         if (parentType === 'sources' || parentType === 'source') {
-          if (updatedConfig.sources[parentIndex].params?.children) {
+          if (updatedConfig.sources && updatedConfig.sources[parentIndex]) {
+            // Initialize params if they don't exist
+            if (!updatedConfig.sources[parentIndex].params) {
+              updatedConfig.sources[parentIndex].params = {};
+            }
+            // Initialize children array if it doesn't exist
+            if (!updatedConfig.sources[parentIndex].params.children) {
+              updatedConfig.sources[parentIndex].params.children = [];
+            }
             // Remove the child from the children array
             updatedConfig.sources[parentIndex].params.children.splice(childIndex, 1);
             
@@ -1538,15 +1582,37 @@ class ConfigStateManager {
             }
           }
         } else if (parentType === 'enrichers' || parentType === 'enricher') {
-          if (updatedConfig.enrichers[parentIndex].params?.children) {
+          if (updatedConfig.enrichers && updatedConfig.enrichers[parentIndex]) {
+            // Initialize params if they don't exist
+            if (!updatedConfig.enrichers[parentIndex].params) {
+              updatedConfig.enrichers[parentIndex].params = {};
+            }
+            // Initialize children array if it doesn't exist
+            if (!updatedConfig.enrichers[parentIndex].params.children) {
+              updatedConfig.enrichers[parentIndex].params.children = [];
+            }
+            // Remove the child from the children array
             updatedConfig.enrichers[parentIndex].params.children.splice(childIndex, 1);
+            
+            // If it was the last child, remove the children array
             if (updatedConfig.enrichers[parentIndex].params.children.length === 0) {
               delete updatedConfig.enrichers[parentIndex].params.children;
             }
           }
         } else if (parentType === 'generators' || parentType === 'generator') {
-          if (updatedConfig.generators[parentIndex].params?.children) {
+          if (updatedConfig.generators && updatedConfig.generators[parentIndex]) {
+            // Initialize params if they don't exist
+            if (!updatedConfig.generators[parentIndex].params) {
+              updatedConfig.generators[parentIndex].params = {};
+            }
+            // Initialize children array if it doesn't exist
+            if (!updatedConfig.generators[parentIndex].params.children) {
+              updatedConfig.generators[parentIndex].params.children = [];
+            }
+            // Remove the child from the children array
             updatedConfig.generators[parentIndex].params.children.splice(childIndex, 1);
+            
+            // If it was the last child, remove the children array
             if (updatedConfig.generators[parentIndex].params.children.length === 0) {
               delete updatedConfig.generators[parentIndex].params.children;
             }
@@ -1563,6 +1629,34 @@ class ConfigStateManager {
           }
           return n;
         });
+
+        // 5. Update internal state
+        this.config = updatedConfig;
+        this.nodes = updatedNodes;
+        this.connections = updatedConnections;
+        
+        // 6. Force sync to ensure all state is consistent
+        this.forceSync();
+        
+        // 7. Emit events to notify all listeners
+        this.eventEmitter.emit('config-updated', this.config);
+        this.eventEmitter.emit('nodes-updated', this.nodes);
+        this.eventEmitter.emit('connections-updated', this.connections);
+        
+        // 8. Save to server if the config has a name
+        if (this.config.name && typeof this.config.name === 'string') {
+          import('../services/api').then(({ saveConfig }) => {
+            saveConfig(this.config.name as string, this.config)
+              .then(() => {
+                console.log(`🔄 Node removal saved to server for config ${this.config.name}`);
+              })
+              .catch(error => {
+                console.error('🔄 Error saving node removal to server:', error);
+              });
+          });
+        }
+        
+        return true;
       } else {
         // Handle main node removal
         switch(nodeType) {
@@ -1684,6 +1778,22 @@ class ConfigStateManager {
       this.eventEmitter.emit('config-updated', this.config);
       this.eventEmitter.emit('nodes-updated', this.nodes);
       this.eventEmitter.emit('connections-updated', this.connections);
+      
+      // Force sync to ensure all state is consistent
+      this.forceSync();
+      
+      // Save to server if the config has a name
+      if (this.config.name && typeof this.config.name === 'string') {
+        import('../services/api').then(({ saveConfig }) => {
+          saveConfig(this.config.name as string, this.config)
+            .then(() => {
+              console.log(`🔄 Node removal saved to server for config ${this.config.name}`);
+            })
+            .catch(error => {
+              console.error('🔄 Error saving node removal to server:', error);
+            });
+        });
+      }
       
       return true;
     } catch (error) {

@@ -10,6 +10,10 @@ import { configStateManager } from '../services/ConfigStateManager';
 import { pluginRegistry } from '../services/PluginRegistry';
 import { animateCenterView } from '../utils/animation/centerViewAnimation';
 
+// Add type constants to represent the pipeline flow steps
+const PIPELINE_STEPS = ['sources', 'enrichers', 'generators'] as const;
+type PipelineStep = typeof PIPELINE_STEPS[number];
+
 interface NodeGraphProps {
   config: Config;
   onConfigUpdate: (config: Config) => void;
@@ -45,6 +49,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   const [showPalette, setShowPalette] = useState(true);
   const [paletteAnimation, setPaletteAnimation] = useState<'opening' | 'closing' | 'idle'>('idle');
   const [paletteVisible, setPaletteVisible] = useState(true);
+  const [showPipelineFlow, setShowPipelineFlow] = useState(true);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const backBufferRef = useRef<HTMLCanvasElement | null>(null);
@@ -64,6 +69,9 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   const emptyStateAnimationRef = useRef<number | null>(null);
   const emptyStateOpacityRef = useRef(0.8);
   const emptyStateIncreasingRef = useRef(true);
+  
+  // Create a ref to store the pipeline flow function to break circular dependency
+  const pipelineFlowFnRef = useRef<(ctx: CanvasRenderingContext2D) => void>(() => {});
 
   // Load plugins when component mounts
   useEffect(() => {
@@ -628,6 +636,144 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     }
   };
 
+  // Draw back buffer to the screen
+  const drawToScreen = useCallback(() => {
+    if (!canvasRef.current || !backBufferRef.current) return;
+    
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return;
+    
+    // Draw the back buffer to the canvas in one operation to prevent flickering
+    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    ctx.drawImage(backBufferRef.current, 0, 0);
+  }, []);
+
+  // Draw the default pipeline flow in the background
+  const drawPipelineFlow = useCallback((ctx: CanvasRenderingContext2D) => {
+    // Skip if pipeline flow is disabled
+    if (!showPipelineFlow) return;
+    
+    // Group nodes by type (sources, enrichers, generators)
+    const nodesByType = {
+      sources: nodes.filter(node => node.id.startsWith('source')),
+      enrichers: nodes.filter(node => node.id.startsWith('enricher')),
+      generators: nodes.filter(node => node.id.startsWith('generator'))
+    };
+    
+    // Function to calculate the center position of a node group
+    const getNodeGroupCenter = (nodes: Node[]): {x: number, y: number} => {
+      if (nodes.length === 0) return { x: 0, y: 0 };
+      
+      // Get bounding box of all nodes in the group
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      
+      nodes.forEach(node => {
+        // Node width is fixed at 200px
+        const nodeWidth = 200;
+        
+        // Calculate node height based on inputs/outputs
+        const nodeHeight = node.isParent ? 
+          (node.expanded ? (25 + node.inputs.length * 20) : 80) : 
+          (25 + Math.max(node.inputs.length, node.outputs.length) * 20);
+        
+        // Update bounds
+        minX = Math.min(minX, node.position.x);
+        minY = Math.min(minY, node.position.y);
+        maxX = Math.max(maxX, node.position.x + nodeWidth);
+        maxY = Math.max(maxY, node.position.y + nodeHeight);
+      });
+      
+      // Return center point of the bounding box
+      return {
+        x: (minX + maxX) / 2,
+        y: (minY + maxY) / 2
+      };
+    };
+    
+    // Get positions of each node group with existence flag
+    const groupCenters = {
+      sources: { 
+        ...getNodeGroupCenter(nodesByType.sources),
+        exists: nodesByType.sources.length > 0
+      },
+      enrichers: { 
+        ...getNodeGroupCenter(nodesByType.enrichers),
+        exists: nodesByType.enrichers.length > 0
+      },
+      generators: { 
+        ...getNodeGroupCenter(nodesByType.generators),
+        exists: nodesByType.generators.length > 0
+      }
+    };
+    
+    // Calculate which connections to draw
+    const flowConnections = [];
+    
+    // Sources → Enrichers connection
+    if (groupCenters.sources.exists && groupCenters.enrichers.exists) {
+      flowConnections.push({
+        from: groupCenters.sources,
+        to: groupCenters.enrichers
+      });
+    }
+    
+    // Enrichers → Generators connection
+    if (groupCenters.enrichers.exists && groupCenters.generators.exists) {
+      flowConnections.push({
+        from: groupCenters.enrichers,
+        to: groupCenters.generators
+      });
+    }
+    
+    // Direct Sources → Generators connection (if no enrichers)
+    if (!groupCenters.enrichers.exists && groupCenters.sources.exists && groupCenters.generators.exists) {
+      flowConnections.push({
+        from: groupCenters.sources,
+        to: groupCenters.generators
+      });
+    }
+    
+    // Skip if no valid connections
+    if (flowConnections.length === 0) return;
+    
+    // Save context before making changes
+    ctx.save();
+    
+    // Draw the pipeline flow connections with simple dashed lines
+    flowConnections.forEach(connection => {
+      const { from, to } = connection;
+      
+      // Set up simple line style
+      ctx.strokeStyle = 'rgba(255, 215, 0, 0.7)'; // Gold with moderate opacity
+      ctx.lineWidth = 10; // Medium thickness
+      ctx.setLineDash([25, 20]); // Clear dashed pattern
+      ctx.lineCap = 'round'; // Rounded ends of dashes
+      
+      // Add a subtle glow
+      ctx.shadowColor = 'rgba(255, 165, 0, 0.3)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      
+      // Draw the simple flow line
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+    });
+    
+    // Restore the original context
+    ctx.restore();
+  }, [nodes, showPipelineFlow]);
+
+  // Store the pipeline flow function in the ref to break circular dependency
+  useEffect(() => {
+    pipelineFlowFnRef.current = drawPipelineFlow;
+  }, [drawPipelineFlow]);
+
   // Improved drawing to implement double buffering
   const drawToBackBuffer = useCallback(() => {
     if (!backBufferRef.current || !canvasRef.current) return;
@@ -655,6 +801,11 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     
     // Sync node ports with parameters to ensure we're not showing invalid connections
     const syncedNodes = syncNodePortsWithParams(nodes);
+
+    // Draw the default pipeline flow in the background using the function from ref
+    if (pipelineFlowFnRef.current) {
+      pipelineFlowFnRef.current(ctx);
+    }
     
     // Show help message if graph is empty
     if (syncedNodes.length === 0 && !draggedPlugin) {
@@ -749,17 +900,30 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     ctx.restore();
   }, [nodes, connections, selectedNode, scale, offset, hoveredPort, connectingFrom, mousePosition, draggedPlugin, dragPosition]);
 
-  // Draw back buffer to the screen
-  const drawToScreen = useCallback(() => {
-    if (!canvasRef.current || !backBufferRef.current) return;
+  // Update the dependency array of drawToBackBuffer to fix the circular dependency
+  useEffect(() => {
+    // Skip redrawing during animation to prevent interference
+    if (isAnimatingRef.current) {
+      return;
+    }
     
-    const ctx = canvasRef.current.getContext('2d');
-    if (!ctx) return;
+    // Cancel any existing animation frame
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
     
-    // Draw the back buffer to the canvas in one operation to prevent flickering
-    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-    ctx.drawImage(backBufferRef.current, 0, 0);
-  }, []);
+    // Schedule a new frame to apply changes and force a complete redraw
+    animationFrameRef.current = requestAnimationFrame(() => {
+      drawToBackBuffer();
+      drawToScreen();
+    });
+    
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [scale, offset, drawToBackBuffer, drawToScreen]);
 
   // Add a forceRedraw function using useCallback to clear and redraw the canvas
   const forceRedraw = useCallback(() => {
@@ -937,31 +1101,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [centerView]);
-
-  // Add a specific effect to handle scale and offset changes
-  useEffect(() => {
-    // Skip redrawing during animation to prevent interference
-    if (isAnimatingRef.current) {
-      return;
-    }
-    
-    // Cancel any existing animation frame
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-    
-    // Schedule a new frame to apply changes and force a complete redraw
-    animationFrameRef.current = requestAnimationFrame(() => {
-      drawToBackBuffer();
-      drawToScreen();
-    });
-    
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [scale, offset, drawToBackBuffer, drawToScreen]);
 
   // Update canvas size when container size changes
   useEffect(() => {
@@ -1689,6 +1828,11 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     }
   }, [nodes.length, draggedPlugin, drawToBackBuffer, drawToScreen]);
 
+  // Add a button to toggle pipeline flow visibility
+  const togglePipelineFlow = useCallback(() => {
+    setShowPipelineFlow(prev => !prev);
+  }, []);
+
   return (
     <div className="w-full h-full flex relative">
       <div 
@@ -1734,9 +1878,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           </button>
           
           <button
-            onClick={() => {
-              centerView();
-            }}
+            onClick={centerView}
             className="w-10 h-10 bg-stone-700 text-amber-300 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30"
             title="Center view"
           >
@@ -1747,6 +1889,16 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
               <line x1="3" y1="12" x2="6" y2="12" stroke="currentColor" strokeWidth="2" />
               <line x1="18" y1="12" x2="21" y2="12" stroke="currentColor" strokeWidth="2" />
               <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="2" fill="none" />
+            </svg>
+          </button>
+          
+          <button
+            onClick={togglePipelineFlow}
+            className={`w-10 h-10 ${showPipelineFlow ? 'bg-stone-700' : 'bg-stone-800'} text-amber-300 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30`}
+            title={showPipelineFlow ? "Hide pipeline flow" : "Show pipeline flow"}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
             </svg>
           </button>
           
