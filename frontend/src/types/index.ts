@@ -27,6 +27,7 @@ export interface PluginConfig {
   id?: string;
   isChild?: boolean;
   parentId?: string;
+  childIndex?: number;
 }
 
 export interface Config {

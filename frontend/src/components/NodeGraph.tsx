@@ -563,63 +563,20 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         return node;
       });
       
-      // Update our local state first for immediate visual feedback
+      // For dragging, we'll use local state for temporary smooth updates
+      // but throttle updates to ConfigStateManager to avoid excessive processing
       setNodes(updatedNodes);
       
-      // Use a faster rendering approach - skip backbuffer for drag operations
-      if (canvasRef.current) {
-        const ctx = canvasRef.current.getContext('2d');
-        if (ctx) {
-          // Clear canvas and draw directly
-          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-          
-          // Save canvas state
-          ctx.save();
-          
-          // Apply zoom and pan
-          ctx.translate(offset.x, offset.y);
-          ctx.scale(scale, scale);
-          
-          // Draw grid, connections, and nodes
-          drawGrid(ctx, canvasRef.current.width, canvasRef.current.height, scale, offset);
-          
-          // Sync node ports with parameters to ensure we're not showing invalid connections
-          const syncedNodes = syncNodePortsWithParams(updatedNodes);
-          
-          // Draw connections
-          connections.forEach(connection => {
-            const fromNode = findNodeRecursive(syncedNodes, connection.from.nodeId);
-            const toNode = findNodeRecursive(syncedNodes, connection.to.nodeId);
-            
-            if (fromNode && toNode) {
-              try {
-                drawConnection(ctx, fromNode, toNode, connection);
-              } catch (error) {
-                console.error("Error drawing connection:", error, connection);
-              }
-            }
-          });
-          
-          // Draw nodes
-          syncedNodes.forEach(node => {
-            drawNode(ctx, node, scale, hoveredPort, selectedNode);
-          });
-          
-          ctx.restore();
-        }
-      } else {
-        // Fallback to double buffering if direct rendering fails
-        drawToBackBuffer();
-        drawToScreen();
-      }
+      // Use our double buffering for smoother rendering
+      drawToBackBuffer();
+      drawToScreen();
       
-      // Debounce updates to the config state manager
+      // Debounce updates to the config state manager for better performance
       if (!isUpdateScheduledRef.current) {
         isUpdateScheduledRef.current = true;
         
-        // Use requestAnimationFrame to throttle updates
+        // Use requestAnimationFrame to throttle updates to ConfigStateManager
         requestAnimationFrame(() => {
-          // Update the nodes state through the state manager
           configStateManager.setNodes(updatedNodes);
           isUpdateScheduledRef.current = false;
         });
@@ -1025,13 +982,23 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   // Subscribe to state changes from ConfigStateManager
   useEffect(() => {
     const unsubscribeNodes = configStateManager.subscribe('nodes-updated', (updatedNodes) => {
+      console.log('🔄 NodeGraph: Received nodes-updated event, nodes count:', updatedNodes.length);
+      
       // Schedule update instead of immediate state change
       scheduleUpdate(() => {
         setNodes(updatedNodes);
+        
+        // If nodes were removed and we had a selected node that no longer exists
+        if (selectedNode && !findNodeRecursive(updatedNodes, selectedNode)) {
+          // Clear the selection since that node is gone
+          setSelectedNode(null);
+        }
       });
     });
     
     const unsubscribeConnections = configStateManager.subscribe('connections-updated', (updatedConnections) => {
+      console.log('🔄 NodeGraph: Received connections-updated event, connections count:', updatedConnections.length);
+      
       // Schedule update instead of immediate state change
       scheduleUpdate(() => {
         setConnections(updatedConnections);
@@ -1039,22 +1006,30 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     });
     
     const unsubscribeSelected = configStateManager.subscribe('node-selected', (nodeId) => {
+      console.log('🔄 NodeGraph: Received node-selected event:', nodeId);
+      
       scheduleUpdate(() => {
         setSelectedNode(nodeId);
       });
     });
     
     const unsubscribeConfig = configStateManager.subscribe('config-updated', (updatedConfig) => {
+      console.log('🔄 NodeGraph: Received config-updated event');
+      
       scheduleUpdate(() => {
         onConfigUpdate(updatedConfig);
       });
     });
     
     const unsubscribePluginUpdated = configStateManager.subscribe('plugin-updated', (updatedPlugin) => {
-      console.log("🔌 Plugin updated in NodeGraph:", updatedPlugin);
-      // Schedule redraw to show any visual changes
+      console.log("🔌 NodeGraph: Received plugin-updated event:", updatedPlugin);
+      
+      // Force a redraw to ensure UI reflects the latest state
       scheduleUpdate(() => {
-        // No direct state change needed, just redraw
+        // If this is a node removal event, we want to make sure our local state is up-to-date
+        // The nodes-updated event should handle this, but we'll force a redraw anyway
+        drawToBackBuffer();
+        drawToScreen();
       });
     });
     
@@ -1065,7 +1040,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       unsubscribeConfig();
       unsubscribePluginUpdated();
     };
-  }, [onConfigUpdate, scheduleUpdate]);
+  }, [onConfigUpdate, scheduleUpdate, selectedNode, drawToBackBuffer, drawToScreen]);
 
   // Use a dedicated mouseWheel handler instead of the hook's
   useEffect(() => {
@@ -1303,27 +1278,13 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
             );
             
             if (connectionToRemove) {
-              // Start drawing to back buffer before making any state changes
-              // This ensures we have a stable visual during the update
-              drawToBackBuffer();
-              
-              // Remove the connection
+              // Instead of updating state directly, let ConfigStateManager handle the updates
               const result = removeNodeConnection(nodes, connectionToRemove);
               if (result) {
-                let [updatedNodes, updatedConnections] = result;
+                const [updatedNodes, updatedConnections] = result;
                 
-                // Don't clear provider/storage params directly
-                // Let ConfigStateManager handle this through syncConfigWithNodes
-                
-                // First update our local state for immediate visual feedback
-                setNodes(updatedNodes);
-                setConnections(updatedConnections);
-                
-                // Redraw immediately to back buffer
-                drawToBackBuffer();
-                drawToScreen();
-                
-                // Then update the state via the state manager
+                // Update the state through the ConfigStateManager
+                // This will trigger the appropriate events
                 configStateManager.setNodes(updatedNodes);
                 configStateManager.setConnections(updatedConnections);
               }
@@ -1337,10 +1298,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     // Check if clicking on a collapse button
     for (const node of nodes) {
       if (node.isParent && isPointInCollapseButton(x, y, node)) {
-        // Start drawing to back buffer before making any state changes
-        drawToBackBuffer();
-        
-        // Toggle the expanded state
+        // Toggle the expanded state through ConfigStateManager
         const updatedNodes = nodes.map(n => {
           if (n.id === node.id) {
             return { ...n, expanded: !n.expanded };
@@ -1348,14 +1306,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           return n;
         });
         
-        // Update local state first for immediate feedback
-        setNodes(updatedNodes);
-        
-        // Redraw immediately
-        drawToBackBuffer();
-        drawToScreen();
-        
-        // Then update via state manager
+        // Update via state manager, don't set state directly
         configStateManager.setNodes(updatedNodes);
         return;
       }
@@ -1572,13 +1523,10 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   // Handle saving config to server
   const handleSaveToServer = async () => {
     try {
-      // Force sync to ensure ConfigStateManager has the most up-to-date state
+      // Make sure everything is in sync before saving
       configStateManager.forceSync();
       
-      // Small delay to ensure sync has completed
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Get the current config from ConfigStateManager - single source of truth
+      // Get the current config from ConfigStateManager
       const currentConfig = configStateManager.getConfig();
       
       // If the config doesn't have a name or has the default empty name, prompt for a name
@@ -1590,109 +1538,29 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           return;
         }
         configName = userProvidedName;
+        
         // Update the config with the new name
         currentConfig.name = configName;
         configStateManager.updateConfig(currentConfig);
       }
       
-      // Call the API to save the config to the server
-      const { saveConfig } = await import('../services/api');
-      await saveConfig(configName, currentConfig);
+      // Call the state manager's saveToServer method
+      const success = await configStateManager.saveToServer();
       
-      // Show success message
-      alert(`Configuration ${configName} saved successfully`);
-      
-      // Notify parent about the config update
-      onConfigUpdate(currentConfig);
+      if (success) {
+        // Show success message
+        alert(`Configuration ${configName} saved successfully`);
+        
+        // Notify parent about the config update
+        onConfigUpdate(currentConfig);
+      } else {
+        throw new Error('Save operation failed');
+      }
     } catch (error) {
       console.error('Error saving config to server:', error);
       alert('Failed to save configuration. Please try again.');
     }
   };
-
-  // Subscribe to node updates for debugging
-  useEffect(() => {
-    // Subscribe to node updates for debugging
-    const unsubscribeNodes = configStateManager.subscribe('nodes-updated', (updatedNodes) => {
-      console.log('🔍 NodeGraph: Nodes updated notification received');
-      
-      // If we have a selected plugin, check if its node was updated
-      if (selectedPlugin && selectedPlugin.id) {
-        const updatedNode = findNodeRecursive(updatedNodes, selectedPlugin.id);
-        if (updatedNode) {
-          console.log('🔍 NodeGraph: Selected node has been updated:', updatedNode.params);
-          
-          // Only update if params have actually changed to prevent unnecessary rerenders
-          const currentParamsJson = JSON.stringify(selectedPlugin.params || {});
-          const newParamsJson = JSON.stringify(updatedNode.params || {});
-          
-          if (currentParamsJson !== newParamsJson) {
-            // Update the selectedPlugin with the latest params to ensure dialog stays in sync
-            setSelectedPlugin((prevPlugin: any) => {
-              if (prevPlugin && prevPlugin.id === updatedNode.id) {
-                // Create a deep copy for the new plugin
-                const updatedSelectedPlugin = { 
-                  ...prevPlugin,
-                  params: JSON.parse(JSON.stringify(updatedNode.params || {}))
-                };
-                
-                console.log('🔍 NodeGraph: Updated selected plugin:', updatedSelectedPlugin);
-                return updatedSelectedPlugin;
-              }
-              return prevPlugin;
-            });
-          } else {
-            console.log('🔍 NodeGraph: No params change detected, skipping update');
-          }
-        }
-      }
-    });
-    
-    // Subscribe to plugin updates for debugging
-    const unsubscribePlugins = configStateManager.subscribe('plugin-updated', (updatedPlugin) => {
-      console.log('🔍 NodeGraph: Plugin update notification received:', updatedPlugin.id);
-      
-      // If this is our selected plugin, log the update
-      if (selectedPlugin && selectedPlugin.id === updatedPlugin.id) {
-        console.log('🔍 NodeGraph: Our selected plugin was updated:', updatedPlugin.params);
-        
-        // Only update if params have actually changed to prevent unnecessary rerenders
-        const currentParamsJson = JSON.stringify(selectedPlugin.params || {});
-        const newParamsJson = JSON.stringify(updatedPlugin.params || {});
-        
-        if (currentParamsJson !== newParamsJson) {
-          // Update the selected plugin with the latest params
-          setSelectedPlugin((prevPlugin: any) => {
-            if (prevPlugin && prevPlugin.id === updatedPlugin.id) {
-              // Create a deep copy for the new plugin
-              const updatedSelectedPlugin = { 
-                ...prevPlugin,
-                params: JSON.parse(JSON.stringify(updatedPlugin.params || {}))
-              };
-              
-              console.log('🔍 NodeGraph: Updated selected plugin:', updatedSelectedPlugin);
-              return updatedSelectedPlugin;
-            }
-            return prevPlugin;
-          });
-        } else {
-          console.log('🔍 NodeGraph: No params change detected, skipping update');
-        }
-        
-        // If the dialog is open, manually trigger a re-sync
-        // But only do it if we actually updated the plugin params
-        if (showPluginDialog && currentParamsJson !== newParamsJson) {
-          console.log('🔍 NodeGraph: Dialog is open, forcing sync...');
-          configStateManager.forceSync();
-        }
-      }
-    });
-    
-    return () => {
-      unsubscribeNodes();
-      unsubscribePlugins();
-    };
-  }, [selectedPlugin, showPluginDialog]);
 
   // Handle plugin drag from palette
   const handleDragPlugin = (plugin: PluginInfo, clientX: number, clientY: number) => {
@@ -1832,6 +1700,68 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   const togglePipelineFlow = useCallback(() => {
     setShowPipelineFlow(prev => !prev);
   }, []);
+
+  // Add useEffect to keep the plugin dialog in sync with node updates
+  useEffect(() => {
+    // Only subscribe if we have a plugin dialog open
+    if (showPluginDialog && selectedPlugin && selectedPlugin.id) {
+      const unsubscribeNodeUpdates = configStateManager.subscribe('nodes-updated', (updatedNodes) => {
+        // If we have a selected plugin, check if its node was updated
+        const updatedNode = findNodeRecursive(updatedNodes, selectedPlugin.id);
+        if (updatedNode) {
+          // Only update if params have actually changed to prevent unnecessary rerenders
+          const currentParamsJson = JSON.stringify(selectedPlugin.params || {});
+          const newParamsJson = JSON.stringify(updatedNode.params || {});
+          
+          if (currentParamsJson !== newParamsJson) {
+            // Update the selectedPlugin with the latest params to ensure dialog stays in sync
+            setSelectedPlugin((prevPlugin: any) => {
+              if (prevPlugin && prevPlugin.id === updatedNode.id) {
+                // Create a deep copy for the new plugin
+                return { 
+                  ...prevPlugin,
+                  params: JSON.parse(JSON.stringify(updatedNode.params || {}))
+                };
+              }
+              return prevPlugin;
+            });
+          }
+        } else {
+          // If the node was removed, close the dialog
+          setShowPluginDialog(false);
+        }
+      });
+      
+      const unsubscribePluginUpdates = configStateManager.subscribe('plugin-updated', (updatedPlugin) => {
+        // If this is our selected plugin, update the dialog
+        if (selectedPlugin.id === updatedPlugin.id) {
+          // Only update if params have actually changed
+          const currentParamsJson = JSON.stringify(selectedPlugin.params || {});
+          const newParamsJson = JSON.stringify(updatedPlugin.params || {});
+          
+          if (currentParamsJson !== newParamsJson) {
+            // Update the selected plugin with the latest params
+            setSelectedPlugin((prevPlugin: any) => {
+              if (prevPlugin && prevPlugin.id === updatedPlugin.id) {
+                return { 
+                  ...prevPlugin,
+                  params: JSON.parse(JSON.stringify(updatedPlugin.params || {}))
+                };
+              }
+              return prevPlugin;
+            });
+          }
+        }
+      });
+      
+      return () => {
+        unsubscribeNodeUpdates();
+        unsubscribePluginUpdates();
+      };
+    }
+    
+    return () => {};
+  }, [showPluginDialog, selectedPlugin]);
 
   return (
     <div className="w-full h-full flex relative">

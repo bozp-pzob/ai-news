@@ -1,7 +1,9 @@
-import { Config, PluginConfig } from '../types';
-import { Node, Connection, PortInfo, NodePort } from '../types/nodeTypes';
+import { Config as ConfigType, PluginConfig } from '../types';
+import { Node, Connection, NodePort } from '../types/nodeTypes';
 import { createEventEmitter } from '../utils/eventEmitter';
 import { findNodeRecursive, syncNodePortsWithParams, cleanupStaleConnections } from '../utils/nodeHandlers';
+import { Config } from './Config';
+import { saveConfig } from '../services/api';
 
 // Event types that can be emitted by the state manager
 export type ConfigStateEvent = 
@@ -11,36 +13,25 @@ export type ConfigStateEvent =
   | 'node-selected'
   | 'plugin-updated';
 
-// The state manager is a singleton that manages all application state
+// The state manager is a singleton that manages application state
 class ConfigStateManager {
-  private config: Config;
+  private configData: Config;
   private nodes: Node[] = [];
   private connections: Connection[] = [];
   private selectedNode: string | null = null;
   private eventEmitter = createEventEmitter<ConfigStateEvent>();
+  private pendingChanges: boolean = false;
 
   constructor() {
-    // Initialize with a default empty config
-    this.config = { 
-      name: 'Default Config',
-      sources: [],
-      enrichers: [],
-      generators: [],
-      ai: [],
-      storage: [],
-      providers: [],
-      settings: {
-        runOnce: false,
-        onlyFetch: false
-      }
-    };
+    // Initialize the Config class
+    this.configData = new Config();
   }
 
   // Get the current config
-  getConfig(): Config {
+  getConfig(): ConfigType {
     // Make sure the config is up-to-date with any node/connection changes
     this.syncConfigWithNodes();
-    return this.config;
+    return this.configData.getData();
   }
 
   // Get the current nodes
@@ -58,8 +49,13 @@ class ConfigStateManager {
     return this.selectedNode;
   }
 
+  // Check if there are pending changes
+  hasPendingChanges(): boolean {
+    return this.pendingChanges;
+  }
+
   // Load a new configuration
-  loadConfig(config: Config): void {
+  loadConfig(config: ConfigType): void {
     console.log('🔄 loadConfig called with:', config?.name || 'unnamed config');
 
     // First validate that we have a proper config object
@@ -68,44 +64,8 @@ class ConfigStateManager {
       return;
     }
 
-    // Create a deep copy of the config to avoid reference issues
-    let configCopy: Config;
-    try {
-      configCopy = JSON.parse(JSON.stringify(config));
-    } catch (error) {
-      console.error('🔄 Failed to clone config:', error);
-      // Fallback to a simple shallow copy
-      configCopy = { ...config };
-    }
-    
-    // Ensure the config has a name
-    if (!configCopy.name) {
-      console.warn('🔄 Config has no name, setting to "default"');
-      configCopy.name = 'default';
-    }
-    
-    // Ensure all required arrays exist and are arrays
-    configCopy.sources = Array.isArray(configCopy.sources) ? configCopy.sources : [];
-    configCopy.enrichers = Array.isArray(configCopy.enrichers) ? configCopy.enrichers : [];
-    configCopy.generators = Array.isArray(configCopy.generators) ? configCopy.generators : [];
-    configCopy.ai = Array.isArray(configCopy.ai) ? configCopy.ai : [];
-    configCopy.storage = Array.isArray(configCopy.storage) ? configCopy.storage : [];
-    configCopy.providers = Array.isArray(configCopy.providers) ? configCopy.providers : [];
-    
-    // Ensure settings object exists
-    configCopy.settings = configCopy.settings || {
-      runOnce: false,
-      onlyFetch: false
-    };
-    
-    // For backward compatibility, ensure providers matches ai content
-    if (configCopy.ai && configCopy.ai.length > 0 && configCopy.providers.length === 0) {
-      console.log('🔄 Setting providers to match AI array');
-      configCopy.providers = [...configCopy.ai];
-    }
-    
-    // Save the updated config
-    this.config = configCopy;
+    // Load the config into our Config class
+    this.configData.loadConfig(config);
     
     // Reset selected node when loading a new config
     this.selectedNode = null;
@@ -126,24 +86,15 @@ class ConfigStateManager {
     this.updatePortConnectionsFromConnections();
     
     // Notify listeners
-    this.eventEmitter.emit('config-updated', this.config);
+    this.eventEmitter.emit('config-updated', this.configData.getData());
     this.eventEmitter.emit('nodes-updated', this.nodes);
     this.eventEmitter.emit('connections-updated', this.connections);
     this.eventEmitter.emit('node-selected', this.selectedNode);
     
-    // Immediately sync to ensure consistency
-    setTimeout(() => {
-      this.syncConfigWithNodes();
-    }, 50);
+    // Reset pending changes flag when loading a new config
+    this.pendingChanges = false;
     
     console.log('🔄 loadConfig complete, nodes:', this.nodes.length, 'connections:', this.connections.length);
-  }
-
-  // Update the full config and notify listeners
-  updateConfig(config: Config): void {
-    this.config = { ...config };
-    this.rebuildNodesAndConnections();
-    this.eventEmitter.emit('config-updated', this.config);
   }
 
   // Set the nodes array directly
@@ -154,14 +105,14 @@ class ConfigStateManager {
     // Ensure the config is updated with the new node state
     this.syncConfigWithNodes();
     
+    // Mark that we have pending changes
+    this.pendingChanges = true;
+    
     // Emit the update event
     this.eventEmitter.emit('nodes-updated', this.nodes);
     
     // Also notify about the config update
-    this.eventEmitter.emit('config-updated', this.config);
-    
-    // Save to server if the config has a name
-    this.saveToServer();
+    this.eventEmitter.emit('config-updated', this.configData.getData());
   }
 
   // Set the connections array directly
@@ -180,15 +131,15 @@ class ConfigStateManager {
     // Ensure the config is updated with the new connections state
     this.syncConfigWithNodes();
     
+    // Mark that we have pending changes
+    this.pendingChanges = true;
+    
     // Emit the update event
     this.eventEmitter.emit('connections-updated', this.connections);
     this.eventEmitter.emit('nodes-updated', this.nodes);
     
     // Also notify about the config update
-    this.eventEmitter.emit('config-updated', this.config);
-    
-    // Save to server if the config has a name
-    this.saveToServer();
+    this.eventEmitter.emit('config-updated', this.configData.getData());
   }
 
   // Helper method to update node port connections based on the connections array
@@ -290,7 +241,6 @@ class ConfigStateManager {
     });
     
     // Check for nodes that previously had provider/storage params but now don't have connections
-    // This ensures we emit plugin-updated events for nodes whose connections were removed
     const checkForRemovedConnections = (node: Node) => {
       if (!node.id) return;
       
@@ -304,10 +254,7 @@ class ConfigStateManager {
             input.name === 'provider' && input.connectedTo !== undefined
           );
           
-          // Don't delete the parameter, just emit an update if the connection changed
           if (!hasProviderConnection && node.params && 'provider' in node.params) {
-            // Mark that we need to emit an update because the connection changed
-            console.log(`🔄 Connection to provider removed for node ${node.id} - will emit update`);
             shouldEmitUpdate = true;
           }
         }
@@ -318,10 +265,7 @@ class ConfigStateManager {
             input.name === 'storage' && input.connectedTo !== undefined
           );
           
-          // Don't delete the parameter, just emit an update if the connection changed
           if (!hasStorageConnection && node.params && 'storage' in node.params) {
-            // Mark that we need to emit an update because the connection changed
-            console.log(`🔄 Connection to storage removed for node ${node.id} - will emit update`);
             shouldEmitUpdate = true;
           }
         }
@@ -365,98 +309,41 @@ class ConfigStateManager {
     try {
       console.log('🔄 Updating plugin:', JSON.stringify(plugin));
       
-      // Ensure params is an object
-      if (!plugin.params || typeof plugin.params !== 'object') {
-        console.error('Invalid plugin params:', plugin.params);
-        plugin.params = {};
-      }
-      
       // Make sure we have a plugin id
       if (!plugin.id) {
         console.error('Plugin has no ID');
         return false;
       }
       
-      // Create deep copies to work with
-      const updatedConfig = JSON.parse(JSON.stringify(this.config));
-      const updatedNodes = JSON.parse(JSON.stringify(this.nodes));
-      const updatedConnections = JSON.parse(JSON.stringify(this.connections));
-      
-      // Get the node ID parts to determine type and index
-      const idParts = plugin.id.split('-');
-      const type = idParts[0];
-      const index = parseInt(idParts[1]);
-      
-      // Determine if this is a child node
-      const isChild = plugin.isChild === true;
-      
       // Find the node to update
-      const nodeToUpdate = findNodeRecursive(updatedNodes, plugin.id);
+      const nodeToUpdate = findNodeRecursive(this.nodes, plugin.id);
       if (!nodeToUpdate) {
         console.error(`Could not find node with ID ${plugin.id}`);
         return false;
       }
       
-      // Track connections to add and remove
-      const connectionsToRemove: Connection[] = [];
-      const connectionsToAdd: Connection[] = [];
-      
-      // Update node properties
+      // Update node properties in the UI
       nodeToUpdate.name = plugin.name;
       nodeToUpdate.params = plugin.params || {};
       
-      // Handle provider connections
-      if ('provider' in plugin.params) {
-        this.handleProviderConnection(
-          plugin, 
-          nodeToUpdate, 
-          updatedNodes, 
-          updatedConnections, 
-          connectionsToAdd, 
-          connectionsToRemove
-        );
+      // Update the plugin in the config data
+      const result = this.configData.updatePlugin(plugin);
+      if (!result) {
+        console.error(`Failed to update plugin in config data: ${plugin.id}`);
+        return false;
       }
       
-      // Handle storage connections
-      if ('storage' in plugin.params) {
-        this.handleStorageConnection(
-          plugin, 
-          nodeToUpdate, 
-          updatedNodes, 
-          updatedConnections, 
-          connectionsToAdd, 
-          connectionsToRemove
-        );
-      }
+      // Mark that we have pending changes
+      this.pendingChanges = true;
       
-      // Update the node configuration in the config object
-      this.updateConfigWithPluginChanges(plugin, updatedConfig, isChild, type, index);
-      
-      // Update our internal state
-      this.config = updatedConfig;
-      this.nodes = updatedNodes;
-      this.connections = updatedConnections;
-      
-      // Create a complete, updated object for the plugin-updated event
-      // that includes both the user-provided changes and any side effects
-      const updatedPlugin = {
-        ...plugin,
-        // Ensure any side-effect changes are included
-        params: nodeToUpdate.params
-      };
-      
-      // Notify listeners in specific order to ensure proper update sequence
-      this.eventEmitter.emit('config-updated', this.config);
+      // Notify listeners
       this.eventEmitter.emit('nodes-updated', this.nodes);
-      this.eventEmitter.emit('connections-updated', this.connections);
+      this.eventEmitter.emit('config-updated', this.configData.getData());
+      this.eventEmitter.emit('plugin-updated', {
+        ...plugin,
+        params: nodeToUpdate.params
+      });
       
-      // Fire plugin-updated event last to ensure subscribers have latest state
-      setTimeout(() => {
-        this.eventEmitter.emit('plugin-updated', updatedPlugin);
-        console.log("🔄 Plugin update event emitted for:", updatedPlugin.id);
-      }, 0);
-      
-      console.log("Plugin updates applied. Nodes:", updatedNodes.length, "Connections:", updatedConnections.length);
       return true;
     } catch (error) {
       console.error("Error in updatePlugin:", error);
@@ -472,7 +359,9 @@ class ConfigStateManager {
   // Rebuild nodes and connections from the config
   private rebuildNodesAndConnections(): void {
     console.log('🏗️ rebuildNodesAndConnections: Starting node rebuild');
-    console.log('Config:', JSON.stringify(this.config));
+    
+    const config = this.configData.getData();
+    console.log('Config:', JSON.stringify(config));
     
     const newNodes: Node[] = [];
     const newConnections: Connection[] = [];
@@ -489,17 +378,17 @@ class ConfigStateManager {
     const sourceColumnX = 500; // Sources, Enrichers, Generators in middle
     
     // Calculate max height of storage nodes to position AI nodes below them
-    const storageHeight = this.config.storage && this.config.storage.length > 0 
-      ? 100 + (this.config.storage.length * storageNodeSpacing)
+    const storageHeight = config.storage && config.storage.length > 0 
+      ? 100 + (config.storage.length * storageNodeSpacing)
       : 100;
     
     // Track vertical positions for parent groups
     let currentY = 50; // Starting Y position
     
     // Add Storage nodes on left side of canvas (top) with increased spacing
-    if (this.config.storage && this.config.storage.length > 0) {
-      console.log('🏗️ Creating storage nodes:', this.config.storage.length);
-      this.config.storage.forEach((storage, index) => {
+    if (config.storage && config.storage.length > 0) {
+      console.log('🏗️ Creating storage nodes:', config.storage.length);
+      config.storage.forEach((storage, index) => {
         newNodes.push({
           id: `storage-${index}`,
           type: 'storage',
@@ -515,8 +404,8 @@ class ConfigStateManager {
     }
     
     // Add AI Provider nodes on left side of canvas with adequate spacing below storage
-    if (this.config.ai && this.config.ai.length > 0) {
-      console.log('🏗️ Creating AI provider nodes:', this.config.ai.length);
+    if (config.ai && config.ai.length > 0) {
+      console.log('🏗️ Creating AI provider nodes:', config.ai.length);
       
       // Use a consistent spacing for AI nodes too
       const aiNodeSpacing = 80;
@@ -524,7 +413,7 @@ class ConfigStateManager {
       // Add extra padding between storage and AI sections
       const sectionPadding = 50;
       
-      this.config.ai.forEach((ai, index) => {
+      config.ai.forEach((ai, index) => {
         newNodes.push({
           id: `ai-${index}`,
           type: 'ai',
@@ -544,9 +433,9 @@ class ConfigStateManager {
     const childNodeSpacing = 45;
     
     // Add Sources group - first parent node at the top
-    if (this.config.sources && this.config.sources.length > 0) {
-      console.log('🏗️ Creating source nodes:', this.config.sources.length);
-      const sourceChildren = this.config.sources.map((source, index) => {
+    if (config.sources && config.sources.length > 0) {
+      console.log('🏗️ Creating source nodes:', config.sources.length);
+      const sourceChildren = config.sources.map((source, index) => {
         // Create node
         const node = {
           id: `source-${index}`,
@@ -592,9 +481,9 @@ class ConfigStateManager {
     }
     
     // Add Enrichers group below Sources
-    if (this.config.enrichers && this.config.enrichers.length > 0) {
-      console.log('🏗️ Creating enricher nodes:', this.config.enrichers.length);
-      const enricherChildren = this.config.enrichers.map((enricher, index) => {
+    if (config.enrichers && config.enrichers.length > 0) {
+      console.log('🏗️ Creating enricher nodes:', config.enrichers.length);
+      const enricherChildren = config.enrichers.map((enricher, index) => {
         // Create node
         const node = {
           id: `enricher-${index}`,
@@ -640,9 +529,9 @@ class ConfigStateManager {
     }
     
     // Add Generators group below Enrichers
-    if (this.config.generators && this.config.generators.length > 0) {
-      console.log('🏗️ Creating generator nodes:', this.config.generators.length);
-      const generatorChildren = this.config.generators.map((generator, index) => {
+    if (config.generators && config.generators.length > 0) {
+      console.log('🏗️ Creating generator nodes:', config.generators.length);
+      const generatorChildren = config.generators.map((generator, index) => {
         // Create node
         const node = {
           id: `generator-${index}`,
@@ -693,9 +582,12 @@ class ConfigStateManager {
 
   // Add a provider connection based on the provider name
   private addProviderConnection(node: any, providerName: string, connections: Connection[]): void {
-    if (!providerName || !this.config.ai) return;
+    if (!providerName) return;
     
-    const providerIndex = this.config.ai.findIndex(p => p.name === providerName);
+    const config = this.configData.getData();
+    if (!config.ai) return;
+    
+    const providerIndex = config.ai.findIndex(p => p.name === providerName);
     if (providerIndex !== -1) {
       const providerId = `ai-${providerIndex}`;
       connections.push({
@@ -713,9 +605,12 @@ class ConfigStateManager {
   
   // Add a storage connection based on the storage name
   private addStorageConnection(node: any, storageName: string, connections: Connection[]): void {
-    if (!storageName || !this.config.storage) return;
+    if (!storageName) return;
     
-    const storageIndex = this.config.storage.findIndex(s => s.name === storageName);
+    const config = this.configData.getData();
+    if (!config.storage) return;
+    
+    const storageIndex = config.storage.findIndex(s => s.name === storageName);
     if (storageIndex !== -1) {
       const storageId = `storage-${storageIndex}`;
       connections.push({
@@ -740,461 +635,190 @@ class ConfigStateManager {
   private createNodeOutput(name: string, type: string): NodePort {
     return { name, type, connectedTo: undefined };
   }
-  
-  // Handle provider connection updates
-  private handleProviderConnection(
-    plugin: PluginConfig,
-    nodeToUpdate: Node,
-    updatedNodes: Node[],
-    updatedConnections: Connection[],
-    connectionsToAdd: Connection[],
-    connectionsToRemove: Connection[]
-  ): void {
-    if (!plugin.id) return;
-    
-    console.log('🔌 Processing PROVIDER parameter:', plugin.params.provider);
-    console.log('🔌 Node being updated:', nodeToUpdate);
-    
-    // Find the current provider connection if any
-    const currentProviderConn = this.connections.find(conn => 
-      conn.to.nodeId === plugin.id && conn.to.input === 'provider'
-    );
-    
-    // If there's no provider in params, ensure any existing connection is removed
-    if (!plugin.params.provider) {
-      console.log('🔌 No provider specified in params, removing any existing connection');
-      if (currentProviderConn) {
-        connectionsToRemove.push(currentProviderConn);
-        
-        // Remove from updatedConnections
-        const connIndex = updatedConnections.findIndex(conn => 
-          conn.to.nodeId === plugin.id && conn.to.input === 'provider'
-        );
-        if (connIndex !== -1) {
-          updatedConnections.splice(connIndex, 1);
+
+  // Synchronize the config object with the current nodes and connections
+  private syncConfigWithNodes(): void {
+    try {
+      console.log('🔄 Synchronizing config with current nodes and connections');
+      
+      // Create mappings of connections for easier lookup
+      const connectionMap = new Map<string, Connection[]>();
+      for (const connection of this.connections) {
+        const toNodeId = connection.to.nodeId;
+        if (!connectionMap.has(toNodeId)) {
+          connectionMap.set(toNodeId, []);
         }
-        
-        // Clear the connectedTo property
-        const providerInput = nodeToUpdate.inputs.find(input => input.name === 'provider');
-        if (providerInput) {
-          console.log('🔌 Clearing provider input connection');
-          providerInput.connectedTo = undefined;
-        }
+        connectionMap.get(toNodeId)?.push(connection);
       }
-      return;
-    }
-    
-    // Remove current provider connection if it exists
-    if (currentProviderConn) {
-      console.log('🔌 Current provider connection:', currentProviderConn);
       
-      // Get the current connected provider node
-      const currentProviderNode = findNodeRecursive(this.nodes, currentProviderConn.from.nodeId);
+      // Create a deep copy of the current config
+      const config = this.configData.getData();
+      const updatedConfig = JSON.parse(JSON.stringify(config));
       
-      if (currentProviderNode) {
-        console.log('🔌 Current provider node:', currentProviderNode.name);
-        
-        // Check if the provider has changed
-        if (currentProviderNode.name !== plugin.params.provider) {
-          console.log(`🔌 Provider changed from ${currentProviderNode.name} to ${plugin.params.provider}`);
-          
-          // Add the connection to our removal list
-          connectionsToRemove.push(currentProviderConn);
-          
-          // Remove the connection from our updated connections
-          const connIndex = updatedConnections.findIndex(conn => 
-            conn.to.nodeId === plugin.id && conn.to.input === 'provider'
-          );
-          if (connIndex !== -1) {
-            updatedConnections.splice(connIndex, 1);
-          }
-          
-          // Clear the connectedTo property on the input port
-          const providerInput = nodeToUpdate.inputs.find(input => input.name === 'provider');
-          if (providerInput) {
-            console.log('🔌 Clearing provider input connection');
-            providerInput.connectedTo = undefined;
-          }
-          
-          // Find the provider node in the updated nodes
-          const currentProviderNodeInUpdated = updatedNodes.find(n => n.id === currentProviderConn.from.nodeId);
-          
-          // Clear the connection on the provider's output port
-          if (currentProviderNodeInUpdated) {
-            const providerOutput = currentProviderNodeInUpdated.outputs.find(output => 
-              output.name === 'provider' && output.connectedTo === plugin.id
-            );
-            if (providerOutput) {
-              console.log('🔌 Clearing provider output connection');
-              providerOutput.connectedTo = undefined;
-            }
-          }
-        } else {
-          console.log('🔌 Provider unchanged, keeping existing connection');
-        }
-      }
-    } else {
-      console.log('🔌 No existing provider connection found');
-    }
-    
-    // Find the new provider node if provider has changed or there was no connection
-    if (!currentProviderConn || 
-        (currentProviderConn && findNodeRecursive(this.nodes, currentProviderConn.from.nodeId)?.name !== plugin.params.provider)) {
+      // Process all nodes to update the config
+      // This is simplified as most of the actual config updating 
+      // now happens in the Config class
       
-      const newProviderNode = updatedNodes.find(node => 
-        node.type === 'ai' && node.name === plugin.params.provider
-      );
+      // Update our config data
+      this.configData.updateConfig(updatedConfig);
       
-      if (newProviderNode) {
-        console.log('🔌 Found new provider node:', newProviderNode.name);
-        
-        // Check if we don't already have this connection
-        const existingConnection = updatedConnections.find(conn => 
-          conn.from.nodeId === newProviderNode.id && 
-          conn.to.nodeId === plugin.id && 
-          conn.to.input === 'provider'
-        );
-        
-        if (!existingConnection) {
-          console.log('🔌 Adding new provider connection');
-          
-          // Create the new connection
-          const newConnection: Connection = {
-            from: { nodeId: newProviderNode.id, output: 'provider' },
-            to: { nodeId: plugin.id, input: 'provider' }
-          };
-          
-          connectionsToAdd.push(newConnection);
-          updatedConnections.push(newConnection);
-          
-          // Update the input port on the node
-          const providerInput = nodeToUpdate.inputs.find(input => input.name === 'provider');
-          if (providerInput) {
-            console.log('🔌 Updating existing provider input port');
-            providerInput.connectedTo = newProviderNode.id;
-          } else {
-            console.log('🔌 Creating new provider input port');
-            // If the input doesn't exist yet, create it
-            nodeToUpdate.inputs.push({
-              name: 'provider',
-              type: 'provider',
-              connectedTo: newProviderNode.id
-            });
-          }
-          
-          // Update the output port on the provider
-          const providerOutput = newProviderNode.outputs.find(output => output.name === 'provider');
-          if (providerOutput) {
-            console.log('🔌 Updating provider output port');
-            providerOutput.connectedTo = plugin.id;
-          }
-        } else {
-          console.log('🔌 Connection already exists, no need to add');
-        }
-      } else {
-        console.error('🔌 Could not find provider node with name:', plugin.params.provider);
-      }
-    }
-  }
-  
-  // Handle storage connection updates
-  private handleStorageConnection(
-    plugin: PluginConfig,
-    nodeToUpdate: Node,
-    updatedNodes: Node[],
-    updatedConnections: Connection[],
-    connectionsToAdd: Connection[],
-    connectionsToRemove: Connection[]
-  ): void {
-    if (!plugin.id) return;
-    
-    console.log('🔌 Processing STORAGE parameter:', plugin.params.storage);
-    console.log('🔌 Node being updated:', nodeToUpdate);
-    
-    // Find the current storage connection if any
-    const currentStorageConn = this.connections.find(conn => 
-      conn.to.nodeId === plugin.id && conn.to.input === 'storage'
-    );
-    
-    // If there's no storage in params, ensure any existing connection is removed
-    if (!plugin.params.storage) {
-      console.log('🔌 No storage specified in params, removing any existing connection');
-      if (currentStorageConn) {
-        connectionsToRemove.push(currentStorageConn);
-        
-        // Remove from updatedConnections
-        const connIndex = updatedConnections.findIndex(conn => 
-          conn.to.nodeId === plugin.id && conn.to.input === 'storage'
-        );
-        if (connIndex !== -1) {
-          updatedConnections.splice(connIndex, 1);
-        }
-        
-        // Clear the connectedTo property
-        const storageInput = nodeToUpdate.inputs.find(input => input.name === 'storage');
-        if (storageInput) {
-          storageInput.connectedTo = undefined;
-        }
-      }
-      return;
-    }
-    
-    if (currentStorageConn) {
-      console.log('🔌 Current storage connection:', currentStorageConn);
-      
-      // Get the current connected storage node
-      const currentStorageNode = findNodeRecursive(this.nodes, currentStorageConn.from.nodeId);
-      
-      if (currentStorageNode) {
-        console.log('🔌 Current storage node:', currentStorageNode.name);
-        
-        // Check if the storage has changed
-        if (currentStorageNode.name !== plugin.params.storage) {
-          console.log(`🔌 Storage changed from ${currentStorageNode.name} to ${plugin.params.storage}`);
-          
-          // Add the connection to our removal list
-          connectionsToRemove.push(currentStorageConn);
-          
-          // Remove the connection from our updated connections
-          const connIndex = updatedConnections.findIndex(conn => 
-            conn.to.nodeId === plugin.id && conn.to.input === 'storage'
-          );
-          if (connIndex !== -1) {
-            updatedConnections.splice(connIndex, 1);
-          }
-          
-          // Clear the connectedTo property on the input port
-          const storageInput = nodeToUpdate.inputs.find(input => input.name === 'storage');
-          if (storageInput) {
-            console.log('🔌 Clearing storage input connection');
-            storageInput.connectedTo = undefined;
-          }
-          
-          // Find the storage node in the updated nodes
-          const currentStorageNodeInUpdated = updatedNodes.find(n => n.id === currentStorageConn.from.nodeId);
-          
-          // Clear the connection on the storage's output port
-          if (currentStorageNodeInUpdated) {
-            const storageOutput = currentStorageNodeInUpdated.outputs.find(output => 
-              output.name === 'storage' && output.connectedTo === plugin.id
-            );
-            if (storageOutput) {
-              console.log('🔌 Clearing storage output connection');
-              storageOutput.connectedTo = undefined;
-            }
-          }
-        } else {
-          console.log('🔌 Storage unchanged, keeping existing connection');
-        }
-      }
-    } else {
-      console.log('🔌 No existing storage connection found');
-    }
-    
-    // Find the new storage node if storage has changed or there was no connection
-    if (!currentStorageConn || 
-        (currentStorageConn && findNodeRecursive(this.nodes, currentStorageConn.from.nodeId)?.name !== plugin.params.storage)) {
-        
-      const newStorageNode = updatedNodes.find(node => 
-        node.type === 'storage' && node.name === plugin.params.storage
-      );
-      
-      if (newStorageNode) {
-        console.log('🔌 Found new storage node:', newStorageNode.name);
-        
-        // Check if we don't already have this connection
-        const existingConnection = updatedConnections.find(conn => 
-          conn.from.nodeId === newStorageNode.id && 
-          conn.to.nodeId === plugin.id && 
-          conn.to.input === 'storage'
-        );
-        
-        if (!existingConnection) {
-          console.log('🔌 Adding new storage connection');
-          
-          // Create the new connection
-          const newConnection: Connection = {
-            from: { nodeId: newStorageNode.id, output: 'storage' },
-            to: { nodeId: plugin.id, input: 'storage' }
-          };
-          
-          connectionsToAdd.push(newConnection);
-          updatedConnections.push(newConnection);
-          
-          // Update the input port on the node
-          const storageInput = nodeToUpdate.inputs.find(input => input.name === 'storage');
-          if (storageInput) {
-            console.log('🔌 Updating existing storage input port');
-            storageInput.connectedTo = newStorageNode.id;
-          } else {
-            console.log('🔌 Creating new storage input port');
-            // If the input doesn't exist yet, create it
-            nodeToUpdate.inputs.push({
-              name: 'storage',
-              type: 'storage',
-              connectedTo: newStorageNode.id
-            });
-          }
-          
-          // Update the output port on the storage
-          const storageOutput = newStorageNode.outputs.find(output => output.name === 'storage');
-          if (storageOutput) {
-            console.log('🔌 Updating storage output port');
-            storageOutput.connectedTo = plugin.id;
-          }
-        } else {
-          console.log('🔌 Connection already exists, no need to add');
-        }
-      } else {
-        console.error('🔌 Could not find storage node with name:', plugin.params.storage);
-      }
+      console.log('🔄 Config synchronized successfully');
+    } catch (error) {
+      console.error('Error synchronizing config with nodes:', error);
     }
   }
 
-  // Update the config object with plugin changes
-  private updateConfigWithPluginChanges(
-    plugin: PluginConfig, 
-    updatedConfig: Config, 
-    isChild: boolean, 
-    type: string, 
-    index: number
-  ): void {
-    if (!plugin.id) return;
+  // Helper method to generate a child node ID for config operations
+  private generateChildNodeId(parentNode: Node, childIndex: number): string {
+    if (!parentNode.id) return '';
     
-    switch (type) {
-      case 'source':
-      case 'sources':
-        if (isChild && plugin.parentId) {
-          // Handle child node of a parent
-          const parentIdParts = plugin.parentId.split('-');
-          const parentIndex = parseInt(parentIdParts[1]);
-          
-          // Find the index of the child within its parent
-          const parentNode = this.findNodeById(plugin.parentId);
-          if (parentNode && parentNode.children) {
-            const childIndex = parentNode.children.findIndex(c => c.id === plugin.id);
-            if (childIndex !== -1 && updatedConfig.sources && updatedConfig.sources[parentIndex]) {
-              // Ensure the children params array exists
-              if (!updatedConfig.sources[parentIndex].params) {
-                updatedConfig.sources[parentIndex].params = {};
+    const parentIdParts = parentNode.id.split('-');
+    const parentType = parentIdParts[0];
+    const parentIndex = parseInt(parentIdParts[1]);
+    
+    return `${parentType}-${parentIndex}-child-${childIndex}`;
+  }
+
+  // Remove a node from the configuration and graph
+  removeNode(nodeId: string): boolean {
+    try {
+      console.log(`🗑️ Removing node: ${nodeId}`);
+
+      // Find the node
+      const node = this.findNodeById(nodeId);
+      if (!node) {
+        console.error(`Node with ID ${nodeId} not found`);
+        return false;
+      }
+      const configResult = this.configData.removeNode(nodeId);
+      if (!configResult) {
+        console.error(`Failed to remove node from config: ${nodeId}`);
+        return false;
+      }
+
+      // Check if this node is a child of a parent node
+      let isChildNode = false;
+      let parentNode: Node | undefined;
+      let childIndex = -1;
+
+      // Find if this is a child node by looking through all parent nodes
+      for (const n of this.nodes) {
+        if (n.isParent && n.children) {
+          childIndex = n.children.findIndex(child => child.id === nodeId);
+          if (childIndex !== -1) {
+            isChildNode = true;
+            parentNode = n;
+            
+            // Found the child node, remove it from the parent's children array
+            console.log(`Found node ${nodeId} as child of parent ${n.id}, at child index ${childIndex}`);
+            
+            // Create updated nodes array with the child removed from the parent
+            this.nodes = this.nodes.map(node => {
+              if (node.id === parentNode!.id && node.children) {
+                return {
+                  ...node,
+                  children: node.children.filter(child => child.id !== nodeId)
+                };
               }
-              if (!updatedConfig.sources[parentIndex].params.children) {
-                updatedConfig.sources[parentIndex].params.children = [];
-              }
-              
-              // Ensure the child index exists in the array
-              while (updatedConfig.sources[parentIndex].params.children.length <= childIndex) {
-                updatedConfig.sources[parentIndex].params.children.push({});
-              }
-              
-              // Update child params
-              updatedConfig.sources[parentIndex].params.children[childIndex] = {
-                ...updatedConfig.sources[parentIndex].params.children[childIndex],
-                ...plugin.params
-              };
-            }
-          }
-        } else if (updatedConfig.sources && updatedConfig.sources[index]) {
-          // Update params
-          updatedConfig.sources[index].params = plugin.params;
-          // Update name if it's changed
-          if (updatedConfig.sources[index].name !== plugin.name) {
-            updatedConfig.sources[index].name = plugin.name;
-          }
-        }
-        break;
-      case 'enricher':
-      case 'enrichers':
-        if (isChild && plugin.parentId) {
-          // Handle child node of a parent
-          const parentIdParts = plugin.parentId.split('-');
-          const parentIndex = parseInt(parentIdParts[1]);
-          
-          // Find the index of the child within its parent
-          const parentNode = this.findNodeById(plugin.parentId);
-          if (parentNode && parentNode.children) {
-            const childIndex = parentNode.children.findIndex(c => c.id === plugin.id);
-            if (childIndex !== -1 && updatedConfig.enrichers && updatedConfig.enrichers[parentIndex]) {
-              // Ensure the children params array exists
-              if (!updatedConfig.enrichers[parentIndex].params) {
-                updatedConfig.enrichers[parentIndex].params = {};
-              }
-              if (!updatedConfig.enrichers[parentIndex].params.children) {
-                updatedConfig.enrichers[parentIndex].params.children = [];
-              }
-              
-              // Ensure the child index exists in the array
-              while (updatedConfig.enrichers[parentIndex].params.children.length <= childIndex) {
-                updatedConfig.enrichers[parentIndex].params.children.push({});
-              }
-              
-              // Update child params
-              updatedConfig.enrichers[parentIndex].params.children[childIndex] = {
-                ...updatedConfig.enrichers[parentIndex].params.children[childIndex],
-                ...plugin.params
-              };
-            }
-          }
-        } else if (updatedConfig.enrichers && updatedConfig.enrichers[index]) {
-          // Update params
-          updatedConfig.enrichers[index].params = plugin.params;
-          // Update name if it's changed
-          if (updatedConfig.enrichers[index].name !== plugin.name) {
-            updatedConfig.enrichers[index].name = plugin.name;
+              return node;
+            });
+            
+            // Generate child node ID for config operations
+            const childNodeId = this.generateChildNodeId(parentNode, childIndex);
+            console.log(`Constructed child node ID for config: ${childNodeId}`);
+            
+            // Remove from config data with the constructed child ID
+            this.configData.removeNode(childNodeId);
+            
+            break;
           }
         }
-        break;
-      case 'generator':
-      case 'generators':
-        if (isChild && plugin.parentId) {
-          // Handle child node of a parent
-          const parentIdParts = plugin.parentId.split('-');
-          const parentIndex = parseInt(parentIdParts[1]);
-          
-          // Find the index of the child within its parent
-          const parentNode = this.findNodeById(plugin.parentId);
-          if (parentNode && parentNode.children) {
-            const childIndex = parentNode.children.findIndex(c => c.id === plugin.id);
-            if (childIndex !== -1 && updatedConfig.generators && updatedConfig.generators[parentIndex]) {
-              // Ensure the children params array exists
-              if (!updatedConfig.generators[parentIndex].params) {
-                updatedConfig.generators[parentIndex].params = {};
-              }
-              if (!updatedConfig.generators[parentIndex].params.children) {
-                updatedConfig.generators[parentIndex].params.children = [];
-              }
-              
-              // Ensure the child index exists in the array
-              while (updatedConfig.generators[parentIndex].params.children.length <= childIndex) {
-                updatedConfig.generators[parentIndex].params.children.push({});
-              }
-              
-              // Update child params
-              updatedConfig.generators[parentIndex].params.children[childIndex] = {
-                ...updatedConfig.generators[parentIndex].params.children[childIndex],
-                ...plugin.params
-              };
-            }
-          }
-        } else if (updatedConfig.generators && updatedConfig.generators[index]) {
-          // Update params
-          updatedConfig.generators[index].params = plugin.params;
-          // Update name if it's changed
-          if (updatedConfig.generators[index].name !== plugin.name) {
-            updatedConfig.generators[index].name = plugin.name;
-          }
-        }
-        break;
-      // Add cases for other node types as needed
+      }
+
+      // If it's not a child node, remove it from the main nodes array
+      if (!isChildNode) {
+        this.nodes = this.nodes.filter(n => n.id !== nodeId);
+      }
+
+      // Find all connections involving this node
+      const connectionsToRemove = this.connections.filter(conn => 
+        conn.from.nodeId === nodeId || conn.to.nodeId === nodeId
+      );
+
+      // Remove connections
+      this.connections = this.connections.filter(conn => 
+        conn.from.nodeId !== nodeId && conn.to.nodeId !== nodeId
+      );
+
+      // If the selected node was removed, clear selection
+      if (this.selectedNode === nodeId) {
+        this.selectedNode = null;
+        this.eventEmitter.emit('node-selected', null);
+      }      
+      // this.syncConfigWithNodes();
+
+      // Mark that we have pending changes
+      this.pendingChanges = true;
+      
+      // Emit events
+      this.eventEmitter.emit('nodes-updated', this.nodes);
+      this.eventEmitter.emit('connections-updated', this.connections);
+      this.eventEmitter.emit('config-updated', this.configData.getData());
+      
+      return true;
+    } catch (error) {
+      console.error("Error in removeNode:", error);
+      return false;
     }
   }
 
-  // Force synchronization of state with config
-  public forceSync(): void {
-    console.log('🔄 ForceSync called - Broadcasting current state to all subscribers');
+  // Save the current config to the server
+  saveToServer(): Promise<boolean> {
+    console.log('🔄 Saving config to server');
+    try {
+      const config = this.configData.getData();
+      
+      // Make sure we have a config name
+      if (!config.name || typeof config.name !== 'string') {
+        console.error('Cannot save config without a name');
+        return Promise.reject(new Error('Config must have a name'));
+      }
+      
+      // Ensure the config is up-to-date with the current node state
+      this.syncConfigWithNodes();
+      
+      // Use dynamic import to avoid circular dependencies
+      return saveConfig(config.name as string, config)
+        .then(() => {
+          console.log(`🔄 Configuration ${config.name} saved to server`);
+          
+          // Reset pending changes flag after successful save
+          this.pendingChanges = false;
+          
+          return true;
+        })
+        .catch(error => {
+          console.error('🔄 Error saving config to server:', error);
+            return false;
+        });
+    } catch (error) {
+      console.error('Error in saveToServer:', error);
+      return Promise.reject(error);
+    }
+  }
+
+  // Update the full config and notify listeners
+  updateConfig(config: ConfigType): void {
+    this.configData.updateConfig(config);
+    this.rebuildNodesAndConnections();
+    this.eventEmitter.emit('config-updated', this.configData.getData());
+  }
+
+  // Force synchronization of state with config - maintained for backwards compatibility
+  forceSync(): void {
+    console.log('🔄 ForceSync called - Syncing config data and updating all subscribers');
     
     // Important: First update port connections from the connections array
-    // This ensures the ports reflect the actual connections
     this.updatePortConnectionsFromConnections();
     
     // Ensure node ports are in sync with parameters
@@ -1210,596 +834,14 @@ class ConfigStateManager {
     this.syncConfigWithNodes();
     
     // Force update all subscribers with the current state
-    // Use setTimeout to ensure this happens asynchronously
-    setTimeout(() => {
-      // Emit events in a specific order to ensure proper update sequence
-      this.eventEmitter.emit('config-updated', this.config);
+    this.eventEmitter.emit('config-updated', this.configData.getData());
       this.eventEmitter.emit('nodes-updated', this.nodes);
       this.eventEmitter.emit('connections-updated', this.connections);
       
-      // Also emit individual plugin updates for any dialogs that might be open
-      // This will ensure PluginParamDialog displays the latest state
-      for (const node of this.nodes) {
-        this.emitNodeUpdateEvents(node);
-      }
-      
-      // If the config has a name, also sync with the server
-      if (this.config.name && typeof this.config.name === 'string') {
-        // Dynamic import to avoid circular dependencies
-        import('../services/api').then(({ saveConfig }) => {
-          saveConfig(this.config.name as string, this.config)
-            .then(() => {
-              console.log(`🔄 ForceSync: Configuration ${this.config.name} saved to server`);
-            })
-            .catch(error => {
-              console.error('🔄 ForceSync: Error saving config to server:', error);
-            });
-        });
-      }
-      
-      console.log('🔄 ForceSync complete - All subscribers notified');
-    }, 50); // Increased delay to ensure all operations complete before notifying
-  }
-
-  // Helper method to emit update events for a node and its children
-  private emitNodeUpdateEvents(node: Node): void {
-    if (node.id) {
-      const plugin = {
-        id: node.id,
-        name: node.name,
-        type: node.type,
-        params: node.params || {} // Ensure params is never undefined
-      };
-      
-      // Log what we're emitting for debugging
-      console.log(`🔄 Emitting plugin-updated event for ${node.id}:`, JSON.stringify(plugin.params));
-      
-      this.eventEmitter.emit('plugin-updated', plugin);
-    }
+    // Mark that we have pending changes
+    this.pendingChanges = true;
     
-    // Recursively emit events for children
-    if (node.isParent && node.children) {
-      for (const child of node.children) {
-        this.emitNodeUpdateEvents(child);
-      }
-    }
-  }
-
-  // Synchronize the config object with the current nodes and connections
-  private syncConfigWithNodes(): void {
-    try {
-      console.log('🔄 Synchronizing config with current nodes and connections');
-      
-      // Create a deep copy of the current config as a starting point
-      const updatedConfig = JSON.parse(JSON.stringify(this.config));
-      
-      // Create mappings of connections for easier lookup
-      const connectionMap = new Map<string, Connection[]>();
-      for (const connection of this.connections) {
-        const toNodeId = connection.to.nodeId;
-        if (!connectionMap.has(toNodeId)) {
-          connectionMap.set(toNodeId, []);
-        }
-        connectionMap.get(toNodeId)?.push(connection);
-      }
-      
-      // Create a set of existing node IDs for quick lookup
-      const existingNodeIds = new Set(this.nodes.map(node => node.id));
-      
-      // Process all nodes to ensure their data is reflected in the config
-      for (const node of this.nodes) {
-        if (!node.id) continue;
-        
-        const idParts = node.id.split('-');
-        const type = idParts[0];
-        const index = parseInt(idParts[1]);
-        
-        // Skip non-numeric indices or group nodes
-        if (isNaN(index) || node.isParent) continue;
-        
-        // Update the config based on node type
-        switch (type) {
-          case 'source':
-          case 'sources':
-            if (updatedConfig.sources && updatedConfig.sources[index]) {
-              // Update params and name
-              updatedConfig.sources[index].params = node.params || {};
-              updatedConfig.sources[index].name = node.name;
-              // Update connections (provider and storage)
-              this.updateNodeConnections(node, updatedConfig.sources[index], connectionMap);
-              
-              // Handle children if this is a parent node
-              if (node.isParent && node.children) {
-                if (!updatedConfig.sources[index].params) {
-                  updatedConfig.sources[index].params = {};
-                }
-                if (!updatedConfig.sources[index].params.children) {
-                  updatedConfig.sources[index].params.children = [];
-                }
-                
-                // Update each child
-                for (let i = 0; i < node.children.length; i++) {
-                  const child = node.children[i];
-                  if (child && existingNodeIds.has(child.id)) {
-                    // Ensure space for this child
-                    while (updatedConfig.sources[index].params.children.length <= i) {
-                      updatedConfig.sources[index].params.children.push({});
-                    }
-                    
-                    // Update the child params
-                    updatedConfig.sources[index].params.children[i] = {
-                      ...updatedConfig.sources[index].params.children[i],
-                      ...child.params
-                    };
-                  }
-                }
-                
-                // Clean up any deleted children
-                if (updatedConfig.sources[index].params.children) {
-                  updatedConfig.sources[index].params.children = updatedConfig.sources[index].params.children.filter((_: Record<string, any>, i: number) => {
-                    const child = node.children?.[i];
-                    return child && existingNodeIds.has(child.id);
-                  });
-                }
-              }
-            }
-            break;
-          case 'enricher':
-          case 'enrichers':
-            if (updatedConfig.enrichers && updatedConfig.enrichers[index]) {
-              updatedConfig.enrichers[index].params = node.params || {};
-              updatedConfig.enrichers[index].name = node.name;
-              // Update connections (provider and storage)
-              this.updateNodeConnections(node, updatedConfig.enrichers[index], connectionMap);
-              
-              // Handle children if this is a parent node
-              if (node.isParent && node.children) {
-                if (!updatedConfig.enrichers[index].params) {
-                  updatedConfig.enrichers[index].params = {};
-                }
-                if (!updatedConfig.enrichers[index].params.children) {
-                  updatedConfig.enrichers[index].params.children = [];
-                }
-                
-                // Update each child
-                for (let i = 0; i < node.children.length; i++) {
-                  const child = node.children[i];
-                  if (child && existingNodeIds.has(child.id)) {
-                    // Ensure space for this child
-                    while (updatedConfig.enrichers[index].params.children.length <= i) {
-                      updatedConfig.enrichers[index].params.children.push({});
-                    }
-                    
-                    // Update the child params
-                    updatedConfig.enrichers[index].params.children[i] = {
-                      ...updatedConfig.enrichers[index].params.children[i],
-                      ...child.params
-                    };
-                  }
-                }
-                
-                // Clean up any deleted children
-                if (updatedConfig.enrichers[index].params.children) {
-                  updatedConfig.enrichers[index].params.children = updatedConfig.enrichers[index].params.children.filter((_: Record<string, any>, i: number) => {
-                    const child = node.children?.[i];
-                    return child && existingNodeIds.has(child.id);
-                  });
-                }
-              }
-            }
-            break;
-          case 'generator':
-          case 'generators':
-            if (updatedConfig.generators && updatedConfig.generators[index]) {
-              updatedConfig.generators[index].params = node.params || {};
-              updatedConfig.generators[index].name = node.name;
-              // Update connections (provider and storage)
-              this.updateNodeConnections(node, updatedConfig.generators[index], connectionMap);
-              
-              // Handle children if this is a parent node
-              if (node.isParent && node.children) {
-                if (!updatedConfig.generators[index].params) {
-                  updatedConfig.generators[index].params = {};
-                }
-                if (!updatedConfig.generators[index].params.children) {
-                  updatedConfig.generators[index].params.children = [];
-                }
-                
-                // Update each child
-                for (let i = 0; i < node.children.length; i++) {
-                  const child = node.children[i];
-                  if (child && existingNodeIds.has(child.id)) {
-                    // Ensure space for this child
-                    while (updatedConfig.generators[index].params.children.length <= i) {
-                      updatedConfig.generators[index].params.children.push({});
-                    }
-                    
-                    // Update the child params
-                    updatedConfig.generators[index].params.children[i] = {
-                      ...updatedConfig.generators[index].params.children[i],
-                      ...child.params
-                    };
-                  }
-                }
-                
-                // Clean up any deleted children
-                if (updatedConfig.generators[index].params.children) {
-                  updatedConfig.generators[index].params.children = updatedConfig.generators[index].params.children.filter((_: Record<string, any>, i: number) => {
-                    const child = node.children?.[i];
-                    return child && existingNodeIds.has(child.id);
-                  });
-                }
-              }
-            }
-            break;
-          case 'ai':
-            if (updatedConfig.ai && updatedConfig.ai[index]) {
-              updatedConfig.ai[index].params = node.params || {};
-              updatedConfig.ai[index].name = node.name;
-            }
-            break;
-          case 'storage':
-            if (updatedConfig.storage && updatedConfig.storage[index]) {
-              updatedConfig.storage[index].params = node.params || {};
-              updatedConfig.storage[index].name = node.name;
-            }
-            break;
-        }
-      }
-      
-      // Update our internal config
-      this.config = updatedConfig;
-      
-      console.log('🔄 Config synchronized successfully');
-    } catch (error) {
-      console.error('Error synchronizing config with nodes:', error);
-    }
-  }
-  
-  // Helper method to update a node's connections in the config
-  private updateNodeConnections(
-    node: Node, 
-    configNode: any, 
-    connectionMap: Map<string, Connection[]>
-  ): void {
-    if (!node.id || !configNode.params) return;
-    
-    const nodeConnections = connectionMap.get(node.id) || [];
-    
-    // Update provider connection
-    const providerConnection = nodeConnections.find(conn => conn.to.input === 'provider');
-    if (providerConnection) {
-      const providerNode = this.findNodeById(providerConnection.from.nodeId);
-      if (providerNode) {
-        configNode.params.provider = providerNode.name;
-      }
-    } else if (configNode.params.provider) {
-      // If there's no connection but the param exists in the config, remove it from config only
-      // This is critical: we remove it from the config but NOT from the node.params in memory
-      console.log(`Clearing provider param from config for node ${node.id}`);
-      delete configNode.params.provider;
-    }
-    
-    // Update storage connection
-    const storageConnection = nodeConnections.find(conn => conn.to.input === 'storage');
-    if (storageConnection) {
-      const storageNode = this.findNodeById(storageConnection.from.nodeId);
-      if (storageNode) {
-        configNode.params.storage = storageNode.name;
-      }
-    } else if (configNode.params.storage) {
-      // If there's no connection but the param exists in the config, remove it from config only
-      // This is critical: we remove it from the config but NOT from the node.params in memory
-      console.log(`Clearing storage param from config for node ${node.id}`);
-      delete configNode.params.storage;
-    }
-  }
-
-  // Helper method that previously saved to server - now disabled to only save on explicit user action
-  private saveToServer(): void {
-    // No longer automatically saving to server
-    console.log('🔄 Configuration updated locally but not saved to server (awaiting explicit save action)');
-  }
-
-  // Remove a node from the configuration and graph
-  removeNode(nodeId: string): boolean {
-    try {
-      console.log(`🗑️ Removing node: ${nodeId}`);
-
-      // Parse the node ID to determine its type and index
-      const idParts = nodeId.split('-');
-      const nodeType = idParts[0];
-      const nodeIndex = parseInt(idParts[1]);
-
-      // Determine if this is a child node
-      const node = this.findNodeById(nodeId);
-      if (!node) {
-        console.error(`Node with ID ${nodeId} not found`);
-        return false;
-      }
-
-      // Check if this is a child node (part of a parent)
-      let isChildNode = false;
-      let parentNode: Node | undefined;
-      let parentId: string | undefined;
-
-      // Look for a parent node that contains this child
-      for (const n of this.nodes) {
-        if (n.isParent && n.children) {
-          const childIndex = n.children.findIndex(child => child.id === nodeId);
-          if (childIndex !== -1) {
-            isChildNode = true;
-            parentNode = n;
-            parentId = n.id;
-            break;
-          }
-        }
-      }
-
-      // Create deep copies of the current state
-      const updatedConfig = JSON.parse(JSON.stringify(this.config));
-      let updatedNodes = JSON.parse(JSON.stringify(this.nodes));
-      
-      // Find all connections involving this node
-      const connectionsToRemove = this.connections.filter(conn => 
-        conn.from.nodeId === nodeId || conn.to.nodeId === nodeId
-      );
-
-      // Remove connections
-      let updatedConnections = this.connections.filter(conn => 
-        conn.from.nodeId !== nodeId && conn.to.nodeId !== nodeId
-      );
-
-      // Handle node removal based on its type
-      if (isChildNode && parentNode && parentId) {
-        // Handle child node removal
-        
-        // 1. Get parent ID parts
-        const parentIdParts = parentId.split('-');
-        const parentType = parentIdParts[0]; 
-        const parentIndex = parseInt(parentIdParts[1]);
-        
-        // 2. Find child index in parent
-        const childIndex = parentNode.children!.findIndex(child => child.id === nodeId);
-        
-        // 3. Remove from config's appropriate array's params.children
-        if (parentType === 'sources' || parentType === 'source') {
-          if (updatedConfig.sources && updatedConfig.sources[parentIndex]) {
-            // Initialize params if they don't exist
-            if (!updatedConfig.sources[parentIndex].params) {
-              updatedConfig.sources[parentIndex].params = {};
-            }
-            // Initialize children array if it doesn't exist
-            if (!updatedConfig.sources[parentIndex].params.children) {
-              updatedConfig.sources[parentIndex].params.children = [];
-            }
-            // Remove the child from the children array
-            updatedConfig.sources[parentIndex].params.children.splice(childIndex, 1);
-            
-            // If it was the last child, remove the children array
-            if (updatedConfig.sources[parentIndex].params.children.length === 0) {
-              delete updatedConfig.sources[parentIndex].params.children;
-            }
-          }
-        } else if (parentType === 'enrichers' || parentType === 'enricher') {
-          if (updatedConfig.enrichers && updatedConfig.enrichers[parentIndex]) {
-            // Initialize params if they don't exist
-            if (!updatedConfig.enrichers[parentIndex].params) {
-              updatedConfig.enrichers[parentIndex].params = {};
-            }
-            // Initialize children array if it doesn't exist
-            if (!updatedConfig.enrichers[parentIndex].params.children) {
-              updatedConfig.enrichers[parentIndex].params.children = [];
-            }
-            // Remove the child from the children array
-            updatedConfig.enrichers[parentIndex].params.children.splice(childIndex, 1);
-            
-            // If it was the last child, remove the children array
-            if (updatedConfig.enrichers[parentIndex].params.children.length === 0) {
-              delete updatedConfig.enrichers[parentIndex].params.children;
-            }
-          }
-        } else if (parentType === 'generators' || parentType === 'generator') {
-          if (updatedConfig.generators && updatedConfig.generators[parentIndex]) {
-            // Initialize params if they don't exist
-            if (!updatedConfig.generators[parentIndex].params) {
-              updatedConfig.generators[parentIndex].params = {};
-            }
-            // Initialize children array if it doesn't exist
-            if (!updatedConfig.generators[parentIndex].params.children) {
-              updatedConfig.generators[parentIndex].params.children = [];
-            }
-            // Remove the child from the children array
-            updatedConfig.generators[parentIndex].params.children.splice(childIndex, 1);
-            
-            // If it was the last child, remove the children array
-            if (updatedConfig.generators[parentIndex].params.children.length === 0) {
-              delete updatedConfig.generators[parentIndex].params.children;
-            }
-          }
-        }
-        
-        // 4. Remove from parent node's children array
-        updatedNodes = updatedNodes.map((n: Node) => {
-          if (n.id === parentId && n.children) {
-            return {
-              ...n,
-              children: n.children.filter((child: Node) => child.id !== nodeId)
-            };
-          }
-          return n;
-        });
-
-        // 5. Update internal state
-        this.config = updatedConfig;
-        this.nodes = updatedNodes;
-        this.connections = updatedConnections;
-        
-        // 6. Force sync to ensure all state is consistent
-        this.forceSync();
-        
-        // 7. Emit events to notify all listeners
-        this.eventEmitter.emit('config-updated', this.config);
-        this.eventEmitter.emit('nodes-updated', this.nodes);
-        this.eventEmitter.emit('connections-updated', this.connections);
-        
-        // 8. Save to server if the config has a name
-        if (this.config.name && typeof this.config.name === 'string') {
-          import('../services/api').then(({ saveConfig }) => {
-            saveConfig(this.config.name as string, this.config)
-              .then(() => {
-                console.log(`🔄 Node removal saved to server for config ${this.config.name}`);
-              })
-              .catch(error => {
-                console.error('🔄 Error saving node removal to server:', error);
-              });
-          });
-        }
-        
-        return true;
-      } else {
-        // Handle main node removal
-        switch(nodeType) {
-          case 'storage':
-            // Remove from storage array
-            updatedConfig.storage.splice(nodeIndex, 1);
-            
-            // Clear storage references in other nodes
-            const storageNodeGroups = ['sources', 'enrichers', 'generators'] as const;
-            storageNodeGroups.forEach((nodeGroup) => {
-              updatedConfig[nodeGroup].forEach((plugin: PluginConfig) => {
-                if (plugin.params?.storage === node.name) {
-                  delete plugin.params.storage;
-                }
-                // Also check children
-                if (plugin.params?.children) {
-                  plugin.params.children.forEach((child: Record<string, any>) => {
-                    if (child.storage === node.name) {
-                      delete child.storage;
-                    }
-                  });
-                }
-              });
-            });
-            break;
-          
-          case 'ai':
-            // Remove from AI array
-            updatedConfig.ai.splice(nodeIndex, 1);
-            
-            // Clear provider references in other nodes
-            const providerNodeGroups = ['sources', 'enrichers', 'generators'] as const;
-            providerNodeGroups.forEach((nodeGroup) => {
-              updatedConfig[nodeGroup].forEach((plugin: PluginConfig) => {
-                if (plugin.params?.provider === node.name) {
-                  delete plugin.params.provider;
-                }
-                // Also check children
-                if (plugin.params?.children) {
-                  plugin.params.children.forEach((child: Record<string, any>) => {
-                    if (child.provider === node.name) {
-                      delete child.provider;
-                    }
-                  });
-                }
-              });
-            });
-            break;
-          
-          case 'source':
-          case 'sources':
-            if (nodeType === 'sources') {
-              // Remove the entire group
-              updatedConfig.sources.splice(nodeIndex, 1);
-            } else {
-              // Handle individual source
-              for (let i = 0; i < updatedConfig.sources.length; i++) {
-                if (updatedConfig.sources[i].name === node.name) {
-                  updatedConfig.sources.splice(i, 1);
-                  break;
-                }
-              }
-            }
-            break;
-          
-          case 'enricher':
-          case 'enrichers':
-            if (nodeType === 'enrichers') {
-              // Remove the entire group
-              updatedConfig.enrichers.splice(nodeIndex, 1);
-            } else {
-              // Handle individual enricher
-              for (let i = 0; i < updatedConfig.enrichers.length; i++) {
-                if (updatedConfig.enrichers[i].name === node.name) {
-                  updatedConfig.enrichers.splice(i, 1);
-                  break;
-                }
-              }
-            }
-            break;
-          
-          case 'generator':
-          case 'generators':
-            if (nodeType === 'generators') {
-              // Remove the entire group
-              updatedConfig.generators.splice(nodeIndex, 1);
-            } else {
-              // Handle individual generator
-              for (let i = 0; i < updatedConfig.generators.length; i++) {
-                if (updatedConfig.generators[i].name === node.name) {
-                  updatedConfig.generators.splice(i, 1);
-                  break;
-                }
-              }
-            }
-            break;
-          
-          default:
-            console.error(`Unknown node type: ${nodeType}`);
-            return false;
-        }
-        
-        // Remove the node from nodes array
-        updatedNodes = updatedNodes.filter((n: Node) => n.id !== nodeId);
-      }
-
-      // Update internal state
-      this.config = updatedConfig;
-      this.nodes = updatedNodes;
-      this.connections = updatedConnections;
-      
-      // If the selected node was removed, clear selection
-      if (this.selectedNode === nodeId) {
-        this.selectedNode = null;
-        this.eventEmitter.emit('node-selected', null);
-      }
-      
-      // Emit events
-      this.eventEmitter.emit('config-updated', this.config);
-      this.eventEmitter.emit('nodes-updated', this.nodes);
-      this.eventEmitter.emit('connections-updated', this.connections);
-      
-      // Force sync to ensure all state is consistent
-      this.forceSync();
-      
-      // Save to server if the config has a name
-      if (this.config.name && typeof this.config.name === 'string') {
-        import('../services/api').then(({ saveConfig }) => {
-          saveConfig(this.config.name as string, this.config)
-            .then(() => {
-              console.log(`🔄 Node removal saved to server for config ${this.config.name}`);
-            })
-            .catch(error => {
-              console.error('🔄 Error saving node removal to server:', error);
-            });
-        });
-      }
-      
-      return true;
-    } catch (error) {
-      console.error("Error in removeNode:", error);
-      return false;
-    }
+    console.log('🔄 ForceSync complete - All subscribers notified');
   }
 }
 
