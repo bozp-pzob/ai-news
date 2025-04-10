@@ -9,6 +9,8 @@ import { Node, Connection, PortInfo } from '../types/nodeTypes';
 import { configStateManager } from '../services/ConfigStateManager';
 import { pluginRegistry } from '../services/PluginRegistry';
 import { animateCenterView } from '../utils/animation/centerViewAnimation';
+import { ResetDialog } from './ResetDialog';
+import { getConfig } from '../services/api';
 
 // Add type constants to represent the pipeline flow steps
 const PIPELINE_STEPS = ['sources', 'enrichers', 'generators'] as const;
@@ -16,7 +18,7 @@ type PipelineStep = typeof PIPELINE_STEPS[number];
 
 interface NodeGraphProps {
   config: Config;
-  onConfigUpdate: (config: Config) => void;
+  onConfigUpdate: (config: Config, isReset?: boolean) => void;
   saveConfiguration?: () => Promise<boolean>;
 }
 
@@ -50,6 +52,11 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   const [paletteAnimation, setPaletteAnimation] = useState<'opening' | 'closing' | 'idle'>('idle');
   const [paletteVisible, setPaletteVisible] = useState(true);
   const [showPipelineFlow, setShowPipelineFlow] = useState(true);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Add resetInProgress ref
+  const resetInProgress = useRef(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const backBufferRef = useRef<HTMLCanvasElement | null>(null);
@@ -987,6 +994,9 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       // Schedule update instead of immediate state change
       scheduleUpdate(() => {
         setNodes(updatedNodes);
+        if (!resetInProgress.current) {
+          setHasUnsavedChanges(true);
+        }
         
         // If nodes were removed and we had a selected node that no longer exists
         if (selectedNode && !findNodeRecursive(updatedNodes, selectedNode)) {
@@ -1002,6 +1012,9 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       // Schedule update instead of immediate state change
       scheduleUpdate(() => {
         setConnections(updatedConnections);
+        if (!resetInProgress.current) {
+          setHasUnsavedChanges(true);
+        }
       });
     });
     
@@ -1018,6 +1031,9 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       
       scheduleUpdate(() => {
         onConfigUpdate(updatedConfig);
+        if (!resetInProgress.current) {
+          setHasUnsavedChanges(true);
+        }
       });
     });
     
@@ -1040,7 +1056,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       unsubscribeConfig();
       unsubscribePluginUpdated();
     };
-  }, [onConfigUpdate, scheduleUpdate, selectedNode, drawToBackBuffer, drawToScreen]);
+  }, [onConfigUpdate, scheduleUpdate, selectedNode]);
 
   // Use a dedicated mouseWheel handler instead of the hook's
   useEffect(() => {
@@ -1079,26 +1095,54 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
 
   // Update canvas size when container size changes
   useEffect(() => {
+    let resizeTimeout: NodeJS.Timeout;
+    let resizeObserver: ResizeObserver | null = null;
+    let lastWidth = 0;
+    let lastHeight = 0;
+
     const updateCanvasSize = () => {
       if (canvasRef.current && containerRef.current) {
         const container = containerRef.current;
+        const newWidth = container.clientWidth;
+        const newHeight = container.clientHeight;
         
-        // Update canvas dimensions to match container
-        canvasRef.current.width = container.clientWidth;
-        canvasRef.current.height = container.clientHeight;
-        
-        // Draw after resizing
-        drawToBackBuffer();
-        drawToScreen();
+        // Only update if size has actually changed
+        if (newWidth !== lastWidth || newHeight !== lastHeight) {
+          lastWidth = newWidth;
+          lastHeight = newHeight;
+          
+          // Update canvas dimensions to match container
+          canvasRef.current.width = newWidth;
+          canvasRef.current.height = newHeight;
+          
+          // Draw after resizing
+          drawToBackBuffer();
+          drawToScreen();
+        }
       }
+    };
+
+    // Debounced version of updateCanvasSize
+    const debouncedUpdate = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(updateCanvasSize, 100);
     };
 
     // Run on the next tick to ensure the container has been rendered
     setTimeout(updateCanvasSize, 0);
     
-    // Add resize observer for more reliable size detection
-    const resizeObserver = new ResizeObserver(() => {
-      updateCanvasSize();
+    // Create a new ResizeObserver with debounced updates
+    resizeObserver = new ResizeObserver((entries) => {
+      // Only process if we have entries and the size has changed
+      if (entries.length > 0) {
+        const entry = entries[0];
+        const newWidth = entry.contentRect.width;
+        const newHeight = entry.contentRect.height;
+        
+        if (newWidth !== lastWidth || newHeight !== lastHeight) {
+          debouncedUpdate();
+        }
+      }
     });
     
     if (containerRef.current) {
@@ -1106,13 +1150,14 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     }
     
     // Also listen for window resize
-    window.addEventListener('resize', updateCanvasSize);
+    window.addEventListener('resize', debouncedUpdate);
     
     return () => {
-      if (containerRef.current) {
+      if (resizeObserver) {
         resizeObserver.disconnect();
       }
-      window.removeEventListener('resize', updateCanvasSize);
+      window.removeEventListener('resize', debouncedUpdate);
+      clearTimeout(resizeTimeout);
     };
   }, [drawToBackBuffer, drawToScreen]);
 
@@ -1518,6 +1563,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     const updatedConfig = { ...config, name };
     configStateManager.updateConfig(updatedConfig);
     setShowConfigDialog(false);
+    setHasUnsavedChanges(true);
   };
 
   // Handle saving config to server
@@ -1553,6 +1599,9 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         
         // Notify parent about the config update
         onConfigUpdate(currentConfig);
+        
+        // Reset unsaved changes flag
+        setHasUnsavedChanges(false);
       } else {
         throw new Error('Save operation failed');
       }
@@ -1763,8 +1812,61 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     return () => {};
   }, [showPluginDialog, selectedPlugin]);
 
+  // Handle reset to saved config
+  const handleReset = async () => {
+    try {
+      // Set reset in progress flag
+      resetInProgress.current = true;
+      
+      // Get the current config name
+      const configName = config.name;
+      if (!configName) {
+        console.error('Cannot reset without a config name');
+        return;
+      }
+
+      // Immediately set hasUnsavedChanges to false to prevent any state updates from enabling the button
+      setHasUnsavedChanges(false);
+
+      // Load the saved config from the server
+      const savedConfig = await getConfig(configName);
+      if (!savedConfig) {
+        console.error('Failed to load saved config');
+        return;
+      }
+
+      // Update the config state manager with the saved version
+      configStateManager.loadConfig(savedConfig);
+      
+      // Force a sync to rebuild nodes and connections
+      configStateManager.forceSync();
+      
+      // Update local state with the latest from state manager
+      setNodes(configStateManager.getNodes());
+      setConnections(configStateManager.getConnections());
+      
+      // Update the parent component with the saved config
+      onConfigUpdate(savedConfig);
+      
+      // Force a redraw to show the reset state
+      drawToBackBuffer();
+      drawToScreen();
+      
+      setShowResetDialog(false);
+      
+      // Clear reset in progress flag after a short delay to ensure all state updates are complete
+      setTimeout(() => {
+        resetInProgress.current = false;
+      }, 100);
+    } catch (error) {
+      console.error('Error resetting config:', error);
+      alert('Failed to reset configuration. Please try again.');
+      resetInProgress.current = false;
+    }
+  };
+
   return (
-    <div className="w-full h-full flex relative">
+    <div className="relative w-full h-full">
       <div 
         className={`${paletteVisible ? 'block' : 'hidden'} absolute top-0 left-0 bottom-0 z-10 transition-all duration-300 ease-in-out ${
           paletteAnimation === 'opening' ? 'animate-slide-in-left' : 
@@ -1782,7 +1884,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       </div>
       
       <div 
-        className="flex-1 flex flex-col relative transition-all duration-300 ease-in-out"
+        className="flex-1 flex flex-col relative transition-all duration-300 ease-in-out h-full"
         style={{
           marginLeft: paletteVisible && paletteAnimation !== 'closing' ? '20rem' : '0'
         }}
@@ -1823,16 +1925,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           </button>
           
           <button
-            onClick={togglePipelineFlow}
-            className={`w-10 h-10 ${showPipelineFlow ? 'bg-stone-700' : 'bg-stone-800'} text-amber-300 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30`}
-            title={showPipelineFlow ? "Hide pipeline flow" : "Show pipeline flow"}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-            </svg>
-          </button>
-          
-          <button
             onClick={() => setShowConfigDialog(true)}
             className="w-10 h-10 bg-stone-700 text-amber-300 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30"
             title="Configure node graph"
@@ -1841,22 +1933,38 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
               <path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/>
             </svg>
           </button>
-          
+        </div>
+        <div className="absolute top-4 right-4 z-10 flex space-x-2">
+          <button
+            onClick={() => setShowResetDialog(true)}
+            className={`w-10 h-10 rounded focus:outline-none flex items-center justify-center ${
+              hasUnsavedChanges 
+                ? 'bg-stone-700 text-amber-300 hover:bg-stone-600 border-amber-400/30 border' 
+                : 'bg-stone-900 text-gray-300 cursor-not-allowed'
+            }`}
+            title="Reset to saved configuration"
+            disabled={!hasUnsavedChanges}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M480-80q-75 0-140.5-28.5t-114-77q-48.5-48.5-77-114T120-440h80q0 117 81.5 198.5T480-160q117 0 198.5-81.5T760-440q0-117-81.5-198.5T480-720h-6l62 62-56 58-160-160 160-160 56 58-62 62h6q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-440q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-80Z"/></svg>
+          </button>
           <button
             onClick={handleSaveToServer}
-            className="w-10 h-10 bg-amber-500 text-gray-900 rounded hover:bg-amber-400 focus:outline-none flex items-center justify-center shadow-md"
-            title="Save configuration to server"
+            className={`px-4 h-10 rounded focus:outline-none flex items-center justify-center shadow-md ${
+              hasUnsavedChanges 
+                ? 'bg-amber-500 text-gray-900 hover:bg-amber-400' 
+                : 'bg-stone-900 text-gray-300 cursor-not-allowed'
+            }`}
+            title={hasUnsavedChanges ? "Save configuration to server" : "No changes to save"}
+            disabled={!hasUnsavedChanges}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-              <path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H9.5a1 1 0 0 0-1 1v7.293l2.646-2.647a.5.5 0 0 1 .708.708l-3.5 3.5a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L7.5 9.293V2a2 2 0 0 1 2-2H14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h2.5a.5.5 0 0 1 0 1H2z"/>
-            </svg>
+            Save Config
           </button>
         </div>
         
-        <div className="flex-1 overflow-hidden" ref={containerRef}>
+        <div className="flex-1 overflow-hidden w-full h-full" ref={containerRef}>
           <canvas
             ref={canvasRef}
-            className="w-full h-full"
+            className="w-full h-full block"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -1881,6 +1989,13 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           config={config}
           onClose={() => setShowConfigDialog(false)}
           onSave={handleConfigSave}
+        />
+      )}
+
+      {showResetDialog && (
+        <ResetDialog
+          onClose={() => setShowResetDialog(false)}
+          onConfirm={handleReset}
         />
       )}
     </div>

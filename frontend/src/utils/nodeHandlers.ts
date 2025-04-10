@@ -1245,10 +1245,11 @@ export function createNodeOutput(name: string, type: string): NodePort {
 
 // Synchronize node ports with their parameters to ensure connections match actual parameters
 export function syncNodePortsWithParams(nodes: Node[]): Node[] {
-  console.log('🔄 SYNC: Synchronizing node ports with parameters');
+  console.log('🔄 SYNC: Starting port synchronization');
   
   // Create a deep copy of nodes to avoid mutation
   const updatedNodes = JSON.parse(JSON.stringify(nodes));
+  let hasChanges = false;
   
   // First, build an index of connections for easier lookup
   const connectionsByTarget = new Map<string, Map<string, string>>();
@@ -1305,16 +1306,25 @@ export function syncNodePortsWithParams(nodes: Node[]): Node[] {
   // Now process each node to update its ports
   for (const node of updatedNodes) {
     // Process this node
-    syncSingleNodePorts(node, connectionsByTarget, connectionsBySource);
+    const nodeChanged = syncSingleNodePorts(node, connectionsByTarget, connectionsBySource);
+    if (nodeChanged) hasChanges = true;
     
     // Process children if this is a parent node
     if (node.isParent && node.children) {
       for (const child of node.children) {
-        syncSingleNodePorts(child, connectionsByTarget, connectionsBySource);
+        const childChanged = syncSingleNodePorts(child, connectionsByTarget, connectionsBySource);
+        if (childChanged) hasChanges = true;
       }
     }
   }
   
+  // Only return updated nodes if there were actual changes
+  if (!hasChanges) {
+    console.log('🔄 SYNC: No changes detected, returning original nodes');
+    return nodes;
+  }
+  
+  console.log('🔄 SYNC: Port synchronization complete with changes');
   return updatedNodes;
 }
 
@@ -1323,8 +1333,10 @@ function syncSingleNodePorts(
   node: Node,
   connectionsByTarget: Map<string, Map<string, string>>,
   connectionsBySource: Map<string, Map<string, string>>
-): void {
-  if (!node.params) return;
+): boolean {
+  if (!node.params) return false;
+  
+  let hasChanges = false;
   
   // Check if this is a child node inside a parent
   const isChildNodeOfParent = node.id && (
@@ -1333,116 +1345,123 @@ function syncSingleNodePorts(
     (node.id.includes('generator-') && node.id !== 'generators-group')
   );
   
-  // Ensure the node has the required ports for its type
-  ensureRequiredPorts(node);
-  
   // Get connections for this node
   const targetConnections = connectionsByTarget.get(node.id) || new Map<string, string>();
   const sourceConnections = connectionsBySource.get(node.id) || new Map<string, string>();
   
   // Check provider parameter and port
   if ('provider' in node.params && node.params.provider) {
-    // Make sure the node has a provider input port
     const providerPort = node.inputs.find(input => input.name === 'provider');
+    const expectedConnection = targetConnections.get('provider');
+    
     if (!providerPort) {
       // Add the port if it's missing
-      const connectedTo = targetConnections.get('provider');
       node.inputs.push({
         name: 'provider',
         type: 'provider',
-        connectedTo
+        connectedTo: expectedConnection
       });
-    } else {
-      // Port exists, update its connectedTo property from known connections
-      providerPort.connectedTo = targetConnections.get('provider');
+      hasChanges = true;
+    } else if (providerPort.connectedTo !== expectedConnection) {
+      // Update connection if it's different
+      providerPort.connectedTo = expectedConnection;
+      hasChanges = true;
     }
   } else {
     // Remove provider port if parameter doesn't exist
     const providerPortIndex = node.inputs.findIndex(input => input.name === 'provider');
     if (providerPortIndex !== -1) {
-      console.log(`🔄 SYNC: Removing provider port from ${node.id} - no provider parameter`);
       node.inputs.splice(providerPortIndex, 1);
+      hasChanges = true;
     }
   }
   
   // Check storage parameter and port
   if ('storage' in node.params && node.params.storage) {
-    // Make sure the node has a storage input port
     const storagePort = node.inputs.find(input => input.name === 'storage');
+    const expectedConnection = targetConnections.get('storage');
+    
     if (!storagePort) {
       // Add the port if it's missing
-      const connectedTo = targetConnections.get('storage');
       node.inputs.push({
         name: 'storage',
         type: 'storage',
-        connectedTo
+        connectedTo: expectedConnection
       });
-    } else {
-      // Port exists, update its connectedTo property from known connections
-      storagePort.connectedTo = targetConnections.get('storage');
+      hasChanges = true;
+    } else if (storagePort.connectedTo !== expectedConnection) {
+      // Update connection if it's different
+      storagePort.connectedTo = expectedConnection;
+      hasChanges = true;
     }
   } else {
     // Remove storage port if parameter doesn't exist
     const storagePortIndex = node.inputs.findIndex(input => input.name === 'storage');
     if (storagePortIndex !== -1) {
-      console.log(`🔄 SYNC: Removing storage port from ${node.id} - no storage parameter`);
       node.inputs.splice(storagePortIndex, 1);
+      hasChanges = true;
     }
   }
   
   // Child nodes should never have an input port
   if (isChildNodeOfParent) {
-    // Remove any input port from child nodes
     const inputPortIndex = node.inputs.findIndex(input => input.name === 'input');
     if (inputPortIndex !== -1) {
-      console.log(`🔄 SYNC: Removing input port from child node ${node.id}`);
       node.inputs.splice(inputPortIndex, 1);
+      hasChanges = true;
     }
   }
   // Source nodes should never have an input port
   else if (node.type.includes('source') || node.id.includes('source-')) {
-    // Remove any input port
     const inputPortIndex = node.inputs.findIndex(input => input.name === 'input');
     if (inputPortIndex !== -1) {
-      console.log(`🔄 SYNC: Removing input port from source node ${node.id}`);
       node.inputs.splice(inputPortIndex, 1);
+      hasChanges = true;
     }
   }
-  // For other inputs like 'input', make sure they exist and have connections for parent enrichers and generators
+  // For other inputs like 'input', make sure they exist and have connections
   else if ((node.type.includes('enricher') || node.type.includes('generator')) && !isChildNodeOfParent) {
     const inputPort = node.inputs.find(input => input.name === 'input');
+    const expectedConnection = targetConnections.get('input');
+    
     if (!inputPort) {
-      // Add the input port if it's missing
-      const connectedTo = targetConnections.get('input');
       node.inputs.push({
         name: 'input',
         type: 'data',
-        connectedTo
+        connectedTo: expectedConnection
       });
-    } else {
-      // Port exists, update its connectedTo property from known connections
-      inputPort.connectedTo = targetConnections.get('input');
+      hasChanges = true;
+    } else if (inputPort.connectedTo !== expectedConnection) {
+      inputPort.connectedTo = expectedConnection;
+      hasChanges = true;
     }
   }
   
   // Ensure all output ports have their connections
   node.outputs.forEach(output => {
-    output.connectedTo = sourceConnections.get(output.name);
+    const expectedConnection = sourceConnections.get(output.name);
+    if (output.connectedTo !== expectedConnection) {
+      output.connectedTo = expectedConnection;
+      hasChanges = true;
+    }
   });
   
   // Child nodes should never have output ports
   if (isChildNodeOfParent) {
-    // Remove output ports from child nodes
     const outputPortIndex = node.outputs.findIndex(output => output.name === 'output');
     if (outputPortIndex !== -1) {
-      console.log(`🔄 SYNC: Removing output port from child node ${node.id}`);
       node.outputs.splice(outputPortIndex, 1);
+      hasChanges = true;
     }
   }
+  
+  return hasChanges;
 }
 
 // Helper function to ensure a node has all required ports based on its type
-function ensureRequiredPorts(node: Node): void {
+function ensureRequiredPorts(node: Node): boolean {
+  let hasChanges = false;
+  
   // Check if this is a child node inside a parent (based on hierarchy properties)
   const isChildNodeOfParent = node.id && (
     (node.id.includes('source-') && node.id !== 'sources-group') ||
@@ -1462,6 +1481,7 @@ function ensureRequiredPorts(node: Node): void {
         type: 'provider',
         connectedTo: undefined
       });
+      hasChanges = true;
     }
     
     if (needsStorage && !node.inputs.some(input => input.name === 'storage')) {
@@ -1470,6 +1490,7 @@ function ensureRequiredPorts(node: Node): void {
         type: 'storage',
         connectedTo: undefined
       });
+      hasChanges = true;
     }
     
     // Remove any incorrect 'input' ports from source nodes
@@ -1477,6 +1498,7 @@ function ensureRequiredPorts(node: Node): void {
     if (inputPortIndex !== -1) {
       console.log(`Removing incorrect input port from source node ${node.id}`);
       node.inputs.splice(inputPortIndex, 1);
+      hasChanges = true;
     }
     
     // Check for required output port - only for parent nodes, not child nodes
@@ -1486,6 +1508,7 @@ function ensureRequiredPorts(node: Node): void {
         type: 'data',
         connectedTo: undefined
       });
+      hasChanges = true;
     }
   }
   
@@ -1502,6 +1525,7 @@ function ensureRequiredPorts(node: Node): void {
         type: 'provider',
         connectedTo: undefined
       });
+      hasChanges = true;
     }
     
     if (needsStorage && !node.inputs.some(input => input.name === 'storage')) {
@@ -1510,6 +1534,7 @@ function ensureRequiredPorts(node: Node): void {
         type: 'storage',
         connectedTo: undefined
       });
+      hasChanges = true;
     }
     
     // Only add the input port for parent nodes, not for child nodes
@@ -1519,12 +1544,14 @@ function ensureRequiredPorts(node: Node): void {
         type: 'data',
         connectedTo: undefined
       });
+      hasChanges = true;
     } else if (isChildNodeOfParent) {
       // Remove any input port from child nodes
       const inputPortIndex = node.inputs.findIndex(input => input.name === 'input');
       if (inputPortIndex !== -1) {
         console.log(`Removing input port from child enricher/generator node ${node.id}`);
         node.inputs.splice(inputPortIndex, 1);
+        hasChanges = true;
       }
     }
     
@@ -1535,6 +1562,7 @@ function ensureRequiredPorts(node: Node): void {
         type: 'data',
         connectedTo: undefined
       });
+      hasChanges = true;
     }
   }
   
@@ -1546,6 +1574,7 @@ function ensureRequiredPorts(node: Node): void {
         type: 'provider',
         connectedTo: undefined
       });
+      hasChanges = true;
     }
   }
   
@@ -1557,6 +1586,7 @@ function ensureRequiredPorts(node: Node): void {
         type: 'storage',
         connectedTo: undefined
       });
+      hasChanges = true;
     }
   }
   
@@ -1566,8 +1596,11 @@ function ensureRequiredPorts(node: Node): void {
     if (outputIndex !== -1) {
       console.log(`🔄 SYNC: Removing output port from child node ${node.id}`);
       node.outputs.splice(outputIndex, 1);
+      hasChanges = true;
     }
   }
+  
+  return hasChanges;
 }
 
 // Clean up stale connections that don't match node port states

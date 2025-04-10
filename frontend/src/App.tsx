@@ -76,14 +76,16 @@ function App() {
     }
   };
 
-  const handleConfigUpdate = (config: Config) => {
+  const handleConfigUpdate = (config: Config, isReset?: boolean) => {
     setConfig(config);
     
-    // Set unsaved changes flag when config is updated
-    setHasUnsavedChanges(true);
+    // Only set unsaved changes if this is not a reset operation
+    if (!isReset) {
+      setHasUnsavedChanges(true);
+    }
     
     // Automatically enable the Save Config button when changes are made
-    if (selectedConfig) {
+    if (selectedConfig && !isReset) {
       console.log(`Config "${selectedConfig}" updated, ready to save`);
     }
   };

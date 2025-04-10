@@ -638,33 +638,57 @@ class ConfigStateManager {
 
   // Synchronize the config object with the current nodes and connections
   private syncConfigWithNodes(): void {
-    try {
-      console.log('🔄 Synchronizing config with current nodes and connections');
+    if (!this.configData) return;
+    
+    // Create a deep copy of the config to avoid mutation
+    const updatedConfig = JSON.parse(JSON.stringify(this.configData.getData()));
+    let hasChanges = false;
+    
+    // Process each node to update the config
+    for (const node of this.nodes) {
+      // Skip nodes without parameters
+      if (!node.params) continue;
       
-      // Create mappings of connections for easier lookup
-      const connectionMap = new Map<string, Connection[]>();
-      for (const connection of this.connections) {
-        const toNodeId = connection.to.nodeId;
-        if (!connectionMap.has(toNodeId)) {
-          connectionMap.set(toNodeId, []);
-        }
-        connectionMap.get(toNodeId)?.push(connection);
+      // Get the node type and index from the ID
+      const [type, indexStr] = node.id.split('-');
+      const index = parseInt(indexStr);
+      
+      // Skip invalid indices
+      if (isNaN(index)) continue;
+      
+      // Update the appropriate section of the config
+      switch (type) {
+        case 'source':
+          if (updatedConfig.sources && updatedConfig.sources[index]) {
+            if (JSON.stringify(updatedConfig.sources[index].params) !== JSON.stringify(node.params)) {
+              updatedConfig.sources[index].params = { ...node.params };
+              hasChanges = true;
+            }
+          }
+          break;
+        case 'enricher':
+          if (updatedConfig.enrichers && updatedConfig.enrichers[index]) {
+            if (JSON.stringify(updatedConfig.enrichers[index].params) !== JSON.stringify(node.params)) {
+              updatedConfig.enrichers[index].params = { ...node.params };
+              hasChanges = true;
+            }
+          }
+          break;
+        case 'generator':
+          if (updatedConfig.generators && updatedConfig.generators[index]) {
+            if (JSON.stringify(updatedConfig.generators[index].params) !== JSON.stringify(node.params)) {
+              updatedConfig.generators[index].params = { ...node.params };
+              hasChanges = true;
+            }
+          }
+          break;
       }
-      
-      // Create a deep copy of the current config
-      const config = this.configData.getData();
-      const updatedConfig = JSON.parse(JSON.stringify(config));
-      
-      // Process all nodes to update the config
-      // This is simplified as most of the actual config updating 
-      // now happens in the Config class
-      
-      // Update our config data
+    }
+    
+    // Only update if there were actual changes
+    if (hasChanges) {
       this.configData.updateConfig(updatedConfig);
-      
-      console.log('🔄 Config synchronized successfully');
-    } catch (error) {
-      console.error('Error synchronizing config with nodes:', error);
+      this.notifyListeners();
     }
   }
 
@@ -715,9 +739,18 @@ class ConfigStateManager {
             // Create updated nodes array with the child removed from the parent
             this.nodes = this.nodes.map(node => {
               if (node.id === parentNode!.id && node.children) {
+                // Remove the child node
+                const updatedChildren = node.children.filter(child => child.id !== nodeId);
+                
+                // Recalculate positions for remaining children
+                const childNodeSpacing = 45; // Same spacing as used in rebuildNodesAndConnections
+                updatedChildren.forEach((child, index) => {
+                  child.position.y = node.position.y + 50 + index * childNodeSpacing;
+                });
+                
                 return {
                   ...node,
-                  children: node.children.filter(child => child.id !== nodeId)
+                  children: updatedChildren
                 };
               }
               return node;
@@ -842,6 +875,76 @@ class ConfigStateManager {
     this.pendingChanges = true;
     
     console.log('🔄 ForceSync complete - All subscribers notified');
+  }
+
+  private updateNodes(newNodes: Node[]): void {
+    // Only update if there are actual changes
+    if (JSON.stringify(this.nodes) !== JSON.stringify(newNodes)) {
+      this.nodes = newNodes;
+      this.notifyListeners();
+    }
+  }
+
+  private syncNodesWithConfig(): void {
+    if (!this.configData) return;
+    
+    // Create a deep copy of the nodes to avoid mutation
+    const updatedNodes = JSON.parse(JSON.stringify(this.nodes));
+    let hasChanges = false;
+    
+    // Process each node to update its parameters
+    for (const node of updatedNodes) {
+      // Skip nodes that don't need parameters
+      if (!node.params) continue;
+      
+      // Get the node type and index from the ID
+      const [type, indexStr] = node.id.split('-');
+      const index = parseInt(indexStr);
+      
+      // Skip invalid indices
+      if (isNaN(index)) continue;
+      
+      // Update the node's parameters from the config
+      switch (type) {
+        case 'source':
+          if (this.configData.getData().sources && this.configData.getData().sources[index]) {
+            if (JSON.stringify(node.params) !== JSON.stringify(this.configData.getData().sources[index].params)) {
+              node.params = { ...this.configData.getData().sources[index].params };
+              hasChanges = true;
+            }
+          }
+          break;
+        case 'enricher':
+          if (this.configData.getData().enrichers && this.configData.getData().enrichers[index]) {
+            if (JSON.stringify(node.params) !== JSON.stringify(this.configData.getData().enrichers[index].params)) {
+              node.params = { ...this.configData.getData().enrichers[index].params };
+              hasChanges = true;
+            }
+          }
+          break;
+        case 'generator':
+          if (this.configData.getData().generators && this.configData.getData().generators[index]) {
+            if (JSON.stringify(node.params) !== JSON.stringify(this.configData.getData().generators[index].params)) {
+              node.params = { ...this.configData.getData().generators[index].params };
+              hasChanges = true;
+            }
+          }
+          break;
+      }
+    }
+    
+    // Only update if there were actual changes
+    if (hasChanges) {
+      this.configData.updateConfig(updatedNodes);
+      this.notifyListeners();
+    }
+  }
+
+  private notifyListeners(): void {
+    this.eventEmitter.emit('nodes-updated', this.nodes);
+    this.eventEmitter.emit('connections-updated', this.connections);
+    this.eventEmitter.emit('config-updated', this.configData.getData());
+    this.eventEmitter.emit('node-selected', this.selectedNode);
   }
 }
 
