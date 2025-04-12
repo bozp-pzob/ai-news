@@ -43,7 +43,7 @@
           "name": "summaryOpenAiProvider",
           "params": {
             "apiKey": "process.env.OPENAI_API_KEY",
-            "model": "openai/chatgpt-4o-latest",
+            "model": "anthropic/claude-3.7-sonnet",
             "temperature": 0,
             "useOpenRouter": true,
             "siteUrl": "process.env.SITE_URL",

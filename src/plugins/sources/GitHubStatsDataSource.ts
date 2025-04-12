@@ -122,7 +122,7 @@ export class GitHubStatsDataSource implements ContentSource {
           cid: `github-issue-${issue.number}`,
           source: issueUrl,
           title: issue.title,
-          text: `Issue #${issue.number} by ${issue.author}`,
+          text: `Issue #${issue.number}: ${issue.title} (by ${issue.author})`,
           link: issueUrl,
           date: timestamp,
           metadata: {
@@ -150,7 +150,7 @@ export class GitHubStatsDataSource implements ContentSource {
           cid: `github-pr-${pr.number}`,
           source: prUrl,
           title: pr.title,
-          text: `PR #${pr.number} by ${pr.author}`,
+          text: `PR #${pr.number}: ${pr.title} (by ${pr.author})`,
           link: prUrl,
           date: timestamp,
           metadata: {
@@ -178,7 +178,7 @@ export class GitHubStatsDataSource implements ContentSource {
           cid: `github-completed-${item.prNumber}`,
           source: prUrl,
           title: item.title,
-          text: `${item.type}: ${item.title}`,
+          text: `${item.type}: ${item.title} (PR #${item.prNumber})`,
           link: prUrl,
           date: timestamp,
           metadata: {

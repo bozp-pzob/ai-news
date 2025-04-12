@@ -33,11 +33,10 @@ export class DailySummaryGenerator {
     this.outputPath = config.outputPath || './'; // Default to current directory if not specified
   }
 
-  
   public async generateAndStoreSummary(dateStr: string): Promise<void> {
     try {
       const currentTime = new Date(dateStr).getTime() / 1000;
-      const targetTime = currentTime + ( 60 * 60 * 24);
+      const targetTime = currentTime + (60 * 60 * 24);
       const contentItems: ContentItem[] = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime, this.summaryType);
 
       if (contentItems.length === 0) {
@@ -48,12 +47,11 @@ export class DailySummaryGenerator {
       const groupedContent = this.groupObjectsByTopics(contentItems);
 
       const allSummaries: any[] = [];
-
       let maxTopicsToSummarize = 0;
 
       for (const grouped of groupedContent) {
         try {
-          if (!grouped ) continue;
+          if (!grouped) continue;
           const { topic, objects } = grouped;
           
           if (!topic || !objects || objects.length <= 0 || maxTopicsToSummarize >= 10) continue;
@@ -68,7 +66,7 @@ export class DailySummaryGenerator {
           maxTopicsToSummarize++;
         }
         catch (e) {
-          console.log( e );
+          console.log(e);
         }
       }
 
@@ -85,9 +83,7 @@ export class DailySummaryGenerator {
       };
 
       await this.storage.saveSummaryItem(summaryItem);
-
       await this.writeSummaryToFile(dateStr, currentTime, allSummaries);
-
       await this.writeMDToFile(dateStr, markdownString);
 
       console.log(`Daily report for ${dateStr} generated and stored successfully.`);
@@ -121,9 +117,9 @@ export class DailySummaryGenerator {
     try {
       const today = new Date();
 
-      let summary: SummaryItem[] = await this.storage.getSummaryBetweenEpoch((today.getTime() - ( hour * 24 )) / 1000,today.getTime() / 1000);
+      let summary: SummaryItem[] = await this.storage.getSummaryBetweenEpoch((today.getTime() - (hour * 24)) / 1000, today.getTime() / 1000);
       
-      if ( summary && summary.length <= 0 ) {
+      if (summary && summary.length <= 0) {
         const summaryDate = new Date(today);
         summaryDate.setDate(summaryDate.getDate() - 1);
         
@@ -206,14 +202,36 @@ export class DailySummaryGenerator {
     }
   }
 
-  private groupObjectsByTopics(objects : any[]): any[] {
+  private groupObjectsByTopics(objects: any[]): any[] {
     const topicMap = new Map();
 
     objects.forEach(obj => {
       if (obj.source.indexOf('github') >= 0) {
-        let github_topic = obj.type === 'githubPullRequestContributor' ? 'pull_request' : obj.type === 'githubIssueContributor' ? 'issue' : 'commmit';
-        if (! obj.topics) {
+        // Improved GitHub topic categorization
+        let github_topic;
+        if (obj.type === 'githubPullRequestContributor' || obj.type === 'githubPullRequest') {
+          github_topic = 'pull_request';
+        } else if (obj.type === 'githubIssueContributor' || obj.type === 'githubIssue') {
+          github_topic = 'issue';
+        } else if (obj.type === 'githubCommitContributor') {
+          github_topic = 'commit';
+        } else if (obj.type === 'githubStatsSummary') {
+          github_topic = 'github_summary';
+        } else if (obj.type === 'githubTopContributors') {
+          github_topic = 'contributors';
+        } else if (obj.type === 'githubCompletedItem') {
+          github_topic = 'completed_items';
+        } else {
+          github_topic = 'github_other';
+        }
+        
+        if (!obj.topics) {
           obj.topics = [];
+        }
+        
+        // Add the GitHub topic to the object's topics
+        if (!obj.topics.includes(github_topic)) {
+          obj.topics.push(github_topic);
         }
 
         if (!topicMap.has(github_topic)) {
@@ -221,9 +239,9 @@ export class DailySummaryGenerator {
         }
         topicMap.get(github_topic).push(obj);
       }
-      else if (obj.cid.indexOf('analytics') >= 0 ) {
+      else if (obj.cid.indexOf('analytics') >= 0) {
         let token_topic = 'crypto market';
-        if (! obj.topics) {
+        if (!obj.topics) {
           obj.topics = [];
         }
 
@@ -231,13 +249,12 @@ export class DailySummaryGenerator {
           topicMap.set(token_topic, []);
         }
         topicMap.get(token_topic).push(obj);
-
       }
       else {
         if (obj.topics) {
-          obj.topics.forEach((topic:any) => {
+          obj.topics.forEach((topic: any) => {
             let shortCase = topic.toLowerCase();
-            if ( ! this.blockedTopics.includes(shortCase) ) {
+            if (!this.blockedTopics.includes(shortCase)) {
               if (!topicMap.has(shortCase)) {
                 topicMap.set(shortCase, []);
               }
@@ -249,51 +266,66 @@ export class DailySummaryGenerator {
     });
 
     const sortedTopics = Array.from(topicMap.entries()).sort((a, b) => b[1].length - a[1].length);
-    const alreadyAdded : any = {};
+    const alreadyAdded: any = {};
 
-    const miscTopics : any = {
+    const miscTopics: any = {
       topic: 'Misceleanous',
       objects: [],
       allTopics: []
     };
 
-    let groupedTopics : any[] = [];
+    let groupedTopics: any[] = [];
 
     sortedTopics.forEach(([topic, associatedObjects]) => {
       const mergedTopics = new Set();
       let topicAlreadyAdded = false;
-      associatedObjects.forEach((obj:any) => {
-        obj.topics.forEach((t:any) => {
-          let lower = t.toLowerCase();
+      associatedObjects.forEach((obj: any) => {
+        if (obj.topics) {
+          obj.topics.forEach((t: any) => {
+            let lower = t.toLowerCase();
 
-          if (alreadyAdded[lower]) {
-            topicAlreadyAdded = true;
-          }
-          else {
-            mergedTopics.add(lower);
-          }
-        });
+            if (alreadyAdded[lower]) {
+              topicAlreadyAdded = true;
+            }
+            else {
+              mergedTopics.add(lower);
+            }
+          });
+        }
       });
-      if ( associatedObjects && associatedObjects.length  <= 1 ) {
+      
+      // Improved handling for GitHub topics
+      if (topic === 'pull_request' || topic === 'issue' || topic === 'commit' || 
+          topic === 'github_summary' || topic === 'contributors' || topic === 'completed_items') {
+        // Always include GitHub topics regardless of count
+        if (!topicAlreadyAdded) {
+          alreadyAdded[topic] = true;
+          groupedTopics.push({
+            topic,
+            objects: associatedObjects,
+            allTopics: Array.from(mergedTopics)
+          });
+        }
+      }
+      else if (associatedObjects && associatedObjects.length <= 1) {
         let objectIds = associatedObjects.map((object: any) => object.id);
-        let alreadyAddedToMisc = miscTopics["objects"].find((object: any) => objectIds.indexOf(object.id) >= 0 );
-        if ( ! alreadyAddedToMisc ) {
+        let alreadyAddedToMisc = miscTopics["objects"].find((object: any) => objectIds.indexOf(object.id) >= 0);
+        if (!alreadyAddedToMisc) {
           miscTopics["objects"] = miscTopics["objects"].concat(associatedObjects);
           miscTopics["allTopics"] = miscTopics["allTopics"].concat(Array.from(mergedTopics));
         }
       } 
-      else if ( ! topicAlreadyAdded ) {
+      else if (!topicAlreadyAdded) {
         alreadyAdded[topic] = true;
-
-        groupedTopics.push( {
+        groupedTopics.push({
           topic,
           objects: associatedObjects,
           allTopics: Array.from(mergedTopics)
-        } );
+        });
       }
     });
     
-    groupedTopics.push( miscTopics );
+    groupedTopics.push(miscTopics);
 
     return groupedTopics;
   }
