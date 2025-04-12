@@ -1,4 +1,4 @@
-name: Run ElizaOS Daily Task
+name: Run ElizaDEV Daily Task
 on:
   schedule:
     - cron: '0 0 * * *' # Run at midnight UTC every day
