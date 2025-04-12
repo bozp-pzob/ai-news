@@ -236,10 +236,17 @@ Daily summaries are stored in JSON files with this structure:
 - Announcement tracking
 - Server activity summaries
 
-### GitHub
+### GitHub (DEPRECATING)
 - Repository activity tracking
 - Pull requests and commits
 - Issue tracking and summaries
+
+### GitHub Stats
+- Comprehensive repository statistics
+- Daily activity summaries
+- Top issues and pull requests
+- Contributor activity tracking
+- Code change metrics
 
 ### Cryptocurrency Analytics
 - Token price monitoring (Solana)

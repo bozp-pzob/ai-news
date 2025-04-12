@@ -33,14 +33,12 @@
         }
       },
       {
-        "type": "GitHubDataSource",
-        "name": "elizaGithub",
+        "type": "GitHubStatsDataSource",
+        "name": "elizaGithubStats",
         "interval": 21600000,
         "params": {
-            "contributorsUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/contributors.json",
-            "summaryUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/summary.json",
-            "historicalContributorUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/history/contributors_<year>_<month>_<day>.json",
-            "historicalSummaryUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/history/summary_<year>_<month>_<day>.json",
+            "statsUrl": "https://elizaos.github.io/data/elizaos_eliza/stats/day/stats.json",
+            "historicalStatsUrl": "https://elizaos.github.io/data/elizaos_eliza/stats/day/stats_<year>_<month>_<day>.json",
             "githubCompany": "elizaOS",
             "githubRepo": "eliza"
         }
