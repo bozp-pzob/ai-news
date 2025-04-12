@@ -76,7 +76,7 @@ export class GitHubStatsDataSource implements ContentSource {
       }
       
       const statsData = await statsResp.json();
-      return this.processStatsData(statsData, targetDate);
+      return this.processStatsData(statsData, targetDate, historicalStatsUrl);
     } catch (error) {
       console.error("Error fetching historical GitHub stats data:", error);
       return [];
@@ -86,16 +86,17 @@ export class GitHubStatsDataSource implements ContentSource {
   /**
    * Process the stats data into ContentItems
    */
-  private processStatsData(statsData: any, date: Date): ContentItem[] {
+  private processStatsData(statsData: any, date: Date, historicalUrl?: string): ContentItem[] {
     const githubItems: ContentItem[] = [];
     const timestamp = date.getTime() / 1000;
-
+    const dateStr = date.toISOString().split('T')[0];
+    
     // Create a summary item from the overview
     const summaryItem: ContentItem = {
       type: "githubStatsSummary",
-      cid: `github-stats-${date.toISOString().split('T')[0]}`,
-      source: this.name,
-      title: `GitHub Activity Summary for ${this.githubCompany}/${this.githubRepo}`,
+      cid: `github-stats-${dateStr}`,
+      source: historicalUrl || this.statsUrl,
+      title: `GitHub Activity Summary for ${this.githubCompany}/${this.githubRepo} (${dateStr})`,
       text: statsData.overview,
       date: timestamp,
       metadata: {
@@ -106,7 +107,8 @@ export class GitHubStatsDataSource implements ContentSource {
         mergedPRs: statsData.mergedPRs,
         newIssues: statsData.newIssues,
         closedIssues: statsData.closedIssues,
-        activeContributors: statsData.activeContributors
+        activeContributors: statsData.activeContributors,
+        historicalUrl: historicalUrl
       }
     };
     githubItems.push(summaryItem);
@@ -114,13 +116,14 @@ export class GitHubStatsDataSource implements ContentSource {
     // Process top issues
     if (statsData.topIssues && Array.isArray(statsData.topIssues)) {
       statsData.topIssues.forEach((issue: any) => {
+        const issueUrl = `${this.baseGithubUrl}issues/${issue.number}`;
         const issueItem: ContentItem = {
           type: "githubIssue",
           cid: `github-issue-${issue.number}`,
-          source: this.name,
+          source: issueUrl,
           title: issue.title,
           text: `Issue #${issue.number} by ${issue.author}`,
-          link: `${this.baseGithubUrl}issues/${issue.number}`,
+          link: issueUrl,
           date: timestamp,
           metadata: {
             id: issue.id,
@@ -141,13 +144,14 @@ export class GitHubStatsDataSource implements ContentSource {
     // Process top PRs
     if (statsData.topPRs && Array.isArray(statsData.topPRs)) {
       statsData.topPRs.forEach((pr: any) => {
+        const prUrl = `${this.baseGithubUrl}pull/${pr.number}`;
         const prItem: ContentItem = {
           type: "githubPullRequest",
           cid: `github-pr-${pr.number}`,
-          source: this.name,
+          source: prUrl,
           title: pr.title,
           text: `PR #${pr.number} by ${pr.author}`,
-          link: `${this.baseGithubUrl}pull/${pr.number}`,
+          link: prUrl,
           date: timestamp,
           metadata: {
             id: pr.id,
@@ -168,13 +172,14 @@ export class GitHubStatsDataSource implements ContentSource {
     // Process completed items
     if (statsData.completedItems && Array.isArray(statsData.completedItems)) {
       statsData.completedItems.forEach((item: any) => {
+        const prUrl = `${this.baseGithubUrl}pull/${item.prNumber}`;
         const completedItem: ContentItem = {
           type: "githubCompletedItem",
           cid: `github-completed-${item.prNumber}`,
-          source: this.name,
+          source: prUrl,
           title: item.title,
           text: `${item.type}: ${item.title}`,
-          link: `${this.baseGithubUrl}pull/${item.prNumber}`,
+          link: prUrl,
           date: timestamp,
           metadata: {
             prNumber: item.prNumber,
@@ -189,8 +194,8 @@ export class GitHubStatsDataSource implements ContentSource {
     if (statsData.topContributors && Array.isArray(statsData.topContributors)) {
       const contributorsItem: ContentItem = {
         type: "githubTopContributors",
-        cid: `github-contributors-${date.toISOString().split('T')[0]}`,
-        source: this.name,
+        cid: `github-contributors-${dateStr}`,
+        source: this.baseGithubUrl,
         title: "Top Contributors",
         text: `Top contributors for ${this.githubCompany}/${this.githubRepo}`,
         date: timestamp,

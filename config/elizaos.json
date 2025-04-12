@@ -38,7 +38,7 @@
         "interval": 21600000,
         "params": {
             "statsUrl": "https://elizaos.github.io/data/elizaos_eliza/stats/day/stats.json",
-            "historicalStatsUrl": "https://elizaos.github.io/data/elizaos_eliza/stats/day/stats_<year>_<month>_<day>.json",
+            "historicalStatsUrl": "https://elizaos.github.io/data/elizaos_eliza/stats/day/stats_<year>-<month>-<day>.json",
             "githubCompany": "elizaOS",
             "githubRepo": "eliza"
         }
