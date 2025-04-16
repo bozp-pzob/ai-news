@@ -1,6 +1,10 @@
-import { Config, PluginInfo } from '../types';
+import { Config, PluginInfo, AggregationStatus, JobStatus } from '../types';
+import { websocketService } from './websocket';
 
 const API_BASE_URL = 'http://localhost:3000';
+
+// Flag to enable WebSocket usage for real-time updates
+const USE_WEBSOCKET = true;
 
 export const getPlugins = async (): Promise<{ [key: string]: PluginInfo[] }> => {
   const response = await fetch(`${API_BASE_URL}/plugins`);
@@ -101,28 +105,135 @@ export const deleteConfig = async (name: string): Promise<void> => {
   }
 };
 
-export const startAggregation = async (configName: string): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/aggregate/${configName}/start`, {
+export const startAggregation = async (configName: string, config: Config): Promise<string> => {
+  // Always use REST API for starting aggregation
+  const response = await fetch(`${API_BASE_URL}/aggregate/${configName}`, {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(config),
   });
+  
   if (!response.ok) {
     throw new Error('Failed to start aggregation');
   }
+  
+  const result = await response.json();
+  return result.jobId;
+};
+
+export const runAggregation = async (configName: string, config: Config): Promise<string> => {
+  const response = await fetch(`${API_BASE_URL}/aggregate/${configName}/run`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(config),
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to run aggregation');
+  }
+  
+  const result = await response.json();
+  return result.jobId;
 };
 
 export const stopAggregation = async (configName: string): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/aggregate/${configName}/stop`, {
-    method: 'POST',
+  const response = await fetch(`${API_BASE_URL}/aggregate/${configName}`, {
+    method: 'DELETE',
   });
+  
   if (!response.ok) {
     throw new Error('Failed to stop aggregation');
   }
 };
 
-export const getAggregationStatus = async (configName: string): Promise<'running' | 'stopped'> => {
-  const response = await fetch(`${API_BASE_URL}/aggregate/${configName}/status`);
+export const getAggregationStatus = async (configName: string): Promise<AggregationStatus> => {
+  if (USE_WEBSOCKET) {
+    // Connect to WebSocket if needed and use the hook instead
+    console.warn('Using WebSocket for status updates. You should use useWebSocket hook instead of getAggregationStatus for real-time updates.');
+    
+    // If WebSocket is not connected, fallback to REST API
+    if (!websocketService.isConnected()) {
+      try {
+        websocketService.connect(configName);
+        websocketService.getStatus();
+        
+        // Return a temporary status until the WebSocket receives updates
+        return {
+          status: 'running',
+          currentPhase: 'connecting',
+          lastUpdated: Date.now()
+        };
+      } catch (error) {
+        console.error('Failed to connect to WebSocket, falling back to REST API:', error);
+      }
+    } else {
+      // WebSocket is connected, request a status update
+      websocketService.getStatus();
+      
+      // Return a temporary status until the WebSocket receives updates
+      return {
+        status: 'running',
+        currentPhase: 'waiting',
+        lastUpdated: Date.now()
+      };
+    }
+  }
+
+  // Fallback to REST API
+  const response = await fetch(`${API_BASE_URL}/status/${configName}`);
   if (!response.ok) {
     throw new Error('Failed to fetch aggregation status');
   }
   return response.json();
+};
+
+export const getJobStatus = async (jobId: string): Promise<JobStatus> => {
+  const response = await fetch(`${API_BASE_URL}/job/${jobId}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch job status');
+  }
+  return response.json();
+};
+
+// Type for the cleanup function
+type CleanupFunction = () => void;
+
+export const useJobStatus = (
+  jobId: string, 
+  onStatusChange?: (status: JobStatus) => void
+): null | CleanupFunction => {
+  if (!jobId) return null;
+  
+  // This implementation assumes this function is used within a React component
+  // with appropriate hooks to track state, similar to a useWebSocket hook
+  
+  if (USE_WEBSOCKET) {
+    try {
+      // Connect to the job's WebSocket
+      websocketService.connectToJob(jobId);
+      
+      // Set up a listener for job status updates
+      if (onStatusChange) {
+        websocketService.addJobStatusListener(onStatusChange);
+        
+        // Clean up listener when component unmounts (caller should handle this)
+        // Return a cleanup function that the calling component can use 
+        const cleanup = () => {
+          websocketService.removeJobStatusListener(onStatusChange);
+          websocketService.disconnect();
+        };
+        
+        return cleanup;
+      }
+    } catch (error) {
+      console.error('Failed to connect to WebSocket for job:', error);
+    }
+  }
+  
+  // Fallback: caller should use getJobStatus in a polling pattern if WebSocket isn't working
+  return null;
 }; 

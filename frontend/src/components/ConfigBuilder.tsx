@@ -44,22 +44,38 @@ export const ConfigBuilder: React.FC<ConfigBuilderProps> = ({
     
     // Map between PluginType and config property
     let configProperty: keyof Config;
-    switch (plugin.type) {
-      case 'source':
-        configProperty = 'sources';
-        break;
-      case 'enricher':
-        configProperty = 'enrichers';
-        break;
-      case 'generator':
-        configProperty = 'generators';
-        break;
-      case 'ai':
-      case 'storage':
-        configProperty = plugin.type;
-        break;
-      default:
-        configProperty = plugin.type as keyof Config;
+    
+    // Use a helper function to determine the config property based on plugin type
+    if (plugin.type.toLowerCase().includes('source')) {
+      configProperty = 'sources';
+    } else if (plugin.type.toLowerCase().includes('enricher')) {
+      configProperty = 'enrichers';
+    } else if (plugin.type.toLowerCase().includes('generator')) {
+      configProperty = 'generators';
+    } else if (plugin.type.toLowerCase().includes('ai') || plugin.type.toLowerCase().includes('provider')) {
+      configProperty = 'ai';
+    } else if (plugin.type.toLowerCase().includes('storage')) {
+      configProperty = 'storage';
+    } else {
+      // Fall back to base type mappings
+      switch (plugin.type) {
+        case 'source':
+          configProperty = 'sources';
+          break;
+        case 'enricher':
+          configProperty = 'enrichers';
+          break;
+        case 'generator':
+          configProperty = 'generators';
+          break;
+        case 'ai':
+        case 'storage':
+          configProperty = plugin.type;
+          break;
+        default:
+          // Default to sources if we can't determine
+          configProperty = 'sources';
+      }
     }
     
     // Check if this is an array property
@@ -83,22 +99,38 @@ export const ConfigBuilder: React.FC<ConfigBuilderProps> = ({
     
     // Map between PluginType and config property
     let configProperty: keyof Config;
-    switch (plugin.type) {
-      case 'source':
-        configProperty = 'sources';
-        break;
-      case 'enricher':
-        configProperty = 'enrichers';
-        break;
-      case 'generator':
-        configProperty = 'generators';
-        break;
-      case 'ai':
-      case 'storage':
-        configProperty = plugin.type;
-        break;
-      default:
-        configProperty = plugin.type as keyof Config;
+    
+    // Use a helper function to determine the config property based on plugin type
+    if (plugin.type.toLowerCase().includes('source')) {
+      configProperty = 'sources';
+    } else if (plugin.type.toLowerCase().includes('enricher')) {
+      configProperty = 'enrichers';
+    } else if (plugin.type.toLowerCase().includes('generator')) {
+      configProperty = 'generators';
+    } else if (plugin.type.toLowerCase().includes('ai') || plugin.type.toLowerCase().includes('provider')) {
+      configProperty = 'ai';
+    } else if (plugin.type.toLowerCase().includes('storage')) {
+      configProperty = 'storage';
+    } else {
+      // Fall back to base type mappings
+      switch (plugin.type) {
+        case 'source':
+          configProperty = 'sources';
+          break;
+        case 'enricher':
+          configProperty = 'enrichers';
+          break;
+        case 'generator':
+          configProperty = 'generators';
+          break;
+        case 'ai':
+        case 'storage':
+          configProperty = plugin.type;
+          break;
+        default:
+          // Default to sources if we can't determine
+          configProperty = 'sources';
+      }
     }
     
     // Check if this is an array property

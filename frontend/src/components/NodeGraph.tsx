@@ -1,9 +1,9 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { Config, PluginInfo } from '../types';
+import { Config, PluginInfo, JobStatus } from '../types';
 import { PluginParamDialog } from './PluginParamDialog';
 import { ConfigDialog } from './ConfigDialog';
 import { PluginPalette } from './PluginPalette';
-import { drawConnection, drawConnectionLine, drawNode, drawGrid } from '../utils/nodeRenderer';
+import { drawNode, drawGrid, drawConnection, drawConnectionLine } from '../utils/nodeRenderer';
 import { findPortAtCoordinates, isPointInNode, removeNodeConnection, handleNodeConnection, findNodeAtCoordinates, findNodeRecursive, isPointInCollapseButton, syncNodePortsWithParams, cleanupStaleConnections } from '../utils/nodeHandlers';
 import { Node, Connection, PortInfo } from '../types/nodeTypes';
 import { configStateManager } from '../services/ConfigStateManager';
@@ -11,6 +11,9 @@ import { pluginRegistry } from '../services/PluginRegistry';
 import { animateCenterView } from '../utils/animation/centerViewAnimation';
 import { ResetDialog } from './ResetDialog';
 import { getConfig } from '../services/api';
+import { websocketService } from '../services/websocket';
+import { useWebSocket } from '../hooks/useWebSocket';
+import { JobStatusDisplay } from './JobStatusDisplay';
 
 // Add type constants to represent the pipeline flow steps
 const PIPELINE_STEPS = ['sources', 'enrichers', 'generators'] as const;
@@ -20,9 +23,10 @@ interface NodeGraphProps {
   config: Config;
   onConfigUpdate: (config: Config, isReset?: boolean) => void;
   saveConfiguration?: () => Promise<boolean>;
+  runAggregation?: () => Promise<void>;
 }
 
-export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, saveConfiguration }) => {
+export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, saveConfiguration, runAggregation }) => {
   // Get the initial state from the ConfigStateManager
   const [nodes, setNodes] = useState<Node[]>(configStateManager.getNodes());
   const [connections, setConnections] = useState<Connection[]>(configStateManager.getConnections());
@@ -54,9 +58,14 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   const [showPipelineFlow, setShowPipelineFlow] = useState(true);
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
 
   // Add resetInProgress ref
   const resetInProgress = useRef(false);
+  
+  // Add a ref to track the previous config name to prevent reloading the same config
+  const prevConfigNameRef = useRef<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const backBufferRef = useRef<HTMLCanvasElement | null>(null);
@@ -69,6 +78,9 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   const animationStartTimeRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
   
+  // Add reference to track the last time we drew the canvas
+  const lastDrawTimeRef = useRef<number>(0);
+  
   // Add lastClickTime for tracking double clicks
   const lastClickTimeRef = useRef<number>(0);
 
@@ -79,6 +91,61 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   
   // Create a ref to store the pipeline flow function to break circular dependency
   const pipelineFlowFnRef = useRef<(ctx: CanvasRenderingContext2D) => void>(() => {});
+  
+  // Add a cleanup function ref for job status websocket
+  const jobStatusCleanupRef = useRef<(() => void) | null>(null);
+
+  // Use WebSocket for status updates - pass null if config doesn't have a name
+  const status = useWebSocket(config?.name || null);
+
+  // Effect to listen for job status updates
+  useEffect(() => {
+    // Set up job status listener
+    const handleJobStatus = (status: JobStatus) => {
+      setJobStatus(status);
+      
+      // If job is completed, check the status to see if we need to update the UI
+      if (status.status === 'completed' || status.status === 'failed') {
+        console.log(`Job ${status.jobId} ${status.status}`);
+      }
+    };
+    
+    // Set up job started listener
+    const handleJobStarted = (jobId: string) => {
+      console.log(`Job started with ID: ${jobId}`);
+      setCurrentJobId(jobId);
+      
+      // Set up job status listener
+      if (jobStatusCleanupRef.current) {
+        jobStatusCleanupRef.current();
+        jobStatusCleanupRef.current = null;
+      }
+      
+      // Connect to the job's WebSocket for status updates
+      websocketService.connectToJob(jobId);
+      
+      // Add job-specific listener
+      websocketService.addJobStatusListener(handleJobStatus, jobId);
+      
+      // Store cleanup function
+      jobStatusCleanupRef.current = () => {
+        websocketService.removeJobStatusListener(handleJobStatus, jobId);
+      };
+    };
+    
+    // Add listeners
+    websocketService.addJobStartedListener(handleJobStarted);
+    
+    // Clean up on unmount
+    return () => {
+      websocketService.removeJobStartedListener(handleJobStarted);
+      
+      if (jobStatusCleanupRef.current) {
+        jobStatusCleanupRef.current();
+        jobStatusCleanupRef.current = null;
+      }
+    };
+  }, []);
 
   // Load plugins when component mounts
   useEffect(() => {
@@ -106,7 +173,17 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
 
   // Initialize ConfigStateManager with the current config
   useEffect(() => {
+    // Check if we're reloading the same config (prevent infinite loops)
+    if (config?.name && prevConfigNameRef.current === config.name) {
+      console.log(`🔄 NodeGraph: skipping re-initialization of same config "${config.name}"`);
+      return;
+    }
+    
     console.log("🔄 NodeGraph: initializing with config", config);
+    // Save the current config name for future comparisons
+    if (config?.name) {
+      prevConfigNameRef.current = config.name;
+    }
     
     // Check if config is valid - if not, create an empty graph for drag and drop
     if (!config || !config.name) {
@@ -764,6 +841,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     drawGrid(ctx, backBufferRef.current.width, backBufferRef.current.height, scale, offset);
     
     // Sync node ports with parameters to ensure we're not showing invalid connections
+    // This is important because node statuses may have been updated externally
     const syncedNodes = syncNodePortsWithParams(nodes);
 
     // Draw the default pipeline flow in the background using the function from ref
@@ -812,9 +890,15 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       });
     }
     
-    // Draw nodes
+    // Draw nodes and ensure status is properly visualized
     if (syncedNodes.length > 0) {
       syncedNodes.forEach(node => {
+        // Log node status for debugging
+        if (node.status) {
+          console.log(`Drawing node ${node.name} with status: ${node.status}`, node.statusMessage || '');
+        }
+        
+        // Draw the node with the current status
         drawNode(ctx, node, scale, hoveredPort, selectedNode);
       });
     }
@@ -1865,6 +1949,93 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     }
   };
 
+  // Add an effect to force redraw when nodes change, particularly when their status changes
+  useEffect(() => {
+    // This effect should trigger whenever nodes change, especially their status
+    if (nodes.length > 0) {
+      // Check if any node has a status
+      const hasStatusNodes = nodes.some(node => node.status !== undefined && node.status !== null);
+      
+      if (hasStatusNodes) {
+        console.log('Nodes with status detected, redrawing canvas');
+      }
+      
+      // Force redraw on the next frame
+      if (canvasRef.current) {
+        requestAnimationFrame(() => {
+          drawToBackBuffer();
+          drawToScreen();
+        });
+      }
+    }
+  }, [nodes, drawToBackBuffer, drawToScreen]);
+
+  // Handle custom run aggregation that uses job ID
+  const handleRunAggregation = async () => {
+    if (!config || !config.name) {
+      console.error("Cannot run aggregation without a config name");
+      return;
+    }
+    
+    try {
+      // Get the latest config from the state manager
+      const currentConfig = configStateManager.getConfig();
+      
+      // If config has unsaved changes, save it first
+      if (hasUnsavedChanges) {
+        const shouldSave = window.confirm("The configuration has unsaved changes. Do you want to save before running?");
+        if (shouldSave) {
+          await handleSaveToServer();
+        }
+      }
+      
+      // Clean up any existing job status listeners first
+      if (jobStatusCleanupRef.current) {
+        jobStatusCleanupRef.current();
+        jobStatusCleanupRef.current = null;
+      }
+      
+      // Make a direct REST API call to run the aggregation
+      const response = await fetch(`http://localhost:3000/aggregate/${config.name}/run`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(currentConfig),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to run aggregation via REST API');
+      }
+      
+      const result = await response.json();
+      const jobId = result.jobId;
+      
+      // Set the current job ID
+      setCurrentJobId(jobId);
+      
+      console.log(`Started aggregation job with ID: ${jobId}`);
+      
+      // Use WebSocket only for subscribing to job status updates
+      websocketService.connectToJob(jobId);
+      
+      // Add job status listener for this specific run
+      const handleJobStatus = (status: JobStatus) => {
+        setJobStatus(status);
+        console.log(`Job ${jobId} status update:`, status);
+      };
+      
+      // Add job-specific listener and store cleanup function
+      websocketService.addJobStatusListener(handleJobStatus, jobId);
+      jobStatusCleanupRef.current = () => {
+        websocketService.removeJobStatusListener(handleJobStatus, jobId);
+      };
+    } catch (error) {
+      console.error("Failed to run aggregation:", error);
+      alert("Failed to run aggregation. Please try again.");
+    }
+  };
+
   return (
     <div className="relative w-full h-full">
       <div 
@@ -1951,13 +2122,20 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
             onClick={handleSaveToServer}
             className={`px-4 h-10 rounded focus:outline-none flex items-center justify-center shadow-md ${
               hasUnsavedChanges 
-                ? 'bg-amber-500 text-gray-900 hover:bg-amber-400' 
+                ? 'text-gray-300 bg-amber-700 hover:bg-amber-400' 
                 : 'bg-stone-900 text-gray-300 cursor-not-allowed'
             }`}
             title={hasUnsavedChanges ? "Save configuration to server" : "No changes to save"}
             disabled={!hasUnsavedChanges}
           >
             Save Config
+          </button>
+          <button
+            onClick={handleRunAggregation}
+            className="px-4 h-10 rounded bg-green-600 text-white hover:bg-green-700 focus:outline-none flex items-center justify-center shadow-md"
+            title="Run aggregation once without starting a continuous process"
+          >
+            Run Once
           </button>
         </div>
         
@@ -1972,6 +2150,17 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
             onDrop={handleDropPlugin}
             onDragLeave={handleDragLeave}
           ></canvas>
+          
+          {/* Display Job Status */}
+          {jobStatus && (
+            <div className="absolute bottom-4 right-4 z-10 w-80">
+              <JobStatusDisplay 
+                key={jobStatus.jobId}
+                jobStatus={jobStatus} 
+                onClose={() => setJobStatus(null)}
+              />
+            </div>
+          )}
         </div>
       </div>
       

@@ -16,6 +16,9 @@ export interface Node {
   expanded?: boolean;
   isProvider?: boolean;
   params?: Record<string, any>;
+  status?: 'running' | 'success' | 'failed' | null;
+  statusMessage?: string;
+  statusData?: number | { count: number } | any;
 }
 
 export interface Connection {

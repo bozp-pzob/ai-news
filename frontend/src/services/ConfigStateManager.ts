@@ -1,4 +1,4 @@
-import { Config as ConfigType, PluginConfig } from '../types';
+import { Config as ConfigType, PluginConfig, AggregationStatus } from '../types';
 import { Node, Connection, NodePort } from '../types/nodeTypes';
 import { createEventEmitter } from '../utils/eventEmitter';
 import { findNodeRecursive, syncNodePortsWithParams, cleanupStaleConnections } from '../utils/nodeHandlers';
@@ -945,6 +945,94 @@ class ConfigStateManager {
     this.eventEmitter.emit('connections-updated', this.connections);
     this.eventEmitter.emit('config-updated', this.configData.getData());
     this.eventEmitter.emit('node-selected', this.selectedNode);
+  }
+
+  // Update node status based on aggregation status
+  updateNodeStatus(status: AggregationStatus): void {
+    console.log('🔄 ConfigStateManager: updating node status from WebSocket status', status);
+    
+    if (!this.nodes || this.nodes.length === 0) {
+      console.warn('No nodes available to update status');
+      return;
+    }
+
+    let hasUpdates = false;
+    const updatedNodes = [...this.nodes];
+
+    // Helper function to find and update child nodes recursively
+    const updateNodeStatusRecursively = (nodes: Node[]): void => {
+      for (const node of nodes) {
+        // Handle parent nodes with children
+        if (node.isParent && node.children && node.children.length > 0) {
+          // Update children recursively
+          updateNodeStatusRecursively(node.children);
+          continue;
+        }
+
+        // Reset status for nodes that aren't currently active
+        if (node.status === 'running' && 
+            status.currentSource !== node.name && 
+            status.status !== 'running') {
+          node.status = null;
+          node.statusMessage = undefined;
+          hasUpdates = true;
+        }
+
+        // Update source nodes specifically
+        if (node.type === 'source' && node.name === status.currentSource) {
+          console.log(`Updating source node ${node.name} with status`, status.status);
+          // Set node status based on current phase and current source
+          if (status.status === 'running' && status.currentPhase === 'fetching') {
+            node.status = 'running';
+            node.statusMessage = `Fetching data...`;
+            hasUpdates = true;
+          } else if (status.status === 'stopped' && status.errors?.some((err: { source?: string }) => err.source === node.name)) {
+            // Find error for this source
+            const error = status.errors.find((err: { source?: string; message: string }) => err.source === node.name);
+            node.status = 'failed';
+            node.statusMessage = error?.message || 'Failed to fetch data';
+            hasUpdates = true;
+          } else if (status.stats?.itemsPerSource && status.stats.itemsPerSource[node.name]) {
+            // Update with success and count information
+            node.status = 'success';
+            node.statusData = status.stats.itemsPerSource[node.name];
+            node.statusMessage = `Successfully fetched data`;
+            hasUpdates = true;
+          }
+        }
+
+        // Update enricher nodes
+        if (node.type === 'enricher' && status.currentPhase === 'enriching') {
+          console.log(`Updating enricher node ${node.name} status to running`);
+          // Set node status based on current phase
+          if (status.status === 'running') {
+            node.status = 'running';
+            node.statusMessage = `Enriching data...`;
+            hasUpdates = true;
+          }
+        }
+
+        // Update generator nodes
+        if (node.type === 'generator' && status.currentPhase === 'generating') {
+          console.log(`Updating generator node ${node.name} status to running`);
+          // Set node status based on current phase
+          if (status.status === 'running') {
+            node.status = 'running';
+            node.statusMessage = `Generating content...`;
+            hasUpdates = true;
+          }
+        }
+      }
+    };
+
+    // Start the recursive update process
+    updateNodeStatusRecursively(updatedNodes);
+
+    // Only update if we actually made changes
+    if (hasUpdates) {
+      this.nodes = updatedNodes;
+      this.eventEmitter.emit('nodes-updated', this.nodes);
+    }
   }
 }
 

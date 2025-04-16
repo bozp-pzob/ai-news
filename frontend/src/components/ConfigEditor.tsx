@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Config, PluginInfo, PluginType, PluginConfig } from '../types';
-import { getConfig, saveConfig, getPlugins, startAggregation, stopAggregation, getAggregationStatus } from '../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { Config, PluginInfo, PluginType, PluginConfig, AggregationStatus } from '../types';
+import { getConfig, saveConfig, getPlugins, startAggregation, stopAggregation, runAggregation, getAggregationStatus } from '../services/api';
 import { PluginSelector } from './PluginSelector';
 import { PluginParamDialog } from './PluginParamDialog';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 interface ConfigEditorProps {
   configName: string;
@@ -15,6 +16,23 @@ interface ConfigEditorProps {
 
 // Helper function to map PluginType to Config property
 const mapPluginTypeToConfigProperty = (pluginType: PluginType): keyof Config => {
+  // First check if the type contains keywords that indicate its category
+  if (typeof pluginType === 'string') {
+    const lowerType = pluginType.toLowerCase();
+    if (lowerType.includes('source')) {
+      return 'sources';
+    } else if (lowerType.includes('enricher')) {
+      return 'enrichers';
+    } else if (lowerType.includes('generator')) {
+      return 'generators';
+    } else if (lowerType.includes('ai') || lowerType.includes('provider')) {
+      return 'ai';
+    } else if (lowerType.includes('storage')) {
+      return 'storage';
+    }
+  }
+  
+  // Fall back to base type mappings
   switch (pluginType) {
     case 'source':
       return 'sources';
@@ -31,7 +49,8 @@ const mapPluginTypeToConfigProperty = (pluginType: PluginType): keyof Config => 
     case 'settings':
       return pluginType;
     default:
-      return pluginType as keyof Config;
+      // For any unknown type, try to infer from the name or default to sources
+      return 'sources';
   }
 };
 
@@ -56,13 +75,45 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
     }
   });
   const [plugins, setPlugins] = useState<{ [key: string]: PluginInfo[] }>({});
-  const [status, setStatus] = useState<'running' | 'stopped'>('stopped');
   const [isPluginDialogOpen, setIsPluginDialogOpen] = React.useState(false);
   const [selectedPlugin, setSelectedPlugin] = React.useState<PluginConfig | null>(null);
+  const [isRunningOnce, setIsRunningOnce] = useState<boolean>(false);
+  
+  // Use WebSocket hook for real-time status updates
+  const { 
+    status, 
+    error: wsError, 
+    isConnected: wsConnected,
+    startAggregation: wsStartAggregation,
+    runAggregation: wsRunAggregation,
+    stopAggregation: wsStopAggregation,
+  } = useWebSocket(configName);
+
+  // Fallback to polling if WebSocket is not available
+  const statusPollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [polledStatus, setPolledStatus] = useState<AggregationStatus>({ status: 'stopped' });
 
   useEffect(() => {
     loadData();
-  }, [configName]);
+    
+    // Start polling for status updates as a fallback
+    if (!wsConnected) {
+      startStatusPolling();
+    }
+    
+    // Clean up interval on unmount
+    return () => {
+      if (statusPollingIntervalRef.current) {
+        clearInterval(statusPollingIntervalRef.current);
+      }
+    };
+  }, [configName, wsConnected]);
+
+  // Helper function to format timestamps
+  const formatTimestamp = (timestamp?: number) => {
+    if (!timestamp) return 'N/A';
+    return new Date(timestamp).toLocaleString();
+  };
 
   const loadData = async () => {
     try {
@@ -72,12 +123,29 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
       ]);
       setConfig(configData);
       setPlugins(pluginsData);
-      const aggregationStatus = await getAggregationStatus(configName);
-      setStatus(aggregationStatus);
     } catch (error) {
       console.error('Error loading data:', error);
     }
   };
+
+  const startStatusPolling = () => {
+    // Poll for status every 2 seconds
+    if (statusPollingIntervalRef.current) {
+      clearInterval(statusPollingIntervalRef.current);
+    }
+    
+    statusPollingIntervalRef.current = setInterval(async () => {
+      try {
+        const aggregationStatus = await getAggregationStatus(configName);
+        setPolledStatus(aggregationStatus);
+      } catch (error) {
+        console.error('Error fetching aggregation status:', error);
+      }
+    }, 2000);
+  };
+
+  // Determine which status to use (WebSocket or polled)
+  const currentStatus = wsConnected ? status || { status: 'stopped' } : polledStatus;
 
   const handleAddPlugin = (plugin: PluginInfo, pluginConfig: Record<string, any>, interval?: number) => {
     console.log('handleAddPlugin called with:', { plugin, pluginConfig, interval });
@@ -164,8 +232,18 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
 
   const handleStartAggregation = async () => {
     try {
-      await startAggregation(configName);
-      setStatus('running');
+      if (wsConnected) {
+        // Use WebSocket for real-time updates but with REST API for control
+        await wsStartAggregation(config);
+      } else {
+        // Fallback to REST API
+        const configObject = await getConfig(configName);
+        await startAggregation(configName, configObject);
+        const aggregationStatus = await getAggregationStatus(configName);
+        setPolledStatus(aggregationStatus);
+        // Ensure polling is active
+        startStatusPolling();
+      }
     } catch (error) {
       console.error('Error starting aggregation:', error);
     }
@@ -173,10 +251,40 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
 
   const handleStopAggregation = async () => {
     try {
-      await stopAggregation(configName);
-      setStatus('stopped');
+      if (wsConnected) {
+        // Use WebSocket for real-time updates but with REST API for control
+        await wsStopAggregation();
+      } else {
+        // Fallback to REST API
+        await stopAggregation(configName);
+        const aggregationStatus = await getAggregationStatus(configName);
+        setPolledStatus(aggregationStatus);
+      }
     } catch (error) {
       console.error('Error stopping aggregation:', error);
+    }
+  };
+
+  const handleRunAggregation = async () => {
+    try {
+      setIsRunningOnce(true);
+      
+      if (wsConnected) {
+        // Use WebSocket for real-time updates but with REST API for control
+        await wsRunAggregation(config);
+      } else {
+        // Fallback to REST API
+        const configObject = await getConfig(configName);
+        await runAggregation(configName, configObject);
+        const aggregationStatus = await getAggregationStatus(configName);
+        setPolledStatus(aggregationStatus);
+        // Ensure polling is active to see the progress
+        startStatusPolling();
+      }
+    } catch (error) {
+      console.error('Error running aggregation:', error);
+    } finally {
+      setIsRunningOnce(false);
     }
   };
 
@@ -349,6 +457,97 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
     );
   };
 
+  // Render detailed status
+  const renderDetailedStatus = () => {
+    return (
+      <div className="mb-8 bg-gray-50 p-4 rounded-lg">
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Aggregation Status</h3>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-sm font-medium text-gray-700">Status:</p>
+            <p className={`text-sm ${currentStatus.status === 'running' ? 'text-green-600' : 'text-red-600'}`}>
+              {currentStatus.status.toUpperCase()}
+            </p>
+          </div>
+          
+          {currentStatus.currentSource && (
+            <div>
+              <p className="text-sm font-medium text-gray-700">Current Source:</p>
+              <p className="text-sm">{currentStatus.currentSource}</p>
+            </div>
+          )}
+          
+          {currentStatus.currentPhase && (
+            <div>
+              <p className="text-sm font-medium text-gray-700">Current Phase:</p>
+              <p className="text-sm capitalize">{currentStatus.currentPhase}</p>
+            </div>
+          )}
+          
+          {currentStatus.lastUpdated && (
+            <div>
+              <p className="text-sm font-medium text-gray-700">Last Updated:</p>
+              <p className="text-sm">{formatTimestamp(currentStatus.lastUpdated)}</p>
+            </div>
+          )}
+        </div>
+        
+        {currentStatus.stats && (
+          <div className="mt-4">
+            <h4 className="text-md font-medium text-gray-800 mb-2">Statistics</h4>
+            <div className="text-sm">
+              <p>Total Items Fetched: {currentStatus.stats.totalItemsFetched || 0}</p>
+              
+              {currentStatus.stats.itemsPerSource && Object.keys(currentStatus.stats.itemsPerSource).length > 0 && (
+                <div className="mt-2">
+                  <p className="font-medium">Items Per Source:</p>
+                  <ul className="list-disc pl-5 mt-1">
+                    {Object.entries(currentStatus.stats.itemsPerSource).map(([source, count]) => (
+                      <li key={source}>
+                        {source}: {count} items
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {currentStatus.stats.lastFetchTimes && Object.keys(currentStatus.stats.lastFetchTimes).length > 0 && (
+                <div className="mt-2">
+                  <p className="font-medium">Last Fetch Times:</p>
+                  <ul className="list-disc pl-5 mt-1">
+                    {Object.entries(currentStatus.stats.lastFetchTimes).map(([source, time]) => (
+                      <li key={source}>
+                        {source}: {formatTimestamp(time)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
+        {currentStatus.errors && currentStatus.errors.length > 0 && (
+          <div className="mt-4">
+            <h4 className="text-md font-medium text-red-600 mb-2">Errors</h4>
+            <div className="max-h-40 overflow-y-auto">
+              {currentStatus.errors.map((error, index) => (
+                <div key={index} className="bg-red-50 p-2 rounded mb-2 text-sm">
+                  <p className="font-medium">
+                    {error.source ? `Error in ${error.source}:` : 'Error:'}
+                  </p>
+                  <p className="text-red-700">{error.message}</p>
+                  <p className="text-xs text-gray-500 mt-1">{formatTimestamp(error.timestamp)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -358,15 +557,25 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
             onClick={handleSave}
             className="px-4 py-2 bg-amber-500 text-gray-900 rounded-md hover:bg-amber-400"
           >
-            Save Changes
+            Update
           </button>
-          {status === 'stopped' ? (
-            <button
-              onClick={handleStartAggregation}
-              className="px-4 py-2 bg-amber-500 text-gray-900 rounded-md hover:bg-amber-400"
-            >
-              Start Aggregation
-            </button>
+          {currentStatus.status === 'stopped' ? (
+            <>
+              <button
+                onClick={handleStartAggregation}
+                className="px-4 py-2 bg-amber-500 text-gray-900 rounded-md hover:bg-amber-400"
+              >
+                Start Aggregation
+              </button>
+              <button
+                onClick={handleRunAggregation}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Run aggregation once without starting a continuous process"
+                disabled={isRunningOnce}
+              >
+                {isRunningOnce ? 'Running...' : 'Run Once'}
+              </button>
+            </>
           ) : (
             <button
               onClick={handleStopAggregation}
@@ -377,6 +586,9 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
           )}
         </div>
       </div>
+
+      {/* Detailed Status Display */}
+      {renderDetailedStatus()}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div>

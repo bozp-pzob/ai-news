@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Config } from './types';
-import { getConfigs, saveConfig, getConfig } from './services/api';
+import { getConfigs, saveConfig, getConfig, runAggregation } from './services/api';
 import { NodeGraph } from './components/NodeGraph';
+import { useWebSocket } from './hooks/useWebSocket';
+import { configStateManager } from './services/ConfigStateManager';
 
 function App() {
   const [configs, setConfigs] = useState<string[]>([]);
@@ -20,9 +22,44 @@ function App() {
   });
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+  // Use WebSocket hook for real-time status updates
+  const { 
+    status, 
+    error: wsError, 
+    isConnected: wsConnected,
+    refreshStatus
+  } = useWebSocket(selectedConfig);
+
   useEffect(() => {
     loadConfigs();
   }, []);
+
+  // Update node statuses when websocket status updates come in
+  useEffect(() => {
+    if (status && wsConnected) {
+      console.log('Received websocket status update:', status);
+      // Update node statuses in ConfigStateManager
+      configStateManager.updateNodeStatus(status);
+    }
+  }, [status, wsConnected]);
+
+  // Refresh status periodically when connected
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    if (wsConnected && selectedConfig) {
+      // Refresh status every 5 seconds
+      intervalId = setInterval(() => {
+        refreshStatus();
+      }, 5000);
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [wsConnected, selectedConfig, refreshStatus]);
 
   const loadConfigs = async () => {
     try {
@@ -137,6 +174,23 @@ function App() {
     }
   };
 
+  // Handle running aggregation once
+  const handleRunAggregation = async () => {
+    try {
+      if (!selectedConfig) {
+        alert('Please select or save a configuration first.');
+        return;
+      }
+      
+      const configObject = await getConfig(selectedConfig);
+      await runAggregation(selectedConfig, configObject);
+      alert(`Aggregation started for ${selectedConfig}`);
+    } catch (error) {
+      console.error('Error running aggregation:', error);
+      alert('Failed to run aggregation. Please try again.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-stone-950 text-white">
       {/* Top Bar */}
@@ -178,7 +232,7 @@ function App() {
                     });
                     setHasUnsavedChanges(false);
                   }}
-                  className="px-3 py-1 bg-amber-500 text-gray-900 rounded-md hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-gray-800"
+                  className="px-3 py-1 text-gray-300 bg-amber-700 rounded-md hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-gray-800"
                 >
                   New Config
                 </button>
@@ -207,6 +261,7 @@ function App() {
             }}
             onConfigUpdate={handleConfigUpdate}
             saveConfiguration={saveConfiguration}
+            runAggregation={selectedConfig ? handleRunAggregation : undefined}
           />
         </div>
       </div>

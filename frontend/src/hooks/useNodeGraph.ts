@@ -1001,7 +1001,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
         
       // Update the node configuration in the config object
       switch (type) {
-        case 'source':
         case 'sources':
           if (isChild && plugin.parentId) {
             // Handle child node of a parent
@@ -1042,7 +1041,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
             }
           }
           break;
-        case 'enricher':
         case 'enrichers':
           if (isChild && plugin.parentId) {
             // Handle child node of a parent
@@ -1083,7 +1081,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
             }
           }
           break;
-        case 'generator':
         case 'generators':
           if (isChild && plugin.parentId) {
             // Handle child node of a parent

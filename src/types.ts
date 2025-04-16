@@ -24,6 +24,53 @@ export interface SummaryItem {
   markdown?: string;      //optional - Markdown version of main content
   date?: number;           // When it was created/published
 }
+
+/**
+ * Represents the detailed status of an aggregation process
+ */
+export interface AggregationStatus {
+  status: 'running' | 'stopped';
+  currentSource?: string;
+  currentPhase?: 'fetching' | 'enriching' | 'generating' | 'idle' | 'connecting' | 'waiting';
+  lastUpdated?: number;
+  errors?: Array<{
+    message: string;
+    source?: string;
+    timestamp: number;
+  }>;
+  stats?: {
+    totalItemsFetched?: number;
+    itemsPerSource?: Record<string, number>;
+    lastFetchTimes?: Record<string, number>;
+  };
+}
+
+/**
+ * Represents an aggregation job with a unique ID
+ */
+export interface JobStatus {
+  jobId: string;
+  configName: string;
+  startTime: number;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress?: number; // 0-100
+  error?: string;
+  result?: any;
+  aggregationStatus?: {
+    currentSource?: string;
+    currentPhase?: 'fetching' | 'enriching' | 'generating' | 'idle' | 'connecting' | 'waiting';
+    errors?: Array<{
+      message: string;
+      source?: string;
+      timestamp: number;
+    }>;
+    stats?: {
+      totalItemsFetched?: number;
+      itemsPerSource?: Record<string, number>;
+      lastFetchTimes?: Record<string, number>;
+    };
+  };
+}
   
 /**
  * An interface that any source plugin must implement.
