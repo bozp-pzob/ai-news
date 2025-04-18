@@ -60,6 +60,14 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  // Add state to track if the job status display was manually closed by the user
+  const [jobStatusDisplayClosed, setJobStatusDisplayClosed] = useState(false);
+  // Add isAggregationRunning state to the component
+  const [isAggregationRunning, setIsAggregationRunning] = useState(false);
+  // Before the [showPipelineFlow, setShowPipelineFlow] state declaration, add:
+  const [isRunOnceJob, setIsRunOnceJob] = useState(false);
+  // After the other useRef declarations, add:
+  const jobTypesRef = useRef<Map<string, boolean>>(new Map()); // Maps jobId -> isRunOnce
 
   // Add resetInProgress ref
   const resetInProgress = useRef(false);
@@ -98,54 +106,163 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   // Use WebSocket for status updates - pass null if config doesn't have a name
   const status = useWebSocket(config?.name || null);
 
+  // Create a reusable function for processing job status updates
+  const createJobStatusHandler = useCallback((jobId: string) => (status: JobStatus) => {
+    console.log(`Job ${jobId} status update received:`, {
+      status: status.status,
+      phase: status.aggregationStatus?.currentPhase,
+      progress: status.progress
+    });
+    
+    // Check if this is a stale update by comparing timestamps with current job status
+    if (jobStatus && jobStatus.jobId === status.jobId) {
+      // If we have a newer update already, ignore this one
+      if (jobStatus.startTime > status.startTime) {
+        console.log(`Ignoring stale job status update for ${jobId}`);
+        return;
+      }
+    }
+    
+    // Reset the jobStatusDisplayClosed when a new job status is received
+    // This ensures that the display will show again for a new job
+    if (!jobStatus || jobStatus.jobId !== status.jobId) {
+      setJobStatusDisplayClosed(false);
+    }
+    
+    // Get the job type from our map - default to current state if not found
+    const isJobRunOnce = jobTypesRef.current.has(jobId) 
+      ? jobTypesRef.current.get(jobId)
+      : isRunOnceJob;
+    
+    console.log(`Job ${jobId} is ${isJobRunOnce ? 'RUN-ONCE' : 'CONTINUOUS'} job type`);
+    
+    // For continuous jobs, special handling
+    if (status.status === 'running') {
+      // For continuous jobs, we force undefined progress to show indeterminate progress
+      if (!isJobRunOnce) {
+        console.log(`Enforcing continuous job behavior: forcing undefined progress for indeterminate display`);
+        
+        // Create a modified status without progress field for continuous jobs
+        status = {
+          ...status,
+          progress: undefined // Force undefined progress for indeterminate display
+        };
+      } 
+      // For run-once jobs, ensure we have progress if not provided
+      else if (status.progress === undefined && status.aggregationStatus?.stats?.totalItemsFetched) {
+        // Calculate progress estimate for run-once jobs
+        const startTime = status.startTime || Date.now();
+        const elapsed = Date.now() - startTime;
+        const estimatedProgress = Math.min(Math.round((elapsed / 30000) * 100), 95);
+        
+        console.log(`Adding estimated progress for run-once job: ${estimatedProgress}%`);
+        
+        status = {
+          ...status,
+          progress: estimatedProgress
+        };
+      }
+    }
+    // For continuous jobs, prevent "completed" status
+    else if (status.status === 'completed' && !isJobRunOnce) {
+      console.log(`Preventing completed status for continuous job ${jobId}`);
+      
+      // Override the status to keep it as "running"
+      status = {
+        ...status,
+        status: 'running',
+        progress: undefined
+      };
+    }
+    
+    // Update job status display
+    setJobStatus(status);
+    
+    // Update aggregation running state based on job status
+    if (status.status === 'failed') {
+      console.log(`Job ${status.jobId} ${status.status} - stopping aggregation`);
+      setIsAggregationRunning(false);
+    } else if (status.status === 'completed') {
+      // For run-once jobs, mark as no longer running when completed
+      if (isJobRunOnce) {
+        console.log(`Run-once job ${status.jobId} completed - stopping aggregation`);
+        setIsAggregationRunning(false);
+        // Don't set jobStatus to null - let the component display the completed state
+      } else {
+        // For continuous jobs, keep running
+        console.log(`Continuous job ${status.jobId} completed phase - continuing aggregation`);
+        setIsAggregationRunning(true);
+      }
+    } else if (status.status === 'running') {
+      console.log(`Job ${status.jobId} ${status.status} - aggregation is running`);
+      setIsAggregationRunning(true);
+    }
+    
+    // Keep the isRunOnceJob state in sync with the current job
+    if (currentJobId === jobId) {
+      setIsRunOnceJob(!!isJobRunOnce);
+    }
+  }, [isRunOnceJob, currentJobId, jobStatus]);
+
   // Effect to listen for job status updates
   useEffect(() => {
-    // Set up job status listener
-    const handleJobStatus = (status: JobStatus) => {
-      setJobStatus(status);
+    console.log("Setting up global job status listeners");
+    
+    // Create a function to handle any job status updates globally
+    const globalJobStatusHandler = (status: JobStatus) => {
+      console.log("Global job status handler received status:", status);
       
-      // If job is completed, check the status to see if we need to update the UI
-      if (status.status === 'completed' || status.status === 'failed') {
-        console.log(`Job ${status.jobId} ${status.status}`);
+      // Compare the current job ID with the incoming status
+      if (currentJobId && status.jobId === currentJobId) {
+        console.log(`Matching current job ID: ${currentJobId}, processing update`);
+        
+        // Use our shared processor function
+        createJobStatusHandler(status.jobId)(status);
+      } else {
+        console.log(`Received status for job ${status.jobId} but current job is ${currentJobId || 'none'}`);
       }
     };
+    
+    // Register global listener (without specific job ID)
+    websocketService.addJobStatusListener(globalJobStatusHandler);
     
     // Set up job started listener
     const handleJobStarted = (jobId: string) => {
       console.log(`Job started with ID: ${jobId}`);
       setCurrentJobId(jobId);
       
-      // Set up job status listener
-      if (jobStatusCleanupRef.current) {
-        jobStatusCleanupRef.current();
-        jobStatusCleanupRef.current = null;
+      // For newly started jobs, check if we have config.runOnce information to determine type
+      // Default to the current state if we don't know
+      const currentConfig = configStateManager.getConfig();
+      if (currentConfig && typeof currentConfig.runOnce === 'boolean') {
+        console.log(`Setting job ${jobId} type based on config.runOnce:`, currentConfig.runOnce);
+        jobTypesRef.current.set(jobId, currentConfig.runOnce);
+        
+        // Also update current state if this is becoming the current job
+        setIsRunOnceJob(currentConfig.runOnce);
+      } else if (!jobTypesRef.current.has(jobId)) {
+        // If we don't have the jobType set yet, use the current state as default
+        console.log(`No specific config info for job ${jobId}, using current state:`, isRunOnceJob);
+        jobTypesRef.current.set(jobId, isRunOnceJob);
       }
       
       // Connect to the job's WebSocket for status updates
       websocketService.connectToJob(jobId);
-      
-      // Add job-specific listener
-      websocketService.addJobStatusListener(handleJobStatus, jobId);
-      
-      // Store cleanup function
-      jobStatusCleanupRef.current = () => {
-        websocketService.removeJobStatusListener(handleJobStatus, jobId);
-      };
     };
     
-    // Add listeners
+    // Add job started listener
     websocketService.addJobStartedListener(handleJobStarted);
+    
+    // Debug output to verify component mount and job status
+    console.log("Effect running: Added global job status listener");
     
     // Clean up on unmount
     return () => {
+      console.log("Cleaning up global job status listener");
       websocketService.removeJobStartedListener(handleJobStarted);
-      
-      if (jobStatusCleanupRef.current) {
-        jobStatusCleanupRef.current();
-        jobStatusCleanupRef.current = null;
-      }
+      websocketService.removeJobStatusListener(globalJobStatusHandler);
     };
-  }, []);
+  }, [currentJobId, isRunOnceJob, createJobStatusHandler]);
 
   // Load plugins when component mounts
   useEffect(() => {
@@ -1981,18 +2098,27 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       // Get the latest config from the state manager
       const currentConfig = configStateManager.getConfig();
       
+      // Set runOnce to true - this is a one-time operation
+      currentConfig.runOnce = true;
+      
+      console.log("Starting RUN-ONCE aggregation");
+      
+      // Reset the job status display closed state when starting a new job
+      setJobStatusDisplayClosed(false);
+      
+      // Clear the old job status before starting a new job
+      setJobStatus(null);
+      setCurrentJobId(null);
+      
+      // Make sure websocket is disconnected to avoid stale data
+      websocketService.disconnect();
+      
       // If config has unsaved changes, save it first
       if (hasUnsavedChanges) {
         const shouldSave = window.confirm("The configuration has unsaved changes. Do you want to save before running?");
         if (shouldSave) {
           await handleSaveToServer();
         }
-      }
-      
-      // Clean up any existing job status listeners first
-      if (jobStatusCleanupRef.current) {
-        jobStatusCleanupRef.current();
-        jobStatusCleanupRef.current = null;
       }
       
       // Make a direct REST API call to run the aggregation
@@ -2011,30 +2137,180 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       const result = await response.json();
       const jobId = result.jobId;
       
-      // Set the current job ID
+      // Set the current job ID and mark this as a run-once job
       setCurrentJobId(jobId);
+      setIsRunOnceJob(true);
+      jobTypesRef.current.set(jobId, true); // true = is run once
       
-      console.log(`Started aggregation job with ID: ${jobId}`);
+      console.log(`Started run-once aggregation job with ID: ${jobId}`);
       
-      // Use WebSocket only for subscribing to job status updates
+      // Connect to the job's WebSocket for status updates
+      websocketService.disconnect();
       websocketService.connectToJob(jobId);
       
-      // Add job status listener for this specific run
-      const handleJobStatus = (status: JobStatus) => {
-        setJobStatus(status);
-        console.log(`Job ${jobId} status update:`, status);
-      };
-      
-      // Add job-specific listener and store cleanup function
-      websocketService.addJobStatusListener(handleJobStatus, jobId);
-      jobStatusCleanupRef.current = () => {
-        websocketService.removeJobStatusListener(handleJobStatus, jobId);
-      };
+      // Set aggregation as running immediately
+      setIsAggregationRunning(true);
     } catch (error) {
       console.error("Failed to run aggregation:", error);
       alert("Failed to run aggregation. Please try again.");
     }
   };
+
+  // Handle start/stop continuous aggregation
+  const handleToggleAggregation = async () => {
+    if (!config || !config.name) {
+      console.error("Cannot run aggregation without a config name");
+      return;
+    }
+    
+    try {
+      // If aggregation is already running, stop it
+      if (isAggregationRunning) {
+        // If we have a current job ID, use that to stop the job
+        if (currentJobId) {
+          // Stop the job directly using the job ID
+          const response = await fetch(`http://localhost:3000/job/${currentJobId}/stop`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          if (!response.ok) {
+            throw new Error('Failed to stop job');
+          }
+          
+          console.log(`Stopped job with ID: ${currentJobId}`);
+          
+          // Clear job-related state after stopping
+          setCurrentJobId(null);
+          setJobStatus(null);
+        } else {
+          // Fall back to the old method if we don't have a job ID for some reason
+          const response = await fetch(`http://localhost:3000/aggregate/${config.name}/stop`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          if (!response.ok) {
+            throw new Error('Failed to stop aggregation');
+          }
+          
+          console.log('Stopped aggregation');
+        }
+        
+        setIsAggregationRunning(false);
+        return;
+      }
+      
+      // This is for starting a CONTINUOUS job
+      // Get the latest config from the state manager
+      const currentConfig = configStateManager.getConfig();
+      currentConfig.runOnce = false;
+      
+      console.log("Starting CONTINUOUS aggregation");
+      
+      // Reset the job status display closed state when starting a new continuous job
+      setJobStatusDisplayClosed(false);
+      
+      // Clear the old job status before starting a new job
+      setJobStatus(null);
+      setCurrentJobId(null);
+      
+      // Make sure websocket is disconnected to avoid stale data
+      websocketService.disconnect();
+      
+      // If config has unsaved changes, save it first
+      if (hasUnsavedChanges) {
+        const shouldSave = window.confirm("The configuration has unsaved changes. Do you want to save before running?");
+        if (shouldSave) {
+          await handleSaveToServer();
+        }
+      }
+      
+      // Start the aggregation
+      const response = await fetch(`http://localhost:3000/aggregate/${config.name}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(currentConfig),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to start aggregation');
+      }
+      
+      // Parse the response to get the job ID
+      const result = await response.json();
+      const jobId = result.jobId;
+      
+      // Set the current job ID and mark as continuous
+      setCurrentJobId(jobId);
+      setIsRunOnceJob(false);
+      jobTypesRef.current.set(jobId, false); // false = continuous job
+      
+      console.log(`Started continuous aggregation with job ID: ${jobId}`);
+      
+      // Connect to the job's WebSocket for status updates
+      websocketService.disconnect();
+      websocketService.connectToJob(jobId);
+      
+      // Set aggregation as running immediately
+      setIsAggregationRunning(true);
+    } catch (error) {
+      console.error("Failed to toggle aggregation:", error);
+      alert("Failed to toggle aggregation. Please try again.");
+    }
+  };
+
+  // Add cleanup effect for WebSocket connections
+  useEffect(() => {
+    // Return cleanup function to run when component unmounts or config changes
+    return () => {
+      // Clean up any WebSocket connections for the current job
+      if (currentJobId) {
+        try {
+          // Disconnect the WebSocket
+          websocketService.disconnect();
+          console.log(`Disconnected WebSocket for job: ${currentJobId}`);
+        } catch (error) {
+          console.error('Error disconnecting WebSocket:', error);
+        }
+      }
+    };
+  }, [currentJobId, config.name]);
+
+  // Add effect to make sure job status is cleared when config changes
+  useEffect(() => {
+    // Reset job-related state when config changes
+    setCurrentJobId(null);
+    setJobStatus(null);
+    setIsAggregationRunning(false);
+    setIsRunOnceJob(false);
+    setJobStatusDisplayClosed(false);
+    
+    // Clear the job types map
+    jobTypesRef.current.clear();
+    
+    // Clean up previous job status listeners
+    if (jobStatusCleanupRef.current) {
+      jobStatusCleanupRef.current();
+      jobStatusCleanupRef.current = null;
+    }
+    
+    // Reconnect to websocket if needed for the new config
+    if (config?.name) {
+      websocketService.disconnect();
+      websocketService.connect(config.name);
+    }
+  }, [config.name]);
+
+  const [showRunOptionsDropdown, setShowRunOptionsDropdown] = useState(false);
+  // Add state for run mode selection
+  const [selectedRunMode, setSelectedRunMode] = useState<"once" | "continuous">("once");
 
   return (
     <div className="relative w-full h-full">
@@ -2063,7 +2339,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         <div className="absolute top-4 left-4 z-10 flex space-x-2">
           <button
             onClick={togglePalette}
-            className="w-10 h-10 bg-stone-700 text-amber-300 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30 transition-colors duration-300"
+            className="w-10 h-10 bg-stone-800/90 text-amber-300 border-stone-600/50 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30 transition-colors duration-300"
             title={paletteVisible ? "Hide plugin palette" : "Show plugin palette"}
             disabled={paletteAnimation !== 'idle'}
           >
@@ -2082,7 +2358,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           
           <button
             onClick={centerView}
-            className="w-10 h-10 bg-stone-700 text-amber-300 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30"
+            className="w-10 h-10 bg-stone-800/90 text-amber-300 border-stone-600/50 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30"
             title="Center view"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2097,20 +2373,18 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           
           <button
             onClick={() => setShowConfigDialog(true)}
-            className="w-10 h-10 bg-stone-700 text-amber-300 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30"
+            className="w-10 h-10 bg-stone-800/90 text-amber-300 border-stone-600/50 rounded hover:bg-stone-700 focus:outline-none flex items-center justify-center border border-amber-400/30"
             title="Configure node graph"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
               <path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/>
             </svg>
           </button>
-        </div>
-        <div className="absolute top-4 right-4 z-10 flex space-x-2">
           <button
             onClick={() => setShowResetDialog(true)}
             className={`w-10 h-10 rounded focus:outline-none flex items-center justify-center ${
               hasUnsavedChanges 
-                ? 'bg-stone-700 text-amber-300 hover:bg-stone-600 border-amber-400/30 border' 
+                ? 'bg-stone-800/90 text-amber-300 border-stone-600/50 hover:bg-stone-600 border-amber-400/30 border' 
                 : 'bg-stone-900 text-gray-300 cursor-not-allowed'
             }`}
             title="Reset to saved configuration"
@@ -2130,13 +2404,81 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           >
             Save Config
           </button>
-          <button
-            onClick={handleRunAggregation}
-            className="px-4 h-10 rounded bg-green-600 text-white hover:bg-green-700 focus:outline-none flex items-center justify-center shadow-md"
-            title="Run aggregation once without starting a continuous process"
-          >
-            Run Once
-          </button>
+        </div>
+        <div className="absolute top-4 right-4 z-10 flex space-x-2">
+          {/* Completely redesigned run control panel */}
+          <div className="flex items-center space-x-1.5">
+            <div className="relative">
+              {isAggregationRunning ? (
+                <button
+                  onClick={handleToggleAggregation}
+                  className="h-10 px-4 rounded-md bg-stone-800 border border-red-500/70 text-white hover:bg-stone-700 hover:border-red-500 focus:outline-none flex items-center justify-center transition-colors duration-200 shadow-md"
+                  title="Stop aggregation"
+                >
+                  <span className="flex items-center">
+                    <span className="relative flex h-2.5 w-2.5 mr-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                    </span>
+                    <span className="font-medium">Stop</span>
+                  </span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {/* Run control panel with toggle switch */}
+                  <div className="flex items-center bg-stone-800/90 border-stone-600/50 rounded-md shadow-md overflow-hidden border pl-3">
+                    {/* Mode toggle switch */}
+                    <div className="flex items-center mr-2">
+                      <span className={`text-xs mr-2 ${selectedRunMode === "once" ? "text-amber-300 font-medium" : "text-stone-400"}`}>Once</span>
+                      <button 
+                        onClick={() => setSelectedRunMode(selectedRunMode === "once" ? "continuous" : "once")}
+                        className="relative inline-flex items-center h-5 rounded-full w-10 transition-colors focus:outline-none"
+                        aria-pressed={selectedRunMode === "continuous"}
+                        aria-label="Toggle run mode"
+                      >
+                        <span 
+                          className={`
+                            inline-block w-10 h-5 rounded-full transition-colors duration-200 ease-in-out
+                            ${selectedRunMode === "continuous" ? "bg-green-600/50" : "bg-stone-600"}
+                          `}
+                        />
+                        <span 
+                          className={`
+                            absolute inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200 ease-in-out
+                            ${selectedRunMode === "continuous" ? "translate-x-5" : "translate-x-1"}
+                          `}
+                        />
+                      </button>
+                      <span className={`text-xs ml-2 ${selectedRunMode === "continuous" ? "text-green-400 font-medium" : "text-stone-400"}`}>Stream</span>
+                    </div>
+                    
+                    {/* Divider */}
+                    <div className="h-10 w-px bg-stone-600"></div>
+                    
+                    {/* Run button */}
+                    <button
+                      onClick={() => {
+                        if (selectedRunMode === "once") {
+                          handleRunAggregation();
+                        } else {
+                          handleToggleAggregation();
+                        }
+                      }}
+                      className={`
+                        h-10 px-4 focus:outline-none flex items-center justify-center transition-colors duration-200
+                        ${selectedRunMode === "once" 
+                          ? "bg-stone-800 text-amber-300 hover:bg-stone-700" 
+                          : "bg-stone-800 text-green-400 hover:bg-stone-700"}
+                      `}
+                      title={selectedRunMode === "once" ? "Run once and stop when complete" : "Run continuously until stopped"}
+                    >
+                      <span className="text-sm font-medium">Run</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         
         <div className="flex-1 overflow-hidden w-full h-full" ref={containerRef}>
@@ -2152,12 +2494,14 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           ></canvas>
           
           {/* Display Job Status */}
-          {jobStatus && (
-            <div className="absolute bottom-4 right-4 z-10 w-80">
+          {jobStatus && !jobStatusDisplayClosed && (
+            <div className="absolute bottom-4 right-4 z-50 w-96 shadow-xl">
+              <div className="bg-red-500 absolute top-0 right-0 h-3 w-3 rounded-full animate-ping"></div>
               <JobStatusDisplay 
                 key={jobStatus.jobId}
-                jobStatus={jobStatus} 
-                onClose={() => setJobStatus(null)}
+                jobStatus={jobStatus}
+                runMode={isRunOnceJob ? "once" : "continuous"}
+                onClose={() => setJobStatusDisplayClosed(true)}
               />
             </div>
           )}

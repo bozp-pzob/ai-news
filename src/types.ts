@@ -56,6 +56,7 @@ export interface JobStatus {
   progress?: number; // 0-100
   error?: string;
   result?: any;
+  intervals?: NodeJS.Timeout[]; // Array of interval IDs for cleanup when stopping
   aggregationStatus?: {
     currentSource?: string;
     currentPhase?: 'fetching' | 'enriching' | 'generating' | 'idle' | 'connecting' | 'waiting';

@@ -6,6 +6,7 @@ interface LabelWithCountProps {
   colorClass?: string;
   labelClassName?: string;
   countClassName?: string;
+  title?: string;
 }
 
 export const LabelWithCount: React.FC<LabelWithCountProps> = ({
@@ -14,9 +15,13 @@ export const LabelWithCount: React.FC<LabelWithCountProps> = ({
   colorClass = 'bg-stone-500',
   labelClassName = '',
   countClassName = '',
+  title,
 }) => {
   return (
-    <div className={`${colorClass} inline-flex items-center bg-muted/10 rounded-full overflow-hidden hover:bg-muted/15 transition-colors`}>
+    <div 
+      className={`${colorClass} inline-flex items-center bg-muted/10 rounded-full overflow-hidden hover:bg-muted/15 transition-colors`}
+      title={title}
+    >
       <div className={`py-1 p-2 text-xs font-medium ${labelClassName}`}>
         {label}
       </div>

@@ -573,7 +573,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-stone-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 text-gray-200">
+      <div className="bg-stone-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 text-gray-200 flex flex-col max-h-[90vh]">
         <div className="px-6 py-4 border-b border-gray-700">
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-medium text-gray-100">{customName} Configuration</h3>
@@ -592,28 +592,32 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-4">
-          {/* Name Field */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Name<span className="text-red-500 ml-1">*</span>
-            </label>
-            <input
-              type="text"
-              value={customName}
-              onChange={(e) => setCustomName(e.target.value)}
-              className="p-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
-              required
-              placeholder="Enter a name for this plugin"
-            />
-            <p className="mt-1 text-xs text-gray-400">
-              A descriptive name to identify this plugin in the workflow
-            </p>
-          </div>
-          
-          {renderConfigFields()}
+        <div className="overflow-y-auto">
+          <form onSubmit={handleSubmit} className="px-6 py-4">
+            {/* Name Field */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-1">
+                Name<span className="text-red-500 ml-1">*</span>
+              </label>
+              <input
+                type="text"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                className="p-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                required
+                placeholder="Enter a name for this plugin"
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                A descriptive name to identify this plugin in the workflow
+              </p>
+            </div>
+            
+            {renderConfigFields()}
+          </form>
+        </div>
 
-          <div className="mt-6 flex justify-between">
+        <div className="mt-auto px-6 py-4 border-t border-gray-700">
+          <div className="flex justify-between">
             {/* Delete button - only show for existing plugins with an ID */}
             {getPluginId() ? (
               <button
@@ -654,13 +658,14 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               </button>
               <button
                 type="submit"
+                onClick={handleSubmit}
                 className="px-4 py-2 text-sm font-medium text-gray-300 bg-amber-700 rounded-md hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-amber-500"
               >
                 Update
               </button>
             </div>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

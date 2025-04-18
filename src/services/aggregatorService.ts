@@ -27,6 +27,7 @@ export class AggregatorService {
   private emitStatusUpdate(configName: string, jobId?: string): void {
     if (this.activeAggregators[configName]) {
       const status = this.activeAggregators[configName].getStatus();
+
       this.eventEmitter.emit(`status:${configName}`, status);
       
       // If there's a job ID, update and emit job status too
@@ -58,6 +59,41 @@ export class AggregatorService {
         jobStatus.aggregationStatus = {
           currentSource: status.currentSource,
           currentPhase: status.currentPhase,
+          errors: status.errors,
+          stats: status.stats
+        };
+        
+        this.jobs.set(jobId, jobStatus);
+        this.eventEmitter.emit(`job:${jobId}`, jobStatus);
+      }
+    }
+  }
+
+  // New method to update source status before fetching
+  private updateSourceStatus(configName: string, sourceName?: string, jobId?: string): void {
+    if (this.activeAggregators[configName]) {
+      // Manually set the current source in the aggregator's status
+      const aggregator = this.activeAggregators[configName];
+      const status = aggregator.getStatus();
+      status.currentSource = sourceName;
+      status.currentPhase = 'fetching';
+      status.lastUpdated = Date.now();
+      
+      this.eventEmitter.emit(`status:${configName}`, status);
+      
+      // If there's a job ID, update and emit job status too
+      if (jobId && this.jobs.has(jobId)) {
+        const jobStatus = this.jobs.get(jobId)!;
+        
+        if (jobStatus.status !== 'completed' && jobStatus.status !== 'failed') {
+          jobStatus.status = 'running';
+          jobStatus.progress = 25; // fetching phase
+        }
+        
+        // Always update aggregation status
+        jobStatus.aggregationStatus = {
+          currentSource: sourceName,
+          currentPhase: 'fetching',
           errors: status.errors,
           stats: status.stats
         };
@@ -112,6 +148,9 @@ export class AggregatorService {
   private async startContinuousAggregationProcess(jobId: string, configName: string, config: Config): Promise<void> {
     const jobStatus = this.jobs.get(jobId)!;
     
+    // Initialize the intervals array
+    jobStatus.intervals = [];
+    
     try {
       // Load all necessary modules
       const sourceClasses = await loadDirectoryModules("sources");
@@ -164,13 +203,27 @@ export class AggregatorService {
 
       // Start fetching and generating content
       for (const config of sourceConfigs) {
+        this.updateSourceStatus(configName, config.instance.name, jobId); // Set source name before fetch
         await aggregator.fetchAndStore(config.instance.name);
         this.emitStatusUpdate(configName, jobId);
         
-        setInterval(() => {
+        // Initialize intervals array if it doesn't exist
+        if (!jobStatus.intervals) {
+          jobStatus.intervals = [];
+        }
+        
+        // Track interval ID for cleanup
+        const intervalId = setInterval(() => {
+          this.updateSourceStatus(configName, config.instance.name, jobId); // Set source name before fetch
           aggregator.fetchAndStore(config.instance.name)
             .then(() => this.emitStatusUpdate(configName, jobId));
         }, config.interval);
+        
+        // Add the interval ID to the job for tracking
+        if (!jobStatus.intervals) {
+          jobStatus.intervals = [];
+        }
+        jobStatus.intervals.push(intervalId);
       }
 
       // Update job status
@@ -183,18 +236,22 @@ export class AggregatorService {
           await generator.instance.generateContent();
           this.emitStatusUpdate(configName, jobId);
           
-          setInterval(() => {
+          // Track interval ID for cleanup
+          const intervalId = setInterval(() => {
             generator.instance.generateContent()
               .then(() => this.emitStatusUpdate(configName, jobId));
           }, generator.interval);
+          
+          // Add the interval ID to the job for tracking
+          jobStatus.intervals.push(intervalId);
         }
       }
       
       // Update job status to completed (continuous aggregation is now set up)
-      jobStatus.status = 'completed';
-      jobStatus.progress = 100;
-      this.jobs.set(jobId, jobStatus);
-      this.emitJobStatusUpdate(jobId);
+      // jobStatus.status = 'completed';
+      // jobStatus.progress = 100;
+      // this.jobs.set(jobId, jobStatus);
+      // this.emitJobStatusUpdate(jobId);
     } catch (error: any) {
       // Handle errors
       jobStatus.status = 'failed';
@@ -232,6 +289,9 @@ export class AggregatorService {
 
   private async runAggregationProcess(jobId: string, configName: string, config: Config): Promise<void> {
     const jobStatus = this.jobs.get(jobId)!;
+    
+    // Initialize the intervals array (even though one-time jobs don't use intervals)
+    jobStatus.intervals = [];
     
     try {
       // Load all necessary modules
@@ -291,11 +351,13 @@ export class AggregatorService {
 
       // Run all sources once without setting up intervals
       for (const config of sourceConfigs) {
+        this.updateSourceStatus(configName, config.instance.name, jobId); // Set source name before fetch
         await aggregator.fetchAndStore(config.instance.name);
         this.emitStatusUpdate(configName, jobId);
       }
 
       // Update job status
+        this.updateSourceStatus(configName, undefined, jobId);
       jobStatus.progress = 60;
       this.jobs.set(jobId, jobStatus);
       this.emitJobStatusUpdate(jobId);
@@ -345,10 +407,84 @@ export class AggregatorService {
   }
 
   stopAggregation(configName: string): void {
+    console.log(`Stopping aggregation for config: ${configName}`);
+    
+    // Find any jobs associated with this config and mark them as stopped
+    const configJobs = this.getJobsByConfig(configName);
+    
+    configJobs.forEach(job => {
+      // Only stop jobs that are still running
+      if (job.status === 'running' || job.status === 'pending') {
+        // Clear intervals associated with this job
+        if (job.intervals && job.intervals.length > 0) {
+          console.log(`Clearing ${job.intervals.length} intervals for job ${job.jobId}`);
+          job.intervals.forEach(interval => clearInterval(interval));
+          job.intervals = [];
+        }
+        
+        // Update job status
+        job.status = 'failed';
+        job.error = 'Aggregation was stopped';
+        
+        // Emit job status update
+        this.emitJobStatusUpdate(job.jobId);
+      }
+    });
+    
+    // Remove the aggregator instance
     if (this.activeAggregators[configName]) {
       delete this.activeAggregators[configName];
+      
+      // Emit status update
       this.emitStatusUpdate(configName);
+      
+      console.log(`Aggregator for ${configName} has been stopped`);
     }
+  }
+
+  // Add method to stop a job by its ID
+  stopJob(jobId: string): boolean {
+    // Check if job exists
+    if (!this.jobs.has(jobId)) {
+      return false;
+    }
+    
+    const jobStatus = this.jobs.get(jobId)!;
+    const configName = jobStatus.configName;
+    
+    // Only stop jobs that are still running
+    if (jobStatus.status !== 'running' && jobStatus.status !== 'pending') {
+      return false;
+    }
+    
+    // Store reference to job's interval timers
+    if (!jobStatus.intervals) {
+      jobStatus.intervals = [];
+    }
+    
+    // Clear all interval timers associated with this job
+    if (jobStatus.intervals && jobStatus.intervals.length > 0) {
+      console.log(`Clearing ${jobStatus.intervals.length} intervals for job ${jobId}`);
+      jobStatus.intervals.forEach(intervalId => {
+        clearInterval(intervalId);
+      });
+      jobStatus.intervals = [];
+    }
+    
+    // Update job status to indicate it's been stopped
+    jobStatus.status = 'failed';
+    jobStatus.error = 'Job was manually stopped';
+    this.jobs.set(jobId, jobStatus);
+    
+    // Emit job status update to notify clients
+    this.emitJobStatusUpdate(jobId);
+    
+    // If this is the current running job for this config, stop the aggregator
+    if (this.activeAggregators[configName]) {
+      this.stopAggregation(configName);
+    }
+    
+    return true;
   }
 
   isAggregationRunning(configName: string): boolean {

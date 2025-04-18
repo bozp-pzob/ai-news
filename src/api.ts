@@ -79,21 +79,33 @@ app.delete('/config/:name', async (req, res) => {
   }
 });
 
-// POST /aggregate/:configName - Start content aggregation with a specific config
+// POST /aggregate/:configName - Start content aggregation or run once based on request body { runOnce: true }
 app.post('/aggregate/:configName', async (req, res) => {
   try {
-    const config = await configService.getConfig(req.params.configName);
-    const jobId = await aggregatorService.startAggregation(req.params.configName, config);
+    const configName = req.params.configName;
+    const config = await configService.getConfig(configName);
+    // Determine run mode: continuous or one-time
+    const runOnce: boolean = req.body?.runOnce === true;
+    let jobId: string;
+    if (runOnce) {
+      jobId = await aggregatorService.runAggregationOnce(configName, config);
+    } else {
+      jobId = await aggregatorService.startAggregation(configName, config);
+    }
     
-    // Broadcast the updated status to all WebSocket clients
-    webSocketService.broadcastStatus(req.params.configName);
+    // Broadcast updated status and job status to all WebSocket clients
+    webSocketService.broadcastStatus(configName);
+    webSocketService.broadcastJobStatus(jobId);
     
     res.json({ 
-      message: 'Content aggregation started successfully',
+      message: runOnce ? 'Content aggregation executed successfully' : 'Content aggregation started successfully',
       jobId
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Failed to start content aggregation' });
+    const errMsg = (req.body?.runOnce === true)
+      ? 'Failed to execute content aggregation'
+      : 'Failed to start content aggregation';
+    res.status(500).json({ error: error.message || errMsg });
   }
 });
 
@@ -117,7 +129,21 @@ app.post('/aggregate/:configName/run', async (req, res) => {
   }
 });
 
-// DELETE /aggregate/:configName - Stop content aggregation for a specific config
+// POST /aggregate/:configName/stop - Stop content aggregation for a specific config
+app.post('/aggregate/:configName/stop', async (req, res) => {
+  try {
+    aggregatorService.stopAggregation(req.params.configName);
+    
+    // Broadcast the updated status to all WebSocket clients
+    webSocketService.broadcastStatus(req.params.configName);
+    
+    res.json({ message: 'Content aggregation stopped successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to stop content aggregation' });
+  }
+});
+
+// DELETE /aggregate/:configName - Stop content aggregation for a specific config (keeping for backward compatibility)
 app.delete('/aggregate/:configName', async (req, res) => {
   try {
     aggregatorService.stopAggregation(req.params.configName);
@@ -159,6 +185,32 @@ app.get('/jobs', (req, res) => {
 app.get('/jobs/:configName', (req, res) => {
   const jobs = aggregatorService.getJobsByConfig(req.params.configName);
   res.json(jobs);
+});
+
+// POST /job/:jobId/stop - Stop a specific job by ID
+app.post('/job/:jobId/stop', (req, res) => {
+  try {
+    const jobId = req.params.jobId;
+    const success = aggregatorService.stopJob(jobId);
+    
+    if (!success) {
+      res.status(404).json({ error: 'Job not found or not in a stoppable state' });
+      return;
+    }
+    
+    // Get the updated job status to include in the response
+    const jobStatus = aggregatorService.getJobStatus(jobId);
+    
+    // Broadcast job status update to WebSocket clients
+    webSocketService.broadcastJobStatus(jobId);
+    
+    res.json({ 
+      message: 'Job stopped successfully',
+      jobStatus
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to stop job' });
+  }
 });
 
 // Start the server

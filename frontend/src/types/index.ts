@@ -43,6 +43,7 @@ export interface Config {
     onlyFetch: boolean;
   };
   activePlugin?: PluginConfig | { type: 'settings'; name: 'Settings' };
+  runOnce?: boolean;
 }
 
 export type PluginType = 'source' | 'sources' | 'ai' | 'enricher' | 'enrichers' | 'generator' | 'generators' | 'storage' | 'settings' | string;

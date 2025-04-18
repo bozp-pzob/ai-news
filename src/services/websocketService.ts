@@ -207,10 +207,14 @@ export class WebSocketService {
   private async sendJobStatusToClient(ws: WebSocket, jobId: string): Promise<void> {
     try {
       const jobStatus = this.aggregatorService.getJobStatus(jobId);
-      ws.send(JSON.stringify({
-        type: 'jobStatus',
-        jobStatus
-      }));
+      if (jobStatus) {
+        // Sanitize the job status before sending
+        const sanitizedJobStatus = this.sanitizeJobStatus(jobStatus);
+        ws.send(JSON.stringify({
+          type: 'jobStatus',
+          jobStatus: sanitizedJobStatus
+        }));
+      }
     } catch (error) {
       console.error(`Error sending job status for ${jobId}:`, error);
     }
@@ -240,9 +244,12 @@ export class WebSocketService {
       return;
     }
 
+    // Sanitize the job status by creating a new object without the intervals property
+    const sanitizedJobStatus = this.sanitizeJobStatus(jobStatus);
+
     const message = JSON.stringify({
       type: 'jobStatus',
-      jobStatus
+      jobStatus: sanitizedJobStatus
     });
 
     clientsForJob.forEach(client => {
@@ -250,6 +257,13 @@ export class WebSocketService {
         client.send(message);
       }
     });
+  }
+
+  // Helper method to sanitize job status by removing non-serializable properties
+  private sanitizeJobStatus(jobStatus: JobStatus): Omit<JobStatus, 'intervals'> {
+    // Create a new object without the intervals property to avoid circular references
+    const { intervals, ...sanitizedStatus } = jobStatus;
+    return sanitizedStatus;
   }
 
   public broadcastStatus(configName: string): void {
