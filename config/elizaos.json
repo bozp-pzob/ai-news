@@ -17,6 +17,8 @@
             "1300756641406521416",                                                                                                             
             "1308149076893630555",                                                                                                             
             "1328592959444095038",                                                                                                             
+	    "1361442528813121556",
+	    "1362864274862768450",
             "1301363808421543988",                                                                                                             
             "1313222089271939102"                                                                                                              
           ],                                                                                                                                   
@@ -71,7 +73,7 @@
           "name": "miniOpenAiProvider",
           "params": {
             "apiKey": "process.env.OPENAI_API_KEY",
-            "model": "x-ai/grok-3-mini-beta",
+            "model": "anthropic/claude-3.7-sonnet",
             "temperature": 0,
             "useOpenRouter": true,
             "siteUrl": "process.env.SITE_URL",
