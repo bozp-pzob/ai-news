@@ -1,0 +1,38 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Helper Functions and Utilities
+
+The [src/helpers](mdc:src/helpers) directory contains utility functions and helper modules used throughout the application.
+
+## Available Helpers
+
+### Cache Helper
+[src/helpers/cache.ts](mdc:src/helpers/cache.ts)
+- Manages caching mechanisms
+- Improves performance by storing frequently accessed data
+
+### Configuration Helper
+[src/helpers/configHelper.ts](mdc:src/helpers/configHelper.ts)
+- Handles application configuration
+- Manages environment variables and settings
+
+### Date Helper
+[src/helpers/dateHelper.ts](mdc:src/helpers/dateHelper.ts)
+- Date manipulation and formatting utilities
+- Timezone handling and date parsing
+
+### General Helper
+[src/helpers/generalHelper.ts](mdc:src/helpers/generalHelper.ts)
+- Common utility functions
+- Shared helper methods
+
+### Prompt Helper
+[src/helpers/promptHelper.ts](mdc:src/helpers/promptHelper.ts)
+- Manages AI prompt templates
+- Handles prompt generation and formatting
+
+## Usage
+Helper functions can be imported and used across the application to maintain consistency and reduce code duplication.

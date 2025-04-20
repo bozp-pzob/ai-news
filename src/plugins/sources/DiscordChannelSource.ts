@@ -87,13 +87,15 @@ export class DiscordChannelSource implements ContentSource {
         discordResponse.push({
           type: "discordChannelSummary",
           cid: `${channelId}-${lastProcessedId}`,
-          source: this.name,
+          source: `${(channel as TextChannel).guild.name} - ${textChannel.name}`,
           text: summary,
           link: `https://discord.com/channels/${(channel as TextChannel).guild.id}/${channelId}`,
           date: Math.floor(new Date().getTime() / 1000),
           metadata: {
             channelId: channelId,
             guildId: (channel as TextChannel).guild.id,
+            guildName: (channel as TextChannel).guild.name,
+            channelName: textChannel.name,
             summaryDate: Math.floor(new Date().getTime() / 1000),
           },
         });
@@ -173,13 +175,15 @@ export class DiscordChannelSource implements ContentSource {
         discordResponse.push({
           type: "discordChannelHistoricalSummary",
           cid: `${channelId}-historical-${date}`,
-          source: this.name,
+          source: `${textChannel.guild.name} - ${textChannel.name}`,
           text: summary,
           link: `https://discord.com/channels/${textChannel.guild.id}/${channelId}`,
           date: Math.floor(cutoffTimestamp / 1000),
           metadata: {
             channelId: channelId,
             guildId: textChannel.guild.id,
+            guildName: textChannel.guild.name,
+            channelName: textChannel.name,
             summaryDate: Math.floor(cutoffTimestamp / 1000),
             historicalSince: date,
           },

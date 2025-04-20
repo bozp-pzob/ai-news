@@ -2,7 +2,21 @@ name: Run ElizaOS Daily Task
 on:
   schedule:
     - cron: '0 0 * * *' # Run at midnight UTC every day
-  workflow_dispatch:  # Keep manual trigger option
+  workflow_dispatch:
+    inputs:
+      after_date:
+        description: 'Start date (YYYY-MM-DD)'
+        required: false
+        type: string
+      before_date:
+        description: 'End date (YYYY-MM-DD)'
+        required: false
+        type: string
+      force_overwrite:
+        description: 'Force overwrite existing data'
+        required: false
+        type: boolean
+        default: false
 jobs:
   sqlite-job:
     timeout-minutes: 30
@@ -80,12 +94,26 @@ jobs:
         id: date
         run: echo "YESTERDAY=$(date -d "yesterday" +'%Y-%m-%d')" >> $GITHUB_OUTPUT
         
-      - name: Run historical with yesterday's date
-        run: npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/elizaos
+      - name: Run historical with date parameters
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ inputs.after_date }}" ] && [ -n "${{ inputs.before_date }}" ]; then
+              npm run historical -- --source=elizaos.json --after=${{ inputs.after_date }} --before=${{ inputs.before_date }} --output=./output/elizaos
+            elif [ -n "${{ inputs.after_date }}" ]; then
+              npm run historical -- --source=elizaos.json --after=${{ inputs.after_date }} --output=./output/elizaos
+            elif [ -n "${{ inputs.before_date }}" ]; then
+              npm run historical -- --source=elizaos.json --before=${{ inputs.before_date }} --output=./output/elizaos
+            else
+              npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/elizaos
+            fi
+          else
+            npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/elizaos
+          fi
         env:
           RUN_ONCE: true
           NODE_ENV: production
-          
+          FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }}
+      
       - name: Handle data files
         run: |
           # Create target directories
