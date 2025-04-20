@@ -1,4 +1,4 @@
-import { Client, TextChannel, Message, GuildMember, User, MessageType, MessageReaction, Collection, GatewayIntentBits, ChannelType, GuildBasedChannel } from 'discord.js';
+import { Client, TextChannel, Message, GuildMember, User, MessageType, MessageReaction, Collection, GatewayIntentBits, ChannelType, GuildBasedChannel, Guild } from 'discord.js';
 import { ContentSource } from './ContentSource';
 import { ContentItem } from '../../types';
 
@@ -189,7 +189,8 @@ export class DiscordRawDataSource implements ContentSource {
       intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers // Added for member fetching
       ]
     });
 
@@ -215,21 +216,63 @@ export class DiscordRawDataSource implements ContentSource {
       try {
         return await operation();
       } catch (error) {
-        if (i === retries - 1) throw error;
-        logger.warning(`Operation failed, retrying in ${RETRY_DELAY}ms... ${error}`);
-        await this.sleep(RETRY_DELAY);
+        const err = error as Error;
+        // Check for rate limiting errors specifically
+        if (err.message.includes('rate limit') || err.message.includes('429')) {
+          logger.warning(`Rate limit hit, waiting longer before retry...`);
+          await this.sleep(RETRY_DELAY * Math.pow(2, i)); // Exponential backoff
+        } else if (i === retries - 1) {
+          throw error;
+        } else {
+          logger.warning(`Operation failed, retrying in ${RETRY_DELAY}ms... ${err.message}`);
+          await this.sleep(RETRY_DELAY);
+        }
       }
     }
     throw new Error('Operation failed after max retries');
   }
 
+  private async fetchMembers(guild: Guild): Promise<Map<string, GuildMember>> {
+    logger.info(`Fetching members for guild: ${guild.name}`);
+    const members = new Map<string, GuildMember>();
+    
+    try {
+      // Use the more efficient method for larger guilds
+      const fetchedMembers = await guild.members.fetch({ limit: 1000 });
+      fetchedMembers.forEach(member => {
+        members.set(member.id, member);
+      });
+      logger.success(`Cached ${members.size} members for guild: ${guild.name}`);
+    } catch (error) {
+      logger.error(`Failed to fetch members for guild ${guild.name}: ${error}`);
+    }
+    
+    return members;
+  }
+
   private async fetchUserData(member: GuildMember | null, user: User): Promise<DiscordRawData['users'][string]> {
-    return await this.retryOperation(async () => ({
-      name: user.username,
-      nickname: member?.nickname || null,
-      roles: member?.roles.cache.map(role => role.name) || undefined,
-      isBot: user.bot || undefined
-    }));
+    return await this.retryOperation(async () => {
+      const baseData = {
+        name: user.username,
+        isBot: user.bot || undefined
+      };
+
+      // If we have a member object, add server-specific data
+      if (member) {
+        return {
+          ...baseData,
+          nickname: member.nickname || user.globalName || null,
+          roles: member.roles.cache
+            .filter(role => role.name !== '@everyone')
+            .map(role => role.name)
+        };
+      }
+
+      return {
+        ...baseData,
+        nickname: user.globalName || null
+      };
+    });
   }
 
   private async fetchUserDataBatch(members: Map<string, GuildMember | null>, users: Map<string, User>): Promise<Map<string, DiscordRawData['users'][string]>> {
@@ -240,39 +283,38 @@ export class DiscordRawDataSource implements ContentSource {
     for (let i = 0; i < entries.length; i += PARALLEL_USER_FETCHES) {
       const batch = entries.slice(i, i + PARALLEL_USER_FETCHES);
       const promises = batch.map(async ([id, user]) => {
-        let member = members.get(id);
+        let member: GuildMember | null = members.get(id) || null;
         
-        // If member is not in cache, try to fetch it from available guilds
+        // If member is not in cache, try to fetch it from the guild
         if (!member) {
-          for (const guild of this.client.guilds.cache.values()) {
-            try {
-              member = await guild.members.fetch(id).catch(() => null);
+          try {
+            const guild = this.client.guilds.cache.get(this.guildId);
+            if (guild) {
+              // Force fetch the member to ensure we get the latest data including nickname
+              member = await guild.members.fetch({ user, force: true, cache: true }).catch(() => null);
+              
+              // If we got a member, store it in the members map for future use
               if (member) {
-                break;
+                members.set(id, member);
               }
-            } catch (error) {
-              if (error instanceof Error && !error.message.includes('disallowed intents')) {
-                logger.warning(`Error fetching member ${user.username}: ${error.message}`);
-              }
+            }
+          } catch (error) {
+            if (error instanceof Error && !error.message.includes('disallowed intents')) {
+              logger.warning(`Error fetching member ${user.username}: ${error.message}`);
             }
           }
         }
         
-        // Only fetch member data if we have a valid member
-        if (member) {
-          return [id, await this.fetchUserData(member, user)] as [string, DiscordRawData['users'][string]];
-        } else {
-          // For users without member data, just return basic info
-          return [id, {
-            name: user.username,
-            nickname: null,
-            isBot: user.bot || undefined
-          }] as [string, DiscordRawData['users'][string]];
-        }
+        return [id, await this.fetchUserData(member, user)] as [string, DiscordRawData['users'][string]];
       });
       
       const results = await Promise.all(promises);
       results.forEach(([id, data]) => userData.set(id, data));
+      
+      // Add a small delay between batches to avoid rate limits
+      if (i + PARALLEL_USER_FETCHES < entries.length) {
+        await this.sleep(API_RATE_LIMIT_DELAY);
+      }
     }
     
     return userData;
@@ -302,14 +344,29 @@ export class DiscordRawDataSource implements ContentSource {
     const missingMembers = new Map<string, User>();
     const existingMembers = new Map<string, GuildMember | null>();
 
+    // First pass: collect all unique users from messages
     for (const message of messages.values()) {
       const author = message.author;
       if (!users.has(author.id)) {
-        const member = await this.retryOperation(() => message.guild?.members.fetch(author.id).catch(() => null));
-        existingMembers.set(author.id, member);
         missingMembers.set(author.id, author);
       }
+      
+      // Also collect mentioned users
+      message.mentions.users.forEach(user => {
+        if (!users.has(user.id)) {
+          missingMembers.set(user.id, user);
+        }
+      });
+    }
 
+    // Fetch member data for all missing users
+    if (missingMembers.size > 0) {
+      const newUserData = await this.fetchUserDataBatch(existingMembers, missingMembers);
+      newUserData.forEach((data, id) => users.set(id, data));
+    }
+
+    // Second pass: process messages with complete user data
+    for (const message of messages.values()) {
       const reactions = message.reactions.cache.map(reaction => ({
         emoji: reaction.emoji.toString(),
         count: reaction.count || 0
@@ -318,7 +375,7 @@ export class DiscordRawDataSource implements ContentSource {
       processedMessages.push({
         id: message.id,
         ts: message.createdAt.toISOString(),
-        uid: author.id,
+        uid: message.author.id,
         content: message.content,
         type: message.type === MessageType.Reply ? 'Reply' : undefined,
         mentions: message.mentions.users.map(u => u.id),
@@ -372,41 +429,50 @@ export class DiscordRawDataSource implements ContentSource {
           before: currentMessageId
         };
 
-        const fetchedMessages = await this.retryOperation(() => channel.messages.fetch(options));
-        
-        if (fetchedMessages.size === 0) {
-          hasMoreMessages = false;
-          break;
+        try {
+          const fetchedMessages = await this.retryOperation(() => channel.messages.fetch(options));
+          
+          if (fetchedMessages.size === 0) {
+            logger.info(`No more messages found in channel ${channel.name}`);
+            hasMoreMessages = false;
+            break;
+          }
+
+          // Filter messages to only include those from our target date
+          const filteredMessages = fetchedMessages.filter(msg => {
+            const msgDate = msg.createdAt;
+            return msgDate >= startOfDay && msgDate <= endOfDay;
+          });
+
+          if (filteredMessages.size > 0) {
+            // Process messages and collect user data
+            const processedBatch = await this.processMessageBatch(filteredMessages, channel, users) as DiscordRawData['messages'];
+            messages.push(...processedBatch);
+          }
+
+          // Check if we've reached messages before our target date
+          const oldestMessage = Array.from(fetchedMessages.values()).pop();
+          if (oldestMessage && oldestMessage.createdAt < startOfDay) {
+            hasMoreMessages = false;
+            break;
+          }
+
+          // Update the current message ID for the next batch
+          currentMessageId = oldestMessage?.id || '';
+          if (!currentMessageId) {
+            hasMoreMessages = false;
+            break;
+          }
+
+          // Add a small delay to avoid rate limits
+          await this.sleep(API_RATE_LIMIT_DELAY);
+        } catch (error) {
+          if (error instanceof Error && error.message.includes('Missing Access')) {
+            logger.warning(`Missing permissions to access channel ${channel.name}`);
+            break;
+          }
+          throw error;
         }
-
-        // Filter messages to only include those from our target date
-        const filteredMessages = fetchedMessages.filter(msg => {
-          const msgDate = msg.createdAt;
-          return msgDate >= startOfDay && msgDate <= endOfDay;
-        });
-
-        if (filteredMessages.size > 0) {
-          // Process messages and collect user data
-          const processedBatch = await this.processMessageBatch(filteredMessages, channel, users) as DiscordRawData['messages'];
-          messages.push(...processedBatch);
-        }
-
-        // Check if we've reached messages before our target date
-        const oldestMessage = Array.from(fetchedMessages.values()).pop();
-        if (oldestMessage && oldestMessage.createdAt < startOfDay) {
-          hasMoreMessages = false;
-          break;
-        }
-
-        // Update the current message ID for the next batch
-        currentMessageId = oldestMessage?.id || '';
-        if (!currentMessageId) {
-          hasMoreMessages = false;
-          break;
-        }
-
-        // Add a small delay to avoid rate limits
-        await this.sleep(API_RATE_LIMIT_DELAY);
       }
 
       logger.info(`Found ${messages.length} messages for ${channel.name} on ${targetDate.toISOString().split('T')[0]}`);
