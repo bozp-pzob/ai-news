@@ -1791,15 +1791,16 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         configStateManager.updateConfig(currentConfig);
       }
       
-      // Call the state manager's saveToServer method
-      const success = await configStateManager.saveToServer();
+      // Call the parent component's save function
+      // This ensures we go through the same save path as the parent
+      if (!saveConfiguration) {
+        throw new Error('saveConfiguration function is not defined');
+      }
+      const success = await saveConfiguration();
       
       if (success) {
         // Show success message
         alert(`Configuration ${configName} saved successfully`);
-        
-        // Notify parent about the config update
-        onConfigUpdate(currentConfig);
         
         // Reset unsaved changes flag
         setHasUnsavedChanges(false);

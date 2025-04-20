@@ -150,9 +150,20 @@ function App() {
         configName = userInput.trim();
       }
       
-      // Save the config with the proper name
-      config.name = configName;
-      await saveConfig(configName, config);
+      // Force sync the config state manager to ensure all changes are captured
+      configStateManager.forceSync();
+      
+      // Get the latest config directly from the state manager rather than using the local state
+      const latestConfig = configStateManager.getConfig();
+      
+      // Ensure the name is properly set
+      latestConfig.name = configName;
+      
+      // Save the LATEST config to the server
+      await saveConfig(configName, latestConfig);
+      
+      // Update our local state with the latest config that was saved
+      setConfig(latestConfig);
       
       // Update the selected config name if it was a new config
       if (!selectedConfig) {

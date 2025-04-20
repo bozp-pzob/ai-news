@@ -255,6 +255,8 @@ class ConfigStateManager {
           );
           
           if (!hasProviderConnection && node.params && 'provider' in node.params) {
+            // Connection was removed, so remove the provider param
+            delete node.params.provider;
             shouldEmitUpdate = true;
           }
         }
@@ -266,6 +268,8 @@ class ConfigStateManager {
           );
           
           if (!hasStorageConnection && node.params && 'storage' in node.params) {
+            // Connection was removed, so remove the storage param
+            delete node.params.storage;
             shouldEmitUpdate = true;
           }
         }
@@ -291,6 +295,9 @@ class ConfigStateManager {
     
     // Check all nodes for removed connections
     this.nodes.forEach(checkForRemovedConnections);
+    
+    // Make sure to sync the updated node parameters to the config
+    this.syncConfigWithNodes();
   }
 
   // Set the selected node
@@ -322,6 +329,9 @@ class ConfigStateManager {
         return false;
       }
       
+      // Store previous values to check for connection changes
+      const prevParams = { ...nodeToUpdate.params };
+      
       // Update node properties in the UI
       nodeToUpdate.name = plugin.name;
       nodeToUpdate.params = plugin.params || {};
@@ -333,11 +343,97 @@ class ConfigStateManager {
         return false;
       }
       
+      // Check for provider/storage parameter changes that require connection updates
+      if (nodeToUpdate.inputs && nodeToUpdate.inputs.length > 0) {
+        // Track connection changes
+        let connectionChanges = false;
+        
+        // Handle provider connection changes
+        if (nodeToUpdate.inputs.some(input => input.name === 'provider')) {
+          // Provider was removed
+          if (prevParams.provider && !nodeToUpdate.params.provider) {
+            // Find and remove the connection
+            this.connections = this.connections.filter(conn => 
+              !(conn.to.nodeId === nodeToUpdate.id && conn.to.input === 'provider')
+            );
+            connectionChanges = true;
+          }
+          // Provider was changed or added
+          else if (nodeToUpdate.params.provider && 
+                  (prevParams.provider !== nodeToUpdate.params.provider || !prevParams.provider)) {
+            // Remove existing provider connection if any
+            this.connections = this.connections.filter(conn => 
+              !(conn.to.nodeId === nodeToUpdate.id && conn.to.input === 'provider')
+            );
+            
+            // Find provider node by name
+            const providerName = nodeToUpdate.params.provider;
+            const providerNode = this.nodes.find(node => 
+              node.type === 'ai' && node.name === providerName
+            );
+            
+            if (providerNode) {
+              // Add new connection
+              this.connections.push({
+                from: { nodeId: providerNode.id, output: 'provider' },
+                to: { nodeId: nodeToUpdate.id, input: 'provider' }
+              });
+              connectionChanges = true;
+            }
+          }
+        }
+        
+        // Handle storage connection changes
+        if (nodeToUpdate.inputs.some(input => input.name === 'storage')) {
+          // Storage was removed
+          if (prevParams.storage && !nodeToUpdate.params.storage) {
+            // Find and remove the connection
+            this.connections = this.connections.filter(conn => 
+              !(conn.to.nodeId === nodeToUpdate.id && conn.to.input === 'storage')
+            );
+            connectionChanges = true;
+          }
+          // Storage was changed or added
+          else if (nodeToUpdate.params.storage && 
+                  (prevParams.storage !== nodeToUpdate.params.storage || !prevParams.storage)) {
+            // Remove existing storage connection if any
+            this.connections = this.connections.filter(conn => 
+              !(conn.to.nodeId === nodeToUpdate.id && conn.to.input === 'storage')
+            );
+            
+            // Find storage node by name
+            const storageName = nodeToUpdate.params.storage;
+            const storageNode = this.nodes.find(node => 
+              node.type === 'storage' && node.name === storageName
+            );
+            
+            if (storageNode) {
+              // Add new connection
+              this.connections.push({
+                from: { nodeId: storageNode.id, output: 'storage' },
+                to: { nodeId: nodeToUpdate.id, input: 'storage' }
+              });
+              connectionChanges = true;
+            }
+          }
+        }
+        
+        // If connections changed, update the connections in the UI
+        if (connectionChanges) {
+          // Update port connections to match the connections array
+          this.updatePortConnectionsFromConnections();
+        }
+      }
+      
+      // Ensure the config is fully updated with all changes including connection changes
+      this.syncConfigWithNodes();
+      
       // Mark that we have pending changes
       this.pendingChanges = true;
       
       // Notify listeners
       this.eventEmitter.emit('nodes-updated', this.nodes);
+      this.eventEmitter.emit('connections-updated', this.connections);
       this.eventEmitter.emit('config-updated', this.configData.getData());
       this.eventEmitter.emit('plugin-updated', {
         ...plugin,
@@ -640,6 +736,8 @@ class ConfigStateManager {
   private syncConfigWithNodes(): void {
     if (!this.configData) return;
     
+    console.log('🔄 syncConfigWithNodes: Synchronizing node/connection state to config');
+    
     // Create a deep copy of the config to avoid mutation
     const updatedConfig = JSON.parse(JSON.stringify(this.configData.getData()));
     let hasChanges = false;
@@ -682,13 +780,174 @@ class ConfigStateManager {
             }
           }
           break;
+        case 'ai':
+          if (updatedConfig.ai && updatedConfig.ai[index]) {
+            if (JSON.stringify(updatedConfig.ai[index].params) !== JSON.stringify(node.params)) {
+              updatedConfig.ai[index].params = { ...node.params };
+              hasChanges = true;
+            }
+          }
+          break;
+        case 'storage':
+          if (updatedConfig.storage && updatedConfig.storage[index]) {
+            if (JSON.stringify(updatedConfig.storage[index].params) !== JSON.stringify(node.params)) {
+              updatedConfig.storage[index].params = { ...node.params };
+              hasChanges = true;
+            }
+          }
+          break;
+      }
+    }
+    
+    // For parent nodes, also process their children
+    for (const node of this.nodes) {
+      if (node.isParent && node.children && node.children.length > 0) {
+        const [parentType, parentIndexStr] = node.id.split('-');
+        const parentIndex = parseInt(parentIndexStr);
+        
+        if (isNaN(parentIndex)) continue;
+        
+        // Process each child
+        for (let i = 0; i < node.children.length; i++) {
+          const childNode = node.children[i];
+          if (!childNode.params) continue;
+          
+          // Get the parent array based on type
+          let parentArray: PluginConfig[] | undefined;
+          switch (parentType) {
+            case 'sources':
+              parentArray = updatedConfig.sources;
+              break;
+            case 'enrichers':
+              parentArray = updatedConfig.enrichers;
+              break;
+            case 'generators':
+              parentArray = updatedConfig.generators;
+              break;
+          }
+          
+          if (parentArray && parentArray[parentIndex]) {
+            // Ensure params and children exist
+            if (!parentArray[parentIndex].params) {
+              parentArray[parentIndex].params = {};
+              hasChanges = true;
+            }
+            
+            if (!parentArray[parentIndex].params.children) {
+              parentArray[parentIndex].params.children = [];
+              hasChanges = true;
+            }
+            
+            // Ensure there's a place for this child
+            while (parentArray[parentIndex].params.children.length <= i) {
+              parentArray[parentIndex].params.children.push({});
+              hasChanges = true;
+            }
+            
+            // Update the child params if different
+            if (JSON.stringify(parentArray[parentIndex].params.children[i]) !== JSON.stringify(childNode.params)) {
+              parentArray[parentIndex].params.children[i] = { ...childNode.params };
+              hasChanges = true;
+            }
+          }
+        }
+      }
+    }
+    
+    // Ensure connection-based parameters are properly reflected
+    // This handles provider/storage references
+    for (const connection of this.connections) {
+      const sourceNode = findNodeRecursive(this.nodes, connection.from.nodeId);
+      const targetNode = findNodeRecursive(this.nodes, connection.to.nodeId);
+      
+      if (sourceNode && targetNode) {
+        // Handle provider connections
+        if (connection.to.input === 'provider' && 
+            sourceNode.type === 'ai' && 
+            sourceNode.name) {
+          
+          // Find the target node in the config
+          const [targetType, targetIndexStr] = targetNode.id.split('-');
+          const targetIndex = parseInt(targetIndexStr);
+          
+          if (!isNaN(targetIndex)) {
+            let targetArray: PluginConfig[] | undefined;
+            
+            // Determine which array the target node belongs to
+            switch (targetType) {
+              case 'source':
+                targetArray = updatedConfig.sources;
+                break;
+              case 'enricher':
+                targetArray = updatedConfig.enrichers;
+                break;
+              case 'generator':
+                targetArray = updatedConfig.generators;
+                break;
+            }
+            
+            // Update the provider parameter
+            if (targetArray && targetArray[targetIndex]) {
+              if (!targetArray[targetIndex].params) {
+                targetArray[targetIndex].params = {};
+              }
+              
+              if (targetArray[targetIndex].params.provider !== sourceNode.name) {
+                targetArray[targetIndex].params.provider = sourceNode.name;
+                hasChanges = true;
+              }
+            }
+          }
+        }
+        
+        // Handle storage connections
+        if (connection.to.input === 'storage' && 
+            sourceNode.type === 'storage' && 
+            sourceNode.name) {
+          
+          // Find the target node in the config
+          const [targetType, targetIndexStr] = targetNode.id.split('-');
+          const targetIndex = parseInt(targetIndexStr);
+          
+          if (!isNaN(targetIndex)) {
+            let targetArray: PluginConfig[] | undefined;
+            
+            // Determine which array the target node belongs to
+            switch (targetType) {
+              case 'source':
+                targetArray = updatedConfig.sources;
+                break;
+              case 'enricher':
+                targetArray = updatedConfig.enrichers;
+                break;
+              case 'generator':
+                targetArray = updatedConfig.generators;
+                break;
+            }
+            
+            // Update the storage parameter
+            if (targetArray && targetArray[targetIndex]) {
+              if (!targetArray[targetIndex].params) {
+                targetArray[targetIndex].params = {};
+              }
+              
+              if (targetArray[targetIndex].params.storage !== sourceNode.name) {
+                targetArray[targetIndex].params.storage = sourceNode.name;
+                hasChanges = true;
+              }
+            }
+          }
+        }
       }
     }
     
     // Only update if there were actual changes
     if (hasChanges) {
+      console.log('🔄 syncConfigWithNodes: Changes detected, updating config');
       this.configData.updateConfig(updatedConfig);
       this.notifyListeners();
+    } else {
+      console.log('🔄 syncConfigWithNodes: No changes detected');
     }
   }
 
@@ -788,7 +1047,7 @@ class ConfigStateManager {
         this.selectedNode = null;
         this.eventEmitter.emit('node-selected', null);
       }      
-      // this.syncConfigWithNodes();
+      this.syncConfigWithNodes();
 
       // Mark that we have pending changes
       this.pendingChanges = true;
@@ -844,7 +1103,21 @@ class ConfigStateManager {
   updateConfig(config: ConfigType): void {
     this.configData.updateConfig(config);
     this.rebuildNodesAndConnections();
+    
+    // Ensure port connections are correctly updated
+    this.updatePortConnectionsFromConnections();
+    
+    // Make sure nodes and connections are in sync
+    this.nodes = syncNodePortsWithParams(this.nodes);
+    this.connections = cleanupStaleConnections(this.nodes, this.connections);
+    
+    // Sync back to ensure config is fully updated
+    this.syncConfigWithNodes();
+    
+    // Notify listeners about the changes
     this.eventEmitter.emit('config-updated', this.configData.getData());
+    this.eventEmitter.emit('nodes-updated', this.nodes);
+    this.eventEmitter.emit('connections-updated', this.connections);
   }
 
   // Force synchronization of state with config - maintained for backwards compatibility
@@ -868,8 +1141,8 @@ class ConfigStateManager {
     
     // Force update all subscribers with the current state
     this.eventEmitter.emit('config-updated', this.configData.getData());
-      this.eventEmitter.emit('nodes-updated', this.nodes);
-      this.eventEmitter.emit('connections-updated', this.connections);
+    this.eventEmitter.emit('nodes-updated', this.nodes);
+    this.eventEmitter.emit('connections-updated', this.connections);
       
     // Mark that we have pending changes
     this.pendingChanges = true;
