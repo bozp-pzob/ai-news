@@ -167,18 +167,55 @@ export class SQLiteStorage implements StoragePlugin {
       throw new Error("Database not initialized. Call init() first.");
     }
 
-    await this.db.run(
-      `
-      INSERT INTO summary (type, title, categories, date)
-      VALUES (?, ?, ?, ?)
-      `,
-      [
-        item.type,
-        item.title || null,
-        item.categories || null,
-        item.date,
-      ]
-    );
+    if (!item.date) {
+      throw new Error("Summary item must have a date");
+    }
+
+    try {
+      // Check if a summary already exists for this type and date
+      const existing = await this.db.get(
+        `SELECT id FROM summary WHERE type = ? AND date = ?`,
+        [item.type, item.date]
+      );
+
+      const dateStr = new Date(item.date).toISOString();
+
+      if (existing) {
+        // Update existing summary
+        await this.db.run(
+          `
+          UPDATE summary 
+          SET title = ?, categories = ?
+          WHERE type = ? AND date = ?
+          `,
+          [
+            item.title || null,
+            item.categories || null,
+            item.type,
+            item.date
+          ]
+        );
+        console.log(`Updated existing summary for ${item.type} on date ${dateStr}`);
+      } else {
+        // Insert new summary
+        await this.db.run(
+          `
+          INSERT INTO summary (type, title, categories, date)
+          VALUES (?, ?, ?, ?)
+          `,
+          [
+            item.type,
+            item.title || null,
+            item.categories || null,
+            item.date,
+          ]
+        );
+        console.log(`Saved new summary for ${item.type} on date ${dateStr}`);
+      }
+    } catch (error) {
+      console.error(`Error saving summary for ${item.type} on date ${new Date(item.date).toISOString()}:`, error);
+      throw error;
+    }
   }
 
   public async getItemsByType(type: string): Promise<ContentItem[]> {

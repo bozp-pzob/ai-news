@@ -81,6 +81,7 @@ interface DiscordRawDataSourceConfig {
   name: string;
   botToken: string;
   channelIds: string[];
+  guildId: string;
 }
 
 const BATCH_SIZE = 100; // Increased batch size
@@ -177,6 +178,7 @@ export class DiscordRawDataSource implements ContentSource {
   private client: Client;
   private channelIds: string[];
   private botToken: string;
+  private guildId: string;
 
   constructor(config: DiscordRawDataSourceConfig) {
     this.name = config.name;
@@ -308,25 +310,6 @@ export class DiscordRawDataSource implements ContentSource {
         missingMembers.set(author.id, author);
       }
 
-      const mediaUrls = this.extractMediaUrls(message);
-      const attachments = message.attachments.map(attachment => ({
-        type: this.isMediaFile(attachment.url, attachment.contentType) ? 
-          (attachment.contentType?.startsWith('video/') ? 'video' as const : 'image' as const) : 'file' as const,
-        url: attachment.url,
-        name: attachment.name,
-        contentType: attachment.contentType || undefined
-      }));
-
-      const embeds = message.embeds.map(embed => ({
-        type: embed.data.type || 'rich',
-        url: embed.url || undefined,
-        title: embed.title || undefined,
-        description: embed.description || undefined,
-        thumbnail: embed.thumbnail ? { url: embed.thumbnail.url } : undefined,
-        image: embed.image ? { url: embed.image.url } : undefined,
-        video: embed.video ? { url: embed.video.url } : undefined
-      }));
-
       const reactions = message.reactions.cache.map(reaction => ({
         emoji: reaction.emoji.toString(),
         count: reaction.count || 0
@@ -337,16 +320,11 @@ export class DiscordRawDataSource implements ContentSource {
         ts: message.createdAt.toISOString(),
         uid: author.id,
         content: message.content,
+        type: message.type === MessageType.Reply ? 'Reply' : undefined,
         mentions: message.mentions.users.map(u => u.id),
+        ref: message.reference?.messageId,
         edited: message.editedAt?.toISOString(),
-        reactions: reactions.length > 0 ? reactions : undefined,
-        attachments: attachments.length > 0 ? attachments : undefined,
-        embeds: embeds.length > 0 ? embeds : undefined,
-        mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
-        source: {
-          guild: channel.guild.name,
-          channel: channel.name
-        }
+        reactions: reactions.length > 0 ? reactions : undefined
       });
     }
     
@@ -433,11 +411,7 @@ export class DiscordRawDataSource implements ContentSource {
         id: channel.id,
         name: channel.name,
         topic: channel.topic,
-        category: channel.parent?.name || null,
-        guild: {
-          id: channel.guild.id,
-          name: channel.guild.name
-        }
+        category: channel.parent?.name || null
       },
       date: new Date().toISOString(),
       users: Object.fromEntries(users),
@@ -542,53 +516,31 @@ export class DiscordRawDataSource implements ContentSource {
         });
         logger.info(`Filtered messages from ${formatNumber(originalCount)} to ${formatNumber(rawData.messages.length)} for date ${date}`);
 
-        // Create time blocks based on message activity
-        const timeBlocks = createTimeBlocks(rawData.messages, rawData.users, targetDate);
-
         // Get the guild name for the source
         const guildName = channel.guild.name;
-
-        // Create a content item for each time block
-        for (const [index, block] of timeBlocks.entries()) {
-          const blockStart = formatTimeForFilename(block.startTime);
-          const channelName = channel.name.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
-          const formattedDate = new Date().toISOString().replace(/[:.]/g, '-');
-          
-          items.push({
-            cid: `${channel.id}_${date}`,
-            type: 'discord-raw',
-            source: `${guildName} - ${channel.name}`,
-            title: `${channel.name} (${block.startTime.toLocaleString()} to ${block.endTime.toLocaleString()})`,
-            text: JSON.stringify({
-              ...rawData,
-              messages: block.messages,
-              users: block.users,
-              timeBlock: {
-                start: block.startTime.toISOString(),
-                end: block.endTime.toISOString(),
-                messageCount: block.messages.length,
-                userCount: Object.keys(block.users).length
-              }
-            }),
-            link: `https://discord.com/channels/${channel.guild.id}/${channel.id}`,
-            date: targetTimestamp, // Use consistent timestamp format
-            metadata: {
-              channelId: channel.id,
-              guildId: channel.guild.id,
-              guildName: guildName,
-              channelName: channel.name,
-              messageCount: block.messages.length,
-              userCount: Object.keys(block.users).length,
-              dateProcessed: date,
-              timeBlock: {
-                start: block.startTime.toISOString(),
-                end: block.endTime.toISOString(),
-                index
-              },
-              exportTimestamp: formattedDate
-            }
-          });
-        }
+        const channelName = channel.name.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
+        const formattedDate = new Date().toISOString().replace(/[:.]/g, '-');
+        
+        // Create a single content item for the entire day's data
+        items.push({
+          cid: `discord-raw-${channel.id}-${date}`,
+          type: 'discord-raw',
+          source: `${guildName} - ${channel.name}`,
+          title: `Raw Discord Data: ${channel.name} (${date})`,
+          text: JSON.stringify(rawData),
+          link: `https://discord.com/channels/${channel.guild.id}/${channel.id}`,
+          date: targetTimestamp,
+          metadata: {
+            channelId: channel.id,
+            guildId: channel.guild.id,
+            guildName: guildName,
+            channelName: channel.name,
+            messageCount: rawData.messages.length,
+            userCount: Object.keys(rawData.users).length,
+            dateProcessed: date,
+            exportTimestamp: formattedDate
+          }
+        });
         
         logger.success(`Successfully processed historical data for channel ${channel.name}`);
       } catch (error) {
