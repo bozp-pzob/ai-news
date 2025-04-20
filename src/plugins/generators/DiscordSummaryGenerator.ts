@@ -83,15 +83,15 @@ export class DiscordSummaryGenerator {
       
       const summaryItem: SummaryItem = {
         type: this.summaryType,
-        title: `Discord Daily Summary - ${dateStr}`,
+        title: `Daily Report - ${dateStr}`,
         categories: JSON.stringify(allSummaries, null, 2),
         markdown: dailySummary,
         date: currentTime,
       };
 
       await this.storage.saveSummaryItem(summaryItem);
-      await this.writeSummaryToFile(dateStr, currentTime, allSummaries);
-      await this.writeMDToFile(dateStr, dailySummary);
+      await this.writeFile(dateStr, currentTime, allSummaries, 'json');
+      await this.writeFile(dateStr, currentTime, dailySummary, 'md');
 
       console.log(`Discord daily summary for ${dateStr} generated and stored successfully.`);
     } catch (error) {
@@ -139,13 +139,18 @@ export class DiscordSummaryGenerator {
 
     // Combine all summaries for the channel
     const metadata = items[0].metadata || {};
+    
+    // Clean up the summary to remove any JSON data that might be mixed in
+    const rawSummary = this.combineSummaries(summaries.map(s => s?.summary || ''));
+    const cleanSummary = this.cleanSummaryText(rawSummary);
+    
     return {
       channelName: metadata.channelName || 'Unknown Channel',
       guildName: metadata.guildName || 'Unknown Server',
-      summary: this.combineSummaries(summaries.map(s => s?.summary || '')),
-      faqs: this.combineFAQs(summaries.flatMap(s => s?.faqs || [])),
-      helpInteractions: this.combineHelpInteractions(summaries.flatMap(s => s?.helpInteractions || [])),
-      actionItems: this.combineActionItems(summaries.flatMap(s => s?.actionItems || []))
+      summary: cleanSummary,
+      faqs: this.combineItems(summaries.flatMap(s => s?.faqs || []), 'question'),
+      helpInteractions: this.combineItems(summaries.flatMap(s => s?.helpInteractions || []), 'helper-helpee-context'),
+      actionItems: this.combineItems(summaries.flatMap(s => s?.actionItems || []), 'type-description')
     };
   }
 
@@ -182,21 +187,13 @@ Please create a markdown summary that:
   }
 
   private extractFAQs(text: string): Array<{ question: string; askedBy: string; answeredBy: string }> {
-    const faqs: Array<{ question: string; askedBy: string; answeredBy: string }> = [];
-    const lines = text.split('\n').filter(line => line.trim());
-    
-    for (const line of lines) {
-      const match = line.match(/^-?\s*(.+?)\s*\(asked by\s+(.+?),\s*answered by\s+(.+?)\)/i);
-      if (match) {
-        faqs.push({
-          question: match[1].trim(),
-          askedBy: match[2].trim(),
-          answeredBy: match[3].trim()
-        });
-      }
-    }
-    
-    return faqs;
+    return this.extractItems(text, /^-?\s*(.+?)\s*\(asked by\s+(.+?),\s*answered by\s+(.+?)\)/i, 
+      (match) => ({
+        question: match[1].trim(),
+        askedBy: match[2].trim(),
+        answeredBy: match[3].trim()
+      })
+    );
   }
 
   private extractHelpInteractions(text: string): Array<{ helper: string; helpee: string; context: string; resolution: string }> {
@@ -225,17 +222,23 @@ Please create a markdown summary that:
   }
 
   private extractActionItems(text: string): Array<{ type: 'Technical' | 'Documentation' | 'Feature'; description: string; mentionedBy: string }> {
-    const items: Array<{ type: 'Technical' | 'Documentation' | 'Feature'; description: string; mentionedBy: string }> = [];
+    return this.extractItems(text, /^-?\s*(Technical|Documentation|Feature):\s*(.+?)\s*\((.+?)\)/i,
+      (match) => ({
+        type: match[1] as 'Technical' | 'Documentation' | 'Feature',
+        description: match[2].trim(),
+        mentionedBy: match[3].trim()
+      })
+    );
+  }
+
+  private extractItems<T>(text: string, regex: RegExp, mapper: (match: RegExpMatchArray) => T): T[] {
+    const items: T[] = [];
     const lines = text.split('\n').filter(line => line.trim());
     
     for (const line of lines) {
-      const match = line.match(/^-?\s*(Technical|Documentation|Feature):\s*(.+?)\s*\((.+?)\)/i);
+      const match = line.match(regex);
       if (match) {
-        items.push({
-          type: match[1] as 'Technical' | 'Documentation' | 'Feature',
-          description: match[2].trim(),
-          mentionedBy: match[3].trim()
-        });
+        items.push(mapper(match));
       }
     }
     
@@ -246,69 +249,79 @@ Please create a markdown summary that:
     return summaries.join('\n\n');
   }
 
-  private combineFAQs(faqs: Array<{ question: string; askedBy: string; answeredBy: string }>): Array<{ question: string; askedBy: string; answeredBy: string }> {
+  private combineItems<T>(items: T[], keyType: string): T[] {
     // Remove duplicates and keep most informative versions
-    const uniqueFAQs = new Map();
-    for (const faq of faqs) {
-      const key = faq.question.toLowerCase();
-      if (!uniqueFAQs.has(key) || faq.question.length > uniqueFAQs.get(key).question.length) {
-        uniqueFAQs.set(key, faq);
-      }
-    }
-    return Array.from(uniqueFAQs.values());
-  }
-
-  private combineHelpInteractions(interactions: Array<{ helper: string; helpee: string; context: string; resolution: string }>): Array<{ helper: string; helpee: string; context: string; resolution: string }> {
-    // Remove duplicates and keep most informative versions
-    const uniqueInteractions = new Map();
-    for (const interaction of interactions) {
-      const key = `${interaction.helper}-${interaction.helpee}-${interaction.context}`;
-      if (!uniqueInteractions.has(key) || interaction.resolution.length > uniqueInteractions.get(key).resolution.length) {
-        uniqueInteractions.set(key, interaction);
-      }
-    }
-    return Array.from(uniqueInteractions.values());
-  }
-
-  private combineActionItems(items: Array<{ type: 'Technical' | 'Documentation' | 'Feature'; description: string; mentionedBy: string }>): Array<{ type: 'Technical' | 'Documentation' | 'Feature'; description: string; mentionedBy: string }> {
-    // Remove duplicates and keep most informative versions
-    const uniqueItems = new Map();
+    const uniqueItems = new Map<string, T>();
+    
     for (const item of items) {
-      const key = `${item.type}-${item.description.toLowerCase()}`;
-      if (!uniqueItems.has(key) || item.description.length > uniqueItems.get(key).description.length) {
-        uniqueItems.set(key, item);
+      let key: string;
+      
+      if (keyType === 'question') {
+        // For FAQs
+        key = (item as any).question.toLowerCase();
+        if (!uniqueItems.has(key) || (item as any).question.length > (uniqueItems.get(key) as any).question.length) {
+          uniqueItems.set(key, item);
+        }
+      } else if (keyType === 'helper-helpee-context') {
+        // For help interactions
+        key = `${(item as any).helper}-${(item as any).helpee}-${(item as any).context}`;
+        if (!uniqueItems.has(key) || (item as any).resolution.length > (uniqueItems.get(key) as any).resolution.length) {
+          uniqueItems.set(key, item);
+        }
+      } else if (keyType === 'type-description') {
+        // For action items
+        key = `${(item as any).type}-${(item as any).description.toLowerCase()}`;
+        if (!uniqueItems.has(key) || (item as any).description.length > (uniqueItems.get(key) as any).description.length) {
+          uniqueItems.set(key, item);
+        }
       }
     }
+    
     return Array.from(uniqueItems.values());
   }
 
-  private async writeSummaryToFile(dateStr: string, currentTime: number, allSummaries: DiscordSummary[]) {
+  private cleanSummaryText(text: string): string {
+    // Remove any JSON-like content that might be mixed in with the summary
+    // This regex looks for patterns like {"key": "value"} or {"key": value}
+    const jsonPattern = /\{[^{]*"[\w\d]+"[^{]*\}/g;
+    return text.replace(jsonPattern, '').trim();
+  }
+
+  private async writeFile(dateStr: string, currentTime: number, content: any, format: 'json' | 'md'): Promise<void> {
     try {
-      const jsonDir = path.join(this.outputPath, 'json');
-      this.ensureDirectoryExists(jsonDir);
+      const dir = path.join(this.outputPath, format);
+      this.ensureDirectoryExists(dir);
       
-      const filePath = path.join(jsonDir, `${dateStr}.json`);
-      fs.writeFileSync(filePath, JSON.stringify({
-        type: this.summaryType,
-        title: `Discord Daily Summary - ${dateStr}`,
-        categories: allSummaries,
-        date: currentTime,
-      }, null, 2));
+      const filePath = path.join(dir, `${dateStr}.${format}`);
+      
+      if (format === 'json') {
+        // Clean up the categories to ensure they have the correct format
+        const cleanedContent = this.cleanCategories(content);
+        
+        fs.writeFileSync(filePath, JSON.stringify({
+          type: this.summaryType,
+          title: `Daily Report - ${dateStr}`,
+          categories: cleanedContent,
+          date: currentTime,
+        }, null, 2));
+      } else {
+        fs.writeFileSync(filePath, content);
+      }
     } catch (error) {
-      console.error(`Error saving Discord summary to json file ${dateStr}:`, error);
+      console.error(`Error saving Discord summary to ${format} file ${dateStr}:`, error);
     }
   }
 
-  private async writeMDToFile(dateStr: string, content: string) {
-    try {
-      const mdDir = path.join(this.outputPath, 'md');
-      this.ensureDirectoryExists(mdDir);
-      
-      const filePath = path.join(mdDir, `${dateStr}.md`);
-      fs.writeFileSync(filePath, content);
-    } catch (error) {
-      console.error(`Error saving Discord summary to markdown file ${dateStr}:`, error);
-    }
+  private cleanCategories(content: any): any[] {
+    if (!Array.isArray(content)) return [];
+    
+    return content.map(item => {
+      // Create a simplified version with just the essential fields
+      return {
+        channelName: item.channelName || '',
+        summary: item.summary || ''
+      };
+    });
   }
 
   private ensureDirectoryExists(dirPath: string) {
