@@ -331,80 +331,89 @@ export class DiscordRawDataSource implements ContentSource {
     return processedMessages;
   }
 
-  private async fetchChannelMessages(channel: TextChannel, after?: Date): Promise<DiscordRawData> {
+  private async fetchChannelMessages(channel: TextChannel, targetDate: Date): Promise<DiscordRawData> {
     logger.channel(`Processing channel: ${channel.name} (${channel.id})`);
     const users = new Map<string, DiscordRawData['users'][string]>();
     const messages: DiscordRawData['messages'] = [];
-    let hasMoreMessages = true;
-    let lastMessageCount = 0;
-    let noNewMessagesCount = 0;
     
-    let lastMessageId: string | undefined;
-    
-    while (hasMoreMessages) {
-      try {
+    // Calculate the time range for the target date
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    try {
+      // Get the most recent message ID as our starting point
+      const recentMessages = await this.retryOperation(() => channel.messages.fetch({ limit: 1 }));
+      const lastMessageId = recentMessages.first()?.id;
+
+      if (!lastMessageId) {
+        logger.info(`No messages found for ${channel.name} on ${targetDate.toISOString().split('T')[0]}`);
+        return {
+          channel: {
+            id: channel.id,
+            name: channel.name,
+            topic: channel.topic,
+            category: channel.parent?.name || null
+          },
+          date: targetDate.toISOString(),
+          users: {},
+          messages: []
+        };
+      }
+
+      // Fetch messages in batches until we reach messages before our target date
+      let currentMessageId = lastMessageId;
+      let hasMoreMessages = true;
+
+      while (hasMoreMessages) {
         const options = { 
-          limit: BATCH_SIZE,
-          ...(lastMessageId && { before: lastMessageId })
+          limit: 100,
+          before: currentMessageId
         };
 
         const fetchedMessages = await this.retryOperation(() => channel.messages.fetch(options));
         
         if (fetchedMessages.size === 0) {
-          logger.info('No more messages to fetch');
           hasMoreMessages = false;
           break;
+        }
+
+        // Filter messages to only include those from our target date
+        const filteredMessages = fetchedMessages.filter(msg => {
+          const msgDate = msg.createdAt;
+          return msgDate >= startOfDay && msgDate <= endOfDay;
+        });
+
+        if (filteredMessages.size > 0) {
+          // Process messages and collect user data
+          const processedBatch = await this.processMessageBatch(filteredMessages, channel, users) as DiscordRawData['messages'];
+          messages.push(...processedBatch);
         }
 
         // Check if we've reached messages before our target date
         const oldestMessage = Array.from(fetchedMessages.values()).pop();
-        if (oldestMessage && after && oldestMessage.createdAt < after) {
-          logger.info('Reached messages before target date');
+        if (oldestMessage && oldestMessage.createdAt < startOfDay) {
           hasMoreMessages = false;
           break;
         }
-        
-        // Check if we're still getting new messages
-        if (messages.length === lastMessageCount) {
-          noNewMessagesCount++;
-          if (noNewMessagesCount >= 3) {
-            logger.warning('No new messages found in last 3 batches');
-            hasMoreMessages = false;
-            break;
-          }
-        } else {
-          noNewMessagesCount = 0;
+
+        // Update the current message ID for the next batch
+        currentMessageId = oldestMessage?.id || '';
+        if (!currentMessageId) {
+          hasMoreMessages = false;
+          break;
         }
-        
-        lastMessageCount = messages.length;
 
+        // Add a small delay to avoid rate limits
         await this.sleep(API_RATE_LIMIT_DELAY);
-
-        // Process messages in batches
-        const processedBatch = await this.processMessageBatch(fetchedMessages, channel, users) as DiscordRawData['messages'];
-        messages.push(...processedBatch);
-
-        // Calculate progress based on message count and time
-        const progress = Math.min(100, (messages.length / 20000) * 100); // Assume max ~20k messages per day
-        const progressBar = createProgressBar(progress, 100);
-        const timeElapsed = new Date().toLocaleTimeString();
-        logger.progress(`${progressBar} | Messages: ${formatNumber(messages.length)} | Users: ${formatNumber(users.size)} | Time: ${timeElapsed}`);
-
-        const lastMessage = Array.from(fetchedMessages.values()).pop();
-        if (!lastMessage) break;
-        lastMessageId = lastMessage.id;
-
-      } catch (error) {
-        logger.error(`Error fetching messages for channel ${channel.name}: ${error}`);
-        break;
       }
-    }
 
-    // Clear the progress line and show final stats
-    logger.clearLine();
-    logger.success(`Finished processing channel ${channel.name}:`);
-    logger.info(`- Total messages processed: ${formatNumber(messages.length)}`);
-    logger.info(`- Total users processed: ${formatNumber(users.size)}`);
+      logger.info(`Found ${messages.length} messages for ${channel.name} on ${targetDate.toISOString().split('T')[0]}`);
+
+    } catch (error) {
+      logger.error(`Error fetching messages for channel ${channel.name}: ${error}`);
+    }
 
     return {
       channel: {
@@ -413,7 +422,7 @@ export class DiscordRawDataSource implements ContentSource {
         topic: channel.topic,
         category: channel.parent?.name || null
       },
-      date: new Date().toISOString(),
+      date: targetDate.toISOString(),
       users: Object.fromEntries(users),
       messages: messages.reverse() // Return in chronological order
     };
@@ -487,19 +496,12 @@ export class DiscordRawDataSource implements ContentSource {
 
     const items: ContentItem[] = [];
     const targetDate = new Date(date);
-    const nextDate = new Date(targetDate);
-    nextDate.setDate(nextDate.getDate() + 1);
-
-    // Convert target date to Unix timestamp (seconds)
     const targetTimestamp = Math.floor(targetDate.getTime() / 1000);
 
     logger.info(`Processing ${this.channelIds.length} channels for date: ${date}`);
     
     for (const [channelIndex, channelId] of this.channelIds.entries()) {
       try {
-        const progressBar = createProgressBar(channelIndex + 1, this.channelIds.length);
-        logger.channel(`${progressBar} | Channel ${channelIndex + 1}/${this.channelIds.length}`);
-        
         const channel = await this.retryOperation(() => this.client.channels.fetch(channelId)) as TextChannel;
         if (!channel || channel.type !== 0) {
           logger.warning(`Channel ${channelId} is not a text channel or does not exist.`);
@@ -508,20 +510,11 @@ export class DiscordRawDataSource implements ContentSource {
 
         const rawData = await this.fetchChannelMessages(channel, targetDate);
         
-        // Filter messages to only include those from the target date
-        const originalCount = rawData.messages.length;
-        rawData.messages = rawData.messages.filter(msg => {
-          const msgDate = new Date(msg.ts);
-          return msgDate >= targetDate && msgDate < nextDate;
-        });
-        logger.info(`Filtered messages from ${formatNumber(originalCount)} to ${formatNumber(rawData.messages.length)} for date ${date}`);
-
         // Get the guild name for the source
         const guildName = channel.guild.name;
         const channelName = channel.name.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
         const formattedDate = new Date().toISOString().replace(/[:.]/g, '-');
         
-        // Create a single content item for the entire day's data
         items.push({
           cid: `discord-raw-${channel.id}-${date}`,
           type: 'discord-raw',
@@ -542,15 +535,13 @@ export class DiscordRawDataSource implements ContentSource {
           }
         });
         
-        logger.success(`Successfully processed historical data for channel ${channel.name}`);
+        logger.success(`Processed ${rawData.messages.length} messages from ${channel.name}`);
       } catch (error) {
-        logger.error(`Error processing historical data for channel ${channelId}: ${error}`);
-        // Continue with next channel
+        logger.error(`Error processing channel ${channelId}: ${error}`);
       }
     }
 
-    logger.success(`Finished processing all channels for date ${date}:`);
-    logger.info(`- Total items processed: ${formatNumber(items.length)}`);
+    logger.success(`Finished processing all channels for date ${date}`);
     return items;
   }
 
