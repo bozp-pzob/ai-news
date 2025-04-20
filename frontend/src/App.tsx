@@ -4,6 +4,7 @@ import { getConfigs, saveConfig, getConfig, runAggregation } from './services/ap
 import { NodeGraph } from './components/NodeGraph';
 import { useWebSocket } from './hooks/useWebSocket';
 import { configStateManager } from './services/ConfigStateManager';
+import { useToast } from './components/ToastProvider';
 
 function App() {
   const [configs, setConfigs] = useState<string[]>([]);
@@ -21,6 +22,7 @@ function App() {
     }
   });
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const { showToast } = useToast();
 
   // Use WebSocket hook for real-time status updates
   const { 
@@ -109,7 +111,7 @@ function App() {
       console.log(`Configuration ${configName} loaded successfully`);
     } catch (error) {
       console.error('Error loading config:', error);
-      alert(`Failed to load configuration ${configName}. Please try again.`);
+      showToast(`Failed to load configuration ${configName}. Please try again.`, 'error');
     }
   };
 
@@ -176,11 +178,10 @@ function App() {
       // Clear unsaved changes flag
       setHasUnsavedChanges(false);
       
-      alert(`Configuration ${configName} saved successfully`);
       return true;
     } catch (error) {
       console.error('Error saving config:', error);
-      alert('Failed to save configuration. Please try again.');
+      showToast('Failed to save configuration. Please try again.', 'error');
       return false;
     }
   };
@@ -189,16 +190,16 @@ function App() {
   const handleRunAggregation = async () => {
     try {
       if (!selectedConfig) {
-        alert('Please select or save a configuration first.');
+        showToast('Please select or save a configuration first.', 'warning');
         return;
       }
       
       const configObject = await getConfig(selectedConfig);
       await runAggregation(selectedConfig, configObject);
-      alert(`Aggregation started for ${selectedConfig}`);
+      showToast(`Aggregation started for ${selectedConfig}`, 'info');
     } catch (error) {
       console.error('Error running aggregation:', error);
-      alert('Failed to run aggregation. Please try again.');
+      showToast('Failed to run aggregation. Please try again.', 'error');
     }
   };
 

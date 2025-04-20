@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PluginInfo, PluginConfig } from '../types';
 import { configStateManager } from '../services/ConfigStateManager';
 import { pluginRegistry } from '../services/PluginRegistry';
+import { useToast } from './ToastProvider';
 
 interface PluginParamDialogProps {
   plugin: PluginInfo | PluginConfig;
@@ -27,6 +28,8 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   onClose,
   onAdd,
 }) => {
+  const { showToast } = useToast();
+  
   // Store plugin schema from registry
   const [pluginSchema, setPluginSchema] = useState<PluginInfo | null>(null);
   
@@ -283,25 +286,19 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Get constructor interface to check for required fields
-    const constructorInterface = pluginSchema?.constructorInterface || 
-                               ('constructorInterface' in plugin ? plugin.constructorInterface : null);
-    
-    // Validate required fields
-    if (constructorInterface) {
-      const requiredMissing = constructorInterface.parameters
+    // Basic validation of required fields
+    if (pluginSchema?.constructorInterface?.parameters) {
+      const requiredMissing = pluginSchema.constructorInterface.parameters
         .filter(param => param.required)
         .some(param => {
-          const value = params[param.name];
-          // Check if value is missing, empty string, or empty array
-          return value === undefined || 
-                 value === null || 
-                 value === '' || 
+          const key = param.name;
+          const value = params[key];
+          return value === undefined || value === null || value === '' || 
                  (Array.isArray(value) && value.length === 0);
         });
       
       if (requiredMissing) {
-        alert("Please fill in all required fields marked with *");
+        showToast("Please fill in all required fields marked with *", 'warning');
         return;
       }
     }
@@ -635,7 +632,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                       onClose();
                     } else {
                       console.error(`Failed to remove node: ${customName} (${nodeId})`);
-                      alert("Failed to delete the plugin. Please try again.");
+                      showToast("Failed to delete the plugin. Please try again.", 'error');
                     }
                   }
                 }}

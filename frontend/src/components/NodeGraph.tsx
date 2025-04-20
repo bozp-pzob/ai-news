@@ -14,6 +14,7 @@ import { getConfig } from '../services/api';
 import { websocketService } from '../services/websocket';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { JobStatusDisplay } from './JobStatusDisplay';
+import { useToast } from './ToastProvider';
 
 // Add type constants to represent the pipeline flow steps
 const PIPELINE_STEPS = ['sources', 'enrichers', 'generators'] as const;
@@ -27,6 +28,8 @@ interface NodeGraphProps {
 }
 
 export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, saveConfiguration, runAggregation }) => {
+  const { showToast } = useToast();
+  
   // Get the initial state from the ConfigStateManager
   const [nodes, setNodes] = useState<Node[]>(configStateManager.getNodes());
   const [connections, setConnections] = useState<Connection[]>(configStateManager.getConnections());
@@ -1800,7 +1803,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       
       if (success) {
         // Show success message
-        alert(`Configuration ${configName} saved successfully`);
+        showToast(`Configuration ${configName} saved successfully`, 'success');
         
         // Reset unsaved changes flag
         setHasUnsavedChanges(false);
@@ -1809,7 +1812,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       }
     } catch (error) {
       console.error('Error saving config to server:', error);
-      alert('Failed to save configuration. Please try again.');
+      showToast('Failed to save configuration. Please try again.', 'error');
     }
   };
 
@@ -2062,7 +2065,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       }, 100);
     } catch (error) {
       console.error('Error resetting config:', error);
-      alert('Failed to reset configuration. Please try again.');
+      showToast('Failed to reset configuration. Please try again.', 'error');
       resetInProgress.current = false;
     }
   };
@@ -2153,7 +2156,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       setIsAggregationRunning(true);
     } catch (error) {
       console.error("Failed to run aggregation:", error);
-      alert("Failed to run aggregation. Please try again.");
+      showToast("Failed to run aggregation. Please try again.", 'error');
     }
   };
 
@@ -2263,7 +2266,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       setIsAggregationRunning(true);
     } catch (error) {
       console.error("Failed to toggle aggregation:", error);
-      alert("Failed to toggle aggregation. Please try again.");
+      showToast("Failed to toggle aggregation. Please try again.", 'error');
     }
   };
 
