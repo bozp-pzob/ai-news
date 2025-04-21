@@ -20,7 +20,8 @@
             "1362864274862768450",
             "1301363808421543988",
             "1313222089271939102"
-          ]
+          ],
+          "storage": "SQLiteStorage"
         }
       },
       {
@@ -40,7 +41,8 @@
             "1301363808421543988",
             "1313222089271939102"
           ],
-          "provider": "openAiProvider"
+          "provider": "openAiProvider",
+          "storage": "SQLiteStorage"
         }
       }
     ],
