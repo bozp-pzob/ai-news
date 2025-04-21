@@ -1,7 +1,21 @@
+/**
+ * @fileoverview Implementation of a content source for fetching GitHub repository statistics
+ * Handles retrieval and processing of repository stats, including issues, PRs, and contributor metrics
+ */
+
 import { ContentSource } from "./ContentSource";
 import { ContentItem } from "../../types";
 import fetch from "node-fetch";
 
+/**
+ * Configuration interface for GitHubStatsDataSource
+ * @interface GitHubStatsDataSourceConfig
+ * @property {string} name - The name identifier for this stats source
+ * @property {string} statsUrl - URL endpoint for current repository stats
+ * @property {string} historicalStatsUrl - URL template for historical stats (supports date placeholders)
+ * @property {string} githubCompany - GitHub organization/company name
+ * @property {string} githubRepo - GitHub repository name
+ */
 interface GitHubStatsDataSourceConfig {
   name: string;
   statsUrl: string;
@@ -11,18 +25,30 @@ interface GitHubStatsDataSourceConfig {
 }
 
 /**
- * A plugin that fetches GitHub stats data from a single JSON endpoint
- * and returns ContentItems in a unified format.
+ * GitHubStatsDataSource class that implements ContentSource interface for GitHub repository statistics
+ * Fetches and processes repository metrics, issue/PR activity, and contributor stats
+ * @implements {ContentSource}
  */
 export class GitHubStatsDataSource implements ContentSource {
+  /** Name identifier for this stats source */
   public name: string;
+  /** URL endpoint for current stats */
   private statsUrl: string;
+  /** URL template for historical stats */
   private historicalStatsUrl: string;
+  /** GitHub organization/company name */
   private githubCompany: string;
+  /** GitHub repository name */
   private githubRepo: string;
+  /** Base URL for GitHub repository */
   private baseGithubUrl: string;
+  /** Base URL for GitHub preview images */
   private baseGithubImageUrl: string;
 
+  /**
+   * Creates a new GitHubStatsDataSource instance
+   * @param {GitHubStatsDataSourceConfig} config - Configuration object for the stats source
+   */
   constructor(config: GitHubStatsDataSourceConfig) {
     this.name = config.name;
     this.statsUrl = config.statsUrl;
@@ -34,8 +60,8 @@ export class GitHubStatsDataSource implements ContentSource {
   }
 
   /**
-   * Fetch items from the stats JSON endpoint and convert them
-   * into an array of ContentItem objects.
+   * Fetches current repository statistics
+   * @returns {Promise<ContentItem[]>} Array of content items containing repository stats
    */
   public async fetchItems(): Promise<ContentItem[]> {
     try {
@@ -55,7 +81,9 @@ export class GitHubStatsDataSource implements ContentSource {
   }
 
   /**
-   * Fetch historical items for a specific date
+   * Fetches historical repository statistics for a specific date
+   * @param {string} date - ISO date string to fetch historical stats from
+   * @returns {Promise<ContentItem[]>} Array of content items containing historical repository stats
    */
   public async fetchHistorical(date: string): Promise<ContentItem[]> {
     try {
@@ -84,7 +112,12 @@ export class GitHubStatsDataSource implements ContentSource {
   }
 
   /**
-   * Process the stats data into ContentItems
+   * Processes raw stats data into ContentItem format
+   * @private
+   * @param {any} statsData - Raw stats data from API
+   * @param {Date} date - Target date for the data
+   * @param {string} [historicalUrl] - Optional URL for historical data source
+   * @returns {ContentItem[]} Array of processed stats content items
    */
   private processStatsData(statsData: any, date: Date, historicalUrl?: string): ContentItem[] {
     const githubItems: ContentItem[] = [];

@@ -1,8 +1,15 @@
+/**
+ * @fileoverview Implementation of a content source for fetching raw Discord data
+ * Handles detailed message retrieval, user data caching, and media content processing
+ */
+
 import { Client, TextChannel, Message, GuildMember, User, MessageType, MessageReaction, Collection, GatewayIntentBits, ChannelType, GuildBasedChannel, Guild } from 'discord.js';
 import { ContentSource } from './ContentSource';
 import { ContentItem } from '../../types';
 
-// Add color coding for console output
+/**
+ * Console color codes for formatted logging output
+ */
 const colors = {
   reset: '\x1b[0m',
   bright: '\x1b[1m',
@@ -23,21 +30,21 @@ const colors = {
   bgWhite: '\x1b[47m'
 };
 
-// Logger utility
+/**
+ * Logger utility for consistent console output formatting
+ */
 const logger = {
   info: (message: string) => console.log(`${colors.cyan}[INFO]${colors.reset} ${message}`),
   success: (message: string) => console.log(`${colors.green}[SUCCESS]${colors.reset} ${message}`),
   warning: (message: string) => console.log(`${colors.yellow}[WARNING]${colors.reset} ${message}`),
   error: (message: string) => console.error(`${colors.red}[ERROR]${colors.reset} ${message}`),
   debug: (message: string) => {
-    // Only show debug messages if DEBUG environment variable is set
     if (process.env.DEBUG) {
       console.log(`${colors.dim}[DEBUG]${colors.reset} ${message}`);
     }
   },
   channel: (message: string) => console.log(`${colors.magenta}[CHANNEL]${colors.reset} ${message}`),
   progress: (message: string) => {
-    // Clear the current line and write the progress message
     process.stdout.write(`\r${colors.blue}[PROGRESS]${colors.reset} ${message}`);
   },
   clearLine: () => {
@@ -45,6 +52,10 @@ const logger = {
   }
 };
 
+/**
+ * Interface for Discord raw data structure
+ * @interface DiscordRawData
+ */
 interface DiscordRawData {
   channel: {
     id: string;
@@ -77,6 +88,14 @@ interface DiscordRawData {
   }[];
 }
 
+/**
+ * Configuration interface for DiscordRawDataSource
+ * @interface DiscordRawDataSourceConfig
+ * @property {string} name - The name identifier for this Discord source
+ * @property {string} botToken - Discord bot token for authentication
+ * @property {string[]} channelIds - Array of Discord channel IDs to monitor
+ * @property {string} guildId - Discord guild/server ID
+ */
 interface DiscordRawDataSourceConfig {
   name: string;
   botToken: string;
@@ -84,15 +103,18 @@ interface DiscordRawDataSourceConfig {
   guildId: string;
 }
 
-const BATCH_SIZE = 100; // Increased batch size
+// Constants for data processing
+const BATCH_SIZE = 100;
 const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
-const API_RATE_LIMIT_DELAY = 50; // Reduced to 50ms between API calls
-const PARALLEL_USER_FETCHES = 10; // Number of user fetches to run in parallel
+const RETRY_DELAY = 1000;
+const API_RATE_LIMIT_DELAY = 50;
+const PARALLEL_USER_FETCHES = 10;
+const BLOCK_SIZE = 1000;
 
-// Time block configuration
-const BLOCK_SIZE = 1000; // Messages per time block
-
+/**
+ * Interface for time-based message blocks
+ * @interface TimeBlock
+ */
 interface TimeBlock {
   startTime: Date;
   endTime: Date;
@@ -100,6 +122,11 @@ interface TimeBlock {
   users: DiscordRawData['users'];
 }
 
+/**
+ * Formats a date for use in filenames
+ * @param {Date} date - Date to format
+ * @returns {string} Formatted date string
+ */
 function formatTimeForFilename(date: Date): string {
   return date.toLocaleString('en-US', {
     year: 'numeric',
@@ -112,6 +139,13 @@ function formatTimeForFilename(date: Date): string {
   }).replace(/[/:]/g, '').replace(/,/g, '').replace(/\s/g, '');
 }
 
+/**
+ * Creates a visual progress bar
+ * @param {number} current - Current progress value
+ * @param {number} total - Total progress value
+ * @param {number} [width=30] - Width of the progress bar in characters
+ * @returns {string} Formatted progress bar string
+ */
 function createProgressBar(current: number, total: number, width: number = 30): string {
   const percentage = total > 0 ? (current / total) * 100 : 0;
   const filledWidth = Math.round((width * current) / total);
@@ -119,16 +153,26 @@ function createProgressBar(current: number, total: number, width: number = 30): 
   return `[${bar}] ${percentage.toFixed(1)}%`;
 }
 
+/**
+ * Formats a number with thousands separators
+ * @param {number} num - Number to format
+ * @returns {string} Formatted number string
+ */
 function formatNumber(num: number): string {
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
+/**
+ * Creates time-based blocks of messages for efficient processing
+ * @param {DiscordRawData['messages']} messages - Array of messages to group
+ * @param {DiscordRawData['users']} users - User data for the messages
+ * @param {Date} date - Target date for the blocks
+ * @returns {TimeBlock[]} Array of time blocks containing messages and user data
+ */
 function createTimeBlocks(messages: DiscordRawData['messages'], users: DiscordRawData['users'], date: Date): TimeBlock[] {
   if (messages.length === 0) return [];
 
-  // Sort messages by timestamp
   const sortedMessages = [...messages].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
-  
   const blocks: TimeBlock[] = [];
   let currentBlock: TimeBlock = {
     startTime: new Date(sortedMessages[0].ts),
@@ -140,7 +184,6 @@ function createTimeBlocks(messages: DiscordRawData['messages'], users: DiscordRa
   for (const message of sortedMessages) {
     const messageTime = new Date(message.ts);
     
-    // If adding this message would exceed block size, create a new block
     if (currentBlock.messages.length >= BLOCK_SIZE) {
       currentBlock.endTime = new Date(message.ts);
       blocks.push(currentBlock);
@@ -153,7 +196,6 @@ function createTimeBlocks(messages: DiscordRawData['messages'], users: DiscordRa
     }
 
     currentBlock.messages.push(message);
-    // Copy relevant user data
     if (message.uid in users) {
       currentBlock.users[message.uid] = users[message.uid];
     }
@@ -164,7 +206,6 @@ function createTimeBlocks(messages: DiscordRawData['messages'], users: DiscordRa
     });
   }
 
-  // Add the last block if it has messages
   if (currentBlock.messages.length > 0) {
     currentBlock.endTime = new Date(sortedMessages[sortedMessages.length - 1].ts);
     blocks.push(currentBlock);
@@ -173,13 +214,27 @@ function createTimeBlocks(messages: DiscordRawData['messages'], users: DiscordRa
   return blocks;
 }
 
+/**
+ * DiscordRawDataSource class that implements ContentSource interface for detailed Discord data
+ * Handles comprehensive message retrieval, user data management, and media content processing
+ * @implements {ContentSource}
+ */
 export class DiscordRawDataSource implements ContentSource {
+  /** Name identifier for this Discord source */
   public name: string;
+  /** Discord.js client instance */
   private client: Client;
+  /** List of Discord channel IDs to monitor */
   private channelIds: string[];
+  /** Discord bot token for authentication */
   private botToken: string;
+  /** Discord guild/server ID */
   private guildId: string;
 
+  /**
+   * Creates a new DiscordRawDataSource instance
+   * @param {DiscordRawDataSourceConfig} config - Configuration object for the Discord source
+   */
   constructor(config: DiscordRawDataSourceConfig) {
     this.name = config.name;
     this.botToken = config.botToken;
@@ -190,11 +245,10 @@ export class DiscordRawDataSource implements ContentSource {
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers // Added for member fetching
+        GatewayIntentBits.GuildMembers
       ]
     });
 
-    // Add error handler for privileged intents
     this.client.on('error', (error) => {
       if (error.message.includes('disallowed intents')) {
         logger.error('Bot requires privileged intents. Please enable them in the Discord Developer Portal:');
@@ -217,10 +271,9 @@ export class DiscordRawDataSource implements ContentSource {
         return await operation();
       } catch (error) {
         const err = error as Error;
-        // Check for rate limiting errors specifically
         if (err.message.includes('rate limit') || err.message.includes('429')) {
           logger.warning(`Rate limit hit, waiting longer before retry...`);
-          await this.sleep(RETRY_DELAY * Math.pow(2, i)); // Exponential backoff
+          await this.sleep(RETRY_DELAY * Math.pow(2, i));
         } else if (i === retries - 1) {
           throw error;
         } else {
@@ -237,7 +290,6 @@ export class DiscordRawDataSource implements ContentSource {
     const members = new Map<string, GuildMember>();
     
     try {
-      // Use the more efficient method for larger guilds
       const fetchedMembers = await guild.members.fetch({ limit: 1000 });
       fetchedMembers.forEach(member => {
         members.set(member.id, member);
@@ -257,7 +309,6 @@ export class DiscordRawDataSource implements ContentSource {
         isBot: user.bot || undefined
       };
 
-      // If we have a member object, add server-specific data
       if (member) {
         return {
           ...baseData,
@@ -279,21 +330,17 @@ export class DiscordRawDataSource implements ContentSource {
     const userData = new Map<string, DiscordRawData['users'][string]>();
     const entries = Array.from(users.entries());
     
-    // Process users in parallel batches
     for (let i = 0; i < entries.length; i += PARALLEL_USER_FETCHES) {
       const batch = entries.slice(i, i + PARALLEL_USER_FETCHES);
       const promises = batch.map(async ([id, user]) => {
         let member: GuildMember | null = members.get(id) || null;
         
-        // If member is not in cache, try to fetch it from the guild
         if (!member) {
           try {
             const guild = this.client.guilds.cache.get(this.guildId);
             if (guild) {
-              // Force fetch the member to ensure we get the latest data including nickname
               member = await guild.members.fetch({ user, force: true, cache: true }).catch(() => null);
               
-              // If we got a member, store it in the members map for future use
               if (member) {
                 members.set(id, member);
               }
@@ -311,7 +358,6 @@ export class DiscordRawDataSource implements ContentSource {
       const results = await Promise.all(promises);
       results.forEach(([id, data]) => userData.set(id, data));
       
-      // Add a small delay between batches to avoid rate limits
       if (i + PARALLEL_USER_FETCHES < entries.length) {
         await this.sleep(API_RATE_LIMIT_DELAY);
       }
@@ -326,7 +372,6 @@ export class DiscordRawDataSource implements ContentSource {
     users?: Map<string, DiscordRawData['users'][string]>
   ): Promise<DiscordRawData['messages'] | Message<true>[]> {
     if (!users) {
-      // Handle the simple case where we just need to filter media messages
       const processedMessages: Message<true>[] = [];
       
       for (const message of messages.values()) {
@@ -339,19 +384,16 @@ export class DiscordRawDataSource implements ContentSource {
       return processedMessages;
     }
 
-    // Handle the full processing case with user data
     const processedMessages: DiscordRawData['messages'] = [];
     const missingMembers = new Map<string, User>();
     const existingMembers = new Map<string, GuildMember | null>();
 
-    // First pass: collect all unique users from messages
     for (const message of messages.values()) {
       const author = message.author;
       if (!users.has(author.id)) {
         missingMembers.set(author.id, author);
       }
       
-      // Also collect mentioned users
       message.mentions.users.forEach(user => {
         if (!users.has(user.id)) {
           missingMembers.set(user.id, user);
@@ -359,13 +401,11 @@ export class DiscordRawDataSource implements ContentSource {
       });
     }
 
-    // Fetch member data for all missing users
     if (missingMembers.size > 0) {
       const newUserData = await this.fetchUserDataBatch(existingMembers, missingMembers);
       newUserData.forEach((data, id) => users.set(id, data));
     }
 
-    // Second pass: process messages with complete user data
     for (const message of messages.values()) {
       const reactions = message.reactions.cache.map(reaction => ({
         emoji: reaction.emoji.toString(),
@@ -393,14 +433,12 @@ export class DiscordRawDataSource implements ContentSource {
     const users = new Map<string, DiscordRawData['users'][string]>();
     const messages: DiscordRawData['messages'] = [];
     
-    // Calculate the time range for the target date
     const startOfDay = new Date(targetDate);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
 
     try {
-      // Get the most recent message ID as our starting point
       const recentMessages = await this.retryOperation(() => channel.messages.fetch({ limit: 1 }));
       const lastMessageId = recentMessages.first()?.id;
 
@@ -419,7 +457,6 @@ export class DiscordRawDataSource implements ContentSource {
         };
       }
 
-      // Fetch messages in batches until we reach messages before our target date
       let currentMessageId = lastMessageId;
       let hasMoreMessages = true;
 
@@ -438,33 +475,28 @@ export class DiscordRawDataSource implements ContentSource {
             break;
           }
 
-          // Filter messages to only include those from our target date
           const filteredMessages = fetchedMessages.filter(msg => {
             const msgDate = msg.createdAt;
             return msgDate >= startOfDay && msgDate <= endOfDay;
           });
 
           if (filteredMessages.size > 0) {
-            // Process messages and collect user data
             const processedBatch = await this.processMessageBatch(filteredMessages, channel, users) as DiscordRawData['messages'];
             messages.push(...processedBatch);
           }
 
-          // Check if we've reached messages before our target date
           const oldestMessage = Array.from(fetchedMessages.values()).pop();
           if (oldestMessage && oldestMessage.createdAt < startOfDay) {
             hasMoreMessages = false;
             break;
           }
 
-          // Update the current message ID for the next batch
           currentMessageId = oldestMessage?.id || '';
           if (!currentMessageId) {
             hasMoreMessages = false;
             break;
           }
 
-          // Add a small delay to avoid rate limits
           await this.sleep(API_RATE_LIMIT_DELAY);
         } catch (error) {
           if (error instanceof Error && error.message.includes('Missing Access')) {
@@ -490,7 +522,7 @@ export class DiscordRawDataSource implements ContentSource {
       },
       date: targetDate.toISOString(),
       users: Object.fromEntries(users),
-      messages: messages.reverse() // Return in chronological order
+      messages: messages.reverse()
     };
   }
 
@@ -503,7 +535,7 @@ export class DiscordRawDataSource implements ContentSource {
 
     const items: ContentItem[] = [];
     const cutoff = new Date();
-    cutoff.setHours(cutoff.getHours() - 1); // Last hour's data
+    cutoff.setHours(cutoff.getHours() - 1);
 
     logger.info(`Processing ${this.channelIds.length} channels for the last hour...`);
     for (const channelId of this.channelIds) {
@@ -517,11 +549,9 @@ export class DiscordRawDataSource implements ContentSource {
 
         const rawData = await this.fetchChannelMessages(channel, cutoff);
         
-        // Generate a unique timestamp for this export
         const timestamp = Date.now();
         const formattedDate = new Date(timestamp).toISOString().replace(/[:.]/g, '-');
         
-        // Get the guild name for the source
         const guildName = channel.guild.name;
         
         items.push({
@@ -545,7 +575,6 @@ export class DiscordRawDataSource implements ContentSource {
         logger.success(`Successfully processed channel ${channel.name}`);
       } catch (error) {
         logger.error(`Error processing channel ${channelId}: ${error}`);
-        // Continue with next channel
       }
     }
 
@@ -576,7 +605,6 @@ export class DiscordRawDataSource implements ContentSource {
 
         const rawData = await this.fetchChannelMessages(channel, targetDate);
         
-        // Get the guild name for the source
         const guildName = channel.guild.name;
         const channelName = channel.name.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
         const formattedDate = new Date().toISOString().replace(/[:.]/g, '-');
@@ -626,19 +654,16 @@ export class DiscordRawDataSource implements ContentSource {
       await this.client.login(this.botToken);
     }
 
-    // Fetch all channels from the specified guild
     const guild = await this.client.guilds.fetch(this.guildId);
     if (!guild) return [];
     
     const channels = await guild.channels.fetch();
     if (!channels) return [];
 
-    // Filter text channels
     const textChannels = channels.filter((channel): channel is TextChannel => 
       channel?.type === ChannelType.GuildText
     );
 
-    // Process each channel
     for (const channel of textChannels.values()) {
       try {
         const messages = await this.fetchMessagesInTimeRange(channel, startTime, endTime);
@@ -658,7 +683,6 @@ export class DiscordRawDataSource implements ContentSource {
       }
     }
 
-    // Convert the data to ContentItems
     return this.convertToContentItems(data);
   }
 
@@ -669,7 +693,6 @@ export class DiscordRawDataSource implements ContentSource {
     for (const [guildId, guild] of guilds) {
       try {
         logger.info(`Fetching members for guild: ${guild.name}`);
-        // Try to fetch members without using privileged intents
         try {
           await guild.members.fetch();
           logger.success(`Successfully cached members for guild: ${guild.name}`);
@@ -717,33 +740,28 @@ export class DiscordRawDataSource implements ContentSource {
     const videoExtensions = ['.mp4', '.webm', '.mov'];
     const mediaExtensions = [...imageExtensions, ...videoExtensions];
 
-    // Check content type if available
     if (contentType) {
       return contentType.startsWith('image/') || contentType.startsWith('video/');
     }
 
-    // Check file extension
     return mediaExtensions.some(ext => url.toLowerCase().endsWith(ext));
   }
 
   private extractMediaUrls(message: Message<true>): string[] {
     const mediaUrls: string[] = [];
     
-    // Process attachments
     message.attachments.forEach(attachment => {
       if (this.isMediaFile(attachment.url, attachment.contentType)) {
         mediaUrls.push(attachment.url);
       }
     });
     
-    // Process embeds
     message.embeds.forEach(embed => {
       if (embed.image) mediaUrls.push(embed.image.url);
       if (embed.thumbnail) mediaUrls.push(embed.thumbnail.url);
       if (embed.video) mediaUrls.push(embed.video.url);
     });
     
-    // Extract URLs from content
     const urlRegex = /(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g;
     const contentUrls = message.content.match(urlRegex) || [];
     contentUrls.forEach(url => {
@@ -752,7 +770,7 @@ export class DiscordRawDataSource implements ContentSource {
       }
     });
     
-    return [...new Set(mediaUrls)]; // Remove duplicates
+    return [...new Set(mediaUrls)];
   }
 
   private convertToContentItems(data: {

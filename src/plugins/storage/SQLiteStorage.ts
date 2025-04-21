@@ -5,16 +5,30 @@ import { open, Database } from "sqlite";
 import sqlite3 from "sqlite3";
 import { ContentItem, SummaryItem, StorageConfig } from "../../types";
 
+/**
+ * SQLiteStorage class implements the StoragePlugin interface for persistent storage
+ * using SQLite database. This storage plugin handles both content items and summaries,
+ * providing methods for saving, retrieving, and querying data.
+ */
 export class SQLiteStorage implements StoragePlugin {
   public name: string;
   private db: Database<sqlite3.Database, sqlite3.Statement> | null = null;
   private dbPath: string;
 
+  /**
+   * Creates a new instance of SQLiteStorage.
+   * @param config - Configuration object containing storage name and database path
+   */
   constructor(config: StorageConfig) {
     this.name = config.name;
     this.dbPath = config.dbPath;
   }
 
+  /**
+   * Initializes the SQLite database and creates necessary tables if they don't exist.
+   * Creates tables for content items and summaries with appropriate schemas.
+   * @returns Promise<void>
+   */
   public async init(): Promise<void> {
     this.db = await open({ filename: this.dbPath, driver: sqlite3.Database });
 
@@ -45,13 +59,25 @@ export class SQLiteStorage implements StoragePlugin {
     `);
   }
 
-
+  /**
+   * Closes the database connection.
+   * Should be called when the storage is no longer needed.
+   * @returns Promise<void>
+   */
   public async close(): Promise<void> {
     if (this.db) {
       await this.db.close()
     }
   }
 
+  /**
+   * Saves or updates multiple content items in the database.
+   * Uses transactions to ensure data consistency and handles both new items
+   * and updates to existing items.
+   * @param items - Array of content items to save
+   * @returns Promise<ContentItem[]> Array of saved content items with IDs
+   * @throws Error if database is not initialized
+   */
   public async saveContentItems(items: ContentItem[]): Promise<ContentItem[]> {
     if (!this.db) {
       throw new Error("Database not initialized. Call init() first.");
@@ -135,6 +161,12 @@ export class SQLiteStorage implements StoragePlugin {
     return items;
   }
 
+  /**
+   * Retrieves a single content item by its content ID (cid).
+   * @param cid - Content ID of the item to retrieve
+   * @returns Promise<ContentItem | null> Retrieved content item or null if not found
+   * @throws Error if database is not initialized
+   */
   public async getContentItem(cid: string): Promise<ContentItem | null> {
     if (!this.db) {
       throw new Error("Database not initialized. Call init() first.");
@@ -162,6 +194,13 @@ export class SQLiteStorage implements StoragePlugin {
     return item;
   }
 
+  /**
+   * Saves or updates a summary item in the database.
+   * Handles both new summaries and updates to existing ones for the same type and date.
+   * @param item - Summary item to save
+   * @returns Promise<void>
+   * @throws Error if database is not initialized or if item has no date
+   */
   public async saveSummaryItem(item: SummaryItem): Promise<void> {
     if (!this.db) {
       throw new Error("Database not initialized. Call init() first.");
@@ -218,6 +257,12 @@ export class SQLiteStorage implements StoragePlugin {
     }
   }
 
+  /**
+   * Retrieves all content items of a specific type.
+   * @param type - Type of content items to retrieve
+   * @returns Promise<ContentItem[]> Array of content items
+   * @throws Error if database is not initialized
+   */
   public async getItemsByType(type: string): Promise<ContentItem[]> {
     if (!this.db) {
       throw new Error("Database not initialized.");
@@ -241,6 +286,14 @@ export class SQLiteStorage implements StoragePlugin {
     }));
   }
 
+  /**
+   * Retrieves content items within a specific time range.
+   * @param startEpoch - Start timestamp in epoch seconds
+   * @param endEpoch - End timestamp in epoch seconds
+   * @param excludeType - Optional type to exclude from results
+   * @returns Promise<ContentItem[]> Array of content items within the time range
+   * @throws Error if database is not initialized
+   */
   public async getContentItemsBetweenEpoch(
     startEpoch: number,
     endEpoch: number,
@@ -283,6 +336,14 @@ export class SQLiteStorage implements StoragePlugin {
     }
   }
   
+  /**
+   * Retrieves summary items within a specific time range.
+   * @param startEpoch - Start timestamp in epoch seconds
+   * @param endEpoch - End timestamp in epoch seconds
+   * @param excludeType - Optional type to exclude from results
+   * @returns Promise<SummaryItem[]> Array of summary items within the time range
+   * @throws Error if database is not initialized
+   */
   public async getSummaryBetweenEpoch(
     startEpoch: number,
     endEpoch: number,

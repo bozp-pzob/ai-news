@@ -6,17 +6,31 @@ import { Client, GatewayIntentBits, TextChannel, ChannelType } from "discord.js"
 import * as fs from 'fs';
 import * as path from 'path';
 
+/**
+ * Configuration interface for DiscordChannelSource.
+ * Defines the required parameters for initializing a Discord channel source.
+ */
 interface DiscordChannelSourceConfig {
-  name: string;
-  botToken: string;
-  channelIds: string[];
-  provider: AiProvider | undefined;
+  name: string;           // Name identifier for this source
+  botToken: string;       // Discord bot authentication token
+  channelIds: string[];   // Array of Discord channel IDs to monitor
+  provider: AiProvider | undefined;  // Optional AI provider for content processing
 }
 
+/**
+ * Interface for tracking the last processed message ID for each channel.
+ * Used to maintain state between runs and avoid processing duplicate messages.
+ */
 interface LastProcessedState {
-  [channelId: string]: string;
+  [channelId: string]: string;  // Maps channel ID to last processed message ID
 }
 
+/**
+ * DiscordChannelSource class implements content fetching from Discord channels.
+ * This source monitors specified Discord channels and generates summaries of conversations
+ * using an AI provider. It maintains state to track processed messages and supports
+ * both real-time and historical data fetching.
+ */
 export class DiscordChannelSource implements ContentSource {
   public name: string;
   public provider: AiProvider | undefined;
@@ -26,6 +40,10 @@ export class DiscordChannelSource implements ContentSource {
   private stateFilePath: string;
   private lastProcessed: LastProcessedState;
 
+  /**
+   * Creates a new instance of DiscordChannelSource.
+   * @param config - Configuration object containing bot token, channel IDs, and AI provider
+   */
   constructor(config: DiscordChannelSourceConfig) {
     this.name = config.name;
     this.provider = config.provider;
@@ -40,6 +58,12 @@ export class DiscordChannelSource implements ContentSource {
     this.lastProcessed = this.loadState();
   }
 
+  /**
+   * Fetches and processes new messages from configured Discord channels.
+   * Retrieves messages after the last processed message ID and generates summaries
+   * using the configured AI provider.
+   * @returns Promise<ContentItem[]> Array of processed content items
+   */
   public async fetchItems(): Promise<ContentItem[]> {
     if (!this.client.isReady()) {
       await this.client.login(this.botToken);
@@ -110,6 +134,12 @@ export class DiscordChannelSource implements ContentSource {
     return discordResponse
   }
 
+  /**
+   * Fetches historical messages from configured Discord channels up to a specified date.
+   * Useful for backfilling data or generating historical summaries.
+   * @param date - ISO date string indicating the cutoff date for historical data
+   * @returns Promise<ContentItem[]> Array of processed historical content items
+   */
   public async fetchHistorical(date: string): Promise<ContentItem[]> {
     if (!this.client.isReady()) {
       await this.client.login(this.botToken);
@@ -193,7 +223,12 @@ export class DiscordChannelSource implements ContentSource {
     return discordResponse;
   }
 
-  // Load the last processed message IDs from the JSON file
+  /**
+   * Loads the last processed message state from a JSON file.
+   * Used to maintain continuity between runs and avoid processing duplicate messages.
+   * @returns LastProcessedState Object containing channel ID to last message ID mappings
+   * @private
+   */
   private loadState(): LastProcessedState {
     try {
       if (fs.existsSync(this.stateFilePath)) {
@@ -208,7 +243,11 @@ export class DiscordChannelSource implements ContentSource {
     }
   }
 
-  // Save the last processed message IDs to the JSON file
+  /**
+   * Saves the current state of processed messages to a JSON file.
+   * Ensures message processing state persists between runs.
+   * @private
+   */
   private saveState(): void {
     try {
       fs.writeFileSync(this.stateFilePath, JSON.stringify(this.lastProcessed, null, 2), 'utf-8');
@@ -217,6 +256,13 @@ export class DiscordChannelSource implements ContentSource {
     }
   }
 
+  /**
+   * Formats a structured prompt for the AI provider based on the chat transcript.
+   * Creates a detailed prompt that guides the AI in generating comprehensive summaries.
+   * @param transcript - Raw chat transcript to be analyzed
+   * @returns string Formatted prompt for AI processing
+   * @private
+   */
   private formatStructuredPrompt(transcript: string): string {
     return `Analyze this Discord chat segment and provide a succinct analysis:
             

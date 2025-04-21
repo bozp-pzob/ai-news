@@ -6,36 +6,49 @@ import path from "path";
 
 const hour = 60 * 60 * 1000;
 
+/**
+ * Configuration interface for DiscordSummaryGenerator.
+ * Defines the required parameters for initializing a Discord summary generator.
+ */
 interface DiscordSummaryGeneratorConfig {
-  provider: OpenAIProvider;
-  storage: SQLiteStorage;
-  summaryType: string;
-  source: string;
-  outputPath?: string;
+  provider: OpenAIProvider;      // AI provider for generating summaries
+  storage: SQLiteStorage;        // Storage backend for content items
+  summaryType: string;           // Type identifier for the summary
+  source: string;                // Source identifier for content items
+  outputPath?: string;           // Optional output directory path
 }
 
+/**
+ * Interface representing a structured Discord channel summary.
+ * Contains parsed and organized information from Discord conversations.
+ */
 interface DiscordSummary {
-  channelName: string;
-  guildName: string;
-  summary: string;
-  faqs: Array<{
-    question: string;
-    askedBy: string;
-    answeredBy: string;
+  channelName: string;           // Name of the Discord channel
+  guildName: string;            // Name of the Discord server
+  summary: string;              // Main summary of the conversation
+  faqs: Array<{                 // Frequently asked questions
+    question: string;           // The question asked
+    askedBy: string;           // Username of who asked
+    answeredBy: string;        // Username of who answered
   }>;
-  helpInteractions: Array<{
-    helper: string;
-    helpee: string;
-    context: string;
-    resolution: string;
+  helpInteractions: Array<{     // Community help interactions
+    helper: string;            // Username of who helped
+    helpee: string;           // Username of who received help
+    context: string;          // Context of the help request
+    resolution: string;       // How the help was resolved
   }>;
-  actionItems: Array<{
-    type: 'Technical' | 'Documentation' | 'Feature';
-    description: string;
-    mentionedBy: string;
+  actionItems: Array<{         // Action items from the conversation
+    type: 'Technical' | 'Documentation' | 'Feature';  // Type of action item
+    description: string;      // Description of the action item
+    mentionedBy: string;     // Username of who mentioned it
   }>;
 }
 
+/**
+ * DiscordSummaryGenerator class generates structured summaries from Discord conversations.
+ * This generator processes content items from Discord channels, extracts meaningful information,
+ * and generates both channel-specific and daily summaries in various formats.
+ */
 export class DiscordSummaryGenerator {
   private provider: OpenAIProvider;
   private storage: SQLiteStorage;
@@ -43,6 +56,10 @@ export class DiscordSummaryGenerator {
   private source: string;
   private outputPath: string;
 
+  /**
+   * Creates a new instance of DiscordSummaryGenerator.
+   * @param config - Configuration object containing provider, storage, and output settings
+   */
   constructor(config: DiscordSummaryGeneratorConfig) {
     this.provider = config.provider;
     this.storage = config.storage;
@@ -51,6 +68,13 @@ export class DiscordSummaryGenerator {
     this.outputPath = config.outputPath || './';
   }
 
+  /**
+   * Generates and stores a daily summary for a specific date.
+   * Processes all Discord content items for the given date and generates
+   * both channel-specific and consolidated daily summaries.
+   * @param dateStr - ISO date string for which to generate the summary
+   * @returns Promise<void>
+   */
   public async generateAndStoreSummary(dateStr: string): Promise<void> {
     try {
       const currentTime = new Date(dateStr).getTime() / 1000;
@@ -99,6 +123,12 @@ export class DiscordSummaryGenerator {
     }
   }
 
+  /**
+   * Groups content items by their Discord channel ID.
+   * @param items - Array of content items to group
+   * @returns Object mapping channel IDs to arrays of content items
+   * @private
+   */
   private groupByChannel(items: ContentItem[]): { [channelId: string]: ContentItem[] } {
     const channels: { [channelId: string]: ContentItem[] } = {};
     
@@ -115,6 +145,14 @@ export class DiscordSummaryGenerator {
     return channels;
   }
 
+  /**
+   * Processes and combines summaries for a single Discord channel.
+   * Extracts structured information from raw summaries and combines them
+   * into a single channel summary.
+   * @param items - Array of content items for a single channel
+   * @returns Promise<DiscordSummary | null> Processed channel summary or null if no valid items
+   * @private
+   */
   private async processChannelSummaries(items: ContentItem[]): Promise<DiscordSummary | null> {
     if (items.length === 0) return null;
 
@@ -154,6 +192,15 @@ export class DiscordSummaryGenerator {
     };
   }
 
+  /**
+   * Generates a consolidated daily summary from multiple channel summaries.
+   * Creates a comprehensive markdown summary highlighting key discussions,
+   * questions, help interactions, and action items across all channels.
+   * @param summaries - Array of channel summaries to consolidate
+   * @param dateStr - Date string for the summary
+   * @returns Promise<string> Generated markdown summary
+   * @private
+   */
   private async generateDailySummary(summaries: DiscordSummary[], dateStr: string): Promise<string> {
     const prompt = `Create a comprehensive daily summary of Discord discussions from ${dateStr}. Here are the channel summaries:
 
@@ -182,10 +229,23 @@ Please create a markdown summary that:
     return await this.provider.summarize(prompt);
   }
 
+  /**
+   * Extracts a specific section from a text block.
+   * @param text - Text to extract from
+   * @param sectionName - Name of the section to extract
+   * @returns string Extracted section text
+   * @private
+   */
   private extractSection(text: string, sectionName: string): string {
     return text.trim();
   }
 
+  /**
+   * Extracts FAQ entries from a text block.
+   * @param text - Text containing FAQ entries
+   * @returns Array of parsed FAQ objects
+   * @private
+   */
   private extractFAQs(text: string): Array<{ question: string; askedBy: string; answeredBy: string }> {
     return this.extractItems(text, /^-?\s*(.+?)\s*\(asked by\s+(.+?),\s*answered by\s+(.+?)\)/i, 
       (match) => ({
@@ -196,6 +256,12 @@ Please create a markdown summary that:
     );
   }
 
+  /**
+   * Extracts help interaction entries from a text block.
+   * @param text - Text containing help interaction entries
+   * @returns Array of parsed help interaction objects
+   * @private
+   */
   private extractHelpInteractions(text: string): Array<{ helper: string; helpee: string; context: string; resolution: string }> {
     const interactions: Array<{ helper: string; helpee: string; context: string; resolution: string }> = [];
     const lines = text.split('\n').filter(line => line.trim());
@@ -221,6 +287,12 @@ Please create a markdown summary that:
     return interactions;
   }
 
+  /**
+   * Extracts action items from a text block.
+   * @param text - Text containing action item entries
+   * @returns Array of parsed action item objects
+   * @private
+   */
   private extractActionItems(text: string): Array<{ type: 'Technical' | 'Documentation' | 'Feature'; description: string; mentionedBy: string }> {
     return this.extractItems(text, /^-?\s*(Technical|Documentation|Feature):\s*(.+?)\s*\((.+?)\)/i,
       (match) => ({
@@ -231,6 +303,14 @@ Please create a markdown summary that:
     );
   }
 
+  /**
+   * Generic method to extract items from text using a regex pattern.
+   * @param text - Text to extract items from
+   * @param regex - Regular expression pattern for matching items
+   * @param mapper - Function to map regex matches to item objects
+   * @returns Array of extracted and mapped items
+   * @private
+   */
   private extractItems<T>(text: string, regex: RegExp, mapper: (match: RegExpMatchArray) => T): T[] {
     const items: T[] = [];
     const lines = text.split('\n').filter(line => line.trim());
@@ -245,10 +325,23 @@ Please create a markdown summary that:
     return items;
   }
 
+  /**
+   * Combines multiple summaries into a single text.
+   * @param summaries - Array of summary texts to combine
+   * @returns string Combined summary text
+   * @private
+   */
   private combineSummaries(summaries: string[]): string {
     return summaries.join('\n\n');
   }
 
+  /**
+   * Combines and deduplicates items based on a key type.
+   * @param items - Array of items to combine
+   * @param keyType - Type of key to use for deduplication
+   * @returns Array of unique combined items
+   * @private
+   */
   private combineItems<T>(items: T[], keyType: string): T[] {
     // Remove duplicates and keep most informative versions
     const uniqueItems = new Map<string, T>();
@@ -280,6 +373,12 @@ Please create a markdown summary that:
     return Array.from(uniqueItems.values());
   }
 
+  /**
+   * Cleans and formats summary text.
+   * @param text - Raw summary text to clean
+   * @returns string Cleaned summary text
+   * @private
+   */
   private cleanSummaryText(text: string): string {
     // Remove any JSON-like content that might be mixed in with the summary
     // This regex looks for patterns like {"key": "value"} or {"key": value}
@@ -287,6 +386,15 @@ Please create a markdown summary that:
     return text.replace(jsonPattern, '').trim();
   }
 
+  /**
+   * Writes summary content to a file in the specified format.
+   * @param dateStr - Date string for the file name
+   * @param currentTime - Timestamp for the summary
+   * @param content - Content to write
+   * @param format - File format ('json' or 'md')
+   * @returns Promise<void>
+   * @private
+   */
   private async writeFile(dateStr: string, currentTime: number, content: any, format: 'json' | 'md'): Promise<void> {
     try {
       const dir = path.join(this.outputPath, format);
@@ -312,6 +420,12 @@ Please create a markdown summary that:
     }
   }
 
+  /**
+   * Cleans and formats categories for storage.
+   * @param content - Raw categories content
+   * @returns Array of cleaned category objects
+   * @private
+   */
   private cleanCategories(content: any): any[] {
     if (!Array.isArray(content)) return [];
     
@@ -324,12 +438,22 @@ Please create a markdown summary that:
     });
   }
 
+  /**
+   * Ensures the output directory exists.
+   * @param dirPath - Directory path to check/create
+   * @private
+   */
   private ensureDirectoryExists(dirPath: string) {
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
     }
   }
 
+  /**
+   * Main entry point for content generation.
+   * Generates summaries for the current day's content.
+   * @returns Promise<void>
+   */
   public async generateContent() {
     try {
       const today = new Date();
