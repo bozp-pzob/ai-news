@@ -9,6 +9,7 @@ import { ContentItem, DiscordRawData, DiscordRawDataSourceConfig, TimeBlock } fr
 import { logger } from '../../helpers/cliHelper';
 import { delay, retryOperation } from '../../helpers/generalHelper';
 import { isMediaFile } from '../../helpers/fileHelper';
+import { StoragePlugin } from '../storage/StoragePlugin';
 
 const API_RATE_LIMIT_DELAY = 50; // Reduced to 50ms between API calls
 const PARALLEL_USER_FETCHES = 10; // Number of user fetches to run in parallel
@@ -29,6 +30,8 @@ export class DiscordRawDataSource implements ContentSource {
   private botToken: string;
   /** Discord guild/server ID */
   private guildId: string;
+  /** Store to cursors for recently pulled discord channels*/
+  private storage: StoragePlugin;
 
   /**
    * Creates a new DiscordRawDataSource instance
@@ -39,6 +42,7 @@ export class DiscordRawDataSource implements ContentSource {
     this.botToken = config.botToken;
     this.channelIds = config.channelIds;
     this.guildId = config.guildId;
+    this.storage = config.storage;
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -186,91 +190,53 @@ export class DiscordRawDataSource implements ContentSource {
     logger.channel(`Processing channel: ${channel.name} (${channel.id})`);
     const users = new Map<string, DiscordRawData['users'][string]>();
     const messages: DiscordRawData['messages'] = [];
-    
+  
     const startOfDay = new Date(targetDate);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
-
-    try {
-      // Get the most recent message ID as our starting point
-      const recentMessages = await retryOperation(() => channel.messages.fetch({ limit: 1 }));
-      const lastMessageId = recentMessages.first()?.id;
-
-      if (!lastMessageId) {
-        logger.info(`No messages found for ${channel.name} on ${targetDate.toISOString().split('T')[0]}`);
-        return {
-          channel: {
-            id: channel.id,
-            name: channel.name,
-            topic: channel.topic,
-            category: channel.parent?.name || null
-          },
-          date: targetDate.toISOString(),
-          users: {},
-          messages: []
-        };
-      }
-
-      let currentMessageId = lastMessageId;
-      let hasMoreMessages = true;
-
-      while (hasMoreMessages) {
-        const options = { 
-          limit: 100,
-          before: currentMessageId
-        };
-
-        try {
-          const fetchedMessages : Collection<string, Message<true>> = await retryOperation(() => channel.messages.fetch(options));
-          
-          if (fetchedMessages.size === 0) {
-            logger.info(`No more messages found in channel ${channel.name}`);
-            hasMoreMessages = false;
-            break;
-          }
-
-          // Filter messages to only include those from our target date
-          const filteredMessages : Collection<string, Message<true>> = fetchedMessages.filter((msg:Message) => {
-            const msgDate = msg.createdAt;
-            return msgDate >= startOfDay && msgDate <= endOfDay;
-          });
-
-          if (filteredMessages.size > 0) {
-            const processedBatch = await this.processMessageBatch(filteredMessages, channel, users) as DiscordRawData['messages'];
-            messages.push(...processedBatch);
-          }
-
-          // Check if we've reached messages before our target date
-          const oldestMessage : Message<true> | undefined = Array.from(fetchedMessages.values()).pop();
-          if (oldestMessage && oldestMessage.createdAt < startOfDay) {
-            hasMoreMessages = false;
-            break;
-          }
-
-          currentMessageId = oldestMessage?.id || '';
-          if (!currentMessageId) {
-            hasMoreMessages = false;
-            break;
-          }
-
-          // Add a small delay to avoid rate limits
-          await delay(API_RATE_LIMIT_DELAY);
-        } catch (error) {
-          if (error instanceof Error && error.message.includes('Missing Access')) {
-            logger.warning(`Missing permissions to access channel ${channel.name}`);
-            break;
-          }
-          throw error;
+  
+    const cursorKey = `${this.name}-${channel.id}`;
+    let lastFetchedMessageId = await this.storage.getCursor(cursorKey);
+  
+    let hasMoreMessages = true;
+    while (hasMoreMessages) {
+      const options: any = { limit: 100 };
+      if (lastFetchedMessageId) options.after = lastFetchedMessageId;
+  
+      try {
+        const fetchedMessages: Collection<string, Message<true>> = await retryOperation(() => channel.messages.fetch(options));
+  
+        const filteredMessages = fetchedMessages.filter((msg: Message) => {
+          const msgDate = msg.createdAt;
+          return msgDate >= startOfDay && msgDate <= endOfDay;
+        });
+  
+        if (filteredMessages.size > 0) {
+          const processed = await this.processMessageBatch(filteredMessages, channel, users) as DiscordRawData['messages'];
+          messages.push(...processed);
+  
+          const newestMessage = Array.from(filteredMessages.values()).sort((a, b) => b.createdTimestamp - a.createdTimestamp)[0];
+          lastFetchedMessageId = newestMessage.id;
+          this.storage.setCursor(cursorKey, lastFetchedMessageId);
         }
+  
+        if (fetchedMessages.size < 100) {
+          hasMoreMessages = false; // likely hit the end of the new messages
+        }
+  
+        await delay(API_RATE_LIMIT_DELAY);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('Missing Access')) {
+          logger.warning(`Missing permissions to access channel ${channel.name}`);
+          break;
+        }
+        throw error;
       }
-
-      logger.info(`Found ${messages.length} messages for ${channel.name} on ${targetDate.toISOString().split('T')[0]}`);
-
-    } catch (error) {
-      logger.error(`Error fetching messages for channel ${channel.name}: ${error}`);
     }
-
+  
+    logger.info(`Fetched ${messages.length} new messages for ${channel.name} on ${targetDate.toISOString().split('T')[0]}`);
+  
     return {
       channel: {
         id: channel.id,
@@ -312,24 +278,26 @@ export class DiscordRawDataSource implements ContentSource {
         
         const guildName = channel.guild.name;
         
-        items.push({
-          cid: `discord-raw-${channel.id}-${formattedDate}`,
-          type: 'discord-raw',
-          source: `${guildName} - ${channel.name}`,
-          title: `Raw Discord Data: ${channel.name}`,
-          text: JSON.stringify(rawData),
-          link: `https://discord.com/channels/${channel.guild.id}/${channel.id}`,
-          date: timestamp,
-          metadata: {
-            channelId: channel.id,
-            guildId: channel.guild.id,
-            guildName: guildName,
-            channelName: channel.name,
-            messageCount: rawData.messages.length,
-            userCount: Object.keys(rawData.users).length,
-            exportTimestamp: formattedDate
-          }
-        });
+        if ( rawData.messages.length > 0 ) {
+          items.push({
+            cid: `discord-raw-${channel.id}-${formattedDate}`,
+            type: 'discord-raw',
+            source: `${guildName} - ${channel.name}`,
+            title: `Raw Discord Data: ${channel.name}`,
+            text: JSON.stringify(rawData),
+            link: `https://discord.com/channels/${channel.guild.id}/${channel.id}`,
+            date: timestamp,
+            metadata: {
+              channelId: channel.id,
+              guildId: channel.guild.id,
+              guildName: guildName,
+              channelName: channel.name,
+              messageCount: rawData.messages.length,
+              userCount: Object.keys(rawData.users).length,
+              exportTimestamp: formattedDate
+            }
+          });
+        }
         logger.success(`Successfully processed channel ${channel.name}`);
       } catch (error) {
         logger.error(`Error processing channel ${channelId}: ${error}`);
@@ -367,25 +335,27 @@ export class DiscordRawDataSource implements ContentSource {
         const channelName = channel.name.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
         const formattedDate = new Date().toISOString().replace(/[:.]/g, '-');
         
-        items.push({
-          cid: `discord-raw-${channel.id}-${date}`,
-          type: 'discord-raw',
-          source: `${guildName} - ${channel.name}`,
-          title: `Raw Discord Data: ${channel.name} (${date})`,
-          text: JSON.stringify(rawData),
-          link: `https://discord.com/channels/${channel.guild.id}/${channel.id}`,
-          date: targetTimestamp,
-          metadata: {
-            channelId: channel.id,
-            guildId: channel.guild.id,
-            guildName: guildName,
-            channelName: channel.name,
-            messageCount: rawData.messages.length,
-            userCount: Object.keys(rawData.users).length,
-            dateProcessed: date,
-            exportTimestamp: formattedDate
-          }
-        });
+        if (rawData.messages.length > 0) {
+          items.push({
+            cid: `discord-raw-${channel.id}-${date}`,
+            type: 'discord-raw',
+            source: `${guildName} - ${channel.name}`,
+            title: `Raw Discord Data: ${channel.name} (${date})`,
+            text: JSON.stringify(rawData),
+            link: `https://discord.com/channels/${channel.guild.id}/${channel.id}`,
+            date: targetTimestamp,
+            metadata: {
+              channelId: channel.id,
+              guildId: channel.guild.id,
+              guildName: guildName,
+              channelName: channel.name,
+              messageCount: rawData.messages.length,
+              userCount: Object.keys(rawData.users).length,
+              dateProcessed: date,
+              exportTimestamp: formattedDate
+            }
+          });
+        }
         
         logger.success(`Processed ${rawData.messages.length} messages from ${channel.name}`);
       } catch (error) {

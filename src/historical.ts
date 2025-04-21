@@ -94,9 +94,10 @@ dotenv.config();
     /**
      * Set up dependencies between plugins
      * AI providers are injected into sources, enrichers, and generators
-     * Storage is injected into generators
+     * Storage is injected into generators, sources
      */
     sourceConfigs = await loadProviders(sourceConfigs, aiConfigs);
+    sourceConfigs = await loadStorage(sourceConfigs, storageConfigs);
     enricherConfigs = await loadProviders(enricherConfigs, aiConfigs);
     generatorConfigs = await loadProviders(generatorConfigs, aiConfigs);
     generatorConfigs = await loadStorage(generatorConfigs, storageConfigs);

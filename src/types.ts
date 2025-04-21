@@ -1,5 +1,7 @@
 // src/types.ts
 
+import { StoragePlugin } from "./plugins/storage/StoragePlugin";
+
 /**
  * Represents a normalized article object in the system.
  */
@@ -162,6 +164,7 @@ export interface DiscordRawDataSourceConfig {
   botToken: string;
   channelIds: string[];
   guildId: string;
+  storage: StoragePlugin;
 }
 
 /**

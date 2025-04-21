@@ -5,6 +5,7 @@ import { ContentItem, AiProvider } from "../../types";
 import { Client, GatewayIntentBits, TextChannel, ChannelType } from "discord.js";
 import * as fs from 'fs';
 import * as path from 'path';
+import { StoragePlugin } from "../storage/StoragePlugin";
 
 /**
  * Configuration interface for DiscordChannelSource.
@@ -14,15 +15,8 @@ interface DiscordChannelSourceConfig {
   name: string;           // Name identifier for this source
   botToken: string;       // Discord bot authentication token
   channelIds: string[];   // Array of Discord channel IDs to monitor
+  storage: StoragePlugin; // Storage to store message fetching information
   provider: AiProvider | undefined;  // Optional AI provider for content processing
-}
-
-/**
- * Interface for tracking the last processed message ID for each channel.
- * Used to maintain state between runs and avoid processing duplicate messages.
- */
-interface LastProcessedState {
-  [channelId: string]: string;  // Maps channel ID to last processed message ID
 }
 
 /**
@@ -34,11 +28,10 @@ interface LastProcessedState {
 export class DiscordChannelSource implements ContentSource {
   public name: string;
   public provider: AiProvider | undefined;
+  public storage: StoragePlugin;
   private botToken: string = '';
   private channelIds: string[];
   private client: Client;
-  private stateFilePath: string;
-  private lastProcessed: LastProcessedState;
 
   /**
    * Creates a new instance of DiscordChannelSource.
@@ -47,15 +40,12 @@ export class DiscordChannelSource implements ContentSource {
   constructor(config: DiscordChannelSourceConfig) {
     this.name = config.name;
     this.provider = config.provider;
+    this.storage = config.storage;
     this.botToken = config.botToken;
     this.channelIds = config.channelIds;
     this.client = new Client({
       intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
     });
-    
-    this.stateFilePath = path.resolve(__dirname, '../../../data/lastProcessed.json');
-
-    this.lastProcessed = this.loadState();
   }
 
   /**
@@ -82,7 +72,8 @@ export class DiscordChannelSource implements ContentSource {
       const textChannel = channel as TextChannel;
 
       const fetchOptions: { limit: number; after?: string } = { limit: 100 };
-      const lastProcessedId = this.lastProcessed[channelId];
+      const cursorKey = `${this.name}-${channelId}`;
+      const lastProcessedId = await this.storage.getCursor(cursorKey);
 
       if (lastProcessedId) {
         fetchOptions.after = lastProcessedId;
@@ -124,13 +115,14 @@ export class DiscordChannelSource implements ContentSource {
           },
         });
   
-        const lastMessage = sortedMessages.first();
+        const lastMessage = sortedMessages.last();
         if (lastMessage) {
-          this.lastProcessed[channelId] = lastMessage.id;
-          this.saveState();
+          const lastFetchedMessageId = lastMessage.id;
+          this.storage.setCursor(cursorKey, lastFetchedMessageId);
         }
       }
     }
+    
     return discordResponse
   }
 
@@ -221,39 +213,6 @@ export class DiscordChannelSource implements ContentSource {
       }
     }
     return discordResponse;
-  }
-
-  /**
-   * Loads the last processed message state from a JSON file.
-   * Used to maintain continuity between runs and avoid processing duplicate messages.
-   * @returns LastProcessedState Object containing channel ID to last message ID mappings
-   * @private
-   */
-  private loadState(): LastProcessedState {
-    try {
-      if (fs.existsSync(this.stateFilePath)) {
-        const data = fs.readFileSync(this.stateFilePath, 'utf-8');
-        return JSON.parse(data);
-      } else {
-        return {};
-      }
-    } catch (error) {
-      console.error('Error loading state file:', error);
-      return {};
-    }
-  }
-
-  /**
-   * Saves the current state of processed messages to a JSON file.
-   * Ensures message processing state persists between runs.
-   * @private
-   */
-  private saveState(): void {
-    try {
-      fs.writeFileSync(this.stateFilePath, JSON.stringify(this.lastProcessed, null, 2), 'utf-8');
-    } catch (error) {
-      console.error('Error saving state file:', error);
-    }
   }
 
   /**

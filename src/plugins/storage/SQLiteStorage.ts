@@ -57,6 +57,14 @@ export class SQLiteStorage implements StoragePlugin {
         date INTEGER
       );
     `);
+
+    await this.db.exec(`
+      CREATE TABLE IF NOT EXISTS cursor (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cid TEXT NOT NULL UNIQUE,
+        message_id TEXT NOT NULL
+      );
+    `);
   }
 
   /**
@@ -379,5 +387,32 @@ export class SQLiteStorage implements StoragePlugin {
       console.error("Error fetching summary between epochs:", error);
       throw error;
     }
+  }
+
+  /**
+   * Gets the last fetched message ID for a given cursor id.
+   */
+  public async getCursor(cid: string): Promise<string | null> {
+    if (!this.db) throw new Error("Database not initialized.");
+
+    const row = await this.db.get(
+      `SELECT message_id FROM cursor WHERE cid = ?`,
+      [cid]
+    );
+
+    return row?.message_id || null;
+  }
+
+  /**
+   * Sets or updates the cursor (last message ID) for a given cursor.
+   */
+  public async setCursor(cid: string, messageId: string): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized.");
+  
+    await this.db.run(`
+      INSERT INTO cursor (cid, message_id)
+      VALUES (?, ?)
+      ON CONFLICT(cid) DO UPDATE SET message_id = excluded.message_id;
+    `, [cid, messageId]);
   }
 }
