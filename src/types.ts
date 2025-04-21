@@ -149,6 +149,14 @@ export interface DiscordRawData {
   }[];
 }
 
+/**
+ * Configuration interface for DiscordRawDataSource
+ * @interface DiscordRawDataSourceConfig
+ * @property {string} name - The name identifier for this Discord source
+ * @property {string} botToken - Discord bot token for authentication
+ * @property {string[]} channelIds - Array of Discord channel IDs to monitor
+ * @property {string} guildId - Discord guild/server ID
+ */
 export interface DiscordRawDataSourceConfig {
   name: string;
   botToken: string;
@@ -156,6 +164,10 @@ export interface DiscordRawDataSourceConfig {
   guildId: string;
 }
 
+/**
+ * Interface for time-based message blocks
+ * @interface TimeBlock
+ */
 export interface TimeBlock {
   startTime: Date;
   endTime: Date;
@@ -163,6 +175,10 @@ export interface TimeBlock {
   users: DiscordRawData['users'];
 }
 
+/**
+ * Interface for Discord Summaries
+ * @interface DiscordSummary
+ */
 export interface DiscordSummary {
   channelName: string;
   guildName: string;
@@ -172,12 +188,21 @@ export interface DiscordSummary {
   actionItems: ActionItems[];
 }
 
+
+/**
+ * Interface for SummaryFaqs for Discord sumamries
+ * @interface SummaryFaqs
+ */
 export interface SummaryFaqs {
   question: string;
   askedBy: string;
   answeredBy: string;
 }
 
+/**
+ * Interface for HelpInteractions for Discord sumamries
+ * @interface HelpInteractions
+ */
 export interface HelpInteractions {
   helper: string;
   helpee: string;
@@ -185,6 +210,10 @@ export interface HelpInteractions {
   resolution: string;
 }
 
+/**
+ * Interface for ActionItems for Discord sumamries
+ * @interface ActionItems
+ */
 export interface ActionItems { 
   type: 'Technical' | 'Documentation' | 'Feature';
   description: string;
