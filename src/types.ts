@@ -112,3 +112,81 @@ export interface DateConfig {
 export interface OutputConfig {
   path: string;  // Directory path for output files
 }
+
+/**
+ * Interface for Discord raw data structure
+ * @interface DiscordRawData
+ */
+export interface DiscordRawData {
+  channel: {
+    id: string;
+    name: string;
+    topic: string | null;
+    category: string | null;
+  };
+  date: string;
+  users: {
+    [userId: string]: {
+      name: string;
+      nickname: string | null;
+      roles?: string[];
+      isBot?: boolean;
+    };
+  };
+  messages: {
+    id: string;
+    ts: string;
+    uid: string;
+    content: string;
+    type?: string;
+    mentions?: string[];
+    ref?: string;
+    edited?: string;
+    reactions?: {
+      emoji: string;
+      count: number;
+    }[];
+  }[];
+}
+
+export interface DiscordRawDataSourceConfig {
+  name: string;
+  botToken: string;
+  channelIds: string[];
+  guildId: string;
+}
+
+export interface TimeBlock {
+  startTime: Date;
+  endTime: Date;
+  messages: DiscordRawData['messages'];
+  users: DiscordRawData['users'];
+}
+
+export interface DiscordSummary {
+  channelName: string;
+  guildName: string;
+  summary: string;
+  faqs: SummaryFaqs[];
+  helpInteractions: HelpInteractions[];
+  actionItems: ActionItems[];
+}
+
+export interface SummaryFaqs {
+  question: string;
+  askedBy: string;
+  answeredBy: string;
+}
+
+export interface HelpInteractions {
+  helper: string;
+  helpee: string;
+  context: string;
+  resolution: string;
+}
+
+export interface ActionItems { 
+  type: 'Technical' | 'Documentation' | 'Feature';
+  description: string;
+  mentionedBy: string;
+}

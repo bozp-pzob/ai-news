@@ -1,54 +1,19 @@
 import { OpenAIProvider } from "../ai/OpenAIProvider";
 import { SQLiteStorage } from "../storage/SQLiteStorage";
-import { ContentItem, SummaryItem } from "../../types";
+import { ContentItem, SummaryItem, DiscordSummary, ActionItems, HelpInteractions, SummaryFaqs } from "../../types";
+import { time } from "../../helpers/generalHelper";
 import fs from "fs";
 import path from "path";
+import { writeFile } from "../../helpers/fileHelper";
 
-const hour = 60 * 60 * 1000;
-
-/**
- * Configuration interface for DiscordSummaryGenerator.
- * Defines the required parameters for initializing a Discord summary generator.
- */
-interface DiscordSummaryGeneratorConfig {
-  provider: OpenAIProvider;      // AI provider for generating summaries
-  storage: SQLiteStorage;        // Storage backend for content items
-  summaryType: string;           // Type identifier for the summary
-  source: string;                // Source identifier for content items
-  outputPath?: string;           // Optional output directory path
+export interface DiscordSummaryGeneratorConfig {
+  provider: OpenAIProvider;
+  storage: SQLiteStorage;
+  summaryType: string;
+  source: string;
+  outputPath?: string;
 }
 
-/**
- * Interface representing a structured Discord channel summary.
- * Contains parsed and organized information from Discord conversations.
- */
-interface DiscordSummary {
-  channelName: string;           // Name of the Discord channel
-  guildName: string;            // Name of the Discord server
-  summary: string;              // Main summary of the conversation
-  faqs: Array<{                 // Frequently asked questions
-    question: string;           // The question asked
-    askedBy: string;           // Username of who asked
-    answeredBy: string;        // Username of who answered
-  }>;
-  helpInteractions: Array<{     // Community help interactions
-    helper: string;            // Username of who helped
-    helpee: string;           // Username of who received help
-    context: string;          // Context of the help request
-    resolution: string;       // How the help was resolved
-  }>;
-  actionItems: Array<{         // Action items from the conversation
-    type: 'Technical' | 'Documentation' | 'Feature';  // Type of action item
-    description: string;      // Description of the action item
-    mentionedBy: string;     // Username of who mentioned it
-  }>;
-}
-
-/**
- * DiscordSummaryGenerator class generates structured summaries from Discord conversations.
- * This generator processes content items from Discord channels, extracts meaningful information,
- * and generates both channel-specific and daily summaries in various formats.
- */
 export class DiscordSummaryGenerator {
   private provider: OpenAIProvider;
   private storage: SQLiteStorage;
@@ -114,8 +79,17 @@ export class DiscordSummaryGenerator {
       };
 
       await this.storage.saveSummaryItem(summaryItem);
-      await this.writeFile(dateStr, currentTime, allSummaries, 'json');
-      await this.writeFile(dateStr, currentTime, dailySummary, 'md');
+
+      const cleanedContent = this.cleanCategories(allSummaries);
+      const allSummariesContent = JSON.stringify({
+        type: this.summaryType,
+        title: `Daily Report - ${dateStr}`,
+        categories: cleanedContent,
+        date: currentTime,
+      }, null, 2);
+      
+      await writeFile(this.outputPath, dateStr, allSummariesContent, 'json');
+      await writeFile(this.outputPath, dateStr, dailySummary, 'md');
 
       console.log(`Discord daily summary for ${dateStr} generated and stored successfully.`);
     } catch (error) {
@@ -246,7 +220,7 @@ Please create a markdown summary that:
    * @returns Array of parsed FAQ objects
    * @private
    */
-  private extractFAQs(text: string): Array<{ question: string; askedBy: string; answeredBy: string }> {
+  private extractFAQs(text: string): SummaryFaqs[] {
     return this.extractItems(text, /^-?\s*(.+?)\s*\(asked by\s+(.+?),\s*answered by\s+(.+?)\)/i, 
       (match) => ({
         question: match[1].trim(),
@@ -262,7 +236,7 @@ Please create a markdown summary that:
    * @returns Array of parsed help interaction objects
    * @private
    */
-  private extractHelpInteractions(text: string): Array<{ helper: string; helpee: string; context: string; resolution: string }> {
+  private extractHelpInteractions(text: string): HelpInteractions[] {
     const interactions: Array<{ helper: string; helpee: string; context: string; resolution: string }> = [];
     const lines = text.split('\n').filter(line => line.trim());
     
@@ -293,7 +267,7 @@ Please create a markdown summary that:
    * @returns Array of parsed action item objects
    * @private
    */
-  private extractActionItems(text: string): Array<{ type: 'Technical' | 'Documentation' | 'Feature'; description: string; mentionedBy: string }> {
+  private extractActionItems(text: string): ActionItems[] {
     return this.extractItems(text, /^-?\s*(Technical|Documentation|Feature):\s*(.+?)\s*\((.+?)\)/i,
       (match) => ({
         type: match[1] as 'Technical' | 'Documentation' | 'Feature',
@@ -385,47 +359,7 @@ Please create a markdown summary that:
     const jsonPattern = /\{[^{]*"[\w\d]+"[^{]*\}/g;
     return text.replace(jsonPattern, '').trim();
   }
-
-  /**
-   * Writes summary content to a file in the specified format.
-   * @param dateStr - Date string for the file name
-   * @param currentTime - Timestamp for the summary
-   * @param content - Content to write
-   * @param format - File format ('json' or 'md')
-   * @returns Promise<void>
-   * @private
-   */
-  private async writeFile(dateStr: string, currentTime: number, content: any, format: 'json' | 'md'): Promise<void> {
-    try {
-      const dir = path.join(this.outputPath, format);
-      this.ensureDirectoryExists(dir);
-      
-      const filePath = path.join(dir, `${dateStr}.${format}`);
-      
-      if (format === 'json') {
-        // Clean up the categories to ensure they have the correct format
-        const cleanedContent = this.cleanCategories(content);
-        
-        fs.writeFileSync(filePath, JSON.stringify({
-          type: this.summaryType,
-          title: `Daily Report - ${dateStr}`,
-          categories: cleanedContent,
-          date: currentTime,
-        }, null, 2));
-      } else {
-        fs.writeFileSync(filePath, content);
-      }
-    } catch (error) {
-      console.error(`Error saving Discord summary to ${format} file ${dateStr}:`, error);
-    }
-  }
-
-  /**
-   * Cleans and formats categories for storage.
-   * @param content - Raw categories content
-   * @returns Array of cleaned category objects
-   * @private
-   */
+  
   private cleanCategories(content: any): any[] {
     if (!Array.isArray(content)) return [];
     
@@ -439,17 +373,6 @@ Please create a markdown summary that:
   }
 
   /**
-   * Ensures the output directory exists.
-   * @param dirPath - Directory path to check/create
-   * @private
-   */
-  private ensureDirectoryExists(dirPath: string) {
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-    }
-  }
-
-  /**
    * Main entry point for content generation.
    * Generates summaries for the current day's content.
    * @returns Promise<void>
@@ -458,7 +381,7 @@ Please create a markdown summary that:
     try {
       const today = new Date();
       let summary: SummaryItem[] = await this.storage.getSummaryBetweenEpoch(
-        (today.getTime() - (hour * 24)) / 1000,
+        (today.getTime() - (time.milliseconds.day)) / 1000,
         today.getTime() / 1000
       );
       
