@@ -16,6 +16,10 @@ export interface ContentItem {
   metadata?: Record<string, any>; // Additional key-value data
 }
 
+/**
+ * Represents a summary of multiple content items.
+ * Used for generating daily or topic-based summaries.
+ */
 export interface SummaryItem {
   id?: number;          // Will be assigned by storage if not provided
   type: string;          // e.g. "tweet", "newsArticle", "discordMessage", "githubIssue"
@@ -41,19 +45,30 @@ export interface EnricherPlugin {
   enrich(articles: ContentItem[]): ContentItem[] | Promise<ContentItem[]>;
 }
 
-  
+/**
+ * Configuration for AI-based enrichers.
+ * Defines settings for AI-powered content enrichment.
+ */
 export interface AiEnricherConfig {
   provider: AiProvider;       // The chosen AI provider
   maxTokens?: number;         // If you want a limit, e.g. chunk large texts
   thresholdLength?: number;   // Only summarize if content is above a certain length
 }
 
+/**
+ * Interface for AI providers that can process text.
+ * Defines core AI capabilities used throughout the system.
+ */
 export interface AiProvider {
   summarize(text: string): Promise<string>;
   topics(text: string): Promise<string[]>;
   image(text: string): Promise<string[]>;
 }
 
+/**
+ * Configuration item for plugins and components.
+ * Used to define and configure various system components.
+ */
 export interface ConfigItem {
   type: string;
   name: string;
@@ -61,16 +76,28 @@ export interface ConfigItem {
   interval?: number;
 }
 
+/**
+ * Configuration for component instances at runtime.
+ * Used to manage component instances and their execution schedules.
+ */
 export interface InstanceConfig {
   instance: any;
   interval?: number;
 }
 
+/**
+ * Configuration for storage plugins.
+ * Used to configure how content is persisted.
+ */
 export interface StorageConfig {
   name: string;
   dbPath: string;
 }
 
+/**
+ * Configuration for date-based filtering.
+ * Used to specify date ranges or specific dates for content filtering.
+ */
 export interface DateConfig {
   filterType: 'before' | 'after' | 'during';
   date?: string;
@@ -78,6 +105,10 @@ export interface DateConfig {
   before?: string;
 }
 
+/**
+ * Configuration for output paths.
+ * Used to specify where generated content should be saved.
+ */
 export interface OutputConfig {
   path: string;  // Directory path for output files
 }

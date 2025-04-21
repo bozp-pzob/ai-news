@@ -1,3 +1,10 @@
+/**
+ * Configuration helper utilities for the AI News Aggregator.
+ * This module provides functions for loading and configuring plugins and components.
+ * 
+ * @module helpers
+ */
+
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
@@ -5,6 +12,17 @@ import { ConfigItem, InstanceConfig } from "../types";
 
 dotenv.config();
 
+/**
+ * Loads all TypeScript modules from a specified directory.
+ * 
+ * This function:
+ * 1. Scans a directory for TypeScript files
+ * 2. Imports each file as a module
+ * 3. Returns a mapping of class names to their implementations
+ * 
+ * @param directory - The directory to load modules from (relative to plugins directory)
+ * @returns A promise that resolves to a record of class names to their implementations
+ */
 export const loadDirectoryModules = async (directory : string): Promise<Record<string, any>> => {
   const classes: Record<string, any> = {};
   const dir = path.join(__dirname, "../", "plugins", directory);
@@ -22,6 +40,20 @@ export const loadDirectoryModules = async (directory : string): Promise<Record<s
   return classes;
 };
 
+/**
+ * Creates instances of components based on configuration items.
+ * 
+ * This function:
+ * 1. Maps configuration items to their corresponding class implementations
+ * 2. Resolves parameter values (including environment variables)
+ * 3. Creates instances with the resolved parameters
+ * 
+ * @param items - Configuration items to instantiate
+ * @param mapping - Mapping of component types to their class implementations
+ * @param category - Category of components being instantiated (for error messages)
+ * @returns A promise that resolves to an array of component instances with optional intervals
+ * @throws Error if a component type is unknown
+ */
 export const loadItems = async (items: ConfigItem[], mapping: Record<string, any>, category: string): Promise<InstanceConfig[]> => {
   return items.map((item) => {
     const { type, name, params, interval } = item;
@@ -40,6 +72,19 @@ export const loadItems = async (items: ConfigItem[], mapping: Record<string, any
   });
 }
 
+/**
+ * Injects AI providers into components that require them.
+ * 
+ * This function:
+ * 1. Identifies components that require an AI provider
+ * 2. Finds the specified provider in the available providers
+ * 3. Injects the provider instance into the component
+ * 
+ * @param instances - Component instances that may require providers
+ * @param providers - Available AI provider instances
+ * @returns A promise that resolves to the component instances with injected providers
+ * @throws Error if a specified provider is not found
+ */
 export const loadProviders = async (instances: InstanceConfig[], providers: InstanceConfig[]): Promise<InstanceConfig[]> => {
   instances.forEach(({ instance }) => {
     if ("provider" in instance && instance.provider) {
@@ -59,6 +104,19 @@ export const loadProviders = async (instances: InstanceConfig[], providers: Inst
   return instances;
 }
 
+/**
+ * Injects storage plugins into components that require them.
+ * 
+ * This function:
+ * 1. Identifies components that require a storage plugin
+ * 2. Finds the specified storage plugin in the available plugins
+ * 3. Injects the storage plugin instance into the component
+ * 
+ * @param instances - Component instances that may require storage
+ * @param storages - Available storage plugin instances
+ * @returns A promise that resolves to the component instances with injected storage plugins
+ * @throws Error if a specified storage plugin is not found
+ */
 export const loadStorage = async (instances: InstanceConfig[], storages: InstanceConfig[]): Promise<InstanceConfig[]> => {
   instances.forEach(({ instance }) => {
     if ("storage" in instance && instance.storage) {
@@ -78,6 +136,17 @@ export const loadStorage = async (instances: InstanceConfig[], storages: Instanc
   return instances;
 }
 
+/**
+ * Resolves parameter values, including environment variables.
+ * 
+ * This function:
+ * 1. Checks if a value references an environment variable
+ * 2. If so, retrieves the value from the environment
+ * 3. Otherwise, returns the original value
+ * 
+ * @param value - The parameter value to resolve
+ * @returns The resolved value (environment variable or original value)
+ */
 export const resolveParam = (value: String): any => {
   if (value.startsWith("process.env.")) {
     const envVar = value.replace("process.env.", "");

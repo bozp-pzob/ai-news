@@ -1,3 +1,22 @@
+/**
+ * Prompt generation utilities for the AI News Aggregator.
+ * This module provides functions for creating prompts for AI models.
+ * 
+ * @module helpers
+ */
+
+/**
+ * Creates a prompt for converting JSON summary data into markdown format.
+ * 
+ * This function:
+ * 1. Takes JSON summary data and a date string
+ * 2. Formats a prompt that instructs an AI model to convert the JSON into markdown
+ * 3. Includes specific guidelines for the markdown format
+ * 
+ * @param summaryData - The JSON data to be converted to markdown
+ * @param dateStr - The date string associated with the summary data
+ * @returns A formatted prompt string for the AI model
+ */
 export const createMarkdownPromptForJSON = (summaryData: any, dateStr: string): string => {
   const jsonStr = JSON.stringify(summaryData, null, 2);
   return `You are an expert at converting structured JSON data into a concise markdown report for language model processing.
@@ -21,6 +40,20 @@ ${jsonStr}
 Only return the final markdown text.`;
 }
 
+/**
+ * Creates a prompt for generating a JSON summary of topics from content items.
+ * 
+ * This function:
+ * 1. Takes a topic, an array of content items, and a date string
+ * 2. Formats a prompt that instructs an AI model to generate a JSON summary
+ * 3. Includes the content items with their text, links, and media
+ * 4. Specifies the required JSON structure for the response
+ * 
+ * @param topic - The topic to summarize
+ * @param objects - Array of content items related to the topic
+ * @param dateStr - The date string associated with the content
+ * @returns A formatted prompt string for the AI model
+ */
 export const createJSONPromptForTopics = (topic: string, objects: any[], dateStr: string): string => {
   let prompt = `Generate a summary for the topic. Focus on the following details:\n\n`;
   objects.forEach((item) => {
