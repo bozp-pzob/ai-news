@@ -9,6 +9,7 @@ import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
 import { ConfigItem, InstanceConfig } from "../types";
+import { logger } from "./cliHelper"; // Import logger
 
 dotenv.config();
 
@@ -153,4 +154,71 @@ export const resolveParam = (value: String): any => {
     return process.env[envVar] || "";
   }
   return value;
+};
+
+/**
+ * Validates the loaded configuration instances for cross-references.
+ * Checks if specified providers, storage, and sources actually exist.
+ * 
+ * @param configs - An object containing arrays of all loaded instance configurations.
+ */
+export const validateConfiguration = (configs: {
+  sources: InstanceConfig[];
+  ai: InstanceConfig[];
+  enrichers: InstanceConfig[];
+  generators: InstanceConfig[];
+  storage: InstanceConfig[];
+}): void => {
+  logger.info("Validating configuration dependencies...");
+  let validationIssues = 0;
+
+  const validAiNames = new Set(configs.ai.map(c => c.instance.name));
+  const validStorageNames = new Set(configs.storage.map(c => c.instance.name));
+  const validSourceNames = new Set(configs.sources.map(c => c.instance.name));
+
+  // Validate Enrichers
+  configs.enrichers.forEach(({ instance }) => {
+    const name = instance.name || instance.constructor.name;
+    if (instance.params?.provider && !validAiNames.has(instance.params.provider)) {
+      logger.warning(`[Config Validation] Enricher '${name}' requires provider '${instance.params.provider}', but it was not found in AI configurations.`);
+      validationIssues++;
+    }
+     // Enrichers might optionally use storage, add check if needed
+  });
+
+  // Validate Generators
+  configs.generators.forEach(({ instance }) => {
+    const name = instance.name || instance.constructor.name;
+    if (instance.params?.provider && !validAiNames.has(instance.params.provider)) {
+      logger.warning(`[Config Validation] Generator '${name}' requires provider '${instance.params.provider}', but it was not found in AI configurations.`);
+      validationIssues++;
+    }
+    if (instance.params?.storage && !validStorageNames.has(instance.params.storage)) {
+      logger.warning(`[Config Validation] Generator '${name}' requires storage '${instance.params.storage}', but it was not found in Storage configurations.`);
+      validationIssues++;
+    }
+    if (instance.params?.source && !validSourceNames.has(instance.params.source)) {
+      logger.warning(`[Config Validation] Generator '${name}' requires source '${instance.params.source}', but it was not found in Source configurations.`);
+      validationIssues++;
+    }
+  });
+
+  // Validate Sources (they might use providers or storage)
+  configs.sources.forEach(({ instance }) => {
+    const name = instance.name || instance.constructor.name;
+    if (instance.params?.provider && !validAiNames.has(instance.params.provider)) {
+      logger.warning(`[Config Validation] Source '${name}' requires provider '${instance.params.provider}', but it was not found in AI configurations.`);
+      validationIssues++;
+    }
+    if (instance.params?.storage && !validStorageNames.has(instance.params.storage)) {
+      logger.warning(`[Config Validation] Source '${name}' requires storage '${instance.params.storage}', but it was not found in Storage configurations.`);
+      validationIssues++;
+    }
+  });
+
+  if (validationIssues === 0) {
+    logger.success("Configuration validation passed.");
+  } else {
+    logger.warning(`Configuration validation completed with ${validationIssues} potential issues.`);
+  }
 };
