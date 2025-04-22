@@ -6,13 +6,38 @@
 import { Client, TextChannel, Message, GuildMember, User, MessageType, MessageReaction, Collection, GatewayIntentBits, ChannelType, GuildBasedChannel, Guild } from 'discord.js';
 import { ContentSource } from './ContentSource';
 import { ContentItem, DiscordRawData, DiscordRawDataSourceConfig, TimeBlock } from '../../types';
-import { logger } from '../../helpers/cliHelper';
+import { logger, createProgressBar } from '../../helpers/cliHelper';
 import { delay, retryOperation } from '../../helpers/generalHelper';
 import { isMediaFile } from '../../helpers/fileHelper';
 import { StoragePlugin } from '../storage/StoragePlugin';
 
 const API_RATE_LIMIT_DELAY = 50; // Reduced to 50ms between API calls
 const PARALLEL_USER_FETCHES = 10; // Number of user fetches to run in parallel
+const DISCORD_EPOCH = 1420070400000; // Discord epoch start timestamp
+
+/**
+ * Converts a Date object to a Discord snowflake ID.
+ * Discord snowflakes embed a timestamp.
+ * @param date - The Date object to convert.
+ * @returns A string representing the Discord snowflake ID.
+ */
+function dateToSnowflake(date: Date): string {
+  const timestamp = date.getTime();
+  const discordTimestamp = timestamp - DISCORD_EPOCH;
+  // Shift left by 22 bits to make space for worker and process IDs (we use 0 for those)
+  const snowflake = (BigInt(discordTimestamp) << 22n).toString();
+  return snowflake;
+}
+
+/**
+ * Extracts the timestamp from a Discord snowflake ID.
+ * @param snowflake - The snowflake ID string.
+ * @returns A Date object representing the timestamp.
+ */
+function snowflakeToDate(snowflake: string): Date {
+    const timestamp = (BigInt(snowflake) >> 22n) + BigInt(DISCORD_EPOCH);
+    return new Date(Number(timestamp));
+}
 
 /**
  * DiscordRawDataSource class that implements ContentSource interface for detailed Discord data
@@ -187,56 +212,172 @@ export class DiscordRawDataSource implements ContentSource {
   }
 
   private async fetchChannelMessages(channel: TextChannel, targetDate: Date): Promise<DiscordRawData> {
-    logger.channel(`Processing channel: ${channel.name} (${channel.id})`);
+    logger.channel(`Processing channel: ${channel.name} (${channel.id}) for date ${targetDate.toISOString().split('T')[0]}`);
     const users = new Map<string, DiscordRawData['users'][string]>();
-    const messages: DiscordRawData['messages'] = [];
-  
+    let messages: DiscordRawData['messages'] = [];
+    const collectedMessageIds = new Set<string>(); // To avoid duplicates
+
     const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
+    startOfDay.setUTCHours(0, 0, 0, 0);
     const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
-  
-    const cursorKey = `${this.name}-${channel.id}`;
-    let lastFetchedMessageId = await this.storage.getCursor(cursorKey);
-  
-    let hasMoreMessages = true;
-    while (hasMoreMessages) {
-      const options: any = { limit: 100 };
-      if (lastFetchedMessageId) options.after = lastFetchedMessageId;
-  
-      try {
-        const fetchedMessages: Collection<string, Message<true>> = await retryOperation(() => channel.messages.fetch(options));
-  
-        const filteredMessages = fetchedMessages.filter((msg: Message) => {
-          const msgDate = msg.createdAt;
-          return msgDate >= startOfDay && msgDate <= endOfDay;
+    endOfDay.setUTCHours(23, 59, 59, 999);
+
+    const startSnowflake = dateToSnowflake(startOfDay);
+    const endSnowflake = dateToSnowflake(endOfDay);
+
+    logger.debug(`Target date range: ${startOfDay.toISOString()} (ID: ${startSnowflake}) to ${endOfDay.toISOString()} (ID: ${endSnowflake})`);
+
+    let messagesInTargetDateRange: Message<true>[] = [];
+    let totalScanned = 0;
+    let batchCount = 0;
+
+    try {
+        // --- Phase 1: Fetch messages around the start of the day ---
+        logger.progress(`Fetching ${channel.name}: Phase 1 - Finding start point around ${targetDate.toISOString().split('T')[0]}`);
+        let initialMessages = await retryOperation(() => channel.messages.fetch({ limit: 100, around: startSnowflake }));
+        totalScanned += initialMessages.size;
+        batchCount++;
+
+        // Filter messages within the target date
+        initialMessages.forEach((msg: Message<true>) => {
+            if (msg.createdTimestamp >= startOfDay.getTime() && msg.createdTimestamp <= endOfDay.getTime()) {
+                if (!collectedMessageIds.has(msg.id)) {
+                    messagesInTargetDateRange.push(msg);
+                    collectedMessageIds.add(msg.id);
+                }
+            }
         });
-  
-        if (filteredMessages.size > 0) {
-          const processed = await this.processMessageBatch(filteredMessages, channel, users) as DiscordRawData['messages'];
-          messages.push(...processed);
-  
-          const newestMessage = Array.from(filteredMessages.values()).sort((a, b) => b.createdTimestamp - a.createdTimestamp)[0];
-          lastFetchedMessageId = newestMessage.id;
-          this.storage.setCursor(cursorKey, lastFetchedMessageId);
-        }
-  
-        if (fetchedMessages.size < 100) {
-          hasMoreMessages = false; // likely hit the end of the new messages
-        }
-  
+        logger.progress(`Fetching ${channel.name}: Phase 1 - Scanned ${totalScanned}, Found ${messagesInTargetDateRange.length} initial`);
         await delay(API_RATE_LIMIT_DELAY);
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('Missing Access')) {
-          logger.warning(`Missing permissions to access channel ${channel.name}`);
-          break;
+
+        // --- Phase 2: Fetch messages before the earliest found message ---
+        let earliestMessageId = messagesInTargetDateRange.length > 0
+            ? messagesInTargetDateRange.sort((a: Message<true>, b: Message<true>) => a.createdTimestamp - b.createdTimestamp)[0].id
+            : initialMessages.size > 0 ? initialMessages.sort((a: Message<true>, b: Message<true>) => a.createdTimestamp - b.createdTimestamp).first()?.id : undefined;
+
+        let hasMoreBefore = !!earliestMessageId;
+        logger.progress(`Fetching ${channel.name}: Phase 2 - Fetching backwards from ${earliestMessageId ? snowflakeToDate(earliestMessageId).toISOString() : 'start'}`);
+
+        while (hasMoreBefore) {
+            const options: any = { limit: 100, before: earliestMessageId };
+            const fetchedMessages = await retryOperation(() => channel.messages.fetch(options));
+            totalScanned += fetchedMessages.size;
+            batchCount++;
+
+            if (fetchedMessages.size === 0) {
+                hasMoreBefore = false;
+                break;
+            }
+
+            let batchAddedCount = 0;
+            fetchedMessages.forEach((msg: Message<true>) => {
+                if (msg.createdTimestamp >= startOfDay.getTime() && msg.createdTimestamp <= endOfDay.getTime()) {
+                    if (!collectedMessageIds.has(msg.id)) {
+                        messagesInTargetDateRange.push(msg);
+                        collectedMessageIds.add(msg.id);
+                        batchAddedCount++;
+                    }
+                } else if (msg.createdTimestamp < startOfDay.getTime()) {
+                     // We've gone past the start date for this batch
+                     hasMoreBefore = false;
+                }
+            });
+
+            earliestMessageId = fetchedMessages.sort((a: Message<true>, b: Message<true>) => a.createdTimestamp - b.createdTimestamp).first()?.id;
+            if (!earliestMessageId) hasMoreBefore = false; // Safety break
+
+            logger.progress(`Fetching ${channel.name}: Phase 2 (Backwards) - Scanned ${totalScanned}, Added ${batchAddedCount}, Total ${collectedMessageIds.size}, Oldest: ${earliestMessageId ? snowflakeToDate(earliestMessageId).toISOString().split('T')[0] : 'N/A'} (Batch ${batchCount})`);
+
+            // Stop if the oldest message is clearly before our target start date
+            if (earliestMessageId && BigInt(earliestMessageId) < BigInt(startSnowflake)) {
+                 hasMoreBefore = false;
+            }
+
+            if (!hasMoreBefore) break; // Exit if flag is set by inner loop or condition
+            await delay(API_RATE_LIMIT_DELAY);
         }
-        throw error;
-      }
+
+        // --- Phase 3: Fetch messages after the latest found message ---
+         let latestMessageId = messagesInTargetDateRange.length > 0
+            ? messagesInTargetDateRange.sort((a: Message<true>, b: Message<true>) => b.createdTimestamp - a.createdTimestamp)[0].id
+            : initialMessages.size > 0 ? initialMessages.sort((a: Message<true>, b: Message<true>) => b.createdTimestamp - a.createdTimestamp).first()?.id : undefined;
+
+        let hasMoreAfter = !!latestMessageId;
+        logger.progress(`Fetching ${channel.name}: Phase 3 - Fetching forwards from ${latestMessageId ? snowflakeToDate(latestMessageId).toISOString() : 'start'}`);
+
+        while (hasMoreAfter) {
+            const options: any = { limit: 100, after: latestMessageId };
+            const fetchedMessages = await retryOperation(() => channel.messages.fetch(options));
+            totalScanned += fetchedMessages.size;
+            batchCount++;
+
+            if (fetchedMessages.size === 0) {
+                hasMoreAfter = false;
+                break;
+            }
+
+            let batchAddedCount = 0;
+            fetchedMessages.forEach((msg: Message<true>) => {
+                if (msg.createdTimestamp >= startOfDay.getTime() && msg.createdTimestamp <= endOfDay.getTime()) {
+                    if (!collectedMessageIds.has(msg.id)) {
+                        messagesInTargetDateRange.push(msg);
+                        collectedMessageIds.add(msg.id);
+                        batchAddedCount++;
+                    }
+                } else if (msg.createdTimestamp > endOfDay.getTime()) {
+                    // We've gone past the end date for this batch
+                    hasMoreAfter = false;
+                }
+            });
+
+            latestMessageId = fetchedMessages.sort((a: Message<true>, b: Message<true>) => b.createdTimestamp - a.createdTimestamp).first()?.id;
+             if (!latestMessageId) hasMoreAfter = false; // Safety break
+
+            logger.progress(`Fetching ${channel.name}: Phase 3 (Forwards) - Scanned ${totalScanned}, Added ${batchAddedCount}, Total ${collectedMessageIds.size}, Newest: ${latestMessageId ? snowflakeToDate(latestMessageId).toISOString().split('T')[0] : 'N/A'} (Batch ${batchCount})`);
+
+            // Stop if the newest message is clearly after our target end date
+            if (latestMessageId && BigInt(latestMessageId) > BigInt(endSnowflake)) {
+                hasMoreAfter = false;
+            }
+            if (!hasMoreAfter) break; // Exit if flag is set by inner loop or condition
+            await delay(API_RATE_LIMIT_DELAY);
+        }
+
+        // --- Phase 4: Process collected messages ---
+        logger.clearLine();
+        if (messagesInTargetDateRange.length > 0) {
+            logger.info(`Processing ${messagesInTargetDateRange.length} messages collected for ${channel.name} on ${targetDate.toISOString().split('T')[0]}`);
+            // Need to create a Collection to pass to processMessageBatch
+            const messagesCollection = new Collection<string, Message<true>>();
+            messagesInTargetDateRange.forEach(msg => messagesCollection.set(msg.id, msg));
+
+            messages = await this.processMessageBatch(messagesCollection, channel, users) as DiscordRawData['messages'];
+        } else {
+            logger.info(`No messages found for ${channel.name} on ${targetDate.toISOString().split('T')[0]}`);
+        }
+
+    } catch (error) {
+        logger.clearLine();
+        if (error instanceof Error && error.message.includes('Missing Access')) {
+            logger.warning(`Missing permissions to access channel ${channel.name}`);
+        } else if (error instanceof Error && error.message.includes('Unknown Message')) {
+             logger.warning(`Could not find message around snowflake ${startSnowflake} for ${channel.name}. Channel might be empty or date too old.`);
+        } else {
+            logger.error(`Error fetching messages for ${channel.name}: ${error instanceof Error ? error.message : error}`);
+        }
+        // Return empty data structure on error to avoid breaking the main loop
+        return {
+            channel: { id: channel.id, name: channel.name, topic: channel.topic, category: channel.parent?.name || null },
+            date: targetDate.toISOString(),
+            users: {},
+            messages: []
+        };
     }
-  
-    logger.info(`Fetched ${messages.length} new messages for ${channel.name} on ${targetDate.toISOString().split('T')[0]}`);
-  
+
+    // Clear progress line and log final result
+    logger.clearLine();
+    logger.info(`Finished ${channel.name}. Collected ${messages.length} messages after scanning ${totalScanned} total messages.`);
+
     return {
       channel: {
         id: channel.id,
@@ -266,41 +407,70 @@ export class DiscordRawDataSource implements ContentSource {
       try {
         logger.channel(`Fetching channel ${channelId}...`);
         const channel = await retryOperation(() => this.client.channels.fetch(channelId)) as TextChannel;
-        if (!channel || channel.type !== 0) {
+        if (!channel || channel.type !== ChannelType.GuildText) {
           logger.warning(`Channel ${channelId} is not a text channel or does not exist.`);
           continue;
         }
 
-        const rawData = await this.fetchChannelMessages(channel, cutoff);
-        
-        const timestamp = Date.now();
-        const formattedDate = new Date(timestamp).toISOString().replace(/[:.]/g, '-');
-        
-        const guildName = channel.guild.name;
-        
-        if ( rawData.messages.length > 0 ) {
-          items.push({
-            cid: `discord-raw-${channel.id}-${formattedDate}`,
-            type: 'discord-raw',
-            source: `${guildName} - ${channel.name}`,
-            title: `Raw Discord Data: ${channel.name}`,
-            text: JSON.stringify(rawData),
-            link: `https://discord.com/channels/${channel.guild.id}/${channel.id}`,
-            date: timestamp,
-            metadata: {
-              channelId: channel.id,
-              guildId: channel.guild.id,
-              guildName: guildName,
-              channelName: channel.name,
-              messageCount: rawData.messages.length,
-              userCount: Object.keys(rawData.users).length,
-              exportTimestamp: formattedDate
-            }
-          });
+        // *** Simplified fetchItems logic - less efficient but uses cursor ***
+        // This part still uses the old `after` logic, as it's for fetching recent items, not historical.
+        const cursorKey = `${this.name}-${channel.id}`;
+        let lastFetchedMessageId = await this.storage.getCursor(cursorKey);
+        const options: any = { limit: 100 };
+        if (lastFetchedMessageId) options.after = lastFetchedMessageId;
+
+        const fetchedMessages: Collection<string, Message<true>> = await retryOperation(() => channel.messages.fetch(options));
+
+        const recentMessages = fetchedMessages.filter(msg => msg.createdTimestamp >= cutoff.getTime());
+
+        if (recentMessages.size > 0) {
+             const users = new Map<string, DiscordRawData['users'][string]>();
+             const processedMessages = await this.processMessageBatch(recentMessages, channel, users) as DiscordRawData['messages'];
+
+             const newestMessage = Array.from(recentMessages.values()).sort((a: Message<true>, b: Message<true>) => b.createdTimestamp - a.createdTimestamp)[0];
+             lastFetchedMessageId = newestMessage.id;
+             this.storage.setCursor(cursorKey, lastFetchedMessageId); // Update cursor
+
+             const rawData: DiscordRawData = {
+                 channel: {
+                     id: channel.id,
+                     name: channel.name,
+                     topic: channel.topic,
+                     category: channel.parent?.name || null
+                 },
+                 date: new Date().toISOString(), // Use current time for fetchItems export
+                 users: Object.fromEntries(users),
+                 messages: processedMessages.reverse() // Keep chronological order
+             };
+
+             const timestamp = Date.now();
+             const formattedDate = new Date(timestamp).toISOString().replace(/[:.]/g, '-');
+             const guildName = channel.guild.name;
+
+             items.push({
+                cid: `discord-raw-${channel.id}-${formattedDate}`,
+                type: 'discord-raw',
+                source: `${guildName} - ${channel.name}`,
+                title: `Raw Discord Data: ${channel.name}`,
+                text: JSON.stringify(rawData),
+                link: `https://discord.com/channels/${channel.guild.id}/${channel.id}`,
+                date: timestamp,
+                metadata: {
+                  channelId: channel.id,
+                  guildId: channel.guild.id,
+                  guildName: guildName,
+                  channelName: channel.name,
+                  messageCount: rawData.messages.length,
+                  userCount: Object.keys(rawData.users).length,
+                  exportTimestamp: formattedDate
+                }
+             });
+             logger.success(`Successfully processed ${processedMessages.length} new messages from ${channel.name}`);
+        } else {
+             logger.info(`No new messages found for channel ${channel.name} in the last hour.`);
         }
-        logger.success(`Successfully processed channel ${channel.name}`);
       } catch (error) {
-        logger.error(`Error processing channel ${channelId}: ${error}`);
+        logger.error(`Error processing channel ${channelId} for recent items: ${error}`);
       }
     }
 
@@ -317,18 +487,20 @@ export class DiscordRawDataSource implements ContentSource {
 
     const items: ContentItem[] = [];
     const targetDate = new Date(date);
-    const targetTimestamp = Math.floor(targetDate.getTime() / 1000);
+    // Ensure targetDate is interpreted as UTC start of day for consistency
+    targetDate.setUTCHours(0, 0, 0, 0);
+    const targetTimestamp = Math.floor(targetDate.getTime() / 1000); // Keep as seconds for ContentItem
 
     logger.info(`Processing ${this.channelIds.length} channels for date: ${date}`);
     
     for (const [channelIndex, channelId] of this.channelIds.entries()) {
       try {
         const channel = await retryOperation(() => this.client.channels.fetch(channelId)) as TextChannel;
-        if (!channel || channel.type !== 0) {
+        if (!channel || channel.type !== ChannelType.GuildText) { // Use ChannelType enum
           logger.warning(`Channel ${channelId} is not a text channel or does not exist.`);
           continue;
         }
-
+        // Pass the UTC-aligned date object
         const rawData = await this.fetchChannelMessages(channel, targetDate);
         
         const guildName = channel.guild.name;
