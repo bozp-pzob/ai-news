@@ -295,17 +295,17 @@ export class SQLiteStorage implements StoragePlugin {
   }
 
   /**
-   * Retrieves content items within a specific time range.
+   * Retrieves content items within a specific time range, optionally filtering by type.
    * @param startEpoch - Start timestamp in epoch seconds
    * @param endEpoch - End timestamp in epoch seconds
-   * @param excludeType - Optional type to exclude from results
+   * @param includeType - Optional type to INCLUDE in results
    * @returns Promise<ContentItem[]> Array of content items within the time range
    * @throws Error if database is not initialized
    */
   public async getContentItemsBetweenEpoch(
     startEpoch: number,
     endEpoch: number,
-    excludeType?: string
+    includeType?: string
   ): Promise<ContentItem[]> {
     if (!this.db) {
       throw new Error("Database not initialized.");
@@ -316,11 +316,11 @@ export class SQLiteStorage implements StoragePlugin {
     }
 
     let query = `SELECT * FROM items WHERE date BETWEEN ? AND ?`;
-    const params: any[] = [startEpoch - 1, endEpoch + 1];
+    const params: any[] = [startEpoch -1, endEpoch + 1];
 
-    if (excludeType) {
-      query += ` AND type != ?`;
-      params.push(excludeType);
+    if (includeType) {
+      query += ` AND type = ?`;
+      params.push(includeType);
     }
 
     try {
