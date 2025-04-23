@@ -183,6 +183,7 @@ export interface TimeBlock {
  * @interface DiscordSummary
  */
 export interface DiscordSummary {
+  channelId?: string;
   channelName: string;
   guildName: string;
   summary: string;
