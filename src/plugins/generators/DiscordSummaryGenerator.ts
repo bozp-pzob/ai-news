@@ -596,7 +596,7 @@ Return the analysis in the specified structured format with numbered sections (1
       // Generate AI summary
       const markdownContent = await this.generateDailySummary(summaries, dateStr);
       
-      // Create enhanced JSON data - without FAQ/help/action counts
+      // Create enhanced JSON data
       const jsonData = {
         server: serverName,
         title: fileTitle,
@@ -608,7 +608,7 @@ Return the analysis in the specified structured format with numbered sections (1
         categories: summaries.map(s => {
           const channelStats = stats.channelStats.find(c => c.channelId === s.channelId);
           return {
-            channelId: s.channelId || '',  // Add channel ID
+            channelId: s.channelId || '',
             channelName: s.channelName || '',
             summary: s.summary || '',
             messageCount: channelStats?.messageCount || 0,
@@ -624,6 +624,19 @@ Return the analysis in the specified structured format with numbered sections (1
       logger.info(`Writing combined summary files to ${this.outputPath}`);
       await writeFile(this.outputPath, `${dateStr}-summary`, JSON.stringify(jsonData, null, 2), 'json');
       await writeFile(this.outputPath, `${dateStr}-summary`, finalMarkdown, 'md');
+      
+      // Save to database summary table
+      logger.info(`Saving combined summary to database`);
+      const summaryItem: SummaryItem = {
+        type: this.summaryType,
+        title: fileTitle,
+        categories: JSON.stringify(jsonData),  // Store the JSON data
+        markdown: finalMarkdown,               // Store the markdown content
+        date: timestamp
+      };
+      
+      await this.storage.saveSummaryItem(summaryItem);
+      logger.success(`Saved combined summary to database for ${dateStr}`);
       
       logger.success(`Generated combined summary files for ${dateStr}`);
     } catch (error) {

@@ -39,16 +39,7 @@
       }
     }
   ],
-  "enrichers": [
-    {
-      "type": "AiTopicsEnricher",
-      "name": "topicEnricher",
-      "params": {
-        "provider": "openAiProvider",
-        "thresholdLength": 30
-      }
-    }
-  ],
+  "enrichers": [],
   "storage": [
     {
       "type": "SQLiteStorage",
@@ -77,8 +68,8 @@
         "provider": "openAiProvider",
         "storage": "SQLiteStorage",
         "summaryType": "discordChannelSummary",
-        "source": "discordRaw",
-        "outputPath": "./output/discord"
+        "source": "discord-raw",
+        "outputPath": "./output/discord/summaries"
       }
     }
   ]
