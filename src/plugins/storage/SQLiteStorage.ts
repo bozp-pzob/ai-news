@@ -4,6 +4,7 @@ import { StoragePlugin } from "./StoragePlugin"; // a small interface if you lik
 import { open, Database } from "sqlite";
 import sqlite3 from "sqlite3";
 import { ContentItem, SummaryItem, StorageConfig } from "../../types";
+import { logger } from "../../helpers/cliHelper";
 
 /**
  * SQLiteStorage class implements the StoragePlugin interface for persistent storage
@@ -87,44 +88,49 @@ export class SQLiteStorage implements StoragePlugin {
    * @throws Error if database is not initialized
    */
   public async saveContentItems(items: ContentItem[]): Promise<ContentItem[]> {
+    const operation = "saveContentItems";
     if (!this.db) {
       throw new Error("Database not initialized. Call init() first.");
     }
+    logger.debug(`[SQLiteStorage:${operation}] Starting transaction for ${items.length} items.`);
 
-    // Prepare an UPDATE statement for the metadata
-    const updateStmt = await this.db.prepare(`
-      UPDATE items
-      SET metadata = ?
-      WHERE cid = ?
-    `);
-
-    // Prepare an INSERT statement for new rows
-    const insertStmt = await this.db.prepare(`
-      INSERT INTO items (type, source, cid, title, text, link, topics, date, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    const updateStmt = await this.db.prepare(
+      `UPDATE items SET metadata = ? WHERE cid = ?`
+    );
+    const insertStmt = await this.db.prepare(
+      `INSERT INTO items (type, source, cid, title, text, link, topics, date, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
 
     try {
       await this.db.run("BEGIN TRANSACTION");
+      logger.debug(`[SQLiteStorage:${operation}] Transaction started.`);
 
       for (const item of items) {
         if (!item) {
-          continue
+            logger.warning(`[SQLiteStorage:${operation}] Skipping null/undefined item.`);
+            continue;
         }
+        const itemDateISO = item.date ? new Date(item.date * 1000).toISOString() : 'Invalid Date';
+        const itemLogInfo = `CID: ${item.cid || '(no CID)'}, Type: ${item.type}, DateEpoch: ${item.date}, DateISO: ${itemDateISO}`;
+        logger.debug(`[SQLiteStorage:${operation}] Processing item ${itemLogInfo}`); 
+
         if (!item.cid) {
-          const result = await insertStmt.run(
-            item.type,
-            item.source,
-            null,
-            item.title,
-            item.text,
-            item.link,
-            item.topics ? JSON.stringify(item.topics) : null,
-            item.date,
-            item.metadata ? JSON.stringify(item.metadata) : null
-          );
-          item.id = result.lastID || undefined;
-          continue;
+           // Log BEFORE run
+           logger.debug(`[SQLiteStorage:${operation}] Preparing to INSERT item without CID: ${itemLogInfo}`);
+           const result = await insertStmt.run(
+                item.type,
+                item.source,
+                null,
+                item.title,
+                item.text,
+                item.link,
+                item.topics ? JSON.stringify(item.topics) : null,
+                item.date, // Ensure date is valid number
+                item.metadata ? JSON.stringify(item.metadata) : null
+           );
+           item.id = result.lastID || undefined;
+           logger.debug(`[SQLiteStorage:${operation}] Inserted new item without CID, assigned ID: ${item.id}`);
+           continue;
         }
 
         const existingRow = await this.db.get<{ id: number }>(
@@ -133,39 +139,47 @@ export class SQLiteStorage implements StoragePlugin {
         );
 
         if (existingRow) {
-          await updateStmt.run(
-            item.metadata ? JSON.stringify(item.metadata) : null,
-            item.cid
-          );
-          item.id = existingRow.id;
+           // Log BEFORE run
+           logger.debug(`[SQLiteStorage:${operation}] Preparing to UPDATE item: ${itemLogInfo}`);
+           await updateStmt.run(
+                item.metadata ? JSON.stringify(item.metadata) : null,
+                // Potentially add item.topics update here if needed:
+                // item.topics ? JSON.stringify(item.topics) : null,
+                item.cid
+           );
+           item.id = existingRow.id;
+           logger.debug(`[SQLiteStorage:${operation}] Updated existing item with CID: ${item.cid} (DB ID: ${item.id})`);
         } else {
-          const metadataStr = item.metadata ? JSON.stringify(item.metadata) : null;
-          const topicStr = item.topics ? JSON.stringify(item.topics) : null;
-
-          const result = await insertStmt.run(
-            item.type,
-            item.source,
-            item.cid,
-            item.title,
-            item.text,
-            item.link,
-            topicStr,
-            item.date,
-            metadataStr
-          );
-          item.id = result.lastID || undefined;
+           // Log BEFORE run
+           logger.debug(`[SQLiteStorage:${operation}] Preparing to INSERT item: ${itemLogInfo}`);
+           const metadataStr = item.metadata ? JSON.stringify(item.metadata) : null;
+           const topicStr = item.topics ? JSON.stringify(item.topics) : null;
+           const result = await insertStmt.run(
+                 item.type,
+                 item.source,
+                 item.cid,
+                 item.title,
+                 item.text,
+                 item.link,
+                 topicStr,
+                 item.date, // Ensure date is valid number
+                 metadataStr
+           );
+           item.id = result.lastID || undefined;
+           logger.debug(`[SQLiteStorage:${operation}] Inserted new item with CID: ${item.cid}, assigned ID: ${item.id}`);
         }
       }
 
       await this.db.run("COMMIT");
+      logger.debug(`[SQLiteStorage:${operation}] Transaction committed successfully for ${items.length} items.`);
     } catch (error) {
+      logger.error(`[SQLiteStorage:${operation}] Transaction failed: ${error instanceof Error ? error.message : String(error)}. Rolling back.`);
       await this.db.run("ROLLBACK");
       throw error;
     } finally {
       await updateStmt.finalize();
       await insertStmt.finalize();
     }
-
     return items;
   }
 
@@ -295,37 +309,49 @@ export class SQLiteStorage implements StoragePlugin {
   }
 
   /**
-   * Retrieves content items within a specific time range, optionally filtering by type.
+   * Retrieves content items within a specific time range.
    * @param startEpoch - Start timestamp in epoch seconds
    * @param endEpoch - End timestamp in epoch seconds
-   * @param includeType - Optional type to INCLUDE in results
+   * @param includeType - Optional type to include in results
    * @returns Promise<ContentItem[]> Array of content items within the time range
    * @throws Error if database is not initialized
    */
   public async getContentItemsBetweenEpoch(
     startEpoch: number,
     endEpoch: number,
-    includeType?: string
+    includeType?: string 
   ): Promise<ContentItem[]> {
+    const operation = "getContentItemsBetweenEpoch";
     if (!this.db) {
       throw new Error("Database not initialized.");
     }
+    logger.debug(`[SQLiteStorage:${operation}] Called with startEpoch=${startEpoch}, endEpoch=${endEpoch}, includeType=${includeType}`);
 
     if (startEpoch > endEpoch) {
+      // Log error before throwing
+      logger.error(`[SQLiteStorage:${operation}] Invalid parameters: startEpoch (${startEpoch}) must be less than or equal to endEpoch (${endEpoch}).`);
       throw new Error("startEpoch must be less than or equal to endEpoch.");
     }
 
-    let query = `SELECT * FROM items WHERE date BETWEEN ? AND ?`;
-    const params: any[] = [startEpoch -1, endEpoch + 1];
+    // Note: Query uses date BETWEEN ? AND ?, which is inclusive.
+    // The adjustment `startEpoch - 1` and `endEpoch + 1` might be overly broad.
+    // Let's use the exact epoch range for clarity in logging and querying.
+    let query = `SELECT * FROM items WHERE date >= ? AND date <= ?`; // Use >= and <= for inclusive range
+    const params: any[] = [startEpoch, endEpoch]; 
+    logger.debug(`[SQLiteStorage:${operation}] Initial query range: date >= ${startEpoch} AND date <= ${endEpoch}`);
 
     if (includeType) {
-      query += ` AND type = ?`;
+      query += ` AND type = ?`;    
       params.push(includeType);
+      logger.debug(`[SQLiteStorage:${operation}] Adding filter: AND type = ${includeType}`);
     }
 
     try {
+      logger.debug(`[SQLiteStorage:${operation}] Executing query: ${query} with params: ${JSON.stringify(params)}`);
       const rows = await this.db.all(query, params);
+      logger.debug(`[SQLiteStorage:${operation}] Query returned ${rows.length} rows.`);
 
+      // Map rows to ContentItem objects
       return rows.map(row => ({
         id: row.id,
         type: row.type,
@@ -339,7 +365,7 @@ export class SQLiteStorage implements StoragePlugin {
         metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
       }));
     } catch (error) {
-      console.error("Error fetching content items between epochs:", error);
+      logger.error(`[SQLiteStorage:${operation}] Error executing query: ${query} | Params: ${JSON.stringify(params)} | Error: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
     }
   }
