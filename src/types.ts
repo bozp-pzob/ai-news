@@ -26,9 +26,9 @@ export interface SummaryItem {
   id?: number;          // Will be assigned by storage if not provided
   type: string;          // e.g. "tweet", "newsArticle", "discordMessage", "githubIssue"
   title?: string;        // optional – for articles, maybe a tweet "title" is same as text
-  categories?: string;         // main content (tweet text, article abstract, etc.)
-  markdown?: string;      //optional - Markdown version of main content
-  date?: number;           // When it was created/published
+  categories?: string;   // main content (JSON string for structured summaries)
+  markdown?: string;     // Optional Markdown version of the summary
+  date?: number;         // When it was created/published (epoch seconds)
 }
   
 /**
@@ -183,6 +183,7 @@ export interface TimeBlock {
  * @interface DiscordSummary
  */
 export interface DiscordSummary {
+  channelId?: string;
   channelName: string;
   guildName: string;
   summary: string;
