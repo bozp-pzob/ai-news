@@ -684,7 +684,7 @@ Please note that the final output should be in a single, coherent document witho
       return result
         .trim()
         .replace(/```markdown\n?|```\n?/g, '') // Remove markdown code block markers
-        .replace(/^# /m, '## '); // Convert top-level headings to level 2
+        .replace(/^#+ .*\n{1,2}/m, '') // Remove any top-level heading line
     } catch (error) {
       logger.error(`Error generating daily summary: ${error instanceof Error ? error.message : String(error)}`);
       return `# Error Generating Summary\n\nUnable to generate summary: ${error instanceof Error ? error.message : String(error)}`;
