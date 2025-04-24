@@ -55,6 +55,7 @@ export class SQLiteStorage implements StoragePlugin {
         type TEXT NOT NULL,
         title TEXT,
         categories TEXT,
+        markdown TEXT,
         date INTEGER
       );
     `);
@@ -246,12 +247,13 @@ export class SQLiteStorage implements StoragePlugin {
         await this.db.run(
           `
           UPDATE summary 
-          SET title = ?, categories = ?
+          SET title = ?, categories = ?, markdown = ?
           WHERE type = ? AND date = ?
           `,
           [
             item.title || null,
             item.categories || null,
+            item.markdown || null,
             item.type,
             item.date
           ]
@@ -261,13 +263,14 @@ export class SQLiteStorage implements StoragePlugin {
         // Insert new summary
         await this.db.run(
           `
-          INSERT INTO summary (type, title, categories, date)
-          VALUES (?, ?, ?, ?)
+          INSERT INTO summary (type, title, categories, markdown, date)
+          VALUES (?, ?, ?, ?, ?)
           `,
           [
             item.type,
             item.title || null,
             item.categories || null,
+            item.markdown || null,
             item.date,
           ]
         );

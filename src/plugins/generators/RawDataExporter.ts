@@ -100,7 +100,7 @@ export class RawDataExporter {
         let baseFilename = `${dateStr}.json`; // Default filename
         logger.debug(`[RawDataExporter:${operation}] Determining path for item cid ${item.cid}, type ${item.type}...`);
 
-        if (item.type === 'discord-raw') {
+        if (item.type === 'discordRawData') {
              const guildName = item.metadata?.guildName || 'UnknownGuild'; 
              const channelName = item.metadata?.channelName || (parsedData as DiscordRawData)?.channel?.name || 'UnknownChannel';
              const sanitizedGuild = this.sanitizeName(guildName);
