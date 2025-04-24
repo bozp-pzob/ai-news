@@ -1,0 +1,139 @@
+name: Discord Raw Data Processing
+
+on:
+  schedule:
+    # Runs daily at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allows manual triggering
+    inputs:
+      after_date:
+        description: 'Start date (YYYY-MM-DD)'
+        required: false
+        type: string
+      before_date:
+        description: 'End date (YYYY-MM-DD)'
+        required: false
+        type: string
+      force_overwrite:
+        description: 'Force overwrite existing data'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build-and-deploy:
+    timeout-minutes: 30 # Added timeout
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed for checkout and gh-pages push
+      pages: write      # Needed for gh-pages deployment
+      id-token: write   # Needed for gh-pages deployment
+    environment: # Added environment spec
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          # Fetch all history so that the last modified date can be determined
+          fetch-depth: 0
+
+      # Fetch existing DB from gh-pages branch if it exists
+      - name: Check and fetch database (discord-raw.sqlite)
+        run: |
+          mkdir -p data
+          
+          # Check if gh-pages branch exists
+          if git ls-remote --heads origin gh-pages | grep -q gh-pages; then
+            echo "gh-pages branch exists, fetching database"
+            git fetch origin gh-pages:gh-pages --depth=1 || true
+            
+            # Check if discord-raw.sqlite exists in the branch
+            if git ls-tree -r --name-only gh-pages | grep -q "data/discord-raw.sqlite"; then
+              echo "Restoring discord-raw.sqlite from gh-pages branch"
+              git show gh-pages:data/discord-raw.sqlite > data/discord-raw.sqlite
+            else
+              echo "No existing discord-raw.sqlite found in gh-pages branch"
+            fi
+          else
+            echo "gh-pages branch does not exist yet, will be created on first deployment"
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Or your preferred Node.js version
+
+      - name: Install Dependencies
+        run: npm ci # Use ci for cleaner installs in CI/CD
+
+      - name: Get yesterday's date # Added date step
+        id: date
+        run: echo "YESTERDAY=$(date -d "yesterday" +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Run historical generation # Updated run logic
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ inputs.after_date }}" ] && [ -n "${{ inputs.before_date }}" ]; then
+              npm run historical -- --source=config/discord-raw.json --after=${{ inputs.after_date }} --before=${{ inputs.before_date }} --output=./output/discord
+            elif [ -n "${{ inputs.after_date }}" ]; then
+              npm run historical -- --source=config/discord-raw.json --after=${{ inputs.after_date }} --output=./output/discord
+            elif [ -n "${{ inputs.before_date }}" ]; then
+              npm run historical -- --source=config/discord-raw.json --before=${{ inputs.before_date }} --output=./output/discord
+            else
+              # Default to yesterday if no date inputs provided for manual run
+              npm run historical -- --source=config/discord-raw.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/discord
+            fi
+          else
+            # Scheduled run uses yesterday's date
+            npm run historical -- --source=config/discord-raw.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/discord
+          fi
+        env:
+          # Add any necessary environment variables here
+          USE_OPENROUTER: true
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+          SITE_NAME: ${{ secrets.SITE_NAME }}
+          FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }} # Pass force_overwrite input
+          # Add other secrets if needed based on discord-raw.json 'process.env' usage
+
+      - name: Prepare files for deployment
+        run: |
+          # Create the target directory structure within ./public
+          mkdir -p ./public/data
+          mkdir -p ./public/elizaos/discord/summaries
+
+          # Copy the database
+          if [ -f "data/discord-raw.sqlite" ]; then
+            echo "Copying discord-raw.sqlite to ./public/data/"
+            cp data/discord-raw.sqlite ./public/data/
+          else
+             echo "No discord-raw.sqlite found locally to copy."
+          fi
+          
+          echo "Copying summaries to ./public/elizaos/discord/summaries/"
+          # Copy summary files (json and md)
+          cp -r output/discord/summaries/* ./public/elizaos/discord/summaries/ || echo "No summary files generated or found to copy."
+
+          # Optional: Add commands here to copy other outputs like raw data
+          # mkdir -p ./public/elizaos/discord/raw
+          # echo "Copying raw data to ./public/elizaos/discord/raw/"
+          # cp -r output/discord/raw/* ./public/elizaos/discord/raw/ || echo "No raw data files generated or found to copy."
+
+      - name: Validate JSON files # Added validation step
+        run: find ./public/elizaos/discord/summaries -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
+
+      - name: Deploy to gh-pages branch
+        id: deployment # Added id for environment url output
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public # Deploy the contents of the public directory
+          keep_files: true      # Important: Do not delete existing files in gh-pages
+          # publish_branch: gh-pages # Default is gh-pages
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: "Update Discord data $(date -u +'%Y-%m-%d %H:%M:%S UTC')" 
