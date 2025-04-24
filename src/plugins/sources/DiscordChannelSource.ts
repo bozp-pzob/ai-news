@@ -5,41 +5,55 @@ import { ContentItem, AiProvider } from "../../types";
 import { Client, GatewayIntentBits, TextChannel, ChannelType } from "discord.js";
 import * as fs from 'fs';
 import * as path from 'path';
+import { StoragePlugin } from "../storage/StoragePlugin";
 
+/**
+ * Configuration interface for DiscordChannelSource.
+ * Defines the required parameters for initializing a Discord channel source.
+ */
 interface DiscordChannelSourceConfig {
-  name: string;
-  botToken: string;
-  channelIds: string[];
-  provider: AiProvider | undefined;
+  name: string;           // Name identifier for this source
+  botToken: string;       // Discord bot authentication token
+  channelIds: string[];   // Array of Discord channel IDs to monitor
+  storage: StoragePlugin; // Storage to store message fetching information
+  provider: AiProvider | undefined;  // Optional AI provider for content processing
 }
 
-interface LastProcessedState {
-  [channelId: string]: string;
-}
-
+/**
+ * DiscordChannelSource class implements content fetching from Discord channels.
+ * This source monitors specified Discord channels and generates summaries of conversations
+ * using an AI provider. It maintains state to track processed messages and supports
+ * both real-time and historical data fetching.
+ */
 export class DiscordChannelSource implements ContentSource {
   public name: string;
   public provider: AiProvider | undefined;
+  public storage: StoragePlugin;
   private botToken: string = '';
   private channelIds: string[];
   private client: Client;
-  private stateFilePath: string;
-  private lastProcessed: LastProcessedState;
 
+  /**
+   * Creates a new instance of DiscordChannelSource.
+   * @param config - Configuration object containing bot token, channel IDs, and AI provider
+   */
   constructor(config: DiscordChannelSourceConfig) {
     this.name = config.name;
     this.provider = config.provider;
+    this.storage = config.storage;
     this.botToken = config.botToken;
     this.channelIds = config.channelIds;
     this.client = new Client({
       intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
     });
-    
-    this.stateFilePath = path.resolve(__dirname, '../../../data/lastProcessed.json');
-
-    this.lastProcessed = this.loadState();
   }
 
+  /**
+   * Fetches and processes new messages from configured Discord channels.
+   * Retrieves messages after the last processed message ID and generates summaries
+   * using the configured AI provider.
+   * @returns Promise<ContentItem[]> Array of processed content items
+   */
   public async fetchItems(): Promise<ContentItem[]> {
     if (!this.client.isReady()) {
       await this.client.login(this.botToken);
@@ -58,7 +72,8 @@ export class DiscordChannelSource implements ContentSource {
       const textChannel = channel as TextChannel;
 
       const fetchOptions: { limit: number; after?: string } = { limit: 100 };
-      const lastProcessedId = this.lastProcessed[channelId];
+      const cursorKey = `${this.name}-${channelId}`;
+      const lastProcessedId = await this.storage.getCursor(cursorKey);
 
       if (lastProcessedId) {
         fetchOptions.after = lastProcessedId;
@@ -87,27 +102,36 @@ export class DiscordChannelSource implements ContentSource {
         discordResponse.push({
           type: "discordChannelSummary",
           cid: `${channelId}-${lastProcessedId}`,
-          source: this.name,
+          source: `${(channel as TextChannel).guild.name} - ${textChannel.name}`,
           text: summary,
           link: `https://discord.com/channels/${(channel as TextChannel).guild.id}/${channelId}`,
           date: Math.floor(new Date().getTime() / 1000),
           metadata: {
             channelId: channelId,
             guildId: (channel as TextChannel).guild.id,
+            guildName: (channel as TextChannel).guild.name,
+            channelName: textChannel.name,
             summaryDate: Math.floor(new Date().getTime() / 1000),
           },
         });
   
-        const lastMessage = sortedMessages.first();
+        const lastMessage = sortedMessages.last();
         if (lastMessage) {
-          this.lastProcessed[channelId] = lastMessage.id;
-          this.saveState();
+          const lastFetchedMessageId = lastMessage.id;
+          this.storage.setCursor(cursorKey, lastFetchedMessageId);
         }
       }
     }
+    
     return discordResponse
   }
 
+  /**
+   * Fetches historical messages from configured Discord channels up to a specified date.
+   * Useful for backfilling data or generating historical summaries.
+   * @param date - ISO date string indicating the cutoff date for historical data
+   * @returns Promise<ContentItem[]> Array of processed historical content items
+   */
   public async fetchHistorical(date: string): Promise<ContentItem[]> {
     if (!this.client.isReady()) {
       await this.client.login(this.botToken);
@@ -173,13 +197,15 @@ export class DiscordChannelSource implements ContentSource {
         discordResponse.push({
           type: "discordChannelHistoricalSummary",
           cid: `${channelId}-historical-${date}`,
-          source: this.name,
+          source: `${textChannel.guild.name} - ${textChannel.name}`,
           text: summary,
           link: `https://discord.com/channels/${textChannel.guild.id}/${channelId}`,
           date: Math.floor(cutoffTimestamp / 1000),
           metadata: {
             channelId: channelId,
             guildId: textChannel.guild.id,
+            guildName: textChannel.guild.name,
+            channelName: textChannel.name,
             summaryDate: Math.floor(cutoffTimestamp / 1000),
             historicalSince: date,
           },
@@ -189,30 +215,13 @@ export class DiscordChannelSource implements ContentSource {
     return discordResponse;
   }
 
-  // Load the last processed message IDs from the JSON file
-  private loadState(): LastProcessedState {
-    try {
-      if (fs.existsSync(this.stateFilePath)) {
-        const data = fs.readFileSync(this.stateFilePath, 'utf-8');
-        return JSON.parse(data);
-      } else {
-        return {};
-      }
-    } catch (error) {
-      console.error('Error loading state file:', error);
-      return {};
-    }
-  }
-
-  // Save the last processed message IDs to the JSON file
-  private saveState(): void {
-    try {
-      fs.writeFileSync(this.stateFilePath, JSON.stringify(this.lastProcessed, null, 2), 'utf-8');
-    } catch (error) {
-      console.error('Error saving state file:', error);
-    }
-  }
-
+  /**
+   * Formats a structured prompt for the AI provider based on the chat transcript.
+   * Creates a detailed prompt that guides the AI in generating comprehensive summaries.
+   * @param transcript - Raw chat transcript to be analyzed
+   * @returns string Formatted prompt for AI processing
+   * @private
+   */
   private formatStructuredPrompt(transcript: string): string {
     return `Analyze this Discord chat segment and provide a succinct analysis:
             

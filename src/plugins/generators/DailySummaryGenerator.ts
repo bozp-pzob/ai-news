@@ -1,4 +1,7 @@
-// src/plugins/generators/DailySummaryGenerator.ts
+/**
+ * @fileoverview Implementation of a daily summary generator for content aggregation
+ * Handles generation of daily summaries from various content sources using AI-powered summarization
+ */
 
 import { OpenAIProvider } from "../ai/OpenAIProvider";
 import { SQLiteStorage } from "../storage/SQLiteStorage";
@@ -9,30 +12,58 @@ import path from "path";
 
 const hour = 60 * 60 * 1000;
 
+/**
+ * Configuration interface for DailySummaryGenerator
+ * @interface DailySummaryGeneratorConfig
+ * @property {OpenAIProvider} provider - OpenAI provider instance for text generation
+ * @property {SQLiteStorage} storage - SQLite storage instance for data persistence
+ * @property {string} summaryType - Type of summary to generate
+ * @property {string} source - Source identifier for the summaries
+ * @property {string} [outputPath] - Optional path for output files
+ */
 interface DailySummaryGeneratorConfig {
   provider: OpenAIProvider;
   storage: SQLiteStorage;
   summaryType: string;
   source: string;
-  outputPath?: string; // New optional parameter for output path
+  outputPath?: string;
 }
 
+/**
+ * DailySummaryGenerator class that generates daily summaries of content
+ * Uses AI to summarize content items and organizes them by topics
+ */
 export class DailySummaryGenerator {
+  /** OpenAI provider for text generation */
   private provider: OpenAIProvider;
+  /** SQLite storage for data persistence */
   private storage: SQLiteStorage;
+  /** Type of summary being generated */
   private summaryType: string;
+  /** Source identifier for the summaries */
   private source: string;
+  /** List of topics to exclude from summaries */
   private blockedTopics: string[] = ['open source'];
+  /** Path for output files */
   private outputPath: string;
 
+  /**
+   * Creates a new DailySummaryGenerator instance
+   * @param {DailySummaryGeneratorConfig} config - Configuration object for the generator
+   */
   constructor(config: DailySummaryGeneratorConfig) {
     this.provider = config.provider;
     this.storage = config.storage;
     this.summaryType = config.summaryType;
     this.source = config.source;
-    this.outputPath = config.outputPath || './'; // Default to current directory if not specified
+    this.outputPath = config.outputPath || './';
   }
 
+  /**
+   * Generates and stores a daily summary for a specific date
+   * @param {string} dateStr - ISO date string to generate summary for
+   * @returns {Promise<void>}
+   */
   public async generateAndStoreSummary(dateStr: string): Promise<void> {
     try {
       const currentTime = new Date(dateStr).getTime() / 1000;
@@ -92,6 +123,12 @@ export class DailySummaryGenerator {
     }
   }
 
+  /**
+   * Checks if a file's content matches the database record and updates if needed
+   * @param {string} dateStr - ISO date string to check
+   * @param {SummaryItem} summary - Summary item from database
+   * @returns {Promise<void>}
+   */
   public async checkIfFileMatchesDB(dateStr: string, summary: SummaryItem) {
     try {
       let jsonParsed = await this.readSummaryFromFile(dateStr);
@@ -113,6 +150,10 @@ export class DailySummaryGenerator {
     }
   }
 
+  /**
+   * Generates content for the current day if not already generated
+   * @returns {Promise<void>}
+   */
   public async generateContent() {
     try {
       const today = new Date();
@@ -144,13 +185,25 @@ export class DailySummaryGenerator {
     }
   }
 
+  /**
+   * Deep equality comparison of two objects
+   * @private
+   * @param {any} obj1 - First object to compare
+   * @param {any} obj2 - Second object to compare
+   * @returns {boolean} True if objects are deeply equal
+   */
   private deepEqual(obj1: any, obj2: any) {
     return JSON.stringify(obj1) === JSON.stringify(obj2);
   }
 
+  /**
+   * Reads a summary from a JSON file
+   * @private
+   * @param {string} dateStr - ISO date string for the summary
+   * @returns {Promise<any>} Parsed summary data
+   */
   private async readSummaryFromFile(dateStr: string) {
     try {
-      // Ensure directories exist
       const jsonDir = path.join(this.outputPath, 'json');
       this.ensureDirectoryExists(jsonDir);
       
@@ -164,9 +217,16 @@ export class DailySummaryGenerator {
     }
   }
 
+  /**
+   * Writes a summary to a JSON file
+   * @private
+   * @param {string} dateStr - ISO date string for the summary
+   * @param {number} currentTime - Current timestamp
+   * @param {any[]} allSummaries - Array of summaries to write
+   * @returns {Promise<void>}
+   */
   private async writeSummaryToFile(dateStr: string, currentTime: number, allSummaries: any[]) {
     try {
-      // Ensure directories exist
       const jsonDir = path.join(this.outputPath, 'json');
       this.ensureDirectoryExists(jsonDir);
       
@@ -183,9 +243,15 @@ export class DailySummaryGenerator {
     }
   }
 
+  /**
+   * Writes a summary to a Markdown file
+   * @private
+   * @param {string} dateStr - ISO date string for the summary
+   * @param {string} content - Markdown content to write
+   * @returns {Promise<void>}
+   */
   private async writeMDToFile(dateStr: string, content: string) {
     try {
-      // Ensure directories exist
       const mdDir = path.join(this.outputPath, 'md');
       this.ensureDirectoryExists(mdDir);
       
@@ -196,18 +262,29 @@ export class DailySummaryGenerator {
     }
   }
 
+  /**
+   * Ensures a directory exists, creating it if necessary
+   * @private
+   * @param {string} dirPath - Path to the directory
+   */
   private ensureDirectoryExists(dirPath: string) {
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
     }
   }
 
+  /**
+   * Groups content items by topics, handling special cases for GitHub and crypto content
+   * @private
+   * @param {any[]} objects - Array of content items to group
+   * @returns {any[]} Array of grouped content by topic
+   */
   private groupObjectsByTopics(objects: any[]): any[] {
     const topicMap = new Map();
 
     objects.forEach(obj => {
+      // Handle GitHub content
       if (obj.source.indexOf('github') >= 0) {
-        // Improved GitHub topic categorization
         let github_topic;
         if (obj.type === 'githubPullRequestContributor' || obj.type === 'githubPullRequest') {
           github_topic = 'pull_request';
@@ -229,7 +306,6 @@ export class DailySummaryGenerator {
           obj.topics = [];
         }
         
-        // Add the GitHub topic to the object's topics
         if (!obj.topics.includes(github_topic)) {
           obj.topics.push(github_topic);
         }
@@ -239,6 +315,7 @@ export class DailySummaryGenerator {
         }
         topicMap.get(github_topic).push(obj);
       }
+      // Handle crypto analytics content
       else if (obj.cid.indexOf('analytics') >= 0) {
         let token_topic = 'crypto market';
         if (!obj.topics) {
@@ -250,6 +327,7 @@ export class DailySummaryGenerator {
         }
         topicMap.get(token_topic).push(obj);
       }
+      // Handle general content with topics
       else {
         if (obj.topics) {
           obj.topics.forEach((topic: any) => {
@@ -265,6 +343,7 @@ export class DailySummaryGenerator {
       }
     });
 
+    // Sort topics by number of items and handle miscellaneous content
     const sortedTopics = Array.from(topicMap.entries()).sort((a, b) => b[1].length - a[1].length);
     const alreadyAdded: any = {};
 
@@ -294,10 +373,9 @@ export class DailySummaryGenerator {
         }
       });
       
-      // Improved handling for GitHub topics
+      // Handle GitHub topics separately
       if (topic === 'pull_request' || topic === 'issue' || topic === 'commit' || 
           topic === 'github_summary' || topic === 'contributors' || topic === 'completed_items') {
-        // Always include GitHub topics regardless of count
         if (!topicAlreadyAdded) {
           alreadyAdded[topic] = true;
           groupedTopics.push({
@@ -307,6 +385,7 @@ export class DailySummaryGenerator {
           });
         }
       }
+      // Group small topics into miscellaneous
       else if (associatedObjects && associatedObjects.length <= 1) {
         let objectIds = associatedObjects.map((object: any) => object.id);
         let alreadyAddedToMisc = miscTopics["objects"].find((object: any) => objectIds.indexOf(object.id) >= 0);
@@ -315,6 +394,7 @@ export class DailySummaryGenerator {
           miscTopics["allTopics"] = miscTopics["allTopics"].concat(Array.from(mergedTopics));
         }
       } 
+      // Add other topics normally
       else if (!topicAlreadyAdded) {
         alreadyAdded[topic] = true;
         groupedTopics.push({

@@ -1,34 +1,62 @@
-// src/plugins/sources/GitHubDataSource.ts
+/**
+ * @fileoverview Implementation of a content source for fetching GitHub activity data
+ * Handles retrieval and processing of contributor activities and repository summaries
+ */
 
 import { ContentSource } from "./ContentSource";  // Your unified interface
 import { ContentItem } from "../../types";         // Your unified item interface
 import fetch from "node-fetch";
 
+/**
+ * Configuration interface for GitHubDataSource
+ * @interface GithubDataSourceConfig
+ * @property {string} name - The name identifier for this GitHub source
+ * @property {string} contributorsUrl - URL endpoint for contributors data JSON
+ * @property {string} summaryUrl - URL endpoint for repository summary data JSON
+ * @property {string} historicalSummaryUrl - URL template for historical summary data (supports date placeholders)
+ * @property {string} historicalContributorUrl - URL template for historical contributor data (supports date placeholders)
+ * @property {string} githubCompany - GitHub organization/company name
+ * @property {string} githubRepo - GitHub repository name
+ */
 interface GithubDataSourceConfig {
-  name: string;                       // e.g. "github-data"
-  contributorsUrl: string;            // e.g. "https://elizaos.github.io/data/daily/contributors.json"
-  summaryUrl: string;                 // e.g. "https://elizaos.github.io/data/daily/summary.json"
-  historicalSummaryUrl: string;       // e.g. "https://elizaos.github.io/data/daily/summary_<year>_<month>_<day>.json"
-  historicalContributorUrl: string;   // e.g. "https://elizaos.github.io/data/daily/contributors_<year>_<month>_<day>.json"
-  githubCompany: string,
-  githubRepo: string,
+  name: string;
+  contributorsUrl: string;
+  summaryUrl: string;
+  historicalSummaryUrl: string;
+  historicalContributorUrl: string;
+  githubCompany: string;
+  githubRepo: string;
 }
 
 /**
- * A plugin that fetches GitHub-like data (contributors + summary)
- * from the two specified JSON endpoints and returns ContentItems.
+ * GitHubDataSource class that implements ContentSource interface for GitHub activity data
+ * Fetches and processes contributor activities and repository summaries from JSON endpoints
+ * @implements {ContentSource}
  */
 export class GitHubDataSource implements ContentSource {
+  /** Name identifier for this GitHub source */
   public name: string;
+  /** URL endpoint for contributors data */
   private contributorsUrl: string;
+  /** URL endpoint for repository summary */
   private summaryUrl: string;
+  /** URL template for historical summary data */
   private historicalSummaryUrl: string;
+  /** URL template for historical contributor data */
   private historicalContributorUrl: string;
+  /** GitHub organization/company name */
   private githubCompany: string;
+  /** GitHub repository name */
   private githubRepo: string;
+  /** Base URL for GitHub repository */
   private baseGithubUrl: string;
+  /** Base URL for GitHub preview images */
   private baseGithubImageUrl: string;
 
+  /**
+   * Creates a new GitHubDataSource instance
+   * @param {GithubDataSourceConfig} config - Configuration object for the GitHub source
+   */
   constructor(config: GithubDataSourceConfig) {
     this.name = config.name;
     this.contributorsUrl = config.contributorsUrl;
@@ -42,8 +70,8 @@ export class GitHubDataSource implements ContentSource {
   }
 
   /**
-   * Fetch items from both JSON endpoints and unify them
-   * into an array of ContentItem objects.
+   * Fetches current GitHub activity data from both contributors and summary endpoints
+   * @returns {Promise<ContentItem[]>} Array of content items containing GitHub activities
    */
   public async fetchItems(): Promise<ContentItem[]> {
     try {
@@ -71,6 +99,11 @@ export class GitHubDataSource implements ContentSource {
     }
   }
 
+  /**
+   * Fetches historical GitHub activity data for a specific date
+   * @param {string} date - ISO date string to fetch historical data from
+   * @returns {Promise<ContentItem[]>} Array of content items containing historical GitHub activities
+   */
   public async fetchHistorical(date:string): Promise<ContentItem[]> {
     try {
       const targetDate = new Date(date);
@@ -109,12 +142,22 @@ export class GitHubDataSource implements ContentSource {
     }
   }
 
+  /**
+   * Processes raw GitHub data into ContentItem format
+   * @private
+   * @param {any} contributorsData - Raw contributors data from API
+   * @param {any} summaryData - Raw summary data from API
+   * @param {Date} date - Target date for the data
+   * @returns {Promise<ContentItem[]>} Array of processed GitHub content items
+   */
   private async processGithubData(contributorsData: any, summaryData: any, date: Date): Promise<ContentItem[]> {
     try {
       const githubItems : ContentItem[] = [];
   
+      // Process contributor activities (commits, PRs, issues)
       (Array.isArray(contributorsData)
         ? contributorsData : [] ).forEach((c: any) => {
+          // Process commits
           if ( c.activity?.code?.commits?.length > 0 ) {
             c.activity?.code?.commits?.forEach((commit: any) => {
               const item : ContentItem = {
@@ -136,6 +179,7 @@ export class GitHubDataSource implements ContentSource {
             })
           }
   
+          // Process pull requests
           if ( c.activity?.code?.pull_requests?.length > 0 ) {
             c.activity?.code?.pull_requests?.forEach((pr: any) => {
               const item : ContentItem = {
@@ -157,6 +201,7 @@ export class GitHubDataSource implements ContentSource {
             })
           }
   
+          // Process issues
           if ( c.activity?.issues?.opened?.length > 0 ) {
             c.activity?.issues?.opened?.forEach((issue: any) => {
               const item : ContentItem = {
@@ -178,6 +223,7 @@ export class GitHubDataSource implements ContentSource {
           }
         });
       
+      // Create summary item
       const cid = `github-contrib-${summaryData.title}`;
   
       const summaryItem: ContentItem = {

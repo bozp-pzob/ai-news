@@ -1,22 +1,50 @@
+/**
+ * @fileoverview Implementation of a content source for fetching cryptocurrency data from CoinGecko API
+ * Handles market data retrieval including prices, volumes, and market caps for specified tokens
+ */
+
 import { delay } from "../../helpers/generalHelper";
 import { ContentItem } from "../../types";
 import { ContentSource } from "./ContentSource"; // Assuming the ContentSource is in the same folder
 import fetch from "node-fetch";
 
+/**
+ * Configuration interface for CoinGeckoAnalyticsSource
+ * @interface CoinGeckoAnalyticsSourceConfig
+ * @property {string} name - The name identifier for this analytics source
+ * @property {string[]} tokenSymbols - Array of token symbols to track (e.g., "bitcoin", "ethereum")
+ */
 interface CoinGeckoAnalyticsSourceConfig {
     name: string;
     tokenSymbols: string[];
 }
 
+/**
+ * CoinGeckoAnalyticsSource class that implements ContentSource interface for cryptocurrency market data
+ * Fetches and processes market data from CoinGecko's public API
+ * @implements {ContentSource}
+ */
 export class CoinGeckoAnalyticsSource implements ContentSource {
+    /** Name identifier for this analytics source */
     public name: string;
+    /** List of token symbols to track */
     private tokenSymbols: string[];
   
+    /**
+     * Creates a new CoinGeckoAnalyticsSource instance
+     * @param {CoinGeckoAnalyticsSourceConfig} config - Configuration object for the analytics source
+     */
     constructor(config : CoinGeckoAnalyticsSourceConfig) {
         this.name = config.name;
         this.tokenSymbols = config.tokenSymbols;
     }
   
+    /**
+     * Fetches current market data for configured tokens
+     * Includes price, volume, market cap, and 24h price changes
+     * Implements rate limiting with 2-second delays between requests
+     * @returns {Promise<ContentItem[]>} Array of content items containing market data
+     */
     async fetchItems(): Promise<ContentItem[]> {
         let marketResponse : any[] = [];
 
@@ -59,6 +87,7 @@ export class CoinGeckoAnalyticsSource implements ContentSource {
         
                 marketResponse.push(summaryItem);
 
+                // Rate limiting: Wait 2 seconds between requests
                 await delay(2000);
             } catch (error) {
                 await delay(2000);
