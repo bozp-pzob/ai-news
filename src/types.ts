@@ -1,5 +1,7 @@
 // src/types.ts
 
+import { StoragePlugin } from "./plugins/storage/StoragePlugin";
+
 /**
  * Represents a normalized article object in the system.
  */
@@ -24,9 +26,9 @@ export interface SummaryItem {
   id?: number;          // Will be assigned by storage if not provided
   type: string;          // e.g. "tweet", "newsArticle", "discordMessage", "githubIssue"
   title?: string;        // optional – for articles, maybe a tweet "title" is same as text
-  categories?: string;         // main content (tweet text, article abstract, etc.)
-  markdown?: string;      //optional - Markdown version of main content
-  date?: number;           // When it was created/published
+  categories?: string;   // main content (JSON string for structured summaries)
+  markdown?: string;     // Optional Markdown version of the summary
+  date?: number;         // When it was created/published (epoch seconds)
 }
   
 /**
@@ -111,4 +113,113 @@ export interface DateConfig {
  */
 export interface OutputConfig {
   path: string;  // Directory path for output files
+}
+
+/**
+ * Interface for Discord raw data structure
+ * @interface DiscordRawData
+ */
+export interface DiscordRawData {
+  channel: {
+    id: string;
+    name: string;
+    topic: string | null;
+    category: string | null;
+  };
+  date: string;
+  users: {
+    [userId: string]: {
+      name: string;
+      nickname: string | null;
+      roles?: string[];
+      isBot?: boolean;
+    };
+  };
+  messages: {
+    id: string;
+    ts: string;
+    uid: string;
+    content: string;
+    type?: string;
+    mentions?: string[];
+    ref?: string;
+    edited?: string;
+    reactions?: {
+      emoji: string;
+      count: number;
+    }[];
+  }[];
+}
+
+/**
+ * Configuration interface for DiscordRawDataSource
+ * @interface DiscordRawDataSourceConfig
+ * @property {string} name - The name identifier for this Discord source
+ * @property {string} botToken - Discord bot token for authentication
+ * @property {string[]} channelIds - Array of Discord channel IDs to monitor
+ * @property {string} guildId - Discord guild/server ID
+ */
+export interface DiscordRawDataSourceConfig {
+  name: string;
+  botToken: string;
+  channelIds: string[];
+  guildId: string;
+  storage: StoragePlugin;
+}
+
+/**
+ * Interface for time-based message blocks
+ * @interface TimeBlock
+ */
+export interface TimeBlock {
+  startTime: Date;
+  endTime: Date;
+  messages: DiscordRawData['messages'];
+  users: DiscordRawData['users'];
+}
+
+/**
+ * Interface for Discord Summaries
+ * @interface DiscordSummary
+ */
+export interface DiscordSummary {
+  channelId?: string;
+  channelName: string;
+  guildName: string;
+  summary: string;
+  faqs: SummaryFaqs[];
+  helpInteractions: HelpInteractions[];
+  actionItems: ActionItems[];
+}
+
+
+/**
+ * Interface for SummaryFaqs for Discord sumamries
+ * @interface SummaryFaqs
+ */
+export interface SummaryFaqs {
+  question: string;
+  askedBy: string;
+  answeredBy: string;
+}
+
+/**
+ * Interface for HelpInteractions for Discord sumamries
+ * @interface HelpInteractions
+ */
+export interface HelpInteractions {
+  helper: string;
+  helpee: string;
+  context: string;
+  resolution: string;
+}
+
+/**
+ * Interface for ActionItems for Discord sumamries
+ * @interface ActionItems
+ */
+export interface ActionItems { 
+  type: 'Technical' | 'Documentation' | 'Feature';
+  description: string;
+  mentionedBy: string;
 }

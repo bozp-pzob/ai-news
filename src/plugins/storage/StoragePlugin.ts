@@ -51,4 +51,18 @@ export interface StoragePlugin {
    * @returns Promise<SummaryItem[]> Array of summary items within the time range
    */
   getSummaryBetweenEpoch(startEpoch: number, endEpoch: number, excludeType?: string): Promise<SummaryItem[]>;
+
+  /**
+   * Retrieves message ids based on cursor id.
+   * @param cid - Unique Cursor ID to fetch the cursor by.
+   * @returns Promise<string | null> Either a message id or null
+   */
+  getCursor(cid: string): Promise<string | null>;
+
+  /**
+   * Stores message id for a unique cursor id.
+   * @param cid - Unique Cursor ID to fetch the cursor by.
+   * @param messageId - message id that was last fetched.
+   */
+  setCursor(cid: string, messageId: string): Promise<void>;
 }

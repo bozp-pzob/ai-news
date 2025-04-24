@@ -7,7 +7,13 @@
  */
 
 import { ContentAggregator } from "./aggregator/ContentAggregator";
-import { loadDirectoryModules, loadItems, loadProviders, loadStorage, } from "./helpers/configHelper";
+import {
+  loadDirectoryModules,
+  loadItems,
+  loadProviders,
+  loadStorage,
+  validateConfiguration
+} from "./helpers/configHelper";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -82,12 +88,24 @@ dotenv.config();
     /**
      * Set up dependencies between plugins
      * AI providers are injected into sources, enrichers, and generators
-     * Storage is injected into generators
+     * Storage is injected into generators, sources
      */
     sourceConfigs = await loadProviders(sourceConfigs, aiConfigs);
+    sourceConfigs = await loadStorage(sourceConfigs, storageConfigs);
     enricherConfigs = await loadProviders(enricherConfigs, aiConfigs);
     generatorConfigs = await loadProviders(generatorConfigs, aiConfigs);
     generatorConfigs = await loadStorage(generatorConfigs, storageConfigs);
+    
+    /**
+     * Call the validation function
+     */
+    validateConfiguration({ 
+        sources: sourceConfigs,
+        ai: aiConfigs,
+        enrichers: enricherConfigs,
+        generators: generatorConfigs,
+        storage: storageConfigs
+    });
     
     /**
      * Configure output paths for all generators
