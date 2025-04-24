@@ -21,14 +21,14 @@ on:
         default: false
 
 jobs:
-  build-and-deploy:
-    timeout-minutes: 30 # Added timeout
+  sqlite-job:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:
       contents: write # Needed for checkout and gh-pages push
       pages: write      # Needed for gh-pages deployment
       id-token: write   # Needed for gh-pages deployment
-    environment: # Added environment spec
+    environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
@@ -64,15 +64,38 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20' # Or your preferred Node.js version
+          
+      - name: Process secrets securely
+        run: |
+          echo '${{ secrets.ENV_SECRETS }}' > env_secrets.json
+          chmod 600 env_secrets.json
+          
+          # Mask values
+          jq -r 'to_entries[] | .value' env_secrets.json | while read -r value; do
+            if [ -n "$value" ]; then
+              echo "::add-mask::$value"
+            fi
+          done
+          
+          # Set environment variables
+          jq -r 'to_entries[] | "\(.key)=\(.value)"' env_secrets.json > env_vars.txt
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              echo "$line" >> $GITHUB_ENV
+            fi
+          done < env_vars.txt
+          
+          # Clean up
+          rm env_secrets.json env_vars.txt
 
       - name: Install Dependencies
-        run: npm ci # Use ci for cleaner installs in CI/CD
+        run: npm install # Reverted back to npm install
 
       - name: Get yesterday's date # Added date step
         id: date
         run: echo "YESTERDAY=$(date -d "yesterday" +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
-      - name: Run historical generation # Updated run logic
+      - name: Run historical generation
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ -n "${{ inputs.after_date }}" ] && [ -n "${{ inputs.before_date }}" ]; then
@@ -90,15 +113,9 @@ jobs:
             npm run historical -- --source=config/discord-raw.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/discord
           fi
         env:
-          # Add any necessary environment variables here
-          USE_OPENROUTER: true
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
-          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
-          SITE_URL: ${{ secrets.SITE_URL }}
-          SITE_NAME: ${{ secrets.SITE_NAME }}
-          FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }} # Pass force_overwrite input
-          # Add other secrets if needed based on discord-raw.json 'process.env' usage
+          RUN_ONCE: true
+          NODE_ENV: production
+          FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }}
 
       - name: Prepare files for deployment
         run: |
