@@ -99,18 +99,18 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ -n "${{ inputs.after_date }}" ] && [ -n "${{ inputs.before_date }}" ]; then
-              npm run historical -- --source=config/discord-raw.json --after=${{ inputs.after_date }} --before=${{ inputs.before_date }} --output=./output/discord
+              npm run historical -- --source=discord-raw.json --after=${{ inputs.after_date }} --before=${{ inputs.before_date }} --output=./output/discord
             elif [ -n "${{ inputs.after_date }}" ]; then
-              npm run historical -- --source=config/discord-raw.json --after=${{ inputs.after_date }} --output=./output/discord
+              npm run historical -- --source=discord-raw.json --after=${{ inputs.after_date }} --output=./output/discord
             elif [ -n "${{ inputs.before_date }}" ]; then
-              npm run historical -- --source=config/discord-raw.json --before=${{ inputs.before_date }} --output=./output/discord
+              npm run historical -- --source=discord-raw.json --before=${{ inputs.before_date }} --output=./output/discord
             else
               # Default to yesterday if no date inputs provided for manual run
-              npm run historical -- --source=config/discord-raw.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/discord
+              npm run historical -- --source=discord-raw.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/discord
             fi
           else
             # Scheduled run uses yesterday's date
-            npm run historical -- --source=config/discord-raw.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/discord
+            npm run historical -- --source=discord-raw.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/discord
           fi
         env:
           RUN_ONCE: true
