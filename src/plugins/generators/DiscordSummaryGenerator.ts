@@ -82,7 +82,7 @@ export class DiscordSummaryGenerator {
       // Fetch raw content for this date
       logger.info(`Fetching Discord content for ${dateStr} between ${new Date(startTimeEpoch * 1000).toISOString()} and ${new Date(endTimeEpoch * 1000).toISOString()}`);
       const contentItems = await this.storage.getContentItemsBetweenEpoch(
-        startTimeEpoch, endTimeEpoch, 'discord-raw'
+        startTimeEpoch, endTimeEpoch, this.source
       );
       
       if (contentItems.length === 0) {
@@ -108,10 +108,6 @@ export class DiscordSummaryGenerator {
               ...channelSummary,
               channelId
             });
-            
-            // Save as content item
-            await this.saveSummaryAsContentItem(channelSummary, channelId, startTimeEpoch, items[0]?.link);
-            logger.success(`Successfully saved summary for channel ${channelSummary.channelName || channelId}`);
           }
         } catch (error) {
           logger.error(`Error processing channel ${channelId}: ${error instanceof Error ? error.message : String(error)}`);
@@ -208,7 +204,7 @@ export class DiscordSummaryGenerator {
     
     for (const item of items) {
       try {
-        if (item.type !== 'discord-raw' || !item.text) continue;
+        if (item.type !== 'discordRawData' || !item.text) continue;
         
         const rawData: DiscordRawData = JSON.parse(item.text);
         
@@ -454,47 +450,6 @@ Return the analysis in the specified structured format with numbered sections (1
   }
 
   /**
-   * Save channel summary as a ContentItem in storage.
-   * @param summary - Discord summary object
-   * @param channelId - Channel ID
-   * @param timestamp - Unix timestamp
-   * @param linkBase - Base URL for the channel
-   * @private
-   */
-  private async saveSummaryAsContentItem(
-    summary: DiscordSummary, 
-    channelId: string, 
-    timestamp: number,
-    linkBase?: string
-  ): Promise<void> {
-    const summaryItem: ContentItem = {
-      type: 'discordChannelSummary',
-      cid: `discordSummary-${channelId}-${new Date(timestamp * 1000).toISOString().slice(0, 10)}`,
-      source: this.source,
-      title: `Channel Summary: ${summary.channelName || channelId}`,
-      text: summary.summary,
-      link: linkBase?.split('/').slice(0, -1).join('/'),
-      date: timestamp,
-      metadata: {
-        channelId,
-        guildName: summary.guildName,
-        channelName: summary.channelName,
-        generator: this.source,
-        faqCount: summary.faqs.length,
-        helpCount: summary.helpInteractions.length,
-        actionItemCount: summary.actionItems.length
-      }
-    };
-    
-    try {
-      await this.storage.saveContentItems([summaryItem]);
-    } catch (error) {
-      logger.error(`Error saving summary for ${summary.channelName}: ${error instanceof Error ? error.message : String(error)}`);
-      throw error;
-    }
-  }
-
-  /**
    * Calculate message and user statistics from content items.
    * @param contentItems - Array of content items
    * @returns Statistics object
@@ -533,7 +488,7 @@ Return the analysis in the specified structured format with numbered sections (1
       
       // Count messages and collect users
       items.forEach(item => {
-        if (item.text && item.type === 'discord-raw') {
+        if (item.text && item.type === "discordRawData") {
           try {
             const data: DiscordRawData = JSON.parse(item.text);
             

@@ -449,7 +449,7 @@ export class DiscordRawDataSource implements ContentSource {
 
              items.push({
                 cid: `discord-raw-${channel.id}-${formattedDate}`,
-                type: 'discord-raw',
+                type: 'discordRawData',
                 source: `${guildName} - ${channel.name}`,
                 title: `Raw Discord Data: ${channel.name}`,
                 text: JSON.stringify(rawData),
@@ -510,7 +510,7 @@ export class DiscordRawDataSource implements ContentSource {
         if (rawData.messages.length > 0) {
           items.push({
             cid: `discord-raw-${channel.id}-${date}`,
-            type: 'discord-raw',
+            type: 'discordRawData',
             source: `${guildName} - ${channel.name}`,
             title: `Raw Discord Data: ${channel.name} (${date})`,
             text: JSON.stringify(rawData),
