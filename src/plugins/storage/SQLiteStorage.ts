@@ -55,6 +55,7 @@ export class SQLiteStorage implements StoragePlugin {
         type TEXT NOT NULL,
         title TEXT,
         categories TEXT,
+        markdown TEXT,
         date INTEGER
       );
     `);
