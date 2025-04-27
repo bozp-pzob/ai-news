@@ -49,12 +49,12 @@ jobs:
             echo "gh-pages branch exists, fetching database"
             git fetch origin gh-pages:gh-pages --depth=1 || true
             
-            # Check if discord-raw.sqlite exists in the branch
-            if git ls-tree -r --name-only gh-pages | grep -q "data/discord-raw.sqlite"; then
-              echo "Restoring discord-raw.sqlite from gh-pages branch"
-              git show gh-pages:data/discord-raw.sqlite > data/discord-raw.sqlite
+            # Check if encrypted discord-raw.sqlite exists in the branch
+            if git ls-tree -r --name-only gh-pages | grep -q "data/discord-raw.sqlite.enc"; then
+              echo "Restoring encrypted discord-raw.sqlite.enc from gh-pages branch"
+              git show gh-pages:data/discord-raw.sqlite.enc > data/discord-raw.sqlite.enc
             else
-              echo "No existing discord-raw.sqlite found in gh-pages branch"
+              echo "No existing discord-raw.sqlite.enc found in gh-pages branch"
             fi
           else
             echo "gh-pages branch does not exist yet, will be created on first deployment"
@@ -63,7 +63,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Or your preferred Node.js version
+          node-version: '23' # Or your preferred Node.js version
           
       - name: Process secrets securely
         run: |
@@ -89,9 +89,33 @@ jobs:
           rm env_secrets.json env_vars.txt
 
       - name: Install Dependencies
-        run: npm install # Reverted back to npm install
+        run: npm install
 
-      - name: Get yesterday's date # Added date step
+      - name: Decrypt database (if exists)
+        env:
+          SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
+        run: |
+          if [ -f "data/discord-raw.sqlite.enc" ]; then
+            if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
+              echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."
+              exit 1
+            fi
+            echo "Decrypting data/discord-raw.sqlite.enc..."
+            openssl enc -d -aes-256-cbc -pbkdf2 -in data/discord-raw.sqlite.enc -out data/discord-raw.sqlite -k "$SQLITE_ENCRYPTION_KEY"
+            if [ $? -ne 0 ]; then
+              echo "Error: Decryption failed. Check the encryption key or file integrity."
+              # Optionally remove the potentially corrupted decrypted file
+              # rm -f data/discord-raw.sqlite 
+              exit 1
+            fi
+            echo "Decryption successful."
+            # Optionally remove the encrypted file now? Or keep it as backup?
+            # rm data/discord-raw.sqlite.enc 
+          else
+            echo "No encrypted database found to decrypt."
+          fi
+
+      - name: Get yesterday's date
         id: date
         run: echo "YESTERDAY=$(date -d "yesterday" +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
@@ -117,39 +141,56 @@ jobs:
           NODE_ENV: production
           FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }}
 
+      - name: Encrypt database
+        env:
+          SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
+        run: |
+          if [ -f "data/discord-raw.sqlite" ]; then
+            if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
+              echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."
+              exit 1
+            fi
+            echo "Encrypting data/discord-raw.sqlite..."
+            openssl enc -aes-256-cbc -salt -pbkdf2 -in data/discord-raw.sqlite -out data/discord-raw.sqlite.enc -k "$SQLITE_ENCRYPTION_KEY"
+            if [ $? -ne 0 ]; then
+              echo "Error: Encryption failed."
+              exit 1
+            fi
+            echo "Encryption successful."
+            # Remove the original unencrypted file after successful encryption
+            rm data/discord-raw.sqlite
+          else
+            echo "No discord-raw.sqlite found to encrypt."
+          fi
+
       - name: Prepare files for deployment
         run: |
           # Create the target directory structure within ./public
           mkdir -p ./public/data
           mkdir -p ./public/elizaos/discord/summaries
 
-          # Copy the database
-          if [ -f "data/discord-raw.sqlite" ]; then
-            echo "Copying discord-raw.sqlite to ./public/data/"
-            cp data/discord-raw.sqlite ./public/data/
+          # Copy the encrypted database
+          if [ -f "data/discord-raw.sqlite.enc" ]; then
+            echo "Copying encrypted discord-raw.sqlite.enc to ./public/data/"
+            cp data/discord-raw.sqlite.enc ./public/data/
           else
-             echo "No discord-raw.sqlite found locally to copy."
+             echo "No encrypted discord-raw.sqlite.enc found locally to copy."
           fi
           
           echo "Copying summaries to ./public/elizaos/discord/summaries/"
           # Copy summary files (json and md)
           cp -r output/discord/summaries/* ./public/elizaos/discord/summaries/ || echo "No summary files generated or found to copy."
 
-          # Optional: Add commands here to copy other outputs like raw data
-          # mkdir -p ./public/elizaos/discord/raw
-          # echo "Copying raw data to ./public/elizaos/discord/raw/"
-          # cp -r output/discord/raw/* ./public/elizaos/discord/raw/ || echo "No raw data files generated or found to copy."
-
-      - name: Validate JSON files # Added validation step
+      - name: Validate JSON files
         run: find ./public/elizaos/discord/summaries -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
 
       - name: Deploy to gh-pages branch
-        id: deployment # Added id for environment url output
+        id: deployment
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./public # Deploy the contents of the public directory
-          keep_files: true      # Important: Do not delete existing files in gh-pages
+          publish_dir: ./public
+          keep_files: true
           # publish_branch: gh-pages # Default is gh-pages
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
