@@ -104,8 +104,7 @@ jobs:
             openssl enc -d -aes-256-cbc -pbkdf2 -in data/discord-raw.sqlite.enc -out data/discord-raw.sqlite -k "$SQLITE_ENCRYPTION_KEY"
             if [ $? -ne 0 ]; then
               echo "Error: Decryption failed. Check the encryption key or file integrity."
-              # Optionally remove the potentially corrupted decrypted file
-              # rm -f data/discord-raw.sqlite 
+              rm -f data/discord-raw.sqlite 
               exit 1
             fi
             echo "Decryption successful."
