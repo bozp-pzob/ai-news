@@ -197,6 +197,10 @@ jobs:
       - name: Validate JSON files
         run: find ./public/elizaos/discord/summaries -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
 
+      - name: Get current timestamp for commit message
+        id: commit_time
+        run: echo "COMMIT_DATETIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
+
       - name: Deploy to gh-pages branch
         id: deployment
         uses: peaceiris/actions-gh-pages@v4
@@ -207,4 +211,4 @@ jobs:
           # publish_branch: gh-pages # Default is gh-pages
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
-          commit_message: "Update Discord data $(date -u +'%Y-%m-%d %H:%M:%S UTC')" 
+          commit_message: "Update Discord data ${{ env.COMMIT_DATETIME }}" 

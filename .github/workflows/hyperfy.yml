@@ -200,13 +200,17 @@ jobs:
       - name: Validate JSON files
         run: find ./public/hyperfy/summaries -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; } # Updated path
 
+      - name: Get current timestamp for commit message
+        id: commit_time
+        run: echo "COMMIT_DATETIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
+
       - name: Deploy to gh-pages branch
-        id: deployment # Added ID
+        id: deployment
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
           keep_files: true
-          user_name: 'github-actions[bot]' # Added specific user/email
+          user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
-          commit_message: "Update Hyperfy data $(date -u +'%Y-%m-%d %H:%M:%S UTC')" # Added specific commit message
+          commit_message: "Update Hyperfy data ${{ env.COMMIT_DATETIME }}"
