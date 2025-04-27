@@ -116,8 +116,7 @@ jobs:
               sqlite3 data/discord-raw.sqlite "PRAGMA integrity_check;"
               if [ $? -ne 0 ]; then
                 echo "Error: Database integrity check failed! The decrypted file might be corrupted."
-                # Decide how to handle failure: exit, warn, delete?
-                # rm -f data/discord-raw.sqlite 
+                rm -f data/discord-raw.sqlite 
                 exit 1 # Exit if integrity check fails
               else
                  echo "Database integrity check passed."
@@ -125,9 +124,7 @@ jobs:
             else
               echo "Warning: sqlite3 command not found. Skipping integrity check."
             fi
-
-            # Optionally remove the encrypted file now? Or keep it as backup?
-            # rm data/discord-raw.sqlite.enc 
+            rm data/discord-raw.sqlite.enc 
           else
             echo "No encrypted database found to decrypt."
           fi
