@@ -108,6 +108,7 @@ jobs:
             openssl enc -d -aes-256-cbc -pbkdf2 -in data/hyperfy-discord.sqlite.enc -out data/hyperfy-discord.sqlite -k "$SQLITE_ENCRYPTION_KEY"
             if [ $? -ne 0 ]; then
               echo "Error: Decryption failed. Check the encryption key or file integrity."
+              rm data/hyperfy-discord.sqlite
               exit 1
             fi
             echo "Decryption successful."
@@ -118,6 +119,7 @@ jobs:
               sqlite3 data/hyperfy-discord.sqlite "PRAGMA integrity_check;"
               if [ $? -ne 0 ]; then
                 echo "Error: Database integrity check failed! The decrypted file might be corrupted."
+                rm data/hyperfy-discord.sqlite
                 exit 1 # Exit if integrity check fails
               else
                  echo "Database integrity check passed."
@@ -125,7 +127,7 @@ jobs:
             else
               echo "Warning: sqlite3 command not found. Skipping integrity check."
             fi
-            # rm data/hyperfy-discord.sqlite.enc
+            rm data/hyperfy-discord.sqlite.enc
           else
             echo "No encrypted database found to decrypt."
           fi

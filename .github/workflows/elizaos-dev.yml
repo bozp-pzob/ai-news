@@ -108,6 +108,7 @@ jobs:
             openssl enc -d -aes-256-cbc -pbkdf2 -in data/elizaos-dev.sqlite.enc -out data/elizaos-dev.sqlite -k "$SQLITE_ENCRYPTION_KEY"
             if [ $? -ne 0 ]; then
               echo "Error: Decryption failed. Check the encryption key or file integrity."
+              rm -f data/elizaos-dev.sqlite
               exit 1
             fi
             echo "Decryption successful."
@@ -118,6 +119,7 @@ jobs:
               sqlite3 data/elizaos-dev.sqlite "PRAGMA integrity_check;"
               if [ $? -ne 0 ]; then
                 echo "Error: Database integrity check failed! The decrypted file might be corrupted."
+                rm -f data/elizaos-dev.sqlite
                 exit 1 # Exit if integrity check fails
               else
                  echo "Database integrity check passed."
@@ -125,7 +127,7 @@ jobs:
             else
               echo "Warning: sqlite3 command not found. Skipping integrity check."
             fi
-            # rm data/elizaos-dev.sqlite.enc # Keep encrypted backup locally?
+            rm data/elizaos-dev.sqlite.enc
           else
             echo "No encrypted database found to decrypt."
           fi
@@ -182,7 +184,7 @@ jobs:
         run: |
           # Create the target directory structure within ./public
           mkdir -p ./public/data
-          mkdir -p ./public/elizaos-dev/summaries # Updated path
+          mkdir -p ./public/elizaos-dev/summaries
 
           # Copy the encrypted database
           if [ -f "data/elizaos-dev.sqlite.enc" ]; then
