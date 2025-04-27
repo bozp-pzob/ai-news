@@ -4,38 +4,33 @@
     },
     "sources": [
       {
-        "type": "DiscordChannelSource",
-        "name": "discordChannel",
+        "type": "DiscordRawDataSource",
+        "name": "hyperfyDiscordRaw",
         "interval": 360000,
         "params": {
-          "botToken": "process.env.DISCORD_TOKEN",
+          "botToken": "process.env.HYPERFY_DISCORD_TOKEN",
+          "guildId": "process.env.HYPERFY_DISCORD_GUILD_ID",
           "channelIds": [
-	    "994775534733115412",
-	    "1330373197203505185",
-	    "958209074045026327",
-	    "1031058655581323324"
-	  ],
-          "provider": "summaryOpenAiProvider"
+              "994775534733115412",
+              "1330373197203505185",
+              "958209074045026327",
+	      "1326789867312775290",
+              "1031058655581323324",
+              "958214956426350652",
+              "1347905902937767997"
+          ],
+          "storage": "SQLiteStorage"
         }
       },
       {
-        "type": "DiscordAnnouncementSource",
-        "name": "discordAnnouncement",
-        "interval": 3600000,
+        "type": "CodexAnalyticsSource",
+        "name": "codexAnalytics",
+        "interval": 43200000,
         "params": {
-          "botToken": "process.env.DISCORD_TOKEN",
-          "channelIds": ["958214956426350652","1347905902937767997"]
+            "apiKey": "process.env.CODEX_API_KEY",
+            "tokenAddresses": ["8vBMibwpn8wpfYKbQ9xqzodymg3LjmYec2tSNGRy23K8","So11111111111111111111111111111111111111112"]
         }
-      },
-      {                                                                                                                                                       
-        "type": "CodexAnalyticsSource",                                                                                                                       
-        "name": "codexAnalytics",                                                                                                                             
-        "interval": 43200000,                                                                                                                                 
-        "params": {                                                                                                                                           
-            "apiKey": "process.env.CODEX_API_KEY",                                                                                                            
-            "tokenAddresses": ["8vBMibwpn8wpfYKbQ9xqzodymg3LjmYec2tSNGRy23K8","So11111111111111111111111111111111111111112"]                                  
-        }                                                                                                                                                     
-      }                                                                                                                                                       
+      }
     ],
     "ai": [
         {
@@ -63,16 +58,7 @@
           }
         }
     ],
-    "enrichers": [
-        {
-          "type": "AiTopicsEnricher",
-          "name": "topicEnricher",
-          "params": {
-            "provider": "miniOpenAiProvider",
-            "thresholdLength": 30
-          }
-        }
-    ],
+    "enrichers": [],
     "storage": [
         {
             "type": "SQLiteStorage",
@@ -84,15 +70,25 @@
     ],
     "generators": [
         {
-          "type": "DailySummaryGenerator",
-          "name": "DailySummaryGenerator",
+          "type": "RawDataExporter",
+          "name": "HyperfyRawExporter",
+          "interval": 3600000,
+          "params": {
+            "storage": "SQLiteStorage",
+            "source": "discordRawData",
+            "outputPath": "./output/hyperfy/raw"
+          }
+        },
+        {
+          "type": "DiscordSummaryGenerator",
+          "name": "HyperfyDiscordSummaryGenerator",
           "interval": 3600000,
           "params": {
             "provider": "summaryOpenAiProvider",
             "storage": "SQLiteStorage",
-            "summaryType": "dailySummary",
-            "source": "aiSummary",
-	    "outputPath": "./output/hyperfy"
+            "summaryType": "hyperfyDiscordSummary",
+            "source": "discordRawData",
+            "outputPath": "./output/hyperfy/summaries"
           }
         }
     ]

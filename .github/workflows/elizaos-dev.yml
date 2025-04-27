@@ -1,46 +1,65 @@
-name: Run ElizaDEV Daily Task
+name: ElizaOS Dev Server
+
 on:
   schedule:
     - cron: '0 0 * * *' # Run at midnight UTC every day
-  workflow_dispatch:  # Keep manual trigger option
+  workflow_dispatch: # Allows manual triggering
+    inputs:
+      after_date:
+        description: 'Start date (YYYY-MM-DD)'
+        required: false
+        type: string
+      before_date:
+        description: 'End date (YYYY-MM-DD)'
+        required: false
+        type: string
+      force_overwrite:
+        description: 'Force overwrite existing data'
+        required: false
+        type: boolean
+        default: false
+
 jobs:
   sqlite-job:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pages: write
-      id-token: write
+      contents: write # Needed for checkout and gh-pages push
+      pages: write      # Needed for gh-pages deployment
+      id-token: write   # Needed for gh-pages deployment
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # Fetch all history so that the last modified date can be determined
+          fetch-depth: 0
 
       # Fetch existing DB from gh-pages branch if it exists
-      - name: Check and fetch database
+      - name: Check and fetch database (elizaos-dev.sqlite.enc)
         run: |
           mkdir -p data
           
           # Check if gh-pages branch exists
           if git ls-remote --heads origin gh-pages | grep -q gh-pages; then
             echo "gh-pages branch exists, fetching database"
-            git fetch origin gh-pages:gh-pages || true
+            git fetch origin gh-pages:gh-pages --depth=1 || true
             
-            # Check if elizaos-dev.sqlite exists in the branch
-            if git ls-tree -r --name-only gh-pages | grep -q "data/elizaos-dev.sqlite"; then
-              git show gh-pages:data/elizaos-dev.sqlite > data/elizaos-dev.sqlite
-              echo "Restored database from gh-pages branch"
+            # Check if encrypted elizaos-dev.sqlite exists in the branch
+            if git ls-tree -r --name-only gh-pages | grep -q "data/elizaos-dev.sqlite.enc"; then
+              echo "Restoring encrypted elizaos-dev.sqlite.enc from gh-pages branch"
+              git show gh-pages:data/elizaos-dev.sqlite.enc > data/elizaos-dev.sqlite.enc
             else
-              echo "No existing database found in gh-pages branch"
+              echo "No existing elizaos-dev.sqlite.enc found in gh-pages branch"
             fi
           else
             echo "gh-pages branch does not exist yet, will be created on first deployment"
           fi
       
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4 # Updated version
         with:
           node-version: '23'
           
@@ -76,54 +95,119 @@ jobs:
       - name: Install dependencies
         run: npm install
       
+      - name: Decrypt database (if exists)
+        env:
+          SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
+        run: |
+          if [ -f "data/elizaos-dev.sqlite.enc" ]; then
+            if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
+              echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."
+              exit 1
+            fi
+            echo "Decrypting data/elizaos-dev.sqlite.enc..."
+            openssl enc -d -aes-256-cbc -pbkdf2 -in data/elizaos-dev.sqlite.enc -out data/elizaos-dev.sqlite -k "$SQLITE_ENCRYPTION_KEY"
+            if [ $? -ne 0 ]; then
+              echo "Error: Decryption failed. Check the encryption key or file integrity."
+              exit 1
+            fi
+            echo "Decryption successful."
+
+            # Check database integrity
+            echo "Checking database integrity..."
+            if command -v sqlite3 &> /dev/null; then
+              sqlite3 data/elizaos-dev.sqlite "PRAGMA integrity_check;"
+              if [ $? -ne 0 ]; then
+                echo "Error: Database integrity check failed! The decrypted file might be corrupted."
+                exit 1 # Exit if integrity check fails
+              else
+                 echo "Database integrity check passed."
+              fi
+            else
+              echo "Warning: sqlite3 command not found. Skipping integrity check."
+            fi
+            # rm data/elizaos-dev.sqlite.enc # Keep encrypted backup locally?
+          else
+            echo "No encrypted database found to decrypt."
+          fi
+      
       - name: Get yesterday's date
         id: date
         run: echo "YESTERDAY=$(date -d "yesterday" +'%Y-%m-%d')" >> $GITHUB_OUTPUT
         
-      - name: Run historical with yesterday's date
-        run: npm run historical -- --source=elizaos-dev.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/elizaos-dev
+      - name: Run historical generation
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ inputs.after_date }}" ] && [ -n "${{ inputs.before_date }}" ]; then
+              npm run historical -- --source=elizaos-dev.json --after=${{ inputs.after_date }} --before=${{ inputs.before_date }} --output=./output/elizaos-dev
+            elif [ -n "${{ inputs.after_date }}" ]; then
+              npm run historical -- --source=elizaos-dev.json --after=${{ inputs.after_date }} --output=./output/elizaos-dev
+            elif [ -n "${{ inputs.before_date }}" ]; then
+              npm run historical -- --source=elizaos-dev.json --before=${{ inputs.before_date }} --output=./output/elizaos-dev
+            else
+              # Default to yesterday if no date inputs provided for manual run
+              npm run historical -- --source=elizaos-dev.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/elizaos-dev
+            fi
+          else
+            # Scheduled run uses yesterday's date
+            npm run historical -- --source=elizaos-dev.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/elizaos-dev
+          fi
         env:
           RUN_ONCE: true
           NODE_ENV: production
-          
-      - name: Handle data files
+          FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }}
+      
+      - name: Encrypt database
+        env:
+          SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
         run: |
-          # Create target directories
-          mkdir -p ./public/elizaos-dev/json
-          mkdir -p ./public/elizaos-dev/md
-          
-          # Copy SQLite database
-          mkdir -p ./public/data
-          cp data/elizaos-dev.sqlite ./public/data/
-          
-          # Copy output files
-          if [ -d "./output/elizaos-dev/json" ] && [ "$(find ./output/elizaos-dev/json -name "*2025-*-*.json" | wc -l)" -gt 0 ]; then
-            # Copy all JSON files
-            cp -r ./output/elizaos-dev/json/* ./public/elizaos-dev/json/
-            
-            # Create daily.json symlink
-            LATEST_JSON=$(find ./output/elizaos-dev/json -name "*2025-*-*.json" | sort -V | tail -n1)
-            LATEST_FILENAME=$(basename "$LATEST_JSON")
-            cp "$LATEST_JSON" ./public/elizaos-dev/json/daily.json
-            echo "Copied $LATEST_JSON to daily.json"
+          if [ -f "data/elizaos-dev.sqlite" ]; then
+            if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
+              echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."
+              exit 1
+            fi
+            echo "Encrypting data/elizaos-dev.sqlite..."
+            openssl enc -aes-256-cbc -salt -pbkdf2 -in data/elizaos-dev.sqlite -out data/elizaos-dev.sqlite.enc -k "$SQLITE_ENCRYPTION_KEY"
+            if [ $? -ne 0 ]; then
+              echo "Error: Encryption failed."
+              exit 1
+            fi
+            echo "Encryption successful."
+            # Remove the original unencrypted file after successful encryption
+            rm data/elizaos-dev.sqlite
           else
-            echo "No JSON files found in ./output/elizaos-dev/json directory"
-            echo '{"status":"no_data","date":"${{ steps.date.outputs.YESTERDAY }}"}' > ./public/elizaos-dev/json/daily.json
+            echo "No elizaos-dev.sqlite found to encrypt."
+          fi
+      
+      - name: Prepare files for deployment
+        run: |
+          # Create the target directory structure within ./public
+          mkdir -p ./public/data
+          mkdir -p ./public/elizaos-dev/summaries # Updated path
+
+          # Copy the encrypted database
+          if [ -f "data/elizaos-dev.sqlite.enc" ]; then
+            echo "Copying encrypted elizaos-dev.sqlite.enc to ./public/data/"
+            cp data/elizaos-dev.sqlite.enc ./public/data/
+          else
+             echo "No encrypted elizaos-dev.sqlite.enc found locally to copy."
           fi
           
-          # Copy Markdown files
-          if [ -d "./output/elizaos-dev/md" ]; then
-            cp -r ./output/elizaos-dev/md/* ./public/elizaos-dev/md/
-          fi
+          echo "Copying summaries to ./public/elizaos-dev/summaries/" # Updated path
+          # Copy summary files (json and md)
+          cp -r output/elizaos-dev/summaries/* ./public/elizaos-dev/summaries/ || echo "No summary files generated or found to copy." # Updated paths
           
+          # Removed old JSON/MD/daily.json logic
+
       - name: Validate JSON files
-        run: find ./public -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
-          
-      # Deploy to gh-pages branch (default) from clean directory
+        run: find ./public/elizaos-dev/summaries -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; } # Updated path
+
       - name: Deploy to gh-pages branch
+        id: deployment # Added ID
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
-          force_orphan: false
           keep_files: true
+          user_name: 'github-actions[bot]' # Added specific user/email
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: "Update ElizaOS Dev data $(date -u +'%Y-%m-%d %H:%M:%S UTC')" # Added specific commit message

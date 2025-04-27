@@ -1,52 +1,71 @@
-name: Run hyperfy Daily Task
+name: Hyperfy Data Processing
+
 on:
   schedule:
     - cron: '30 23 * * *' # Run at 11:30 PM UTC every day
-  workflow_dispatch:  # Keep manual trigger option
+  workflow_dispatch: # Allows manual triggering
+    inputs:
+      after_date:
+        description: 'Start date (YYYY-MM-DD)'
+        required: false
+        type: string
+      before_date:
+        description: 'End date (YYYY-MM-DD)'
+        required: false
+        type: string
+      force_overwrite:
+        description: 'Force overwrite existing data'
+        required: false
+        type: boolean
+        default: false
+
 jobs:
   sqlite-job:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pages: write
-      id-token: write
+      contents: write # Needed for checkout and gh-pages push
+      pages: write      # Needed for gh-pages deployment
+      id-token: write   # Needed for gh-pages deployment
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # Fetch all history so that the last modified date can be determined
+          fetch-depth: 0
 
       # Fetch existing DB from gh-pages branch if it exists
-      - name: Check and fetch database
+      - name: Check and fetch database (hyperfy-discord.sqlite.enc)
         run: |
           mkdir -p data
           
           # Check if gh-pages branch exists
           if git ls-remote --heads origin gh-pages | grep -q gh-pages; then
             echo "gh-pages branch exists, fetching database"
-            git fetch origin gh-pages:gh-pages || true
+            git fetch origin gh-pages:gh-pages --depth=1 || true
             
-            # Check if sqlite db exists in the branch
-            if git ls-tree -r --name-only gh-pages | grep -q "data/hyperfy-discord.sqlite"; then
-              git show gh-pages:data/hyperfy-discord.sqlite > data/hyperfy-discord.sqlite
-              echo "Restored database from gh-pages branch"
+            # Check if encrypted sqlite db exists in the branch
+            if git ls-tree -r --name-only gh-pages | grep -q "data/hyperfy-discord.sqlite.enc"; then
+              echo "Restoring encrypted hyperfy-discord.sqlite.enc from gh-pages branch"
+              git show gh-pages:data/hyperfy-discord.sqlite.enc > data/hyperfy-discord.sqlite.enc
             else
-              echo "No existing database found in gh-pages branch"
+              echo "No existing hyperfy-discord.sqlite.enc found in gh-pages branch"
             fi
           else
             echo "gh-pages branch does not exist yet, will be created on first deployment"
           fi
       
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4 # Updated version
         with:
           node-version: '23'
           
       - name: Process secrets securely
         run: |
-          echo '${{ secrets.HYPERFY_SECRETS }}' > env_secrets.json
+          echo '${{ secrets.ENV_SECRETS }}' > env_secrets.json # Using ENV_SECRETS, adjust if needed
           chmod 600 env_secrets.json
           
           # Mask values
@@ -76,54 +95,116 @@ jobs:
       - name: Install dependencies
         run: npm install
       
+      - name: Decrypt database (if exists)
+        env:
+          SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
+        run: |
+          if [ -f "data/hyperfy-discord.sqlite.enc" ]; then
+            if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
+              echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."
+              exit 1
+            fi
+            echo "Decrypting data/hyperfy-discord.sqlite.enc..."
+            openssl enc -d -aes-256-cbc -pbkdf2 -in data/hyperfy-discord.sqlite.enc -out data/hyperfy-discord.sqlite -k "$SQLITE_ENCRYPTION_KEY"
+            if [ $? -ne 0 ]; then
+              echo "Error: Decryption failed. Check the encryption key or file integrity."
+              exit 1
+            fi
+            echo "Decryption successful."
+
+            # Check database integrity
+            echo "Checking database integrity..."
+            if command -v sqlite3 &> /dev/null; then
+              sqlite3 data/hyperfy-discord.sqlite "PRAGMA integrity_check;"
+              if [ $? -ne 0 ]; then
+                echo "Error: Database integrity check failed! The decrypted file might be corrupted."
+                exit 1 # Exit if integrity check fails
+              else
+                 echo "Database integrity check passed."
+              fi
+            else
+              echo "Warning: sqlite3 command not found. Skipping integrity check."
+            fi
+            # rm data/hyperfy-discord.sqlite.enc
+          else
+            echo "No encrypted database found to decrypt."
+          fi
+      
       - name: Get yesterday's date
         id: date
         run: echo "YESTERDAY=$(date -d "yesterday" +'%Y-%m-%d')" >> $GITHUB_OUTPUT
         
-      - name: Run historical with yesterday's date
-        run: npm run historical -- --source=hyperfy-discord.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/hyperfy
+      - name: Run historical generation
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ inputs.after_date }}" ] && [ -n "${{ inputs.before_date }}" ]; then
+              npm run historical -- --source=hyperfy-discord.json --after=${{ inputs.after_date }} --before=${{ inputs.before_date }} --output=./output/hyperfy
+            elif [ -n "${{ inputs.after_date }}" ]; then
+              npm run historical -- --source=hyperfy-discord.json --after=${{ inputs.after_date }} --output=./output/hyperfy
+            elif [ -n "${{ inputs.before_date }}" ]; then
+              npm run historical -- --source=hyperfy-discord.json --before=${{ inputs.before_date }} --output=./output/hyperfy
+            else
+              # Default to yesterday if no date inputs provided for manual run
+              npm run historical -- --source=hyperfy-discord.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/hyperfy
+            fi
+          else
+            # Scheduled run uses yesterday's date
+            npm run historical -- --source=hyperfy-discord.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/hyperfy
+          fi
         env:
           RUN_ONCE: true
           NODE_ENV: production
-          
-      - name: Handle data files
+          FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }}
+
+      - name: Encrypt database
+        env:
+          SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
+        run: |
+          if [ -f "data/hyperfy-discord.sqlite" ]; then
+            if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
+              echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."
+              exit 1
+            fi
+            echo "Encrypting data/hyperfy-discord.sqlite..."
+            openssl enc -aes-256-cbc -salt -pbkdf2 -in data/hyperfy-discord.sqlite -out data/hyperfy-discord.sqlite.enc -k "$SQLITE_ENCRYPTION_KEY"
+            if [ $? -ne 0 ]; then
+              echo "Error: Encryption failed."
+              exit 1
+            fi
+            echo "Encryption successful."
+            rm data/hyperfy-discord.sqlite # Remove original
+          else
+            echo "No hyperfy-discord.sqlite found to encrypt."
+          fi
+
+      - name: Prepare files for deployment
         run: |
           # Create target directories
-          mkdir -p ./public/hyperfy/json
-          mkdir -p ./public/hyperfy/md
-          
-          # Copy SQLite database
           mkdir -p ./public/data
-          cp data/hyperfy-discord.sqlite ./public/data/
-          
-          # Copy output files
-          if [ -d "./output/hyperfy/json" ] && [ "$(find ./output/hyperfy/json -name "*2025-*-*.json" | wc -l)" -gt 0 ]; then
-            # Copy all JSON files
-            cp -r ./output/hyperfy/json/* ./public/hyperfy/json/
-            
-            # Create daily.json symlink
-            LATEST_JSON=$(find ./output/hyperfy/json -name "*2025-*-*.json" | sort -V | tail -n1)
-            LATEST_FILENAME=$(basename "$LATEST_JSON")
-            cp "$LATEST_JSON" ./public/hyperfy/json/daily.json
-            echo "Copied $LATEST_JSON to daily.json"
+          mkdir -p ./public/hyperfy/summaries # Updated path
+
+          # Copy encrypted SQLite database
+          if [ -f "data/hyperfy-discord.sqlite.enc" ]; then
+            echo "Copying encrypted hyperfy-discord.sqlite.enc to ./public/data/"
+            cp data/hyperfy-discord.sqlite.enc ./public/data/
           else
-            echo "No JSON files found in ./output/hyperfy/json directory"
-            echo '{"status":"no_data","date":"${{ steps.date.outputs.YESTERDAY }}"}' > ./public/hyperfy/json/daily.json
+             echo "No encrypted hyperfy-discord.sqlite.enc found to copy."
           fi
-          
-          # Copy Markdown files
-          if [ -d "./output/hyperfy/md" ]; then
-            cp -r ./output/hyperfy/md/* ./public/hyperfy/md/
-          fi
-          
+
+          # Copy summary files
+          echo "Copying summaries to ./public/hyperfy/summaries/" # Updated path
+          cp -r output/hyperfy/summaries/* ./public/hyperfy/summaries/ || echo "No summary files generated or found to copy." # Updated paths
+
       - name: Validate JSON files
-        run: find ./public -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
-          
-      # Deploy to gh-pages branch (default) from clean directory
+        run: find ./public/hyperfy/summaries -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; } # Updated path
+
       - name: Deploy to gh-pages branch
+        id: deployment # Added ID
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
-          force_orphan: false
           keep_files: true
+          user_name: 'github-actions[bot]' # Added specific user/email
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: "Update Hyperfy data $(date -u +'%Y-%m-%d %H:%M:%S UTC')" # Added specific commit message
