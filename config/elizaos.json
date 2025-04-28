@@ -15,20 +15,12 @@
         }
       },
       {
-        "type": "DiscordAnnouncementSource",
-        "name": "discordAnnouncement",
-        "interval": 3600000,
-        "params": {
-          "botToken": "process.env.DISCORD_TOKEN",
-          "channelIds": ["1299473809166045357"]
-        }
-      },
-      {
         "type": "DiscordRawDataSource",
         "name": "discordAnnouncementRaw",
         "interval": 3600000,
         "params": {
           "botToken": "process.env.DISCORD_TOKEN",
+          "guildId": "process.env.DISCORD_GUILD_ID",
           "channelIds": ["1299473809166045357"],
           "storage": "SQLiteStorage"
         }
@@ -80,16 +72,7 @@
           }
         }
     ],
-    "enrichers": [
-        {
-          "type": "AiTopicsEnricher",
-          "name": "topicEnricher",
-          "params": {
-            "provider": "miniOpenAiProvider",
-            "thresholdLength": 30
-          }
-        }
-    ],
+    "enrichers": [],
     "storage": [
         {
             "type": "SQLiteStorage",
@@ -106,20 +89,19 @@
           "interval": 3600000,
           "params": {
             "storage": "SQLiteStorage",
-            "source": "discordAnnouncementRaw",
+            "source": "discordRawData",
             "outputPath": "./output/elizaos/announcements"
           }
         },
         {
           "type": "DailySummaryGenerator",
-          "name": "DailySummaryGenerator",
+          "name": "ElizaOSDailySummary",
           "interval": 3600000,
           "params": {
             "provider": "summaryOpenAiProvider",
             "storage": "SQLiteStorage",
-            "summaryType": "dailySummary",
-            "source": "aiSummary",
-            "outputPath": "./output/elizaos"
+            "summaryType": "elizaosDailySummary",
+            "outputPath": "./output/elizaos/summaries"
           }
         }
     ]

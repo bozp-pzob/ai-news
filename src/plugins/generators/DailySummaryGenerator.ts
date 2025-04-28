@@ -25,7 +25,7 @@ interface DailySummaryGeneratorConfig {
   provider: OpenAIProvider;
   storage: SQLiteStorage;
   summaryType: string;
-  source: string;
+  source?: string;
   outputPath?: string;
 }
 
@@ -40,8 +40,8 @@ export class DailySummaryGenerator {
   private storage: SQLiteStorage;
   /** Type of summary being generated */
   private summaryType: string;
-  /** Source identifier for the summaries */
-  private source: string;
+  /** Source identifier for the summaries (optional) */
+  private source: string | undefined;
   /** List of topics to exclude from summaries */
   private blockedTopics: string[] = ['open source'];
   /** Path for output files */
@@ -68,7 +68,16 @@ export class DailySummaryGenerator {
     try {
       const currentTime = new Date(dateStr).getTime() / 1000;
       const targetTime = currentTime + (60 * 60 * 24);
-      const contentItems: ContentItem[] = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime, this.summaryType);
+      
+      // Fetch items based on whether a specific source type was configured
+      let contentItems: ContentItem[];
+      if (this.source) {
+        console.log(`Fetching content for type: ${this.source}`);
+        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime, this.source);
+      } else {
+        console.log(`Fetching all content types for summary generation.`);
+        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime); // Fetch all types
+      }
 
       if (contentItems.length === 0) {
         console.warn(`No content found for date ${dateStr} to generate summary.`);
