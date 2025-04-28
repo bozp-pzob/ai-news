@@ -201,7 +201,7 @@ jobs:
           cp -r output/elizaos-dev/summaries/* ./public/elizaos/dev/ || echo "No summary files generated or found to copy." # Updated paths
 
           # Create daily.json
-          JSON_FILE="output/elizaos-dev/summaries/${YESTERDAY}-summary.json"
+          JSON_FILE="output/elizaos-dev/summaries/${YESTERDAY}.json"
           if [ -f "$JSON_FILE" ]; then
             echo "Copying $JSON_FILE to ./public/elizaos/dev/daily.json"
             cp "$JSON_FILE" ./public/elizaos/dev/daily.json
@@ -210,7 +210,7 @@ jobs:
           fi
           
           # Create daily.md
-          MD_FILE="output/elizaos-dev/summaries/${YESTERDAY}-summary.md"
+          MD_FILE="output/elizaos-dev/summaries/${YESTERDAY}.md"
           if [ -f "$MD_FILE" ]; then
             echo "Copying $MD_FILE to ./public/elizaos/dev/daily.md"
             cp "$MD_FILE" ./public/elizaos/dev/daily.md

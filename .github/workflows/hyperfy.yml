@@ -200,7 +200,7 @@ jobs:
           cp -r output/hyperfy/summaries/* ./public/hyperfy/ || echo "No summary files generated or found to copy." # Updated paths
 
           # Create daily.json
-          JSON_FILE="output/hyperfy/summaries/${YESTERDAY}-summary.json"
+          JSON_FILE="output/hyperfy/summaries/${YESTERDAY}.json"
           if [ -f "$JSON_FILE" ]; then
             echo "Copying $JSON_FILE to ./public/hyperfy/daily.json"
             cp "$JSON_FILE" ./public/hyperfy/daily.json
@@ -209,7 +209,7 @@ jobs:
           fi
           
           # Create daily.md
-          MD_FILE="output/hyperfy/summaries/${YESTERDAY}-summary.md"
+          MD_FILE="output/hyperfy/summaries/${YESTERDAY}.md"
           if [ -f "$MD_FILE" ]; then
             echo "Copying $MD_FILE to ./public/hyperfy/daily.md"
             cp "$MD_FILE" ./public/hyperfy/daily.md

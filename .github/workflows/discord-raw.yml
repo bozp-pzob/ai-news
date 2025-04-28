@@ -197,7 +197,7 @@ jobs:
           cp -r output/discord/summaries/* ./public/elizaos/discord/ || echo "No summary files generated or found to copy."
 
           # Create daily.json
-          JSON_FILE="output/discord/summaries/${YESTERDAY}-summary.json"
+          JSON_FILE="output/discord/summaries/${YESTERDAY}.json"
           if [ -f "$JSON_FILE" ]; then
             echo "Copying $JSON_FILE to ./public/elizaos/discord/daily.json"
             cp "$JSON_FILE" ./public/elizaos/discord/daily.json
@@ -206,7 +206,7 @@ jobs:
           fi
           
           # Create daily.md
-          MD_FILE="output/discord/summaries/${YESTERDAY}-summary.md"
+          MD_FILE="output/discord/summaries/${YESTERDAY}.md"
           if [ -f "$MD_FILE" ]; then
             echo "Copying $MD_FILE to ./public/elizaos/discord/daily.md"
             cp "$MD_FILE" ./public/elizaos/discord/daily.md
