@@ -7,6 +7,7 @@ import { OpenAIProvider } from "../ai/OpenAIProvider";
 import { SQLiteStorage } from "../storage/SQLiteStorage";
 import { ContentItem, SummaryItem } from "../../types";
 import { createJSONPromptForTopics, createMarkdownPromptForJSON } from "../../helpers/promptHelper";
+import { retryOperation } from "../../helpers/generalHelper";
 import fs from "fs";
 import path from "path";
 
@@ -97,7 +98,7 @@ export class DailySummaryGenerator {
           if (!topic || !objects || objects.length <= 0 || maxTopicsToSummarize >= 10) continue;
 
           const prompt = createJSONPromptForTopics(topic, objects, dateStr);
-          const summaryText = await this.provider.summarize(prompt);
+          const summaryText = await retryOperation(() => this.provider.summarize(prompt));
           const summaryJSONString = summaryText.replace(/```json\n|```/g, "");
           let summaryJSON = JSON.parse(summaryJSONString);
           summaryJSON["topic"] = topic;
@@ -111,7 +112,7 @@ export class DailySummaryGenerator {
       }
 
       const mdPrompt = createMarkdownPromptForJSON(allSummaries, dateStr);
-      const markdownReport = await this.provider.summarize(mdPrompt);
+      const markdownReport = await retryOperation(() => this.provider.summarize(mdPrompt));
       const markdownString = markdownReport.replace(/```markdown\n|```/g, "");
 
       const summaryItem: SummaryItem = {

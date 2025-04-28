@@ -240,7 +240,8 @@ export class SQLiteStorage implements StoragePlugin {
         [item.type, item.date]
       );
 
-      const dateStr = new Date(item.date).toISOString();
+      // Use epoch seconds * 1000 for correct Date object creation
+      const dateStr = new Date(item.date * 1000).toISOString(); 
 
       if (existing) {
         // Update existing summary
@@ -277,7 +278,8 @@ export class SQLiteStorage implements StoragePlugin {
         console.log(`Saved new summary for ${item.type} on date ${dateStr}`);
       }
     } catch (error) {
-      console.error(`Error saving summary for ${item.type} on date ${new Date(item.date).toISOString()}:`, error);
+      // Use epoch seconds * 1000 for correct Date object creation in error message
+      console.error(`Error saving summary for ${item.type} on date ${new Date(item.date * 1000).toISOString()}:`, error); 
       throw error;
     }
   }
