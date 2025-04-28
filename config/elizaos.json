@@ -4,6 +4,17 @@
     },
     "sources": [
       {
+        "type": "TwitterSource",
+        "name": "twitter",
+        "interval": 1800000,
+        "params": {
+          "username": "process.env.TWITTER_USERNAME",
+          "password": "process.env.TWITTER_PASSWORD",
+          "email": "process.env.TWITTER_EMAIL",
+          "accounts": ["dankvr", "elizaos", "shawmakesmagic", "autodotfun"]
+        }
+      },
+      {
         "type": "DiscordAnnouncementSource",
         "name": "discordAnnouncement",
         "interval": 3600000,
