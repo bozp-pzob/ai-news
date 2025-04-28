@@ -181,6 +181,8 @@ jobs:
 
       - name: Prepare files for deployment
         run: |
+          YESTERDAY=${{ steps.date.outputs.YESTERDAY }}
+          
           # Create target directories
           mkdir -p ./public/data
           mkdir -p ./public/hyperfy
@@ -196,6 +198,24 @@ jobs:
           # Copy summary files
           echo "Copying summaries to ./public/hyperfy/" # Updated path
           cp -r output/hyperfy/summaries/* ./public/hyperfy/ || echo "No summary files generated or found to copy." # Updated paths
+
+          # Create daily.json
+          JSON_FILE="output/hyperfy/summaries/${YESTERDAY}-summary.json"
+          if [ -f "$JSON_FILE" ]; then
+            echo "Copying $JSON_FILE to ./public/hyperfy/daily.json"
+            cp "$JSON_FILE" ./public/hyperfy/daily.json
+          else
+            echo "Warning: Yesterday's JSON summary ($JSON_FILE) not found. Cannot create daily.json."
+          fi
+          
+          # Create daily.md
+          MD_FILE="output/hyperfy/summaries/${YESTERDAY}-summary.md"
+          if [ -f "$MD_FILE" ]; then
+            echo "Copying $MD_FILE to ./public/hyperfy/daily.md"
+            cp "$MD_FILE" ./public/hyperfy/daily.md
+          else
+            echo "Warning: Yesterday's MD summary ($MD_FILE) not found. Cannot create daily.md."
+          fi
 
       - name: Validate JSON files
         run: find ./public/hyperfy -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; } # Updated path

@@ -178,6 +178,8 @@ jobs:
 
       - name: Prepare files for deployment
         run: |
+          YESTERDAY=${{ steps.date.outputs.YESTERDAY }}
+          
           # Create the target directory structure within ./public
           mkdir -p ./public/data
           mkdir -p ./public/elizaos/discord
@@ -189,10 +191,28 @@ jobs:
           else
              echo "No encrypted discord-raw.sqlite.enc found locally to copy."
           fi
-          
+
           echo "Copying summaries to ./public/elizaos/discord"
-          # Copy summary files (json and md)
+          # Copy all summary files (json and md)
           cp -r output/discord/summaries/* ./public/elizaos/discord/ || echo "No summary files generated or found to copy."
+
+          # Create daily.json
+          JSON_FILE="output/discord/summaries/${YESTERDAY}-summary.json"
+          if [ -f "$JSON_FILE" ]; then
+            echo "Copying $JSON_FILE to ./public/elizaos/discord/daily.json"
+            cp "$JSON_FILE" ./public/elizaos/discord/daily.json
+          else
+            echo "Warning: Yesterday's JSON summary ($JSON_FILE) not found. Cannot create daily.json."
+          fi
+          
+          # Create daily.md
+          MD_FILE="output/discord/summaries/${YESTERDAY}-summary.md"
+          if [ -f "$MD_FILE" ]; then
+            echo "Copying $MD_FILE to ./public/elizaos/discord/daily.md"
+            cp "$MD_FILE" ./public/elizaos/discord/daily.md
+          else
+            echo "Warning: Yesterday's MD summary ($MD_FILE) not found. Cannot create daily.md."
+          fi
 
       - name: Validate JSON files
         run: find ./public/elizaos/discord -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
