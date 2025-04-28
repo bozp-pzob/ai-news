@@ -1,4 +1,4 @@
-name: Discord Raw Data Processing
+name: ElizaOS DAO Discord
 
 on:
   schedule:

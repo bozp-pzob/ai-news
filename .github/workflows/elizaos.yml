@@ -1,4 +1,4 @@
-name: Run ElizaOS Daily Task
+name: ElizaOS Daily Summary
 on:
   schedule:
     - cron: '0 0 * * *' # Run at midnight UTC every day
@@ -135,12 +135,12 @@ jobs:
 
           # Copy generated summary files
           echo "Copying JSON summaries to ./public/elizaos/json/"
-          cp -r output/elizaos/summaries/*.json ./public/elizaos/json/ || echo "No JSON summary files generated or found to copy."
+          cp -r output/elizaos/json/*.json ./public/elizaos/json/ || echo "No JSON summary files generated or found to copy."
           echo "Copying MD summaries to ./public/elizaos/md/"
-          cp -r output/elizaos/summaries/*.md ./public/elizaos/md/ || echo "No MD summary files generated or found to copy."
+          cp -r output/elizaos/md/*.md ./public/elizaos/md/ || echo "No MD summary files generated or found to copy."
 
           # Create daily.json from yesterday's summary
-          JSON_FILE="output/elizaos/summaries/${YESTERDAY}.json"
+          JSON_FILE="output/elizaos/json/${YESTERDAY}.json"
           if [ -f "$JSON_FILE" ]; then
             echo "Copying $JSON_FILE to ./public/elizaos/json/daily.json"
             cp "$JSON_FILE" ./public/elizaos/json/daily.json
@@ -149,7 +149,7 @@ jobs:
           fi
 
           # Create daily.md from yesterday's summary
-          MD_FILE="output/elizaos/summaries/${YESTERDAY}.md"
+          MD_FILE="output/elizaos/md/${YESTERDAY}.md"
           if [ -f "$MD_FILE" ]; then
             echo "Copying $MD_FILE to ./public/elizaos/md/daily.md"
             cp "$MD_FILE" ./public/elizaos/md/daily.md

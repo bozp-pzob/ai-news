@@ -1,4 +1,4 @@
-name: Hyperfy Data Processing
+name: Hyperfy Daily Summary
 
 on:
   schedule:
