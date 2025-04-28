@@ -15,17 +15,6 @@
         }
       },
       {
-        "type": "DiscordRawDataSource",
-        "name": "discordAnnouncementRaw",
-        "interval": 3600000,
-        "params": {
-          "botToken": "process.env.DISCORD_TOKEN",
-          "guildId": "process.env.DISCORD_GUILD_ID",
-          "channelIds": ["1299473809166045357"],
-          "storage": "SQLiteStorage"
-        }
-      },
-      {
         "type": "GitHubStatsDataSource",
         "name": "elizaGithubStats",
         "interval": 21600000,
