@@ -84,16 +84,6 @@
     ],
     "generators": [
         {
-          "type": "RawDataExporter",
-          "name": "DiscordAnnouncementRawExporter",
-          "interval": 3600000,
-          "params": {
-            "storage": "SQLiteStorage",
-            "source": "discordRawData",
-            "outputPath": "./output/elizaos/announcements"
-          }
-        },
-        {
           "type": "DailySummaryGenerator",
           "name": "ElizaOSDailySummary",
           "interval": 3600000,
