@@ -183,7 +183,7 @@ jobs:
         run: |
           # Create target directories
           mkdir -p ./public/data
-          mkdir -p ./public/hyperfy/summaries # Updated path
+          mkdir -p ./public/hyperfy
 
           # Copy encrypted SQLite database
           if [ -f "data/hyperfy-discord.sqlite.enc" ]; then
@@ -194,11 +194,11 @@ jobs:
           fi
 
           # Copy summary files
-          echo "Copying summaries to ./public/hyperfy/summaries/" # Updated path
-          cp -r output/hyperfy/summaries/* ./public/hyperfy/summaries/ || echo "No summary files generated or found to copy." # Updated paths
+          echo "Copying summaries to ./public/hyperfy/" # Updated path
+          cp -r output/hyperfy/summaries/* ./public/hyperfy/ || echo "No summary files generated or found to copy." # Updated paths
 
       - name: Validate JSON files
-        run: find ./public/hyperfy/summaries -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; } # Updated path
+        run: find ./public/hyperfy -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; } # Updated path
 
       - name: Get current timestamp for commit message
         id: commit_time

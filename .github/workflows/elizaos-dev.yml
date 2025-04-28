@@ -184,7 +184,7 @@ jobs:
         run: |
           # Create the target directory structure within ./public
           mkdir -p ./public/data
-          mkdir -p ./public/elizaos-dev/summaries
+          mkdir -p ./public/elizaos/dev
 
           # Copy the encrypted database
           if [ -f "data/elizaos-dev.sqlite.enc" ]; then
@@ -194,14 +194,14 @@ jobs:
              echo "No encrypted elizaos-dev.sqlite.enc found locally to copy."
           fi
           
-          echo "Copying summaries to ./public/elizaos-dev/summaries/" # Updated path
+          echo "Copying summaries to ./public/elizaos/dev/" # Updated path
           # Copy summary files (json and md)
-          cp -r output/elizaos-dev/summaries/* ./public/elizaos-dev/summaries/ || echo "No summary files generated or found to copy." # Updated paths
+          cp -r output/elizaos-dev/summaries/* ./public/elizaos/dev/ || echo "No summary files generated or found to copy." # Updated paths
           
           # Removed old JSON/MD/daily.json logic
 
       - name: Validate JSON files
-        run: find ./public/elizaos-dev/summaries -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; } # Updated path
+        run: find ./public/elizaos/dev -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; } # Updated path
 
       - name: Get current timestamp for commit message
         id: commit_time

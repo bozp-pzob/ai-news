@@ -180,7 +180,7 @@ jobs:
         run: |
           # Create the target directory structure within ./public
           mkdir -p ./public/data
-          mkdir -p ./public/elizaos/discord/summaries
+          mkdir -p ./public/elizaos/discord
 
           # Copy the encrypted database
           if [ -f "data/discord-raw.sqlite.enc" ]; then
@@ -190,12 +190,12 @@ jobs:
              echo "No encrypted discord-raw.sqlite.enc found locally to copy."
           fi
           
-          echo "Copying summaries to ./public/elizaos/discord/summaries/"
+          echo "Copying summaries to ./public/elizaos/discord"
           # Copy summary files (json and md)
-          cp -r output/discord/summaries/* ./public/elizaos/discord/summaries/ || echo "No summary files generated or found to copy."
+          cp -r output/discord/summaries/* ./public/elizaos/discord/ || echo "No summary files generated or found to copy."
 
       - name: Validate JSON files
-        run: find ./public/elizaos/discord/summaries -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
+        run: find ./public/elizaos/discord -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
 
       - name: Get current timestamp for commit message
         id: commit_time
