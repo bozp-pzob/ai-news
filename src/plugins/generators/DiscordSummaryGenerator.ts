@@ -577,8 +577,8 @@ Return the analysis in the specified structured format with numbered sections (1
       
       // Write files
       logger.info(`Writing combined summary files to ${this.outputPath}`);
-      await writeFile(this.outputPath, `${dateStr}-summary`, JSON.stringify(jsonData, null, 2), 'json');
-      await writeFile(this.outputPath, `${dateStr}-summary`, finalMarkdown, 'md');
+      await writeFile(this.outputPath, `${dateStr}`, JSON.stringify(jsonData, null, 2), 'json');
+      await writeFile(this.outputPath, `${dateStr}`, finalMarkdown, 'md');
       
       // Save to database summary table
       logger.info(`Saving combined summary to database`);

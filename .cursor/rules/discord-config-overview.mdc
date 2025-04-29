@@ -1,0 +1,30 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Discord Raw Configuration Overview
+
+This configuration file, `[config/discord-raw.json](mdc:config/discord-raw.json)`, defines the pipeline for fetching, processing, and summarizing data from Discord.
+
+## Key Components:
+
+*   **Data Sources:**
+    *   `DiscordRawDataSource` (`discordRaw`): Fetches raw message data from specified Discord channels listed in `params.channelIds`. Configured with an interval. Bot token and Guild ID are sourced from environment variables.
+    *   `DiscordChannelSource` (`discordChannel`): Fetches processed channel information using the specified AI provider (`openAiProvider`). Also uses channel IDs and environment variables.
+*   **AI Provider:**
+    *   `OpenAIProvider` (`openAiProvider`): Handles interactions with an AI model (specified as `anthropic/claude-3.7-sonnet` via OpenRouter). API key, site URL, and site name are sourced from environment variables (`process.env.OPENAI_API_KEY`, `process.env.SITE_URL`, `process.env.SITE_NAME`).
+*   **Enrichers:**
+    *   `AiTopicsEnricher` (`topicEnricher`): Uses the `openAiProvider` to enrich data (e.g., identify topics) for messages exceeding a `thresholdLength`.
+*   **Storage:**
+    *   `SQLiteStorage` (`SQLiteStorage`): Stores data in a SQLite database defined by `params.dbPath` (`data/discord-raw.sqlite`).
+*   **Generators:**
+    *   `DailySummaryGenerator` (`RawDataGenerator`): Generates daily summaries of type `discord-raw` from the `discordRaw` source, using the AI provider and storing output in `params.outputPath` (`./output/discord/raw`). Runs at a defined interval.
+    *   `DiscordSummaryGenerator` (`DiscordSummaryGenerator`): Generates summaries of type `discordChannelSummary` from the `discordChannel` source, using the AI provider and storing output in `params.outputPath` (`./output/discord/summaries`). Also runs at a defined interval.
+
+## Settings:
+
+*   The pipeline can be set to run only once using `"settings": { "runOnce": true }`.
+*   Intervals for sources and generators are specified in milliseconds.
+*   Crucial configurations like API keys, tokens, and specific IDs rely on environment variables (e.g., `process.env.DISCORD_TOKEN`, `process.env.OPENAI_API_KEY`).
+
