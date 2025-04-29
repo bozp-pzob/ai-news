@@ -1,10 +1,41 @@
 // src/plugins/storage/UnifiedStorage.ts
 
 import { StoragePlugin } from "./StoragePlugin"; // a small interface if you like
-import { open, Database } from "sqlite";
-import sqlite3 from "sqlite3";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { eq, and, gte, lte, ne } from "drizzle-orm";
 import { ContentItem, SummaryItem, StorageConfig } from "../../types";
 import { logger } from "../../helpers/cliHelper";
+
+// Define schema for Drizzle
+const itemsTable = sqliteTable('items', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  cid: text('cid'),
+  type: text('type').notNull(),
+  source: text('source').notNull(),
+  title: text('title'),
+  text: text('text'),
+  link: text('link'),
+  topics: text('topics'),
+  date: integer('date'),
+  metadata: text('metadata')
+});
+
+const summaryTable = sqliteTable('summary', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  type: text('type').notNull(),
+  title: text('title'),
+  categories: text('categories'),
+  markdown: text('markdown'),
+  date: integer('date')
+});
+
+const cursorTable = sqliteTable('cursor', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  cid: text('cid').notNull().unique(),
+  message_id: text('message_id').notNull()
+});
 
 /**
  * SQLiteStorage class implements the StoragePlugin interface for persistent storage
@@ -13,7 +44,8 @@ import { logger } from "../../helpers/cliHelper";
  */
 export class SQLiteStorage implements StoragePlugin {
   public name: string;
-  private db: Database<sqlite3.Database, sqlite3.Statement> | null = null;
+  private db: ReturnType<typeof drizzle> | null = null;
+  private client: ReturnType<typeof createClient> | null = null;
   private dbPath: string;
 
   /**
@@ -31,10 +63,16 @@ export class SQLiteStorage implements StoragePlugin {
    * @returns Promise<void>
    */
   public async init(): Promise<void> {
-    this.db = await open({ filename: this.dbPath, driver: sqlite3.Database });
+    // Create LibSQL client
+    this.client = createClient({
+      url: `file:${this.dbPath}`
+    });
+    
+    // Create Drizzle ORM instance
+    this.db = drizzle(this.client);
 
     // Create the items table if it doesn't exist
-    await this.db.exec(`
+    await this.client.execute(`
       CREATE TABLE IF NOT EXISTS items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         cid TEXT,
@@ -49,7 +87,7 @@ export class SQLiteStorage implements StoragePlugin {
       );
     `);
 
-    await this.db.exec(`
+    await this.client.execute(`
       CREATE TABLE IF NOT EXISTS summary (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         type TEXT NOT NULL,
@@ -60,7 +98,7 @@ export class SQLiteStorage implements StoragePlugin {
       );
     `);
 
-    await this.db.exec(`
+    await this.client.execute(`
       CREATE TABLE IF NOT EXISTS cursor (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         cid TEXT NOT NULL UNIQUE,
@@ -75,8 +113,8 @@ export class SQLiteStorage implements StoragePlugin {
    * @returns Promise<void>
    */
   public async close(): Promise<void> {
-    if (this.db) {
-      await this.db.close()
+    if (this.client) {
+      await this.client.close();
     }
   }
 
@@ -90,20 +128,13 @@ export class SQLiteStorage implements StoragePlugin {
    */
   public async saveContentItems(items: ContentItem[]): Promise<ContentItem[]> {
     const operation = "saveContentItems";
-    if (!this.db) {
+    if (!this.db || !this.client) {
       throw new Error("Database not initialized. Call init() first.");
     }
     logger.debug(`[SQLiteStorage:${operation}] Starting transaction for ${items.length} items.`);
 
-    const updateStmt = await this.db.prepare(
-      `UPDATE items SET metadata = ? WHERE cid = ?`
-    );
-    const insertStmt = await this.db.prepare(
-      `INSERT INTO items (type, source, cid, title, text, link, topics, date, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    );
-
     try {
-      await this.db.run("BEGIN TRANSACTION");
+      await this.client.execute({ sql: "BEGIN TRANSACTION", args: [] });
       logger.debug(`[SQLiteStorage:${operation}] Transaction started.`);
 
       for (const item of items) {
@@ -118,69 +149,83 @@ export class SQLiteStorage implements StoragePlugin {
         if (!item.cid) {
            // Log BEFORE run
            logger.debug(`[SQLiteStorage:${operation}] Preparing to INSERT item without CID: ${itemLogInfo}`);
-           const result = await insertStmt.run(
-                item.type,
-                item.source,
-                null,
-                item.title,
-                item.text,
-                item.link,
-                item.topics ? JSON.stringify(item.topics) : null,
-                item.date, // Ensure date is valid number
-                item.metadata ? JSON.stringify(item.metadata) : null
-           );
-           item.id = result.lastID || undefined;
+           
+           const result = await this.client.execute({
+             sql: `INSERT INTO items (type, source, cid, title, text, link, topics, date, metadata) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             args: [
+               item.type,
+               item.source,
+               null,
+               item.title,
+               item.text,
+               item.link,
+               item.topics ? JSON.stringify(item.topics) : null,
+               item.date, // Ensure date is valid number
+               item.metadata ? JSON.stringify(item.metadata) : null
+             ]
+           });
+           
+           item.id = Number(result.lastInsertRowid) || undefined;
            logger.debug(`[SQLiteStorage:${operation}] Inserted new item without CID, assigned ID: ${item.id}`);
            continue;
         }
 
-        const existingRow = await this.db.get<{ id: number }>(
-          `SELECT id FROM items WHERE cid = ?`,
-          [item.cid]
-        );
+        const existingRow = await this.client.execute({
+          sql: `SELECT id FROM items WHERE cid = ?`,
+          args: [item.cid]
+        });
 
-        if (existingRow) {
+        if (existingRow.rows.length > 0) {
            // Log BEFORE run
            logger.debug(`[SQLiteStorage:${operation}] Preparing to UPDATE item: ${itemLogInfo}`);
-           await updateStmt.run(
-                item.metadata ? JSON.stringify(item.metadata) : null,
-                // Potentially add item.topics update here if needed:
-                // item.topics ? JSON.stringify(item.topics) : null,
-                item.cid
-           );
-           item.id = existingRow.id;
+           
+           await this.client.execute({
+             sql: `UPDATE items SET metadata = ? WHERE cid = ?`,
+             args: [
+               item.metadata ? JSON.stringify(item.metadata) : null,
+               item.cid
+             ]
+           });
+           
+           item.id = Number(existingRow.rows[0].id);
            logger.debug(`[SQLiteStorage:${operation}] Updated existing item with CID: ${item.cid} (DB ID: ${item.id})`);
         } else {
            // Log BEFORE run
            logger.debug(`[SQLiteStorage:${operation}] Preparing to INSERT item: ${itemLogInfo}`);
+           
            const metadataStr = item.metadata ? JSON.stringify(item.metadata) : null;
            const topicStr = item.topics ? JSON.stringify(item.topics) : null;
-           const result = await insertStmt.run(
-                 item.type,
-                 item.source,
-                 item.cid,
-                 item.title,
-                 item.text,
-                 item.link,
-                 topicStr,
-                 item.date, // Ensure date is valid number
-                 metadataStr
-           );
-           item.id = result.lastID || undefined;
+           
+           const result = await this.client.execute({
+             sql: `INSERT INTO items (type, source, cid, title, text, link, topics, date, metadata) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             args: [
+               item.type,
+               item.source,
+               item.cid,
+               item.title,
+               item.text,
+               item.link,
+               topicStr,
+               item.date, // Ensure date is valid number
+               metadataStr
+             ]
+           });
+           
+           item.id = Number(result.lastInsertRowid) || undefined;
            logger.debug(`[SQLiteStorage:${operation}] Inserted new item with CID: ${item.cid}, assigned ID: ${item.id}`);
         }
       }
 
-      await this.db.run("COMMIT");
+      await this.client.execute({ sql: "COMMIT", args: [] });
       logger.debug(`[SQLiteStorage:${operation}] Transaction committed successfully for ${items.length} items.`);
     } catch (error) {
       logger.error(`[SQLiteStorage:${operation}] Transaction failed: ${error instanceof Error ? error.message : String(error)}. Rolling back.`);
-      await this.db.run("ROLLBACK");
+      await this.client.execute({ sql: "ROLLBACK", args: [] });
       throw error;
-    } finally {
-      await updateStmt.finalize();
-      await insertStmt.finalize();
     }
+    
     return items;
   }
 
@@ -195,23 +240,27 @@ export class SQLiteStorage implements StoragePlugin {
       throw new Error("Database not initialized. Call init() first.");
     }
   
-    const row = await this.db.get(`SELECT * FROM items WHERE cid = ?`, [cid]);
+    const result = await this.client!.execute({
+      sql: `SELECT * FROM items WHERE cid = ?`,
+      args: [cid]
+    });
   
-    if (!row) {
+    if (result.rows.length === 0) {
       return null;
     }
   
+    const row = result.rows[0];
     const item: ContentItem = {
-      id: row.id,
-      type: row.type,
-      source: row.source,
-      cid: row.cid,
-      title: row.title,
-      text: row.text,
-      link: row.link,
-      topics: row.topics ? JSON.parse(row.topics) : null,
-      date: row.date,
-      metadata: row.metadata ? JSON.parse(row.metadata) : null
+      id: Number(row.id),
+      type: String(row.type),
+      source: String(row.source),
+      cid: String(row.cid),
+      title: row.title ? String(row.title) : undefined,
+      text: row.text ? String(row.text) : undefined,
+      link: row.link ? String(row.link) : undefined,
+      topics: row.topics ? JSON.parse(String(row.topics)) : null,
+      date: row.date ? Number(row.date) : undefined,
+      metadata: row.metadata ? JSON.parse(String(row.metadata)) : null
     };
   
     return item;
@@ -225,7 +274,7 @@ export class SQLiteStorage implements StoragePlugin {
    * @throws Error if database is not initialized or if item has no date
    */
   public async saveSummaryItem(item: SummaryItem): Promise<void> {
-    if (!this.db) {
+    if (!this.db || !this.client) {
       throw new Error("Database not initialized. Call init() first.");
     }
 
@@ -235,45 +284,41 @@ export class SQLiteStorage implements StoragePlugin {
 
     try {
       // Check if a summary already exists for this type and date
-      const existing = await this.db.get(
-        `SELECT id FROM summary WHERE type = ? AND date = ?`,
-        [item.type, item.date]
-      );
+      const existingResult = await this.client.execute({
+        sql: `SELECT id FROM summary WHERE type = ? AND date = ?`,
+        args: [item.type, item.date]
+      });
 
       const dateStr = new Date(item.date).toISOString();
 
-      if (existing) {
+      if (existingResult.rows.length > 0) {
         // Update existing summary
-        await this.db.run(
-          `
-          UPDATE summary 
-          SET title = ?, categories = ?, markdown = ?
-          WHERE type = ? AND date = ?
-          `,
-          [
+        await this.client.execute({
+          sql: `UPDATE summary 
+                SET title = ?, categories = ?, markdown = ?
+                WHERE type = ? AND date = ?`,
+          args: [
             item.title || null,
             item.categories || null,
             item.markdown || null,
             item.type,
             item.date
           ]
-        );
+        });
         console.log(`Updated existing summary for ${item.type} on date ${dateStr}`);
       } else {
         // Insert new summary
-        await this.db.run(
-          `
-          INSERT INTO summary (type, title, categories, markdown, date)
-          VALUES (?, ?, ?, ?, ?)
-          `,
-          [
+        await this.client.execute({
+          sql: `INSERT INTO summary (type, title, categories, markdown, date)
+                VALUES (?, ?, ?, ?, ?)`,
+          args: [
             item.type,
             item.title || null,
             item.categories || null,
             item.markdown || null,
             item.date,
           ]
-        );
+        });
         console.log(`Saved new summary for ${item.type} on date ${dateStr}`);
       }
     } catch (error) {
@@ -289,25 +334,26 @@ export class SQLiteStorage implements StoragePlugin {
    * @throws Error if database is not initialized
    */
   public async getItemsByType(type: string): Promise<ContentItem[]> {
-    if (!this.db) {
+    if (!this.db || !this.client) {
       throw new Error("Database not initialized.");
     }
 
-    const rows = await this.db.all(`
-      SELECT * FROM items WHERE type = ?
-    `, [type]);
+    const result = await this.client.execute({
+      sql: `SELECT * FROM items WHERE type = ?`,
+      args: [type]
+    });
 
-    return rows.map(row => ({
-      id: row.id,
-      cid: row.cid,
-      type: row.type,
-      source: row.source,
-      title: row.title,
-      text: row.text,
-      link: row.link,
-      topics: row.topics ? JSON.parse(row.topics) : undefined,
-      date: row.date,
-      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
+    return result.rows.map((row:any) => ({
+      id: Number(row.id),
+      cid: row.cid ? String(row.cid) : undefined,
+      type: String(row.type),
+      source: String(row.source),
+      title: row.title ? String(row.title) : undefined,
+      text: row.text ? String(row.text) : undefined,
+      link: row.link ? String(row.link) : undefined,
+      topics: row.topics ? JSON.parse(String(row.topics)) : undefined,
+      date: row.date ? Number(row.date) : undefined,
+      metadata: row.metadata ? JSON.parse(String(row.metadata)) : undefined
     }));
   }
 
@@ -325,7 +371,7 @@ export class SQLiteStorage implements StoragePlugin {
     includeType?: string 
   ): Promise<ContentItem[]> {
     const operation = "getContentItemsBetweenEpoch";
-    if (!this.db) {
+    if (!this.db || !this.client) {
       throw new Error("Database not initialized.");
     }
     logger.debug(`[SQLiteStorage:${operation}] Called with startEpoch=${startEpoch}, endEpoch=${endEpoch}, includeType=${includeType}`);
@@ -351,21 +397,25 @@ export class SQLiteStorage implements StoragePlugin {
 
     try {
       logger.debug(`[SQLiteStorage:${operation}] Executing query: ${query} with params: ${JSON.stringify(params)}`);
-      const rows = await this.db.all(query, params);
-      logger.debug(`[SQLiteStorage:${operation}] Query returned ${rows.length} rows.`);
+      const result = await this.client.execute({
+        sql: query,
+        args: params
+      });
+      
+      logger.debug(`[SQLiteStorage:${operation}] Query returned ${result.rows.length} rows.`);
 
       // Map rows to ContentItem objects
-      return rows.map(row => ({
-        id: row.id,
-        type: row.type,
-        source: row.source,
-        cid: row.cid,
-        title: row.title || undefined,
-        text: row.text || undefined,
-        link: row.link || undefined,
-        date: row.date,
-        topics: row.topics ? JSON.parse(row.topics) : undefined,
-        metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      return result.rows.map((row:any) => ({
+        id: Number(row.id),
+        type: String(row.type),
+        source: String(row.source),
+        cid: row.cid ? String(row.cid) : undefined,
+        title: row.title ? String(row.title) : undefined,
+        text: row.text ? String(row.text) : undefined,
+        link: row.link ? String(row.link) : undefined,
+        date: row.date ? Number(row.date) : undefined,
+        topics: row.topics ? JSON.parse(String(row.topics)) : undefined,
+        metadata: row.metadata ? JSON.parse(String(row.metadata)) : undefined,
       }));
     } catch (error) {
       logger.error(`[SQLiteStorage:${operation}] Error executing query: ${query} | Params: ${JSON.stringify(params)} | Error: ${error instanceof Error ? error.message : String(error)}`);
@@ -386,7 +436,7 @@ export class SQLiteStorage implements StoragePlugin {
     endEpoch: number,
     excludeType?: string
   ): Promise<SummaryItem[]> {
-    if (!this.db) {
+    if (!this.db || !this.client) {
       throw new Error("Database not initialized.");
     }
 
@@ -403,14 +453,17 @@ export class SQLiteStorage implements StoragePlugin {
     }
 
     try {
-      const rows = await this.db.all(query, params);
+      const result = await this.client.execute({
+        sql: query,
+        args: params
+      });
 
-      return rows.map(row => ({
-        id: row.id,
-        type: row.type,
-        title: row.title || undefined,
-        categories: row.categories || undefined,
-        date: row.date,
+      return result.rows.map((row:any) => ({
+        id: Number(row.id),
+        type: String(row.type),
+        title: row.title ? String(row.title) : undefined,
+        categories: row.categories ? String(row.categories) : undefined,
+        date: row.date ? Number(row.date) : undefined,
       }));
     } catch (error) {
       console.error("Error fetching summary between epochs:", error);
@@ -422,26 +475,29 @@ export class SQLiteStorage implements StoragePlugin {
    * Gets the last fetched message ID for a given cursor id.
    */
   public async getCursor(cid: string): Promise<string | null> {
-    if (!this.db) throw new Error("Database not initialized.");
+    if (!this.db || !this.client) throw new Error("Database not initialized.");
 
-    const row = await this.db.get(
-      `SELECT message_id FROM cursor WHERE cid = ?`,
-      [cid]
-    );
+    const result = await this.client.execute({
+      sql: `SELECT message_id FROM cursor WHERE cid = ?`,
+      args: [cid]
+    });
 
-    return row?.message_id || null;
+    return result.rows.length > 0 ? String(result.rows[0].message_id) : null;
   }
 
   /**
    * Sets or updates the cursor (last message ID) for a given cursor.
    */
   public async setCursor(cid: string, messageId: string): Promise<void> {
-    if (!this.db) throw new Error("Database not initialized.");
+    if (!this.db || !this.client) throw new Error("Database not initialized.");
   
-    await this.db.run(`
-      INSERT INTO cursor (cid, message_id)
-      VALUES (?, ?)
-      ON CONFLICT(cid) DO UPDATE SET message_id = excluded.message_id;
-    `, [cid, messageId]);
+    await this.client.execute({
+      sql: `
+        INSERT INTO cursor (cid, message_id)
+        VALUES (?, ?)
+        ON CONFLICT(cid) DO UPDATE SET message_id = excluded.message_id;
+      `,
+      args: [cid, messageId]
+    });
   }
 }

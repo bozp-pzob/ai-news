@@ -27,6 +27,7 @@ interface DailySummaryGeneratorConfig {
   summaryType: string;
   source: string;
   outputPath?: string;
+  maxGroupsToSummarize?: number;
 }
 
 /**
@@ -46,6 +47,8 @@ export class DailySummaryGenerator {
   private blockedTopics: string[] = ['open source'];
   /** Path for output files */
   private outputPath: string;
+  /** Max number of groups to summarize */
+  private maxGroupsToSummarize: number;
 
   /**
    * Creates a new DailySummaryGenerator instance
@@ -57,6 +60,7 @@ export class DailySummaryGenerator {
     this.summaryType = config.summaryType;
     this.source = config.source;
     this.outputPath = config.outputPath || './';
+    this.maxGroupsToSummarize = config.maxGroupsToSummarize || 10;
   }
 
   /**
@@ -75,17 +79,17 @@ export class DailySummaryGenerator {
         return;
       }
 
-      const groupedContent = this.groupObjectsByTopics(contentItems);
+      const groupedContent = this.groupObjects(contentItems);
 
       const allSummaries: any[] = [];
-      let maxTopicsToSummarize = 0;
+      let groupsToSummarize = 0;
 
       for (const grouped of groupedContent) {
         try {
           if (!grouped) continue;
           const { topic, objects } = grouped;
           
-          if (!topic || !objects || objects.length <= 0 || maxTopicsToSummarize >= 10) continue;
+          if (!topic || !objects || objects.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) continue;
 
           const prompt = createJSONPromptForTopics(topic, objects, dateStr);
           const summaryText = await this.provider.summarize(prompt);
@@ -94,7 +98,7 @@ export class DailySummaryGenerator {
           summaryJSON["topic"] = topic;
   
           allSummaries.push(summaryJSON);
-          maxTopicsToSummarize++;
+          groupsToSummarize++;
         }
         catch (e) {
           console.log(e);
@@ -274,12 +278,12 @@ export class DailySummaryGenerator {
   }
 
   /**
-   * Groups content items by topics, handling special cases for GitHub and crypto content
+   * Groups content items, handling special cases for GitHub and crypto content
    * @private
    * @param {any[]} objects - Array of content items to group
-   * @returns {any[]} Array of grouped content by topic
+   * @returns {any[]} Array of grouped content
    */
-  private groupObjectsByTopics(objects: any[]): any[] {
+  private groupObjects(objects: any[]): any[] {
     const topicMap = new Map();
 
     objects.forEach(obj => {
@@ -329,7 +333,7 @@ export class DailySummaryGenerator {
       }
       // Handle general content with topics
       else {
-        if (obj.topics) {
+        if (obj.topics && obj.topics.length > 0) {
           obj.topics.forEach((topic: any) => {
             let shortCase = topic.toLowerCase();
             if (!this.blockedTopics.includes(shortCase)) {
@@ -339,6 +343,15 @@ export class DailySummaryGenerator {
               topicMap.get(shortCase).push(obj);
             }
           });
+        }
+        else {
+          let shortCase = obj.type.toLowerCase();
+          if (!this.blockedTopics.includes(shortCase)) {
+            if (!topicMap.has(shortCase)) {
+              topicMap.set(shortCase, []);
+            }
+            topicMap.get(shortCase).push(obj);
+          }
         }
       }
     });
