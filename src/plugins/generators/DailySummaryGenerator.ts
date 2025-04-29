@@ -28,6 +28,7 @@ interface DailySummaryGeneratorConfig {
   source: string;
   outputPath?: string;
   maxGroupsToSummarize?: number;
+  groupBySourceType?: boolean;
 }
 
 /**
@@ -49,6 +50,8 @@ export class DailySummaryGenerator {
   private outputPath: string;
   /** Max number of groups to summarize */
   private maxGroupsToSummarize: number;
+  /** Force Content grouping to be by Source types */
+  private groupBySourceType: boolean;
 
   /**
    * Creates a new DailySummaryGenerator instance
@@ -61,6 +64,7 @@ export class DailySummaryGenerator {
     this.source = config.source;
     this.outputPath = config.outputPath || './';
     this.maxGroupsToSummarize = config.maxGroupsToSummarize || 10;
+    this.groupBySourceType = config.groupBySourceType || false
   }
 
   /**
@@ -333,7 +337,7 @@ export class DailySummaryGenerator {
       }
       // Handle general content with topics
       else {
-        if (obj.topics && obj.topics.length > 0) {
+        if (obj.topics && obj.topics.length > 0 && !this.groupBySourceType) {
           obj.topics.forEach((topic: any) => {
             let shortCase = topic.toLowerCase();
             if (!this.blockedTopics.includes(shortCase)) {
