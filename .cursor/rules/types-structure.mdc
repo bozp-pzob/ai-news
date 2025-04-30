@@ -1,0 +1,45 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Core Data Types and Interfaces
+
+The `[src/types.ts](mdc:src/types.ts)` file defines the essential TypeScript interfaces and types used throughout the aggregator system, ensuring consistency between plugins and components.
+
+## Key Interfaces:
+
+*   **`ContentItem`**: The central data structure representing a single piece of fetched content. It normalizes data from various sources.
+    *   `cid: string`: Unique ID from the original source.
+    *   `type: string`: Nature of the content (e.g., "tweet", "discordMessage").
+    *   `source: string`: Name of the originating source plugin.
+    *   `title?: string`: Optional title.
+    *   `text?: string`: Main content body.
+    *   `link?: string`: URL to the original item.
+    *   `topics?: string[]`: Topics assigned (likely by an enricher).
+    *   `date?: number`: Timestamp of creation/publication.
+    *   `metadata?: Record<string, any>`: Source-specific additional data.
+
+*   **`SummaryItem`**: Represents a generated summary, potentially combining multiple `ContentItem`s.
+    *   `type: string`: Type of summary.
+    *   `title?: string`: Summary title.
+    *   `categories?: string`: Categories associated with the summary.
+    *   `markdown?: string`: The summary content in Markdown format.
+    *   `date?: number`: Timestamp for the summary period.
+
+*   **Plugin Interfaces**: Define the contracts that plugins must adhere to.
+    *   `SourcePlugin`: Requires `name` and `fetchArticles(): Promise<ContentItem[]>`. May also have `fetchHistorical(...)`.
+    *   `EnricherPlugin`: Requires `enrich(articles: ContentItem[]): Promise<ContentItem[]> | ContentItem[]`.
+    *   `AiProvider`: Requires `summarize(text)`, `topics(text)`, `image(text)`.
+    *   `StoragePlugin`: (Imported from `[src/plugins/storage/StoragePlugin.ts](mdc:src/plugins/storage/StoragePlugin.ts)`). Requires methods like `init`, `saveContent`, `getContent*`, `close`.
+
+*   **Configuration Interfaces**: Define the shape of configuration objects.
+    *   `ConfigItem`: Base structure for plugin definitions in JSON config (`type`, `name`, `params`, `interval`).
+    *   `InstanceConfig`: Runtime representation of an initialized plugin instance.
+    *   `StorageConfig`, `AiEnricherConfig`, `DateConfig`, `OutputConfig`: Specific parameter structures for different plugin types or features.
+
+*   **Discord-Specific Types**: Detailed structures for handling Discord data.
+    *   `DiscordRawData`: Structure of raw data fetched by `[DiscordRawDataSource.ts](mdc:src/plugins/sources/DiscordRawDataSource.ts)`.
+    *   `DiscordSummary`: Structure for summaries generated specifically from Discord data, including FAQs, help interactions, and action items.
+
+Understanding these types is fundamental to developing or modifying plugins and understanding the data flow within the system.

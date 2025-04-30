@@ -4,34 +4,20 @@
     },
     "sources": [
       {
-        "type": "DiscordChannelSource",
-        "name": "discordChannel",
+        "type": "DiscordRawDataSource",
+        "name": "elizaosDevRaw",
         "interval": 360000,
         "params": {
           "botToken": "process.env.DISCORD_TOKEN",
+          "guildId": "process.env.DISCORD_GUILD_ID",
           "channelIds": [
-	    "1326603270893867064",
-	    "1253563209462448241",
-	    "1299989396874854440",
-	    "1300025221834739744",
-	    "1300756641406521416",
-	    "1308149076893630555",
-	    "1341224194687500402",
-	    "1328592959444095038",
-	    "1301363808421543988",
-	    "1309395998870605844",
-	    "1313222089271939102"
+	    "1320246527268098048",
+	    "1327493511406293016",
+	    "1324098367416172665",
+	    "1324089429727514674",
+	    "1323745969115893780"
 	  ],
-          "provider": "summaryOpenAiProvider"
-        }
-      },
-      {
-        "type": "DiscordAnnouncementSource",
-        "name": "discordAnnouncement",
-        "interval": 3600000,
-        "params": {
-          "botToken": "process.env.DISCORD_TOKEN",
-          "channelIds": ["1299473809166045357"]
+          "storage": "SQLiteStorage"
         }
       }
     ],
@@ -41,7 +27,7 @@
           "name": "summaryOpenAiProvider",
           "params": {
             "apiKey": "process.env.OPENAI_API_KEY",
-            "model": "openai/chatgpt-4o-latest",
+            "model": "anthropic/claude-3.7-sonnet",
             "temperature": 0,
             "useOpenRouter": true,
             "siteUrl": "process.env.SITE_URL",
@@ -61,35 +47,37 @@
           }
         }
     ],
-    "enrichers": [
-        {
-          "type": "AiTopicsEnricher",
-          "name": "topicEnricher",
-          "params": {
-            "provider": "miniOpenAiProvider",
-            "thresholdLength": 30
-          }
-        }
-    ],
+    "enrichers": [],
     "storage": [
         {
             "type": "SQLiteStorage",
             "name": "SQLiteStorage",
             "params": {
-                "dbPath": "data/elizaos-discord.sqlite"
+                "dbPath": "data/elizaos-dev.sqlite"
             }
         }
     ],
     "generators": [
         {
-          "type": "DailySummaryGenerator",
-          "name": "DailySummaryGenerator",
+          "type": "RawDataExporter",
+          "name": "ElizaOSDevRawExporter",
+          "interval": 3600000,
+          "params": {
+            "storage": "SQLiteStorage",
+            "source": "discordRawData",
+            "outputPath": "./output/elizaos-dev/raw"
+          }
+        },
+        {
+          "type": "DiscordSummaryGenerator",
+          "name": "ElizaOSDevSummaryGenerator",
           "interval": 3600000,
           "params": {
             "provider": "summaryOpenAiProvider",
             "storage": "SQLiteStorage",
-            "summaryType": "dailySummary",
-            "source": "aiSummary"
+            "summaryType": "elizaosDevSummary",
+            "source": "discordRawData",
+            "outputPath": "./output/elizaos-dev/summaries"
           }
         }
     ]

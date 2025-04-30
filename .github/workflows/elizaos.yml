@@ -1,8 +1,22 @@
-name: Run ElizaOS Daily Task
+name: ElizaOS Daily Summary
 on:
   schedule:
     - cron: '0 0 * * *' # Run at midnight UTC every day
-  workflow_dispatch:  # Keep manual trigger option
+  workflow_dispatch:
+    inputs:
+      after_date:
+        description: 'Start date (YYYY-MM-DD)'
+        required: false
+        type: string
+      before_date:
+        description: 'End date (YYYY-MM-DD)'
+        required: false
+        type: string
+      force_overwrite:
+        description: 'Force overwrite existing data'
+        required: false
+        type: boolean
+        default: false
 jobs:
   sqlite-job:
     timeout-minutes: 30
@@ -17,6 +31,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for consistency
 
       # Fetch existing DB from gh-pages branch if it exists
       - name: Check and fetch database
@@ -40,7 +56,7 @@ jobs:
           fi
       
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '23'
           
@@ -80,50 +96,82 @@ jobs:
         id: date
         run: echo "YESTERDAY=$(date -d "yesterday" +'%Y-%m-%d')" >> $GITHUB_OUTPUT
         
-      - name: Run historical with yesterday's date
-        run: npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/elizaos
+      - name: Run historical with date parameters
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ inputs.after_date }}" ] && [ -n "${{ inputs.before_date }}" ]; then
+              npm run historical -- --source=elizaos.json --after=${{ inputs.after_date }} --before=${{ inputs.before_date }} --output=./output/elizaos
+            elif [ -n "${{ inputs.after_date }}" ]; then
+              npm run historical -- --source=elizaos.json --after=${{ inputs.after_date }} --output=./output/elizaos
+            elif [ -n "${{ inputs.before_date }}" ]; then
+              npm run historical -- --source=elizaos.json --before=${{ inputs.before_date }} --output=./output/elizaos
+            else
+              npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/elizaos
+            fi
+          else
+            npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/elizaos
+          fi
         env:
           RUN_ONCE: true
           NODE_ENV: production
-          
+          FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }}
+      
       - name: Handle data files
         run: |
+          YESTERDAY=${{ steps.date.outputs.YESTERDAY }}
+
           # Create target directories
-          mkdir -p ./public/elizaos/json
-          mkdir -p ./public/elizaos/md
-          
-          # Copy SQLite database
           mkdir -p ./public/data
-          cp data/db.sqlite ./public/data/
-          
-          # Copy output files
-          if [ -d "./output/elizaos/json" ] && [ "$(find ./output/elizaos/json -name "*2025-*-*.json" | wc -l)" -gt 0 ]; then
-            # Copy all JSON files
-            cp -r ./output/elizaos/json/* ./public/elizaos/json/
-            
-            # Create daily.json symlink
-            LATEST_JSON=$(find ./output/elizaos/json -name "*2025-*-*.json" | sort -V | tail -n1)
-            LATEST_FILENAME=$(basename "$LATEST_JSON")
-            cp "$LATEST_JSON" ./public/elizaos/json/daily.json
-            echo "Copied $LATEST_JSON to daily.json"
+          mkdir -p ./public/elizaos/json      # Target for JSON summaries
+          mkdir -p ./public/elizaos/md        # Target for MD summaries
+
+          # Copy SQLite database
+          if [ -f "data/db.sqlite" ]; then
+             echo "Copying data/db.sqlite to ./public/data/"
+             cp data/db.sqlite ./public/data/
           else
-            echo "No JSON files found in ./output/elizaos/json directory"
-            echo '{"status":"no_data","date":"${{ steps.date.outputs.YESTERDAY }}"}' > ./public/elizaos/json/daily.json
+             echo "No db.sqlite found locally to copy."
           fi
-          
-          # Copy Markdown files
-          if [ -d "./output/elizaos/md" ]; then
-            cp -r ./output/elizaos/md/* ./public/elizaos/md/
+
+          # Copy generated summary files
+          echo "Copying JSON summaries to ./public/elizaos/json/"
+          cp -r output/elizaos/json/*.json ./public/elizaos/json/ || echo "No JSON summary files generated or found to copy."
+          echo "Copying MD summaries to ./public/elizaos/md/"
+          cp -r output/elizaos/md/*.md ./public/elizaos/md/ || echo "No MD summary files generated or found to copy."
+
+          # Create daily.json from yesterday's summary
+          JSON_FILE="output/elizaos/json/${YESTERDAY}.json"
+          if [ -f "$JSON_FILE" ]; then
+            echo "Copying $JSON_FILE to ./public/elizaos/json/daily.json"
+            cp "$JSON_FILE" ./public/elizaos/json/daily.json
+          else
+            echo "Warning: Yesterday's JSON summary ($JSON_FILE) not found. Cannot create daily.json."
           fi
-          
+
+          # Create daily.md from yesterday's summary
+          MD_FILE="output/elizaos/md/${YESTERDAY}.md"
+          if [ -f "$MD_FILE" ]; then
+            echo "Copying $MD_FILE to ./public/elizaos/md/daily.md"
+            cp "$MD_FILE" ./public/elizaos/md/daily.md
+          else
+            echo "Warning: Yesterday's MD summary ($MD_FILE) not found. Cannot create daily.md."
+          fi
+
       - name: Validate JSON files
-        run: find ./public -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
-          
-      # Deploy to gh-pages branch (default) from clean directory
+        run: find ./public/elizaos/json -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; } # Validate summaries in json folder
+
+      - name: Get current timestamp for commit message
+        id: commit_time
+        run: echo "COMMIT_DATETIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
+
       - name: Deploy to gh-pages branch
+        id: deployment
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
-          force_orphan: false
+          # force_orphan: false # Removed this line (default is false)
           keep_files: true
+          user_name: 'github-actions[bot]' # Added specific user/email
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: "Update ElizaOS data ${{ env.COMMIT_DATETIME }}" # Added specific commit message

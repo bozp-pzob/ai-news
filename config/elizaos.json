@@ -4,43 +4,23 @@
     },
     "sources": [
       {
-        "type": "DiscordChannelSource",                                                                                                        
-        "name": "discordChannel",                                                                                                              
-        "interval": 360000,                                                                                                                    
-        "params": {                                                                                                                            
-          "botToken": "process.env.DISCORD_TOKEN",                                                                                             
-          "channelIds": [                                                                                                                      
-            "1326603270893867064",                                                                                                             
-            "1253563209462448241",                                                                                                             
-            "1299989396874854440",                                                                                                             
-            "1300025221834739744",                                                                                                             
-            "1300756641406521416",                                                                                                             
-            "1308149076893630555",                                                                                                             
-            "1328592959444095038",                                                                                                             
-            "1301363808421543988",                                                                                                             
-            "1313222089271939102"                                                                                                              
-          ],                                                                                                                                   
-          "provider": "summaryOpenAiProvider"                                                                                                  
-        }                                                                                                                                      
-      },
-      {
-        "type": "DiscordAnnouncementSource",
-        "name": "discordAnnouncement",
-        "interval": 3600000,
+        "type": "TwitterSource",
+        "name": "twitter",
+        "interval": 1800000,
         "params": {
-          "botToken": "process.env.DISCORD_TOKEN",
-          "channelIds": ["1299473809166045357"]
+          "username": "process.env.TWITTER_USERNAME",
+          "password": "process.env.TWITTER_PASSWORD",
+          "email": "process.env.TWITTER_EMAIL",
+          "accounts": ["dankvr", "elizaos", "shawmakesmagic", "autodotfun"]
         }
       },
       {
-        "type": "GitHubDataSource",
-        "name": "elizaGithub",
+        "type": "GitHubStatsDataSource",
+        "name": "elizaGithubStats",
         "interval": 21600000,
         "params": {
-            "contributorsUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/contributors.json",
-            "summaryUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/summary.json",
-            "historicalContributorUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/history/contributors_<year>_<month>_<day>.json",
-            "historicalSummaryUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/history/summary_<year>_<month>_<day>.json",
+            "statsUrl": "https://elizaos.github.io/data/elizaos_eliza/stats/day/stats.json",
+            "historicalStatsUrl": "https://elizaos.github.io/data/elizaos_eliza/stats/day/stats_<year>-<month>-<day>.json",
             "githubCompany": "elizaOS",
             "githubRepo": "eliza"
         }
@@ -61,7 +41,7 @@
           "name": "summaryOpenAiProvider",
           "params": {
             "apiKey": "process.env.OPENAI_API_KEY",
-            "model": "openai/chatgpt-4o-latest",
+            "model": "anthropic/claude-3.7-sonnet",
             "temperature": 0,
             "useOpenRouter": true,
             "siteUrl": "process.env.SITE_URL",
@@ -73,7 +53,7 @@
           "name": "miniOpenAiProvider",
           "params": {
             "apiKey": "process.env.OPENAI_API_KEY",
-            "model": "openai/gpt-4o-mini",
+            "model": "anthropic/claude-3.7-sonnet",
             "temperature": 0,
             "useOpenRouter": true,
             "siteUrl": "process.env.SITE_URL",
@@ -81,16 +61,7 @@
           }
         }
     ],
-    "enrichers": [
-        {
-          "type": "AiTopicsEnricher",
-          "name": "topicEnricher",
-          "params": {
-            "provider": "miniOpenAiProvider",
-            "thresholdLength": 30
-          }
-        }
-    ],
+    "enrichers": [],
     "storage": [
         {
             "type": "SQLiteStorage",
@@ -103,14 +74,14 @@
     "generators": [
         {
           "type": "DailySummaryGenerator",
-          "name": "DailySummaryGenerator",
+          "name": "ElizaOSDailySummary",
           "interval": 3600000,
           "params": {
             "provider": "summaryOpenAiProvider",
             "storage": "SQLiteStorage",
-            "summaryType": "dailySummary",
-            "source": "aiSummary",
-            "outputPath": "./output/elizaos"
+            "summaryType": "elizaosDailySummary",
+            "outputPath": "./output/elizaos",
+            "groupBySourceType": true
           }
         }
     ]

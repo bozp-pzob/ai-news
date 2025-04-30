@@ -1,4 +1,4 @@
-name: Deploy JSON Directory to Pages
+name: Deploy Github Pages
 on:
   # Run when the gh-pages branch is updated
   push:

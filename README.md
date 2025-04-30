@@ -1,31 +1,32 @@
 # AI News Aggregator
 
-A modular TypeScript-based news aggregator that collects, enriches, and analyzes AI-related content from multiple sources using OpenAI's GPT models.
+A modular TypeScript-based news aggregator that collects, enriches, and analyzes AI-related content from multiple sources.
 
 ## Features
 
 - **Multiple Data Sources**
-  - Twitter posts monitoring
-  - Discord channel messages and announcements
-  - GitHub activity tracking
-  - Solana token analytics
+  - Discord channel raw message data (including users, reactions)
+  - GitHub repository statistics
+  - Solana token analytics (Codex)
   - CoinGecko market data
+  - (Twitter support may require maintenance due to API changes)
 
-- **Content Enrichment**
-  - AI-powered topic extraction
-  - Automated content summarization 
-  - Image generation capabilities
+- **Processing & Analysis**
+  - AI-powered structured summaries of Discord channel activity (using OpenAI/OpenRouter)
+  - Raw data export
+  - Topic extraction (optional, configurable)
 
-- **Storage & Analysis**
-  - SQLite database for persistent storage
-  - Daily summary generation
-  - JSON export functionality
+- **Storage & Deployment**
+  - SQLite database for persistent storage (with optional encryption via GitHub Actions)
+  - Daily summary generation (JSON & Markdown)
+  - Deployment to GitHub Pages
 
 ## Prerequisites
 
-- Node.js ≥ 18
-- TypeScript 4.x
-- SQLite3
+- Node.js ≥ 18 (v23 recommended based on workflows)
+- TypeScript
+- SQLite3 (Command-line tool needed for integrity checks in workflows)
+- npm
 
 ## Installation
 
@@ -37,274 +38,295 @@ git clone https://github.com/yourusername/ai-news.git
 cd ai-news
 npm install
 
-# Create .env file and add your credentials
+# Create .env file and add your credentials for local runs
 cp example.env .env
 ```
 
 ## Configuration
 
-Create a `.env` file with the following variables:
+Local runs use an `.env` file. GitHub Actions workflows use repository secrets.
+
+### Local `.env` File
+
+Create a `.env` file in the project root:
 
 ```env
-OPENAI_API_KEY=           # Your OpenAI API key or OpenRouter API key
-OPENAI_DIRECT_KEY=        # Optional: Your OpenAI API key for image generation when using OpenRouter
-USE_OPENROUTER=false      # Set to true to use OpenRouter
-SITE_URL=                 # Your site URL for OpenRouter rankings
-SITE_NAME=                # Your site name for OpenRouter rankings
+# OpenAI / OpenRouter
+OPENAI_API_KEY=           # Your OpenRouter API key (or OpenAI if not using OpenRouter)
+# OPENAI_DIRECT_KEY=        # Optional: Direct OpenAI key if needed for specific features
+USE_OPENROUTER=true      # Set to true to use OpenRouter
+SITE_URL=your_site.com    # Your site URL for OpenRouter attribution
+SITE_NAME=YourAppName     # Your app name for OpenRouter attribution
 
-# Other existing configurations...
-TWITTER_USERNAME=         # Account username
-TWITTER_PASSWORD=         # Account password
-TWITTER_EMAIL=            # Account email
+# Discord
+DISCORD_TOKEN=            # Your Discord Bot Token
+DISCORD_GUILD_ID=         # The ID of the Discord server you are monitoring
+# DISCORD_APP_ID=          # Likely not needed unless using slash commands
 
-DISCORD_APP_ID=
-DISCORD_TOKEN=
+# Crypto Analytics
+CODEX_API_KEY=            # Your Codex API key
 
-CODEX_API_KEY=            # Market Data
+# Optional: Twitter (Requires careful cookie handling)
+# TWITTER_USERNAME=
+# TWITTER_PASSWORD=
+# TWITTER_EMAIL=
+# TWITTER_COOKIES='[]' # JSON string of cookies
 ```
 
-## GitHub Actions Secrets Single File
+### GitHub Actions Secrets (`ENV_SECRETS`)
 
+For running via GitHub Actions, create a single repository secret named `ENV_SECRETS` containing a JSON object with your credentials. You also need a secret named `SQLITE_ENCRYPTION_KEY` for database encryption.
 
-1. Navigate to your GitHub repository
-2. Go to "Settings" > "Secrets and variables" > "Actions"
-3. Click "New repository secret"
-4. Copy the JSON with your credentials
-5. Save name as "ENV_SECRETS"
+1.  Navigate to your GitHub repository.
+2.  Go to "Settings" > "Secrets and variables" > "Actions".
+3.  Click "New repository secret".
+4.  Name: `ENV_SECRETS`. Value: Copy and paste the JSON below, filling in your values.
+5.  Click "New repository secret" again.
+6.  Name: `SQLITE_ENCRYPTION_KEY`. Value: Enter a strong password for encrypting the database.
+
+**`ENV_SECRETS` JSON Structure:**
 
 ```json
 {
+  "OPENAI_API_KEY": "sk-or-....",
+  "USE_OPENROUTER": "true",
+  "SITE_URL": "your_site.com",
+  "SITE_NAME": "YourAppName",
+  "DISCORD_APP_ID": "YOUR_DISCORD_APP_ID",
+  "DISCORD_TOKEN": "YOUR_DISCORD_BOT_TOKEN",
+  "DISCORD_GUILD_ID": "YOUR_DISCORD_SERVER_ID",
+  "CODEX_API_KEY": "YOUR_CODEX_KEY",
   "TWITTER_USERNAME": "",
   "TWITTER_PASSWORD": "",
   "TWITTER_EMAIL": "",
-  "TWITTER_COOKIES": "",
-  "OPENAI_API_KEY": "",
-  "OPENAI_DIRECT_KEY": "",
-  "USE_OPENROUTER": "",
-  "SITE_URL": "",
-  "SITE_NAME": "",
-  "DISCORD_APP_ID": "",
-  "DISCORD_TOKEN": "",
-  "BIRDEYE_API_KEY": "",
-  "CODEX_API_KEY": "",
-  "SOURCE": "sources.json"
+  "TWITTER_COOKIES": "[]"
 }
 ```
 
-> Note: You'll get notifications about Twitter login from unknown location, maybe best to exclude Twitter
-
 ## Running the Application
 
+Configuration files (e.g., `discord-raw.json`, `elizaos-dev.json`) define which sources and generators run.
+
 ```bash
-# Development mode
-npm run dev
-
-# Development mode using the sources.json config
-npm run dev -- --source=sources.json
-
-# Development mode with a specific output directory
-npm run dev -- --source=sources.json --output=./output/eliza
-
-# Build and run production
+# Build the project
 npm run build
+
+# Run the main continuous process (using config/sources.json by default)
 npm start
 
-# Specify output directory with shorthand
-npm start -- -o=./output/hyperfy
+# Run using a specific config file
+npm start -- --source=discord-raw.json
 
-# Grab Historical Data from sources (default 60 days)
-npm run historical
+# --- Historical Data Fetching & Processing --- #
 
-# Grab Historical Data for specific date from the sources.json config
-npm run historical -- --source=sources.json --date=2025-01-01
+# Run historical script using a specific config (processes yesterday by default)
+npm run historical -- --source=discord-raw.json --output=./output/discord
 
-# Grab Historical Data with a specific output directory
-npm run historical -- --source=sources.json --date=2025-01-01 --output=./output/eliza
+# Run historical for a specific date
+npm run historical -- --source=elizaos-dev.json --date=2024-01-15 --output=./output/elizaos-dev
 
-# Grab Historical Data for specific date range from the sources.json config
-npm run historical -- --source=sources.json --after=2025-01-01 --before=2025-01-06
+# Run historical for a date range
+npm run historical -- --source=hyperfy-discord.json --after=2024-01-10 --before=2024-01-16 --output=./output/hyperfy
 
-# Grab Historical Data for after specific date from the sources.json config
-npm run historical -- --source=sources.json --after=2025-01-01
+# Run historical for dates after a specific date
+npm run historical -- --source=discord-raw.json --after=2024-01-15 --output=./output/discord
 
-# Grab Historical Data for before specific date from the sources.json config //Limited to Jan 1, 2024
-npm run historical -- --source=sources.json --before=2025-01-01
+# Run historical for dates before a specific date
+npm run historical -- --source=discord-raw.json --before=2024-01-10 --output=./output/discord
 ```
 
 ## Project Structure
 
 ```
-config/                 # JSON-Based Configuration System     
+config/                 # JSON configuration files for different pipelines
+data/                   # SQLite databases (encrypted in repo, decrypted by Actions)
+output/                 # Generated raw data exports and summaries
 src/
-├── aggregator/         # Core aggregation logic
+├── aggregator/         # Core aggregation logic (ContentAggregator, HistoricalAggregator)
 ├── plugins/
-│   ├── ai/             # AI provider implementations
-│   ├── enrichers/      # Content enrichment plugins
-│   ├── generators/     # Summary generation tools
-│   ├── sources/        # Data source implementations
-│   └── storage/        # Database storage handlers
+│   ├── ai/             # AI provider implementations (OpenAIProvider)
+│   ├── enrichers/      # Content enrichment plugins (e.g., AiTopicsEnricher - optional)
+│   ├── generators/     # Output generation (RawDataExporter, DiscordSummaryGenerator)
+│   ├── sources/        # Data source implementations (DiscordRawDataSource, etc.)
+│   └── storage/        # Database storage handlers (SQLiteStorage)
+├── helpers/            # Utility functions (config, date, files, etc.)
 ├── types.ts            # TypeScript type definitions
-├── index.ts            # Main application entry
-└── historical.ts       # Grab historical data entry and Generate Summary on Historical Data
+├── index.ts            # Main application entry point (continuous)
+└── historical.ts       # Entry point for historical data processing
+# ... other config and project files
 ```
 
 ## Adding New Sources
 
-1. Implement the `ContentSource` interface
-2. Add configuration in JSON config
-3. Run System
+1.  Create a new class in `src/plugins/sources/` that implements `ContentSource` (and potentially `fetchHistorical`).
+2.  Define necessary parameters and logic within the class.
+3.  Add a configuration block for your new source in the relevant JSON config file(s) under the `sources` array.
 
-Example:
+Example `ContentSource` Interface:
 ```typescript
-class NewSource implements ContentSource {
-  public name: string;
-  
-  async fetchItems(): Promise<ContentItem[]> {
-    // Implementation
-  }
-  async fetchHistorical(date:string): Promise<ContentItem[]> {
-    // Implementation for historical fetching if source allows
-  }
+import { ContentItem } from "../../types";
+
+export interface ContentSource {
+  name: string;
+  fetchItems(): Promise<ContentItem[]>;
+  fetchHistorical?(date: string): Promise<ContentItem[]>;
+  // Other methods like init() if needed
 }
 ```
 
 ## Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+1.  Fork the repository
+2.  Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3.  Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4.  Push to the branch (`git push origin feature/AmazingFeature`)
+5.  Open a Pull Request
 
 ## License
 
-MIT License - see the [LICENSE](LICENSE) file for details
+MIT License
 
-## Data Structures
+## Core Data Structures
 
 ### ContentItem
-Core data structure used throughout the application:
+Represents a unit of data stored in the `items` table. The exact content varies by type.
 ```typescript
 interface ContentItem {
   id?: number;          // Assigned by storage
-  cid: string;          // Content Id from source
-  type: string;         // "tweet", "newsArticle", "discordMessage", etc.
-  source: string;       // "twitter", "discord", "github", etc.
+  cid: string;          // Unique Content ID from source, or generated
+  type: string;         // e.g., "discordRawData", "codexAnalyticsData", etc.
+  source: string;       // Name of the source plugin instance (e.g., "hyperfyDiscordRaw")
   title?: string;       // Optional title
-  text?: string;        // Main content text
-  link?: string;        // URL to original content
-  topics?: string[];    // AI-generated topics
-  date?: number;        // Creation/publication timestamp
-  metadata?: Record<string, any>; // Additional source-specific data
+  text?: string;        // Main content (e.g., JSON string for discordRawData)
+  link?: string;        // URL to original content (if applicable)
+  topics?: string[];    // AI-generated topics (if enricher is used)
+  date?: number;        // Creation/publication timestamp (epoch seconds)
+  metadata?: Record<string, any>; // Additional source-specific data (e.g., channelId, guildName)
 }
 ```
 
-### Example JSON Output
-Daily summaries are stored in JSON files with this structure:
+### DiscordRawData (Stored as JSON string in `ContentItem.text` for `type: 'discordRawData'`)
+```typescript
+interface DiscordRawData {
+  channel: {
+    id: string;
+    name: string;
+    topic: string | null;
+    category: string | null;
+  };
+  date: string; // ISO date string for the day fetched
+  users: { [userId: string]: { name: string; nickname: string | null; roles?: string[]; isBot?: boolean; } };
+  messages: { /* ... message details ... */ }[];
+}
+```
+
+### SummaryItem (Stored in `summary` table)
+Represents a generated summary.
+```typescript
+interface SummaryItem {
+  id?: number;          // Assigned by storage
+  type: string;         // e.g., "hyperfyDiscordSummary", "elizaosDevSummary"
+  title?: string;       // e.g., "Hyperfy Discord - 2024-01-15"
+  categories?: string;  // JSON string containing detailed stats and channel summaries
+  markdown?: string;    // Full Markdown content of the summary
+  date?: number;        // Timestamp for the summary period (epoch seconds)
+}
+```
+
+### Example Summary JSON Output (`YYYY-MM-DD.json`)
+This structure is derived from the `SummaryItem.categories` field.
 ```json
-[
-  {
-    "title": "Topic Category",
-    "messages": [
-      {
-        "text": "Summary or content text",
-        "sources": [
-          "https://source1.com/link",
-          "https://source2.com/link"
-        ],
-        "images": [
-          "https://image1.com/url"
-        ],
-        "videos": [
-          "https://video1.com/url"
-        ]
-      }
-    ]
-  }
-]
+{
+  "server": "Server Name",
+  "title": "Server Name Discord - YYYY-MM-DD",
+  "date": 1705363200, // Example epoch timestamp
+  "stats": {
+    "totalMessages": 150,
+    "totalUsers": 25
+  },
+  "categories": [
+    {
+      "channelId": "12345",
+      "channelName": "general",
+      "summary": "Brief AI summary of the general channel...",
+      "messageCount": 100,
+      "userCount": 20
+    },
+    {
+      "channelId": "67890",
+      "channelName": "development",
+      "summary": "Brief AI summary of the development channel...",
+      "messageCount": 50,
+      "userCount": 15
+    }
+    // ... more channels
+  ]
+}
 ```
 
-## Supported Source Types
+## Supported Source Types (Examples)
 
-### Twitter
-- Monitors specified Twitter accounts
-- Captures tweets, retweets, media
-- Metadata includes engagement metrics
+### Discord (`DiscordRawDataSource`)
+- Fetches raw messages, user details, reactions, edits, replies for specified channels daily.
+- Data is stored as `discordRawData` items.
+- Subsequent generators (`DiscordSummaryGenerator`, `RawDataExporter`) process these items.
 
-### Discord
-- Channel messages monitoring
-- Announcement tracking
-- Server activity summaries
+### GitHub Stats (`GitHubStatsSource`)
+- Fetches repository statistics (issues, PRs, commits, contributors).
+- Stores data as specific `ContentItem` types.
 
-### GitHub
-- Repository activity tracking
-- Pull requests and commits
-- Issue tracking and summaries
+### Cryptocurrency Analytics (`CodexAnalyticsSource`)
+- Fetches token data (price, volume, etc.) from Codex.so.
+- Stores data as `codexAnalyticsData` items.
 
-### Cryptocurrency Analytics
-- Token price monitoring (Solana)
-- Market data from CoinGecko
-- Market data from Codex
-- Trading metrics and volume data
+## Scheduled Tasks (GitHub Actions)
 
-## Scheduled Tasks
-
-The application runs hourly tasks via GitHub Actions:
-- Twitter monitoring: every 30 minutes
-- Discord monitoring: every 6 minutes
-- Announcements: hourly
-- GitHub data: every 6 hours
-- Market analytics: every 12 hours
-- Daily summaries: generated once per day
-
-## Environment Variables Reference
-
-```env
-# Twitter Authentication
-TWITTER_USERNAME=           # Account username
-TWITTER_PASSWORD=           # Account password
-TWITTER_EMAIL=              # Account email
-TWITTER_COOKIES='[{"key":"auth_token","value":"<value>","domain":".twitter.com"},{"key":"ct0","value":"<value>","domain":".twitter.com"},{"key":"guest_id","value":"<value>","domain":".twitter.com"}]'
-
-# OpenAI Configuration
-OPENAI_API_KEY=            # API key for GPT models
-
-# Discord Integration
-DISCORD_APP_ID=            # Discord application ID
-DISCORD_TOKEN=             # Bot token
-
-# Analytics
-BIRDEYE_API_KEY=           # Optional: For Solana token analytics
-CODEX_API_KEY=             # Optional: Alternate way to pull any token
-```
+The application uses GitHub Actions workflows (`.github/workflows/`) for scheduled data fetching and processing. Examples:
+- `discord-raw.yml`: Fetches raw Discord data, generates summaries, exports raw data, deploys encrypted DB and outputs to GitHub Pages.
+- `elizaos-dev.yml`: Similar process for ElizaOS Dev Discord data.
+- `hyperfy.yml`: Similar process for Hyperfy Discord data.
+- Schedules typically run daily.
 
 ## Storage
 
-The application uses SQLite with two main tables:
+The application uses SQLite. Databases are encrypted in the `data/` directory when stored in the repository / gh-pages branch and decrypted during workflow runs.
 
-### Items Table
+### `items` Table
+Stores fetched content from various sources.
 ```sql
-CREATE TABLE items (
+CREATE TABLE IF NOT EXISTS items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  cid TEXT,
-  type TEXT NOT NULL,
-  source TEXT NOT NULL,
+  cid TEXT UNIQUE,          -- Content ID (can be null initially)
+  type TEXT NOT NULL,     -- Type of content (e.g., discordRawData)
+  source TEXT NOT NULL,   -- Name of the source instance
   title TEXT,
-  text TEXT,
+  text TEXT,              -- Main content (often JSON for raw data)
   link TEXT,
-  topics TEXT,
-  date INTEGER,
-  metadata TEXT
+  topics TEXT,            -- JSON array of strings
+  date INTEGER,           -- Epoch timestamp (seconds)
+  metadata TEXT           -- JSON object for extra info
 );
 ```
 
-### Summary Table
+### `summary` Table
+Stores generated summaries.
 ```sql
-CREATE TABLE summary (
+CREATE TABLE IF NOT EXISTS summary (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  type TEXT NOT NULL,
+  type TEXT NOT NULL,     -- Type of summary (e.g., elizaosDevSummary)
   title TEXT,
-  categories TEXT,
-  date INTEGER
+  categories TEXT,        -- JSON object with detailed structure
+  markdown TEXT,          -- Full markdown content
+  date INTEGER            -- Epoch timestamp (seconds) for the summary period
+);
+```
+
+### `cursor` Table
+Stores the last processed message ID for certain sources.
+```sql
+CREATE TABLE IF NOT EXISTS cursor (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cid TEXT NOT NULL UNIQUE, -- Key identifying the source/channel (e.g., "discordRaw-12345")
+  message_id TEXT NOT NULL  -- Last fetched Discord message snowflake ID
 );
 ```

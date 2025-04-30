@@ -1,24 +1,53 @@
+/**
+ * @fileoverview Implementation of a content source for fetching Solana token analytics
+ * Handles market data retrieval from DexScreener API for Solana tokens
+ */
+
 import { ContentItem } from "../../types";
 import { ContentSource } from "./ContentSource"; // Assuming the ContentSource is in the same folder
 import fetch from "node-fetch";
 
+/**
+ * Configuration interface for SolanaAnalyticsSource
+ * @interface SolanaTokenAnalyticsSourceConfig
+ * @property {string} name - The name identifier for this analytics source
+ * @property {string} apiKey - The API key for DexScreener API authentication
+ * @property {string[]} tokenAddresses - Array of Solana token addresses to track
+ */
 interface SolanaTokenAnalyticsSourceConfig {
   name: string;
   apiKey: string;
   tokenAddresses: string[];
 }
 
+/**
+ * SolanaAnalyticsSource class that implements ContentSource interface for Solana token analytics
+ * Fetches and processes market data from DexScreener API for Solana tokens
+ * @implements {ContentSource}
+ */
 export class SolanaAnalyticsSource implements ContentSource {
+  /** Name identifier for this analytics source */
   public name: string;
+  /** API key for DexScreener authentication */
   private apiKey: string;
+  /** List of Solana token addresses to track */
   private tokenAddresses: string[];
 
+  /**
+   * Creates a new SolanaAnalyticsSource instance
+   * @param {SolanaTokenAnalyticsSourceConfig} config - Configuration object for the analytics source
+   */
   constructor(config : SolanaTokenAnalyticsSourceConfig) {
     this.name = config.name;
     this.apiKey = config.apiKey;
     this.tokenAddresses = config.tokenAddresses;
   }
 
+  /**
+   * Fetches current market data for configured Solana tokens
+   * Includes price, volume, market cap, and transaction counts
+   * @returns {Promise<ContentItem[]>} Array of content items containing token market data
+   */
   async fetchItems(): Promise<ContentItem[]> {
     let solanaResponse : any[] = [];
 

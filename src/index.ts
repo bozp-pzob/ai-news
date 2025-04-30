@@ -1,5 +1,13 @@
+/**
+ * Main entry point for the AI News Aggregator application.
+ * This file initializes the content aggregator, loads configurations,
+ * and sets up the data collection and processing pipeline.
+ * 
+ * @module index
+ */
+
 import { ContentAggregator } from "./aggregator/ContentAggregator";
-import { loadDirectoryModules, loadItems, loadProviders, loadStorage, loadParsers } from "./helpers/configHelper";
+import { loadDirectoryModules, loadItems, loadProviders, loadStorage, loadParsers, validateConfiguration } from "./helpers/configHelper";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -8,7 +16,12 @@ dotenv.config();
 
 (async () => {
   try {
-    // Fetch override args to get run specific source config
+    /**
+     * Parse command line arguments for configuration overrides
+     * --source: JSON configuration file path
+     * --onlyFetch: Only fetch data without generating summaries
+     * --output/-o: Output directory path
+     */
     const args = process.argv.slice(2);
     let sourceFile = "sources.json";
     let runOnce = false;
@@ -27,6 +40,10 @@ dotenv.config();
       }
     });
 
+    /**
+     * Load all plugin modules from their respective directories
+     * This includes sources, AI providers, enrichers, generators, and storage plugins
+     */
     const sourceClasses = await loadDirectoryModules("sources");
     const aiClasses = await loadDirectoryModules("ai");
     const enricherClasses = await loadDirectoryModules("enrichers");
@@ -34,11 +51,18 @@ dotenv.config();
     const storageClasses = await loadDirectoryModules("storage");
     const parserClasses = await loadDirectoryModules("parsers");
     
-    // Load the JSON configuration file
+    /**
+     * Load and parse the JSON configuration file
+     * This contains settings for all plugins and their parameters
+     */
     const configPath = path.join(__dirname, "../config", sourceFile);
     const configFile = fs.readFileSync(configPath, "utf8");
     const configJSON = JSON.parse(configFile);
     
+    /**
+     * Apply configuration overrides from the JSON file
+     * These settings control the behavior of the aggregator
+     */
     if (typeof configJSON?.settings?.runOnce === 'boolean') {
       runOnce = configJSON?.settings?.runOnce || runOnce;
     }
@@ -46,6 +70,10 @@ dotenv.config();
       onlyFetch = configJSON?.settings?.onlyFetch || onlyFetch;
     }
     
+    /**
+     * Initialize all plugin configurations
+     * This creates instances of each plugin with their respective parameters
+     */
     let aiConfigs = await loadItems(configJSON.ai, aiClasses, "ai");
     let parserConfigs = await loadItems(configJSON.parsers, parserClasses, "parsers");
     let sourceConfigs = await loadItems(configJSON.sources, sourceClasses, "source");
@@ -53,8 +81,13 @@ dotenv.config();
     let generatorConfigs = await loadItems(configJSON.generators, generatorClasses, "generators");
     let storageConfigs = await loadItems(configJSON.storage, storageClasses, "storage");
 
-    // If any configs depends on the AI provider, set it here
+    /**
+     * Set up dependencies between plugins
+     * AI providers are injected into sources, enrichers, and generators
+     * Storage is injected into generators, sources
+     */
     sourceConfigs = await loadProviders(sourceConfigs, aiConfigs);
+    sourceConfigs = await loadStorage(sourceConfigs, storageConfigs);
     enricherConfigs = await loadProviders(enricherConfigs, aiConfigs);
     generatorConfigs = await loadProviders(generatorConfigs, aiConfigs);
     parserConfigs = await loadProviders(parserConfigs, aiConfigs);
@@ -66,28 +99,48 @@ dotenv.config();
     // If any configs depends on a parser, set it here
     sourceConfigs = await loadParsers(sourceConfigs, parserConfigs);
     
-    // Set output path for generators
+    /**
+     * Call the validation function
+     */
+    validateConfiguration({ 
+        sources: sourceConfigs,
+        ai: aiConfigs,
+        enrichers: enricherConfigs,
+        generators: generatorConfigs,
+        storage: storageConfigs
+    });
+    
+    /**
+     * Configure output paths for all generators
+     * This ensures summaries are saved to the specified location
+     */
     generatorConfigs.forEach(config => {
       if (config.instance && typeof config.instance.outputPath === 'undefined') {
         config.instance.outputPath = outputPath;
       }
     });
   
+    /**
+     * Initialize the content aggregator and register all plugins
+     * This sets up the data collection and processing pipeline
+     */
     const aggregator = new ContentAggregator();
-  
-    // Register Sources under Aggregator
     sourceConfigs.forEach((config) => aggregator.registerSource(config.instance));
-
-    // Register Enrichers under Aggregator
     enricherConfigs.forEach((config) => aggregator.registerEnricher(config.instance));
-  
-    // Initialize and Register Storage, Should just be one Storage Plugin for now.
+    
+    /**
+     * Initialize storage plugins and register them with the aggregator
+     * Currently only one storage plugin is supported
+     */
     storageConfigs.forEach(async (storage : any) => {
       await storage.instance.init();
       aggregator.registerStorage(storage.instance);
     });
 
-    //Fetch Sources
+    /**
+     * Set up data collection schedules for each source
+     * Each source runs at its configured interval
+     */
     for (const config of sourceConfigs) {
       await aggregator.fetchAndStore(config.instance.name);
 
@@ -96,8 +149,11 @@ dotenv.config();
       }, config.interval);
     }
     
+    /**
+     * Set up summary generation if not in fetch-only mode
+     * Each generator runs at its configured interval
+     */
     if (!onlyFetch) {
-      //Generate Content
       for (const generator of generatorConfigs) {
         await generator.instance.generateContent();
 
@@ -112,6 +168,10 @@ dotenv.config();
 
     console.log("Content aggregator is running and scheduled.");
     
+    /**
+     * Set up graceful shutdown handlers
+     * This ensures resources are properly released when the application exits
+     */
     const shutdown = async () => {
       console.log("Shutting down...");
       storageConfigs.forEach(async (storage : any) => {
@@ -123,6 +183,10 @@ dotenv.config();
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
 
+    /**
+     * Handle run-once mode
+     * If enabled, the application will exit after a single run
+     */
     if (runOnce) {
       await shutdown();
       console.log("Content aggregator is complete.");
