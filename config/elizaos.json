@@ -80,7 +80,8 @@
             "provider": "summaryOpenAiProvider",
             "storage": "SQLiteStorage",
             "summaryType": "elizaosDailySummary",
-            "outputPath": "./output/elizaos"
+            "outputPath": "./output/elizaos",
+            "groupBySourceType": true
           }
         }
     ]
