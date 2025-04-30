@@ -3,36 +3,52 @@ description:
 globs: 
 alwaysApply: false
 ---
-# Plugin System Architecture
+# Plugin System
 
-The news aggregator uses a modular plugin system organized in the [src/plugins](mdc:src/plugins) directory.
+The application features a robust plugin system, allowing for modular addition of functionality. Plugins reside in subdirectories within `[src/plugins/](mdc:src/plugins)` and are dynamically loaded by the main scripts (`[src/index.ts](mdc:src/index.ts)`, `[src/historical.ts](mdc:src/historical.ts)`) using helpers like `loadDirectoryModules` from `[src/helpers/configHelper.ts](mdc:src/helpers/configHelper.ts)`.
 
-## Plugin Categories
+## Plugin Types
 
-### Sources
-Located in `src/plugins/sources/`
-- News source plugins for different platforms and APIs
-- Each plugin implements a standard interface for data collection
+Plugins are organized by type into subdirectories:
 
-### Enrichers
-Located in `src/plugins/enrichers/`
-- Content enrichment plugins
-- Add metadata, categorization, and additional context to news items
+1.  **Sources (`[src/plugins/sources/](mdc:src/plugins/sources)`)**
+    *   Implement the `[SourcePlugin](mdc:src/types.ts)` interface.
+    *   Responsible for fetching data from external APIs, feeds, or services.
+    *   Must implement `fetchArticles(): Promise<ContentItem[]>`, returning normalized `ContentItem` objects.
+    *   May optionally implement `fetchHistorical(filter: DateConfig | string)` for use with `historical.ts`.
+    *   Examples: `[DiscordRawDataSource.ts](mdc:src/plugins/sources/DiscordRawDataSource.ts)`, `[GitHubDataSource.ts](mdc:src/plugins/sources/GitHubDataSource.ts)`.
 
-### AI Integration
-Located in `src/plugins/ai/`
-- AI-powered processing and analysis
-- Integration with language models and AI services
+2.  **AI Providers (`[src/plugins/ai/](mdc:src/plugins/ai)`)**
+    *   Implement the `[AiProvider](mdc:src/types.ts)` interface.
+    *   Provide wrappers around AI models/APIs (e.g., OpenAI, Claude via OpenRouter).
+    *   Must implement methods like `summarize(text)`, `topics(text)`, `image(text)`.
+    *   These providers are injected as dependencies into other plugins (Sources, Enrichers, Generators) that require AI capabilities.
+    *   Configuration (API keys, models) is typically handled via the JSON config and environment variables.
 
-### Generators
-Located in `src/plugins/generators/`
-- Content generation plugins
-- Transform and format news data for different outputs
+3.  **Enrichers (`[src/plugins/enrichers/](mdc:src/plugins/enrichers)`)**
+    *   Implement the `[EnricherPlugin](mdc:src/types.ts)` interface.
+    *   Process and modify/annotate `ContentItem` objects after fetching.
+    *   Must implement `enrich(articles: ContentItem[]): ContentItem[] | Promise<ContentItem[]>`. 
+    *   Can use AI providers (e.g., for topic extraction, sentiment analysis).
+    *   Example: `AiTopicsEnricher` (inferred from config, likely exists in this directory).
 
-### Storage
-Located in `src/plugins/storage/`
-- Database and storage plugins
-- Handle data persistence and retrieval
+4.  **Generators (`[src/plugins/generators/](mdc:src/plugins/generators)`)**
+    *   (Interface likely defined within this directory or implied)
+    *   Responsible for creating derived content, typically summaries, based on stored `ContentItem` data.
+    *   Often interact with a `StoragePlugin` to retrieve data for a specific period (e.g., a day).
+    *   Usually use an `AiProvider` to generate summary text.
+    *   Output results (e.g., Markdown files) to a configured path (`outputPath`).
+    *   Key method likely involves `generateContent()` or `generateAndStoreSummary(dateStr)`.
+    *   Examples: `DailySummaryGenerator`, `DiscordSummaryGenerator` (inferred from config).
 
-## Plugin Development
-New plugins should be added to their respective category directories and follow the type definitions in [src/types.ts](mdc:src/types.ts).
+5.  **Storage (`[src/plugins/storage/](mdc:src/plugins/storage)`)**
+    *   Implement the `[StoragePlugin](mdc:src/plugins/storage/StoragePlugin.ts)` interface (assuming path).
+    *   Handle persistence of `ContentItem` and potentially other data (like `SummaryItem`).
+    *   Must implement methods for initialization (`init`), saving (`saveContent`), retrieving (`getContent`, `getContentByDate`, etc.), and closing connections (`close`).
+    *   Example: `SQLiteStorage` (inferred from config).
+
+## Configuration
+
+Each plugin instance is configured via the main JSON configuration file (e.g., `[config/discord-raw.json](mdc:config/discord-raw.json)`). The configuration specifies the `type` (matching the class name), a unique `name`, and `params` specific to that plugin.
+
+Dependencies (like AI Providers and Storage) are automatically injected into other plugins during initialization based on the configuration by helpers in `[configHelper.ts](mdc:src/helpers/configHelper.ts)`.

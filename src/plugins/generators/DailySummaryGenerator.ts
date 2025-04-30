@@ -7,6 +7,7 @@ import { OpenAIProvider } from "../ai/OpenAIProvider";
 import { SQLiteStorage } from "../storage/SQLiteStorage";
 import { ContentItem, SummaryItem } from "../../types";
 import { createJSONPromptForTopics, createMarkdownPromptForJSON } from "../../helpers/promptHelper";
+import { retryOperation } from "../../helpers/generalHelper";
 import fs from "fs";
 import path from "path";
 
@@ -25,7 +26,7 @@ interface DailySummaryGeneratorConfig {
   provider: OpenAIProvider;
   storage: SQLiteStorage;
   summaryType: string;
-  source: string;
+  source?: string;
   outputPath?: string;
   maxGroupsToSummarize?: number;
   groupBySourceType?: boolean;
@@ -42,8 +43,8 @@ export class DailySummaryGenerator {
   private storage: SQLiteStorage;
   /** Type of summary being generated */
   private summaryType: string;
-  /** Source identifier for the summaries */
-  private source: string;
+  /** Source identifier for the summaries (optional) */
+  private source: string | undefined;
   /** List of topics to exclude from summaries */
   private blockedTopics: string[] = ['open source'];
   /** Path for output files */
@@ -76,7 +77,16 @@ export class DailySummaryGenerator {
     try {
       const currentTime = new Date(dateStr).getTime() / 1000;
       const targetTime = currentTime + (60 * 60 * 24);
-      const contentItems: ContentItem[] = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime, this.summaryType);
+      
+      // Fetch items based on whether a specific source type was configured
+      let contentItems: ContentItem[];
+      if (this.source) {
+        console.log(`Fetching content for type: ${this.source}`);
+        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime, this.source);
+      } else {
+        console.log(`Fetching all content types for summary generation.`);
+        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime); // Fetch all types
+      }
 
       if (contentItems.length === 0) {
         console.warn(`No content found for date ${dateStr} to generate summary.`);
@@ -96,7 +106,7 @@ export class DailySummaryGenerator {
           if (!topic || !objects || objects.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) continue;
 
           const prompt = createJSONPromptForTopics(topic, objects, dateStr);
-          const summaryText = await this.provider.summarize(prompt);
+          const summaryText = await retryOperation(() => this.provider.summarize(prompt));
           const summaryJSONString = summaryText.replace(/```json\n|```/g, "");
           let summaryJSON = JSON.parse(summaryJSONString);
           summaryJSON["topic"] = topic;
@@ -110,7 +120,7 @@ export class DailySummaryGenerator {
       }
 
       const mdPrompt = createMarkdownPromptForJSON(allSummaries, dateStr);
-      const markdownReport = await this.provider.summarize(mdPrompt);
+      const markdownReport = await retryOperation(() => this.provider.summarize(mdPrompt));
       const markdownString = markdownReport.replace(/```markdown\n|```/g, "");
 
       const summaryItem: SummaryItem = {

@@ -1,0 +1,17 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Discord Data Fetching
+
+The primary source for fetching raw Discord message and user data is [src/plugins/sources/DiscordRawDataSource.ts](mdc:src/plugins/sources/DiscordRawDataSource.ts).
+
+Key aspects:
+- It implements the `ContentSource` interface defined in [src/plugins/sources/ContentSource.ts](mdc:src/plugins/sources/ContentSource.ts).
+- It fetches data for specific channels (`channelIds`) within a given guild (`guildId`).
+- It uses the `fetchHistorical` method for fetching data for a specific date (does not use cursors for this).
+- The `fetchChannelMessages` method contains the core logic for pagination, rate limiting, and date filtering for a single channel (used by `fetchHistorical`).
+- The `fetchItems` method (for fetching *recent* items) uses the `StoragePlugin` (configured during initialization, likely via [src/plugins/storage/SQLiteStorage.ts](mdc:src/plugins/storage/SQLiteStorage.ts)) to manage cursors (last fetched message ID per channel) to avoid refetching. Cursor keys are constructed like `${this.name}-${channel.id}`.
+- The fetched data structure is defined by the `DiscordRawData` interface in [src/types.ts](mdc:src/types.ts).
+- Helper functions from [src/helpers/](mdc:src/helpers) (like `retryOperation`, `delay`, `createProgressBar`, `logger`) are used extensively.

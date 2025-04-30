@@ -4,19 +4,20 @@
     },
     "sources": [
       {
-        "type": "DiscordChannelSource",
-        "name": "discordChannel",
+        "type": "DiscordRawDataSource",
+        "name": "elizaosDevRaw",
         "interval": 360000,
         "params": {
           "botToken": "process.env.DISCORD_TOKEN",
+          "guildId": "process.env.DISCORD_GUILD_ID",
           "channelIds": [
 	    "1320246527268098048",
 	    "1327493511406293016",
-	    "1331596924423376921",
+	    "1324098367416172665",
 	    "1324089429727514674",
 	    "1323745969115893780"
 	  ],
-          "provider": "summaryOpenAiProvider"
+          "storage": "SQLiteStorage"
         }
       }
     ],
@@ -46,16 +47,7 @@
           }
         }
     ],
-    "enrichers": [
-        {
-          "type": "AiTopicsEnricher",
-          "name": "topicEnricher",
-          "params": {
-            "provider": "miniOpenAiProvider",
-            "thresholdLength": 30
-          }
-        }
-    ],
+    "enrichers": [],
     "storage": [
         {
             "type": "SQLiteStorage",
@@ -67,14 +59,25 @@
     ],
     "generators": [
         {
-          "type": "DailySummaryGenerator",
-          "name": "DailySummaryGenerator",
+          "type": "RawDataExporter",
+          "name": "ElizaOSDevRawExporter",
+          "interval": 3600000,
+          "params": {
+            "storage": "SQLiteStorage",
+            "source": "discordRawData",
+            "outputPath": "./output/elizaos-dev/raw"
+          }
+        },
+        {
+          "type": "DiscordSummaryGenerator",
+          "name": "ElizaOSDevSummaryGenerator",
           "interval": 3600000,
           "params": {
             "provider": "summaryOpenAiProvider",
             "storage": "SQLiteStorage",
-            "summaryType": "dailySummary",
-            "source": "aiSummary"
+            "summaryType": "elizaosDevSummary",
+            "source": "discordRawData",
+            "outputPath": "./output/elizaos-dev/summaries"
           }
         }
     ]
