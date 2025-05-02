@@ -70,7 +70,7 @@ export const PluginPalette: React.FC<PluginPaletteProps> = ({ onDragPlugin }) =>
     
     // Set a drag image with yellow amber styling
     const dragImg = document.createElement('div');
-    // dragImg.className = 'bg-amber-500 max-w-64 text-gray-900 rounded-md px-3 py-2 text-sm shadow-lg';
+    // dragImg.className = 'bg-amber-300 max-w-64 text-black rounded-md px-3 py-2 text-sm shadow-lg';
     // dragImg.textContent = plugin.name;
     dragImg.textContent = "_";
     document.body.appendChild(dragImg);
@@ -118,7 +118,7 @@ export const PluginPalette: React.FC<PluginPaletteProps> = ({ onDragPlugin }) =>
     >
       <div className="flex items-center">
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-gray-300 group-hover:text-amber-200 transition-colors truncate">{plugin.name}</div>
+          <div className="font-medium text-gray-300 group-hover:text-amber-300 transition-colors truncate">{plugin.name}</div>
           <div className="text-xs text-gray-400 mt-1 line-clamp-2">{plugin.description}</div>
         </div>
       </div>
@@ -206,7 +206,7 @@ export const PluginPalette: React.FC<PluginPaletteProps> = ({ onDragPlugin }) =>
                         <div className="flex items-center space-x-3 min-w-0 flex-1 pr-2">
                           <h3 className="font-medium truncate">{category.name}</h3>
                           {filteredPlugins.length > 0 && 
-                            <span className="flex-shrink-0 text-xs px-2 py-0.5 text-gray-900 bg-amber-500 rounded-full">
+                            <span className="flex-shrink-0 text-xs px-2 py-0.5 text-black bg-amber-300 rounded-full">
                               {filteredPlugins.length}
                             </span>
                           }

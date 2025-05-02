@@ -151,29 +151,31 @@ function App() {
         }
         configName = userInput.trim();
       }
+
+      await configStateManager.saveToServer()
       
-      // Force sync the config state manager to ensure all changes are captured
-      configStateManager.forceSync();
+      // // Force sync the config state manager to ensure all changes are captured
+      // configStateManager.forceSync();
       
-      // Get the latest config directly from the state manager rather than using the local state
-      const latestConfig = configStateManager.getConfig();
+      // // Get the latest config directly from the state manager rather than using the local state
+      // const latestConfig = configStateManager.getConfig();
       
-      // Ensure the name is properly set
-      latestConfig.name = configName;
+      // // Ensure the name is properly set
+      // latestConfig.name = configName;
       
-      // Save the LATEST config to the server
-      await saveConfig(configName, latestConfig);
+      // // Save the LATEST config to the server
+      // await saveConfig(configName, latestConfig);
       
-      // Update our local state with the latest config that was saved
-      setConfig(latestConfig);
+      // // Update our local state with the latest config that was saved
+      // setConfig(latestConfig);
       
-      // Update the selected config name if it was a new config
-      if (!selectedConfig) {
-        setSelectedConfig(configName);
+      // // Update the selected config name if it was a new config
+      // if (!selectedConfig) {
+      //   setSelectedConfig(configName);
         
-        // Also refresh the list of configs
-        await loadConfigs();
-      }
+      //   // Also refresh the list of configs
+      //   await loadConfigs();
+      // }
       
       // Clear unsaved changes flag
       setHasUnsavedChanges(false);
@@ -244,7 +246,7 @@ function App() {
                     });
                     setHasUnsavedChanges(false);
                   }}
-                  className="px-3 py-1 text-gray-300 bg-amber-700 rounded-md hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-gray-800"
+                  className="px-3 py-1 text-black bg-amber-300 rounded-md hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-gray-800"
                 >
                   New Config
                 </button>

@@ -31,7 +31,30 @@ class ConfigStateManager {
   getConfig(): ConfigType {
     // Make sure the config is up-to-date with any node/connection changes
     this.syncConfigWithNodes();
-    return this.configData.getData();
+    
+    // Create a deep copy helper to ensure arrays are properly handled
+    const deepCopy = (obj: any): any => {
+      if (obj === null || obj === undefined) {
+        return obj;
+      }
+      
+      if (Array.isArray(obj)) {
+        return obj.map(item => deepCopy(item));
+      }
+      
+      if (typeof obj === 'object') {
+        const copy: any = {};
+        for (const key in obj) {
+          copy[key] = deepCopy(obj[key]);
+        }
+        return copy;
+      }
+      
+      return obj;
+    };
+    
+    // Return a deep copy to prevent direct reference modifications
+    return deepCopy(this.configData.getData());
   }
 
   // Get the current nodes
@@ -248,6 +271,9 @@ class ConfigStateManager {
       if (prevState) {
         let shouldEmitUpdate = false;
         
+        // FIXED: Don't delete provider parameters when connections are removed
+        // Only mark params as "disconnected" by setting to null but keeping the param
+        
         // Check if provider connection was removed
         if (prevState.provider) {
           const hasProviderConnection = node.inputs.some(input => 
@@ -255,8 +281,9 @@ class ConfigStateManager {
           );
           
           if (!hasProviderConnection && node.params && 'provider' in node.params) {
-            // Connection was removed, so remove the provider param
-            delete node.params.provider;
+            // Instead of deleting the param, set it to null to indicate disconnection
+            // but preserve the knowledge that this node can have a provider
+            node.params.provider = null;
             shouldEmitUpdate = true;
           }
         }
@@ -268,8 +295,9 @@ class ConfigStateManager {
           );
           
           if (!hasStorageConnection && node.params && 'storage' in node.params) {
-            // Connection was removed, so remove the storage param
-            delete node.params.storage;
+            // Instead of deleting the param, set it to null to indicate disconnection
+            // but preserve the knowledge that this node can have a storage
+            node.params.storage = null;
             shouldEmitUpdate = true;
           }
         }
@@ -316,6 +344,27 @@ class ConfigStateManager {
     try {
       console.log('🔄 Updating plugin:', JSON.stringify(plugin));
       
+      // Deep copy helper to ensure arrays are preserved
+      const deepCopy = (obj: any): any => {
+        if (obj === null || obj === undefined) {
+          return obj;
+        }
+        
+        if (Array.isArray(obj)) {
+          return obj.map(item => deepCopy(item));
+        }
+        
+        if (typeof obj === 'object') {
+          const copy: any = {};
+          for (const key in obj) {
+            copy[key] = deepCopy(obj[key]);
+          }
+          return copy;
+        }
+        
+        return obj;
+      };
+      
       // Make sure we have a plugin id
       if (!plugin.id) {
         console.error('Plugin has no ID');
@@ -330,17 +379,53 @@ class ConfigStateManager {
       }
       
       // Store previous values to check for connection changes
-      const prevParams = { ...nodeToUpdate.params };
+      const prevParams = nodeToUpdate.params ? { ...nodeToUpdate.params } : {};
+      
+      // Deep copy the plugin params to avoid reference issues
+      const paramsCopy = deepCopy(plugin.params || {});
+      
+      // Check for array parameters
+      for (const key in paramsCopy) {
+        if (Array.isArray(paramsCopy[key])) {
+          console.log(`📊 Array parameter ${key} in plugin update:`, JSON.stringify(paramsCopy[key]));
+        }
+      }
       
       // Update node properties in the UI
       nodeToUpdate.name = plugin.name;
-      nodeToUpdate.params = plugin.params || {};
+      nodeToUpdate.params = paramsCopy;
       
-      // Update the plugin in the config data
-      const result = this.configData.updatePlugin(plugin);
-      if (!result) {
-        console.error(`Failed to update plugin in config data: ${plugin.id}`);
-        return false;
+      // Create a deep copy of the plugin with our deep-copied params
+      const pluginCopy = {
+        ...plugin,
+        params: paramsCopy
+      };
+      
+      // FIXED: Handle the special case where a node is marked as isChild but needs to be updated directly
+      // This fixes the issue with array parameters not being properly saved in the config
+      if (plugin.isChild && plugin.type === 'source' && plugin.id.startsWith('source-')) {
+        // Get the node ID parts to determine the correct index
+        const [type, indexStr] = plugin.id.split('-');
+        const index = parseInt(indexStr);
+        
+        if (!isNaN(index) && this.configData.getData().sources && this.configData.getData().sources[index]) {
+          console.log(`📊 Direct update of source node with array params that was marked as isChild: ${plugin.id}`);
+          
+          // Update the source directly in the config with deep copied params
+          this.configData.getData().sources[index].params = deepCopy(plugin.params);
+          
+          // Also update the name if needed
+          if (this.configData.getData().sources[index].name !== plugin.name) {
+            this.configData.getData().sources[index].name = plugin.name;
+          }
+        }
+      } else {
+        // Normal update via the Config class
+        const result = this.configData.updatePlugin(pluginCopy);
+        if (!result) {
+          console.error(`Failed to update plugin in config data: ${plugin.id}`);
+          return false;
+        }
       }
       
       // Check for provider/storage parameter changes that require connection updates
@@ -350,8 +435,9 @@ class ConfigStateManager {
         
         // Handle provider connection changes
         if (nodeToUpdate.inputs.some(input => input.name === 'provider')) {
+          const nodeParams = nodeToUpdate.params || {};
           // Provider was removed
-          if (prevParams.provider && !nodeToUpdate.params.provider) {
+          if (prevParams.provider && !nodeParams.provider) {
             // Find and remove the connection
             this.connections = this.connections.filter(conn => 
               !(conn.to.nodeId === nodeToUpdate.id && conn.to.input === 'provider')
@@ -359,15 +445,15 @@ class ConfigStateManager {
             connectionChanges = true;
           }
           // Provider was changed or added
-          else if (nodeToUpdate.params.provider && 
-                  (prevParams.provider !== nodeToUpdate.params.provider || !prevParams.provider)) {
+          else if (nodeParams.provider && 
+                  (prevParams.provider !== nodeParams.provider || !prevParams.provider)) {
             // Remove existing provider connection if any
             this.connections = this.connections.filter(conn => 
               !(conn.to.nodeId === nodeToUpdate.id && conn.to.input === 'provider')
             );
             
             // Find provider node by name
-            const providerName = nodeToUpdate.params.provider;
+            const providerName = nodeParams.provider;
             const providerNode = this.nodes.find(node => 
               node.type === 'ai' && node.name === providerName
             );
@@ -385,8 +471,9 @@ class ConfigStateManager {
         
         // Handle storage connection changes
         if (nodeToUpdate.inputs.some(input => input.name === 'storage')) {
+          const nodeParams = nodeToUpdate.params || {};
           // Storage was removed
-          if (prevParams.storage && !nodeToUpdate.params.storage) {
+          if (prevParams.storage && !nodeParams.storage) {
             // Find and remove the connection
             this.connections = this.connections.filter(conn => 
               !(conn.to.nodeId === nodeToUpdate.id && conn.to.input === 'storage')
@@ -394,15 +481,15 @@ class ConfigStateManager {
             connectionChanges = true;
           }
           // Storage was changed or added
-          else if (nodeToUpdate.params.storage && 
-                  (prevParams.storage !== nodeToUpdate.params.storage || !prevParams.storage)) {
+          else if (nodeParams.storage && 
+                  (prevParams.storage !== nodeParams.storage || !prevParams.storage)) {
             // Remove existing storage connection if any
             this.connections = this.connections.filter(conn => 
               !(conn.to.nodeId === nodeToUpdate.id && conn.to.input === 'storage')
             );
             
             // Find storage node by name
-            const storageName = nodeToUpdate.params.storage;
+            const storageName = nodeParams.storage;
             const storageNode = this.nodes.find(node => 
               node.type === 'storage' && node.name === storageName
             );
@@ -425,8 +512,8 @@ class ConfigStateManager {
         }
       }
       
-      // Ensure the config is fully updated with all changes including connection changes
-      this.syncConfigWithNodes();
+      // Force sync to make sure all changes are applied
+      this.forceSync();
       
       // Mark that we have pending changes
       this.pendingChanges = true;
@@ -739,7 +826,32 @@ class ConfigStateManager {
     console.log('🔄 syncConfigWithNodes: Synchronizing node/connection state to config');
     
     // Create a deep copy of the config to avoid mutation
-    const updatedConfig = JSON.parse(JSON.stringify(this.configData.getData()));
+    // FIXED: Don't use JSON.parse(JSON.stringify()) as it doesn't handle array references correctly
+    // const updatedConfig = JSON.parse(JSON.stringify(this.configData.getData()));
+    
+    // Helper function to deep copy objects with proper array handling
+    const deepCopy = (obj: any): any => {
+      if (obj === null || obj === undefined) {
+        return obj;
+      }
+      
+      if (Array.isArray(obj)) {
+        return obj.map(item => deepCopy(item));
+      }
+      
+      if (typeof obj === 'object') {
+        const copy: any = {};
+        for (const key in obj) {
+          copy[key] = deepCopy(obj[key]);
+        }
+        return copy;
+      }
+      
+      return obj;
+    };
+    
+    // Use our deepCopy function instead of JSON.parse/stringify
+    const updatedConfig = deepCopy(this.configData.getData());
     let hasChanges = false;
     
     // Process each node to update the config
@@ -759,7 +871,8 @@ class ConfigStateManager {
         case 'source':
           if (updatedConfig.sources && updatedConfig.sources[index]) {
             if (JSON.stringify(updatedConfig.sources[index].params) !== JSON.stringify(node.params)) {
-              updatedConfig.sources[index].params = { ...node.params };
+              // Use deep copy to ensure arrays are properly cloned
+              updatedConfig.sources[index].params = deepCopy(node.params);
               hasChanges = true;
             }
           }
@@ -767,7 +880,8 @@ class ConfigStateManager {
         case 'enricher':
           if (updatedConfig.enrichers && updatedConfig.enrichers[index]) {
             if (JSON.stringify(updatedConfig.enrichers[index].params) !== JSON.stringify(node.params)) {
-              updatedConfig.enrichers[index].params = { ...node.params };
+              // Use deep copy to ensure arrays are properly cloned
+              updatedConfig.enrichers[index].params = deepCopy(node.params);
               hasChanges = true;
             }
           }
@@ -775,7 +889,8 @@ class ConfigStateManager {
         case 'generator':
           if (updatedConfig.generators && updatedConfig.generators[index]) {
             if (JSON.stringify(updatedConfig.generators[index].params) !== JSON.stringify(node.params)) {
-              updatedConfig.generators[index].params = { ...node.params };
+              // Use deep copy to ensure arrays are properly cloned
+              updatedConfig.generators[index].params = deepCopy(node.params);
               hasChanges = true;
             }
           }
@@ -783,7 +898,8 @@ class ConfigStateManager {
         case 'ai':
           if (updatedConfig.ai && updatedConfig.ai[index]) {
             if (JSON.stringify(updatedConfig.ai[index].params) !== JSON.stringify(node.params)) {
-              updatedConfig.ai[index].params = { ...node.params };
+              // Use deep copy to ensure arrays are properly cloned
+              updatedConfig.ai[index].params = deepCopy(node.params);
               hasChanges = true;
             }
           }
@@ -791,7 +907,8 @@ class ConfigStateManager {
         case 'storage':
           if (updatedConfig.storage && updatedConfig.storage[index]) {
             if (JSON.stringify(updatedConfig.storage[index].params) !== JSON.stringify(node.params)) {
-              updatedConfig.storage[index].params = { ...node.params };
+              // Use deep copy to ensure arrays are properly cloned
+              updatedConfig.storage[index].params = deepCopy(node.params);
               hasChanges = true;
             }
           }
@@ -846,7 +963,8 @@ class ConfigStateManager {
             
             // Update the child params if different
             if (JSON.stringify(parentArray[parentIndex].params.children[i]) !== JSON.stringify(childNode.params)) {
-              parentArray[parentIndex].params.children[i] = { ...childNode.params };
+              // Use deep copy to ensure arrays are properly cloned
+              parentArray[parentIndex].params.children[i] = deepCopy(childNode.params);
               hasChanges = true;
             }
           }
@@ -1068,7 +1186,12 @@ class ConfigStateManager {
   saveToServer(): Promise<boolean> {
     console.log('🔄 Saving config to server');
     try {
+      // Ensure the config is up-to-date with the current node state
+      this.syncConfigWithNodes();
+      
       const config = this.configData.getData();
+
+      console.log('CONFIG: ', config)
       
       // Make sure we have a config name
       if (!config.name || typeof config.name !== 'string') {
@@ -1076,8 +1199,28 @@ class ConfigStateManager {
         return Promise.reject(new Error('Config must have a name'));
       }
       
-      // Ensure the config is up-to-date with the current node state
-      this.syncConfigWithNodes();
+      // Debug log the config that will be saved
+      console.log('🔄 Config to be saved:', JSON.stringify(config));
+      
+      // Look for array parameters in the config nodes
+      const nodeTypes = ['sources', 'enrichers', 'generators', 'ai', 'storage'] as const;
+      for (const type of nodeTypes) {
+        const configArray = config[type as keyof typeof config];
+        if (configArray && Array.isArray(configArray)) {
+          for (let i = 0; i < configArray.length; i++) {
+            const node = configArray[i] as PluginConfig;
+            if (node && node.params) {
+              // Check if any params are arrays
+              for (const paramKey in node.params) {
+                if (Array.isArray(node.params[paramKey])) {
+                  console.log(`📊 Found array parameter in ${type}[${i}].params.${paramKey}:`, 
+                    JSON.stringify(node.params[paramKey]));
+                }
+              }
+            }
+          }
+        }
+      }
       
       // Use dynamic import to avoid circular dependencies
       return saveConfig(config.name as string, config)

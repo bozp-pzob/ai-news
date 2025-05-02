@@ -1652,12 +1652,36 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   // Handle adding/editing a plugin
   const handleAddPlugin = async (updatedPlugin: any) => {
     // Update with the modified plugin
-    console.log("Adding/Updating plugin:", updatedPlugin);
+    console.log("Adding/Updating plugin original:", JSON.stringify(updatedPlugin));
+    
+    // Deep copy helper to ensure arrays are preserved
+    const deepCopy = (obj: any): any => {
+      if (obj === null || obj === undefined) {
+        return obj;
+      }
+      
+      if (Array.isArray(obj)) {
+        return obj.map(item => deepCopy(item));
+      }
+      
+      if (typeof obj === 'object') {
+        const copy: any = {};
+        for (const key in obj) {
+          copy[key] = deepCopy(obj[key]);
+        }
+        return copy;
+      }
+      
+      return obj;
+    };
+    
+    // Create a true deep copy of the updated plugin
+    const pluginCopy = deepCopy(updatedPlugin);
     
     // Check if this is a new plugin (no ID) - typically from drag and drop
-    if (!updatedPlugin.id) {
+    if (!pluginCopy.id) {
       // Generate an ID based on plugin type
-      let pluginType = updatedPlugin.type;
+      let pluginType = pluginCopy.type;
       let targetArray: keyof Config;
       
       // Map the plugin type to the appropriate config array
@@ -1683,7 +1707,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           targetArray = 'storage';
           break;
         default:
-          pluginType = updatedPlugin.type;
+          pluginType = pluginCopy.type;
           // Default to a known config key
           targetArray = 'sources';
       }
@@ -1705,15 +1729,18 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       const index = currentConfig[targetArray].length;
       
       // Generate ID for the new plugin
-      updatedPlugin.id = `${pluginType}-${index}`;
+      pluginCopy.id = `${pluginType}-${index}`;
       
       // Include position data from the drop location
       const pluginConfig = {
-        name: updatedPlugin.name,
+        name: pluginCopy.name,
         type: pluginType,
-        params: updatedPlugin.params || {},
-        position: updatedPlugin.position || { x: 300, y: 300 },
+        params: deepCopy(pluginCopy.params) || {},
+        position: pluginCopy.position || { x: 300, y: 300 },
       };
+      
+      // Debug log what's being added to the config
+      console.log(`Adding new plugin to config[${targetArray}]`, JSON.stringify(pluginConfig));
       
       // Add the new plugin to the config
       currentConfig[targetArray].push(pluginConfig as any);
@@ -1724,7 +1751,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       // Force a sync to rebuild nodes from the config
       configStateManager.forceSync();
       
-      console.log(`Added new plugin "${updatedPlugin.name}" to ${targetArray}`, pluginConfig);
+      console.log(`Added new plugin "${pluginCopy.name}" to ${targetArray}`, JSON.stringify(pluginConfig));
       
       // Update local state directly for new plugins
       setNodes(configStateManager.getNodes());
@@ -1735,8 +1762,19 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     }
     else {
       // For existing plugins, use updatePlugin
+      console.log("Updating existing plugin with params:", JSON.stringify(pluginCopy.params));
+      
+      // Special handling for array parameters
+      if (pluginCopy.params) {
+        for (const key in pluginCopy.params) {
+          if (Array.isArray(pluginCopy.params[key])) {
+            console.log(`Found array parameter ${key}:`, JSON.stringify(pluginCopy.params[key]));
+          }
+        }
+      }
+      
       // Try to update the plugin in the config state manager
-      const updated = configStateManager.updatePlugin(updatedPlugin);
+      const updated = configStateManager.updatePlugin(pluginCopy);
       
       if (!updated) {
         console.error("Failed to update plugin in state manager");
@@ -1744,6 +1782,10 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       }
       
       console.log("Plugin updated successfully in state manager");
+      
+      // Get the updated config and make sure our changes persisted
+      const updatedConfig = configStateManager.getConfig();
+      console.log("Updated config after plugin update:", JSON.stringify(updatedConfig));
       
       // Update local state
       setNodes(configStateManager.getNodes());
@@ -2400,7 +2442,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
             onClick={handleSaveToServer}
             className={`px-4 h-10 rounded focus:outline-none flex items-center justify-center shadow-md ${
               hasUnsavedChanges 
-                ? 'text-gray-300 bg-amber-700 hover:bg-amber-400' 
+                ? 'text-black bg-amber-300 hover:bg-amber-400' 
                 : 'bg-stone-900 text-gray-300 cursor-not-allowed'
             }`}
             title={hasUnsavedChanges ? "Save configuration to server" : "No changes to save"}

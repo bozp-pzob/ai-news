@@ -44,8 +44,33 @@ export class ConfigService {
 
   async saveConfig(name: string, config: Config): Promise<void> {
     this.validateConfig(config);
+    
+    // Deep copy the config to ensure proper serialization of array parameters
+    const deepCopy = (obj: any): any => {
+      if (obj === null || obj === undefined) {
+        return obj;
+      }
+      
+      if (Array.isArray(obj)) {
+        return obj.map(item => deepCopy(item));
+      }
+      
+      if (typeof obj === 'object') {
+        const copy: any = {};
+        for (const key in obj) {
+          copy[key] = deepCopy(obj[key]);
+        }
+        return copy;
+      }
+      
+      return obj;
+    };
+    
+    const cleanConfig = deepCopy(config);
+    console.log(`Server saving config to file with array parameters:`, JSON.stringify(cleanConfig));
+    
     const configPath = path.join(this.configDir, `${name}.json`);
-    await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2));
+    await fs.promises.writeFile(configPath, JSON.stringify(cleanConfig, null, 2));
   }
 
   async deleteConfig(name: string): Promise<void> {

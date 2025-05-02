@@ -282,6 +282,70 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     });
   }, [pluginSchema]);
 
+  // Handle adding a new item to an array
+  const handleAddArrayItem = (key: string) => {
+    console.log(`Adding new item to array: ${key}`);
+    
+    setParams(prev => {
+      // Create a deep copy of the current array or initialize a new one
+      const currentArray = Array.isArray(prev[key]) ? [...prev[key]] : [];
+      // Add the new empty item
+      currentArray.push('');
+      
+      // Log the updated array for debugging
+      console.log(`Updated ${key} array:`, currentArray);
+      
+      // Return the new params object with the updated array
+      return {
+        ...prev,
+        [key]: currentArray
+      };
+    });
+  };
+
+  // Handle removing an item from an array
+  const handleRemoveArrayItem = (key: string, index: number) => {
+    console.log(`Removing item at index ${index} from array: ${key}`);
+    
+    setParams(prev => {
+      // Create a deep copy of the current array
+      const currentArray = Array.isArray(prev[key]) ? [...prev[key]] : [];
+      // Remove the item at the specified index
+      const newArray = currentArray.filter((_, i) => i !== index);
+      
+      // Log the updated array for debugging
+      console.log(`Updated ${key} array:`, newArray);
+      
+      // Return the new params object with the updated array
+      return {
+        ...prev,
+        [key]: newArray
+      };
+    });
+  };
+
+  // Handle updating a single array item
+  const handleUpdateArrayItem = (key: string, index: number, value: string) => {
+    console.log(`Updating item at index ${index} in array: ${key} to "${value}"`);
+    
+    setParams(prev => {
+      // Create a deep copy of the current array
+      const currentArray = Array.isArray(prev[key]) ? [...prev[key]] : [];
+      // Update the value at the specified index
+      const newArray = [...currentArray];
+      newArray[index] = value;
+      
+      // Log the updated array for debugging
+      console.log(`Updated ${key} array:`, newArray);
+      
+      // Return the new params object with the updated array
+      return {
+        ...prev,
+        [key]: newArray
+      };
+    });
+  };
+
   // Handle form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -303,11 +367,38 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
       }
     }
     
+    // Deep copy all params to avoid reference issues, with special handling for arrays
+    const deepCopy = (obj: any): any => {
+      if (obj === null || obj === undefined) {
+        return obj;
+      }
+      
+      if (Array.isArray(obj)) {
+        return obj.map(item => deepCopy(item));
+      }
+      
+      if (typeof obj === 'object') {
+        const copy: any = {};
+        for (const key in obj) {
+          copy[key] = deepCopy(obj[key]);
+        }
+        return copy;
+      }
+      
+      return obj;
+    };
+    
+    // Create a true deep copy of all parameters
+    const paramsCopy = deepCopy(params);
+    
+    // Log the params being saved
+    console.log("Saving params:", JSON.stringify(paramsCopy));
+    
     // Create updated plugin with new params and custom name
     const updatedPlugin = {
       ...plugin,
       name: customName,
-      params: { ...params },
+      params: paramsCopy,
       interval
     };
     
@@ -324,7 +415,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
       }
     }
     
-    console.log('Saving plugin with params:', updatedPlugin);
+    console.log('Saving plugin with params:', JSON.stringify(updatedPlugin));
     
     // Call onAdd callback
     onAdd(updatedPlugin);
@@ -340,10 +431,17 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
 
   // Handle string array change (comma-separated values)
   const handleArrayChange = (key: string, value: string) => {
-    const arrayValue = value
-      .split(',')
-      .map(item => item.trim())
-      .filter(Boolean);
+    // Split by commas, but preserve commas within quotes
+    const arrayValue = value.split(',').map(item => {
+      const trimmed = item.trim();
+      // Remove quotes if the item is quoted
+      if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || 
+          (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+        return trimmed.substring(1, trimmed.length - 1);
+      }
+      return trimmed;
+    }).filter(Boolean);
+      
     handleParamChange(key, arrayValue);
   };
 
@@ -499,16 +597,43 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                   {key}
                   {param.required && <span className="text-red-500 ml-1">*</span>}
                 </label>
-                <input
-                  type="text"
-                  value={Array.isArray(params[key]) ? params[key].join(', ') : ''}
-                  onChange={(e) => handleArrayChange(key, e.target.value)}
-                  className={inputClasses}
-                  required={param.required}
-                  placeholder="Comma-separated values"
-                />
+                <div className="space-y-2">
+                  {(params[key] || []).map((item: string, index: number) => (
+                    <div key={index} className="relative">
+                      <input
+                        type="text"
+                        value={item}
+                        onChange={(e) => handleUpdateArrayItem(key, index, e.target.value)}
+                        className={`${inputClasses} pr-8`}
+                        placeholder={`Item ${index + 1}`}
+                        data-index={index}
+                        data-array-key={key}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveArrayItem(key, index)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-red-400 hover:text-red-300 focus:outline-none"
+                        title="Remove item"
+                        data-index={index}
+                        data-array-key={key}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => handleAddArrayItem(key)}
+                    className="mt-2 px-3 py-1 text-sm text-amber-400 hover:text-amber-300 border border-amber-400 hover:border-amber-300 rounded-md focus:outline-none"
+                    data-array-key={key}
+                  >
+                    + Add Item
+                  </button>
+                </div>
                 <p className="mt-1 text-xs text-gray-400">
-                  {param.description}
+                  {param.description || "Add items to the list"}
                 </p>
               </div>
             );
@@ -656,7 +781,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               <button
                 type="submit"
                 onClick={handleSubmit}
-                className="px-4 py-2 text-sm font-medium text-gray-300 bg-amber-700 rounded-md hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-amber-500"
+                className="px-4 py-2 text-sm font-medium text-black bg-amber-300 rounded-md hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-amber-500"
               >
                 Update
               </button>

@@ -786,65 +786,57 @@ function getPortTypeFromName(portName: string): string {
 // Helper function to determine which ports should be shown based on node type
 export function shouldShowPort(node: Node, portName: string, isInput: boolean): boolean {
   // Debug logging to track port display issues
-  const nodeTypeStr = `${node.id} (type: ${node.type})`;
+  const nodeTypeStr = `${node.type}${node.id ? ' (' + node.id + ')' : ''}`;
   
-  // Check if this is a child node inside a parent (based on hierarchy properties)
+  // Check if this is a child node inside a parent
   const isChildNodeOfParent = node.id && (
     (node.id.includes('source-') && node.id !== 'sources-group') ||
     (node.id.includes('enricher-') && node.id !== 'enrichers-group') ||
     (node.id.includes('generator-') && node.id !== 'generators-group')
   );
   
-  // Child nodes should never show output ports - they only pass data to their parent
-  if (!isInput && isChildNodeOfParent && portName === 'output') {
-    console.log(`PORT FILTER: ${nodeTypeStr} - rejecting output port on child node`);
-    return false;
+  // Provider nodes
+  if (node.isProvider || node.type === 'ai' || node.id.includes('ai-')) {
+    if (isInput) {
+      // Input ports for provider nodes are the model configuration
+      const shouldShow = portName === 'model' || portName === 'config';
+      if (!shouldShow) {
+        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port ${portName} (only model/config allowed)`);
+      }
+      return shouldShow;
+    } else {
+      // Provider nodes only have a provider output port
+      const shouldShow = portName === 'provider';
+      if (!shouldShow) {
+        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting output port ${portName} (only 'provider' allowed)`);
+      }
+      return shouldShow;
+    }
   }
   
-  // Child nodes should never show input ports named 'input' - they only get data from providers/storage
-  if (isInput && isChildNodeOfParent && portName === 'input') {
-    console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port 'input' on child node`);
-    return false;
-  }
-  
-  // Storage nodes only have output ports
+  // Storage nodes
   if (node.type === 'storage' || node.id.includes('storage-')) {
     if (isInput) {
-      console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port ${portName} (storage nodes have no inputs)`);
+      // Storage nodes don't have input ports
+      console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port ${portName} (no inputs allowed)`);
       return false;
+    } else {
+      // Storage nodes only have a storage output port
+      const shouldShow = portName === 'storage';
+      if (!shouldShow) {
+        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting output port ${portName} (only 'storage' allowed)`);
+      }
+      return shouldShow;
     }
-    const shouldShow = portName === 'storage';
-    if (!shouldShow) {
-      console.log(`PORT FILTER: ${nodeTypeStr} - rejecting output port ${portName} (only 'storage' allowed)`);
-    }
-    return shouldShow;
-  }
-  
-  // AI provider nodes only have output ports
-  if (node.type === 'ai' || node.id.includes('ai-')) {
-    if (isInput) {
-      console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port ${portName} (AI nodes have no inputs)`);
-      return false;
-    }
-    const shouldShow = portName === 'provider';
-    if (!shouldShow) {
-      console.log(`PORT FILTER: ${nodeTypeStr} - rejecting output port ${portName} (only 'provider' allowed)`);
-    }
-    return shouldShow;
   }
   
   // Source nodes
   if (node.type.includes('source') || node.id.includes('source-')) {
     if (isInput) {
-      // Explicitly reject input ports for source nodes
-      if (portName === 'input') {
-        console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port 'input' (source nodes don't need input ports)`);
-        return false;
-      }
-      
-      // Sources have provider and storage inputs only if they have corresponding parameters
-      const hasProviderParam = node.params && 'provider' in node.params && node.params.provider;
-      const hasStorageParam = node.params && 'storage' in node.params && node.params.storage;
+      // FIXED: Allow provider/storage ports even with null parameters
+      // Sources have provider and storage inputs, but only if params exist or are null
+      const hasProviderParam = !!(node.params && ('provider' in node.params));
+      const hasStorageParam = !!(node.params && ('storage' in node.params));
       
       if (portName === 'provider' && !hasProviderParam) {
         console.log(`PORT FILTER: ${nodeTypeStr} - rejecting provider port (no provider parameter)`);
@@ -858,7 +850,7 @@ export function shouldShowPort(node: Node, portName: string, isInput: boolean): 
       
       const shouldShow = (portName === 'provider' && hasProviderParam) || 
                          (portName === 'storage' && hasStorageParam);
-      
+                       
       if (!shouldShow) {
         console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port ${portName} (only provider/storage allowed)`);
       }
@@ -881,9 +873,10 @@ export function shouldShowPort(node: Node, portName: string, isInput: boolean): 
   // Enricher nodes
   if (node.type.includes('enricher') || node.id.includes('enricher-')) {
     if (isInput) {
-      // Enrichers have provider, storage, and input ports, but provider/storage only if params exist
-      const hasProviderParam = node.params && 'provider' in node.params && node.params.provider;
-      const hasStorageParam = node.params && 'storage' in node.params && node.params.storage;
+      // FIXED: Allow provider/storage ports even with null parameters
+      // Enrichers have provider, storage, and input ports, but provider/storage only if params exist or are null
+      const hasProviderParam = !!(node.params && ('provider' in node.params));
+      const hasStorageParam = !!(node.params && ('storage' in node.params));
       
       if (portName === 'provider' && !hasProviderParam) {
         console.log(`PORT FILTER: ${nodeTypeStr} - rejecting provider port (no provider parameter)`);
@@ -898,7 +891,7 @@ export function shouldShowPort(node: Node, portName: string, isInput: boolean): 
       const shouldShow = (portName === 'provider' && hasProviderParam) || 
                          (portName === 'storage' && hasStorageParam) || 
                          portName === 'input';
-                         
+                       
       if (!shouldShow) {
         console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port ${portName} (only provider/storage/input allowed)`);
       }
@@ -921,9 +914,10 @@ export function shouldShowPort(node: Node, portName: string, isInput: boolean): 
   // Generator nodes
   if (node.type.includes('generator') || node.id.includes('generator-')) {
     if (isInput) {
-      // Generators have provider, storage, and input ports, but provider/storage only if params exist
-      const hasProviderParam = node.params && 'provider' in node.params && node.params.provider;
-      const hasStorageParam = node.params && 'storage' in node.params && node.params.storage;
+      // FIXED: Allow provider/storage ports even with null parameters
+      // Generators have provider, storage, and input ports, but provider/storage only if params exist or are null
+      const hasProviderParam = !!(node.params && ('provider' in node.params));
+      const hasStorageParam = !!(node.params && ('storage' in node.params));
       
       if (portName === 'provider' && !hasProviderParam) {
         console.log(`PORT FILTER: ${nodeTypeStr} - rejecting provider port (no provider parameter)`);
@@ -938,7 +932,7 @@ export function shouldShowPort(node: Node, portName: string, isInput: boolean): 
       const shouldShow = (portName === 'provider' && hasProviderParam) || 
                          (portName === 'storage' && hasStorageParam) || 
                          portName === 'input';
-                         
+                       
       if (!shouldShow) {
         console.log(`PORT FILTER: ${nodeTypeStr} - rejecting input port ${portName} (only provider/storage/input allowed)`);
       }
@@ -958,8 +952,8 @@ export function shouldShowPort(node: Node, portName: string, isInput: boolean): 
     }
   }
   
-  // Default: show all ports (for custom/unknown node types)
-  console.log(`PORT FILTER: Unknown node type ${nodeTypeStr} - showing port ${portName}`);
+  // Unknown node type
+  console.log(`PORT FILTER: ${nodeTypeStr} - unknown node type, showing all ports`);
   return true;
 }
 
@@ -1334,7 +1328,7 @@ function syncSingleNodePorts(
   connectionsByTarget: Map<string, Map<string, string>>,
   connectionsBySource: Map<string, Map<string, string>>
 ): boolean {
-  if (!node.params) return false;
+  if (!node.params) node.params = {};
   
   let hasChanges = false;
   
@@ -1368,10 +1362,19 @@ function syncSingleNodePorts(
       hasChanges = true;
     }
   } else {
-    // Remove provider port if parameter doesn't exist
-    const providerPortIndex = node.inputs.findIndex(input => input.name === 'provider');
-    if (providerPortIndex !== -1) {
-      node.inputs.splice(providerPortIndex, 1);
+    // FIXED: Don't remove provider port, just reset its connection
+    // The original code removed the port entirely, preventing future connections
+    const providerPort = node.inputs.find(input => input.name === 'provider');
+    if (providerPort && providerPort.connectedTo !== undefined) {
+      providerPort.connectedTo = undefined;
+      hasChanges = true;
+    } else if (!providerPort && shouldShowProviderPort(node)) {
+      // Add provider port if it's missing but should be shown
+      node.inputs.push({
+        name: 'provider',
+        type: 'provider',
+        connectedTo: undefined
+      });
       hasChanges = true;
     }
   }
@@ -1395,67 +1398,46 @@ function syncSingleNodePorts(
       hasChanges = true;
     }
   } else {
-    // Remove storage port if parameter doesn't exist
-    const storagePortIndex = node.inputs.findIndex(input => input.name === 'storage');
-    if (storagePortIndex !== -1) {
-      node.inputs.splice(storagePortIndex, 1);
+    // FIXED: Don't remove storage port, just reset its connection
+    // The original code removed the port entirely, preventing future connections
+    const storagePort = node.inputs.find(input => input.name === 'storage');
+    if (storagePort && storagePort.connectedTo !== undefined) {
+      storagePort.connectedTo = undefined; 
       hasChanges = true;
-    }
-  }
-  
-  // Child nodes should never have an input port
-  if (isChildNodeOfParent) {
-    const inputPortIndex = node.inputs.findIndex(input => input.name === 'input');
-    if (inputPortIndex !== -1) {
-      node.inputs.splice(inputPortIndex, 1);
-      hasChanges = true;
-    }
-  }
-  // Source nodes should never have an input port
-  else if (node.type.includes('source') || node.id.includes('source-')) {
-    const inputPortIndex = node.inputs.findIndex(input => input.name === 'input');
-    if (inputPortIndex !== -1) {
-      node.inputs.splice(inputPortIndex, 1);
-      hasChanges = true;
-    }
-  }
-  // For other inputs like 'input', make sure they exist and have connections
-  else if ((node.type.includes('enricher') || node.type.includes('generator')) && !isChildNodeOfParent) {
-    const inputPort = node.inputs.find(input => input.name === 'input');
-    const expectedConnection = targetConnections.get('input');
-    
-    if (!inputPort) {
+    } else if (!storagePort && shouldShowStoragePort(node)) {
+      // Add storage port if it's missing but should be shown
       node.inputs.push({
-        name: 'input',
-        type: 'data',
-        connectedTo: expectedConnection
+        name: 'storage',
+        type: 'storage',
+        connectedTo: undefined
       });
-      hasChanges = true;
-    } else if (inputPort.connectedTo !== expectedConnection) {
-      inputPort.connectedTo = expectedConnection;
-      hasChanges = true;
-    }
-  }
-  
-  // Ensure all output ports have their connections
-  node.outputs.forEach(output => {
-    const expectedConnection = sourceConnections.get(output.name);
-    if (output.connectedTo !== expectedConnection) {
-      output.connectedTo = expectedConnection;
-      hasChanges = true;
-    }
-  });
-  
-  // Child nodes should never have output ports
-  if (isChildNodeOfParent) {
-    const outputPortIndex = node.outputs.findIndex(output => output.name === 'output');
-    if (outputPortIndex !== -1) {
-      node.outputs.splice(outputPortIndex, 1);
       hasChanges = true;
     }
   }
   
   return hasChanges;
+}
+
+// Helper function to determine if a node should have a provider port
+function shouldShowProviderPort(node: Node): boolean {
+  // Determine node type
+  const nodeType = node.type.toLowerCase();
+  
+  // Most generators, enrichers, and certain source nodes can have provider ports
+  return !!(nodeType.includes('generator') || 
+          nodeType.includes('enricher') || 
+          (nodeType.includes('source') && !nodeType.includes('provider')));
+}
+
+// Helper function to determine if a node should have a storage port
+function shouldShowStoragePort(node: Node): boolean {
+  // Determine node type
+  const nodeType = node.type.toLowerCase();
+  
+  // Most generators, enrichers, and certain source nodes can have storage ports
+  return !!(nodeType.includes('generator') || 
+          nodeType.includes('enricher') || 
+          (nodeType.includes('source') && !nodeType.includes('storage')));
 }
 
 // Helper function to ensure a node has all required ports based on its type
@@ -1648,24 +1630,34 @@ export function cleanupStaleConnections(nodes: Node[], connections: Connection[]
       return false;
     }
     
-    // For provider and storage connections, validate that they exist in params
-    if (inputPort.name === 'provider' && (!targetNode.params || !targetNode.params.provider)) {
+    // FIXED: Allow null parameters for provider/storage connections
+    // Null parameters indicate disconnected state but the port should be kept
+    
+    // For provider connections, validate that they exist in params (but can be null)
+    if (inputPort.name === 'provider' && (!targetNode.params || !('provider' in targetNode.params))) {
       console.log(`🧹 CLEANUP: Removing provider connection - target node ${targetNode.id} has no provider parameter`);
       return false;
     }
     
-    if (inputPort.name === 'storage' && (!targetNode.params || !targetNode.params.storage)) {
+    // For storage connections, validate that they exist in params (but can be null)
+    if (inputPort.name === 'storage' && (!targetNode.params || !('storage' in targetNode.params))) {
       console.log(`🧹 CLEANUP: Removing storage connection - target node ${targetNode.id} has no storage parameter`);
       return false;
     }
     
-    // Also validate that the provider/storage name matches the source node name
-    if (inputPort.name === 'provider' && targetNode.params && targetNode.params.provider !== sourceNode.name) {
+    // FIXED: Only validate name matching if the parameter is not null
+    // Allow connections to be preserved even if param is currently null
+    
+    // For provider connections, only validate name matching if param is not null
+    if (inputPort.name === 'provider' && targetNode.params && targetNode.params.provider !== null && 
+        targetNode.params.provider !== sourceNode.name) {
       console.log(`🧹 CLEANUP: Removing provider connection - parameter (${targetNode.params.provider}) doesn't match source node name (${sourceNode.name})`);
       return false;
     }
     
-    if (inputPort.name === 'storage' && targetNode.params && targetNode.params.storage !== sourceNode.name) {
+    // For storage connections, only validate name matching if param is not null
+    if (inputPort.name === 'storage' && targetNode.params && targetNode.params.storage !== null && 
+        targetNode.params.storage !== sourceNode.name) {
       console.log(`🧹 CLEANUP: Removing storage connection - parameter (${targetNode.params.storage}) doesn't match source node name (${sourceNode.name})`);
       return false;
     }

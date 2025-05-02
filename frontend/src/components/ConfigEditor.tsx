@@ -424,7 +424,7 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
                 setSelectedPlugin(plugin);
                 setIsPluginDialogOpen(true);
               }}
-              className="px-3 py-1 text-sm text-amber-500 hover:text-amber-700"
+              className="px-3 py-1 text-sm text-amber-300 hover:text-amber-400"
             >
               Edit
             </button>
@@ -555,7 +555,7 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
         <div className="flex space-x-4">
           <button
             onClick={handleSave}
-            className="px-4 py-2 bg-amber-500 text-gray-900 rounded-md hover:bg-amber-400"
+            className="px-4 py-2 bg-amber-300 text-black rounded-md hover:bg-amber-400"
           >
             Update
           </button>
@@ -563,7 +563,7 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
             <>
               <button
                 onClick={handleStartAggregation}
-                className="px-4 py-2 bg-amber-500 text-gray-900 rounded-md hover:bg-amber-400"
+                className="px-4 py-2 bg-amber-300 text-black rounded-md hover:bg-amber-400"
               >
                 Start Aggregation
               </button>

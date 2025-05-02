@@ -84,13 +84,43 @@ export const getConfig = async (name: string): Promise<Config> => {
 };
 
 export const saveConfig = async (name: string, config: Config): Promise<void> => {
+  console.log(`Saving config ${name} to server`, JSON.stringify(config));
+  
+  // Make sure we deeply clone the config with proper array handling
+  const deepCopyWithArrays = (obj: any): any => {
+    if (obj === null || obj === undefined) {
+      return obj;
+    }
+    
+    if (Array.isArray(obj)) {
+      return obj.map(item => deepCopyWithArrays(item));
+    }
+    
+    if (typeof obj === 'object') {
+      const copy: any = {};
+      for (const key in obj) {
+        copy[key] = deepCopyWithArrays(obj[key]);
+      }
+      return copy;
+    }
+    
+    return obj;
+  };
+  
+  // Create a clean deep copy with proper array handling
+  const cleanConfig = deepCopyWithArrays(config);
+  
+  // Debug log the final config being sent
+  console.log(`Final config being sent:`, JSON.stringify(cleanConfig));
+  
   const response = await fetch(`${API_BASE_URL}/config/${name}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(config),
+    body: JSON.stringify(cleanConfig),
   });
+  
   if (!response.ok) {
     throw new Error('Failed to save config');
   }

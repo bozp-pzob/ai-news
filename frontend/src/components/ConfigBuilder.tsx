@@ -232,32 +232,32 @@ export const ConfigBuilder: React.FC<ConfigBuilderProps> = ({
         <div className="flex space-x-4">
           <button
             onClick={() => handleAddPlugin('sources')}
-            className="px-4 py-2 bg-amber-500 text-gray-900 rounded hover:bg-amber-400"
+            className="px-4 py-2 bg-amber-300 text-black rounded hover:bg-amber-400"
           >
             Add Source
           </button>
           <button
             onClick={() => handleAddPlugin('ai')}
-            className="px-4 py-2 bg-amber-500 text-gray-900 rounded hover:bg-amber-400"
+            className="px-4 py-2 bg-amber-300 text-black rounded hover:bg-amber-400"
           >
             Add AI
           </button>
           <button
             onClick={() => handleAddPlugin('enrichers')}
-            className="px-4 py-2 bg-amber-500 text-gray-900 rounded hover:bg-amber-400"
+            className="px-4 py-2 bg-amber-300 text-black rounded hover:bg-amber-400"
           >
             Add Enricher
           </button>
           <button
             onClick={() => handleAddPlugin('generators')}
-            className="px-4 py-2 bg-amber-500 text-gray-900 rounded hover:bg-amber-400"
+            className="px-4 py-2 bg-amber-300 text-black rounded hover:bg-amber-400"
           >
             Add Generator
           </button>
         </div>
         <button
           onClick={onSave}
-          className="px-4 py-2 bg-amber-500 text-gray-900 rounded hover:bg-amber-400"
+          className="px-4 py-2 bg-amber-300 text-black rounded hover:bg-amber-400"
         >
           Save Configuration
         </button>
@@ -281,6 +281,18 @@ export const ConfigBuilder: React.FC<ConfigBuilderProps> = ({
             setSelectedPlugin(null);
           }}
           onAdd={(plugin) => {
+            // Log the plugin parameters to check for array values
+            console.log(`PluginParamDialog onAdd:`, JSON.stringify(plugin));
+            
+            // Check for array parameters
+            if (plugin.params) {
+              for (const key in plugin.params) {
+                if (Array.isArray(plugin.params[key])) {
+                  console.log(`Plugin param ${key} is an array:`, JSON.stringify(plugin.params[key]));
+                }
+              }
+            }
+            
             // Extract params and interval from the plugin object
             const updatedPlugin = {
               ...selectedPlugin!,
