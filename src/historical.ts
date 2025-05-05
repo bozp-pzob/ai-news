@@ -38,6 +38,7 @@ dotenv.config();
     let sourceFile = "sources.json";
     let dateStr = today.toISOString().slice(0, 10);
     let onlyFetch = false;
+    let onlyGenerate = false;
     let beforeDate;
     let afterDate;
     let duringDate;
@@ -48,6 +49,8 @@ dotenv.config();
         sourceFile = arg.split('=')[1];
       } else if (arg.startsWith('--date=')) {
         dateStr = arg.split('=')[1];
+      } else if (arg.startsWith('--onlyGenerate=')) {
+        onlyGenerate = arg.split('=')[1].toLowerCase() == 'true';
       } else if (arg.startsWith('--onlyFetch=')) {
         onlyFetch = arg.split('=')[1].toLowerCase() == 'true';
       } else if (arg.startsWith('--before=')) {
@@ -85,6 +88,9 @@ dotenv.config();
      */
     if (typeof configJSON?.settings?.onlyFetch === 'boolean') {
       onlyFetch = configJSON?.settings?.onlyFetch || onlyFetch;
+    }
+    if (typeof configJSON?.settings?.onlyGenerate === 'boolean') {
+      onlyGenerate = configJSON?.settings?.onlyGenerate || onlyGenerate;
     }
     
     /**
@@ -177,17 +183,19 @@ dotenv.config();
      * If a date range is specified, fetch data for the entire range
      * Otherwise, fetch data for the specific date
      */
-    if (filter.filterType || (filter.after && filter.before)) {
-      for (const config of sourceConfigs) {
-        await aggregator.fetchAndStoreRange(config.instance.name, filter);
+    if (!onlyGenerate) {
+      if (filter.filterType || (filter.after && filter.before)) {
+        for (const config of sourceConfigs) {
+          await aggregator.fetchAndStoreRange(config.instance.name, filter);
+        }
+      } else {
+        for (const config of sourceConfigs) {
+          await aggregator.fetchAndStore(config.instance.name, dateStr);
+        }
       }
-    } else {
-      for (const config of sourceConfigs) {
-        await aggregator.fetchAndStore(config.instance.name, dateStr);
-      }
+      console.log("Content aggregator is finished fetching historical.");
     }
     
-    console.log("Content aggregator is finished fetching historical.");
 
     /**
      * Generate summaries if not in fetch-only mode
