@@ -32,11 +32,15 @@ dotenv.config();
     let sourceFile = "sources.json";
     let runOnce = false;
     let onlyFetch = false;
+    let onlyGenerate = false;
     let outputPath = './'; // Default output path
     
     args.forEach(arg => {
       if (arg.startsWith('--source=')) {
         sourceFile = arg.split('=')[1];
+      }
+      if (arg.startsWith('--onlyGenerate=')) {
+        onlyGenerate = arg.split('=')[1].toLowerCase() == 'true';
       }
       if (arg.startsWith('--onlyFetch=')) {
         onlyFetch = arg.split('=')[1].toLowerCase() == 'true';
@@ -70,6 +74,9 @@ dotenv.config();
      */
     if (typeof configJSON?.settings?.runOnce === 'boolean') {
       runOnce = configJSON?.settings?.runOnce || runOnce;
+    }
+    if (typeof configJSON?.settings?.onlyGenerate === 'boolean') {
+      onlyGenerate = configJSON?.settings?.onlyGenerate || onlyGenerate;
     }
     if (typeof configJSON?.settings?.onlyFetch === 'boolean') {
       onlyFetch = configJSON?.settings?.onlyFetch || onlyFetch;
@@ -138,12 +145,14 @@ dotenv.config();
      * Set up data collection schedules for each source
      * Each source runs at its configured interval
      */
-    for (const config of sourceConfigs) {
-      await aggregator.fetchAndStore(config.instance.name);
-
-      setInterval(() => {
-        aggregator.fetchAndStore(config.instance.name);
-      }, config.interval);
+    if (!onlyGenerate) {
+      for (const config of sourceConfigs) {
+        await aggregator.fetchAndStore(config.instance.name);
+  
+        setInterval(() => {
+          aggregator.fetchAndStore(config.instance.name);
+        }, config.interval);
+      }
     }
     
     /**
