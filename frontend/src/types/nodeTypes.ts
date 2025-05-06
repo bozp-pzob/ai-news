@@ -8,6 +8,7 @@ export interface Node {
   id: string;
   type: string;
   name: string;
+  pluginName?: string;
   position: { x: number; y: number };
   inputs: NodePort[];
   outputs: NodePort[];

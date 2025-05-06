@@ -65,8 +65,10 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     let pluginName: string | undefined;
     let pluginType: string | undefined;
     
+    console.log( plugin )
     if ('name' in plugin) {
-      pluginName = plugin.name;
+      // Prefer pluginName for lookups if available, fallback to name
+      pluginName = 'pluginName' in plugin ? (plugin as any).pluginName : plugin.name;
       pluginType = 'type' in plugin ? plugin.type : undefined;
       
       // Handle name mismatches between config names and actual plugin names
@@ -78,7 +80,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
       };
       
       // Check if we have a mapping for this plugin name
-      if (pluginNameMapping[pluginName]) {
+      if (pluginName && pluginNameMapping[pluginName]) {
         console.log(`Mapping plugin name from "${pluginName}" to "${pluginNameMapping[pluginName]}"`);
         pluginName = pluginNameMapping[pluginName];
       }
@@ -121,9 +123,10 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               // Try multiple ways to match:
               // 1. Check if plugin name includes our search term
               // 2. Check if our search term includes plugin name
-              if (p.name.toLowerCase().includes(pluginName.toLowerCase()) || 
-                  pluginName.toLowerCase().includes(p.name.toLowerCase())) {
-                console.log(`Found potential match: ${p.name}`);
+              if (p.pluginName && pluginName && (
+                  p.pluginName.toLowerCase().includes(pluginName.toLowerCase()) || 
+                  pluginName.toLowerCase().includes(p.pluginName.toLowerCase()))) {
+                console.log(`Found potential match: ${p.pluginName}`);
                 foundPlugin = p;
                 break;
               }
@@ -160,9 +163,10 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                   // Check each plugin in this category
                   for (const p of allUpdatedPlugins[category]) {
                     // Try multiple ways to match
-                    if (p.name.toLowerCase().includes(pluginName.toLowerCase()) || 
-                        pluginName.toLowerCase().includes(p.name.toLowerCase())) {
-                      console.log(`Found potential match after loading: ${p.name}`);
+                    if (p.pluginName && pluginName && (
+                        p.pluginName.toLowerCase().includes(pluginName.toLowerCase()) || 
+                        pluginName.toLowerCase().includes(p.pluginName.toLowerCase()))) {
+                      console.log(`Found potential match after loading: ${p.pluginName}`);
                       updatedPluginInfo = p;
                       break;
                     }

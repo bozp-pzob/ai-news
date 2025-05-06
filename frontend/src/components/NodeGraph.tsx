@@ -1004,7 +1004,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           try {
             drawConnection(ctx, fromNode, toNode, connection);
           } catch (error) {
-            console.error("Error drawing connection:", error, connection);
+            // Error silently handled to prevent console logs
           }
         }
       });
@@ -1013,11 +1013,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     // Draw nodes and ensure status is properly visualized
     if (syncedNodes.length > 0) {
       syncedNodes.forEach(node => {
-        // Log node status for debugging
-        if (node.status) {
-          console.log(`Drawing node ${node.name} with status: ${node.status}`, node.statusMessage || '');
-        }
-        
         // Draw the node with the current status
         drawNode(ctx, node, scale, hoveredPort, selectedNode);
       });
@@ -1108,8 +1103,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   
   // Enhanced centering function with proper padding and smooth animation
   const centerView = useCallback(() => {
-    console.log("Center view clicked");
-    
     if (nodes.length === 0 || !canvasRef.current) {
       console.warn('Cannot center view: no nodes or canvas not available');
       return;
@@ -1424,9 +1417,11 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           nodeParams = { ...(actualNode.params || {}) }; // Make a deep copy
         }
         
+        console.log( latestNode, actualNode )
         // Create plugin info structure based on node type
         let plugin: any = {
           name: latestNode?.name || actualNode.name,
+          pluginName: latestNode?.pluginName || latestNode?.name || actualNode.name,
           params: nodeParams,
           id: actualNode.id,
           isChild: isChild,
@@ -1458,7 +1453,8 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         }
         
         // Get plugin schema from the registry based on the node's plugin name and type
-        const pluginSchema = pluginRegistry.findPlugin(plugin.name, plugin.type);
+        console.log("PLUGIN", plugin)
+        const pluginSchema = pluginRegistry.findPlugin(plugin.pluginName || plugin.name, plugin.type);
         if (pluginSchema) {
           console.log('Found plugin schema from registry:', pluginSchema);
           // Add schema information to the plugin
@@ -1734,6 +1730,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       // Include position data from the drop location
       const pluginConfig = {
         name: pluginCopy.name,
+        pluginName: pluginCopy.pluginName || pluginCopy.name,
         type: pluginType,
         params: deepCopy(pluginCopy.params) || {},
         position: pluginCopy.position || { x: 300, y: 300 },
@@ -1886,6 +1883,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     const newPlugin = {
       type: draggedPlugin.type,
       name: draggedPlugin.name,
+      pluginName: draggedPlugin.pluginName || draggedPlugin.name,
       params: {},
       position: { x: dropX, y: dropY },
       // Include constructor interface and config schema from the original plugin definition

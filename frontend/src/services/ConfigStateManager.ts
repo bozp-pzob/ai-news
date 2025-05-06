@@ -576,6 +576,7 @@ class ConfigStateManager {
           id: `storage-${index}`,
           type: 'storage',
           name: storage.name,
+          pluginName: storage.type || storage.name,
           position: { x: leftColumnX, y: 100 + index * storageNodeSpacing },
           inputs: [],
           outputs: [this.createNodeOutput('storage', 'storage')],
@@ -601,6 +602,7 @@ class ConfigStateManager {
           id: `ai-${index}`,
           type: 'ai',
           name: ai.name,
+          pluginName: ai.type || ai.name,
           position: { x: leftColumnX, y: storageHeight + sectionPadding + index * aiNodeSpacing },
           inputs: [],
           outputs: [this.createNodeOutput('provider', 'provider')],
@@ -624,6 +626,7 @@ class ConfigStateManager {
           id: `source-${index}`,
           type: 'source',
           name: source.name,
+          pluginName: source.type || source.name,
           position: { x: sourceColumnX, y: currentY + 50 + index * childNodeSpacing },
           inputs: [
             ...(source.params?.provider ? [this.createNodeInput('provider', 'provider')] : []),
@@ -672,6 +675,7 @@ class ConfigStateManager {
           id: `enricher-${index}`,
           type: 'enricher',
           name: enricher.name,
+          pluginName: enricher.type || enricher.name,
           position: { x: sourceColumnX, y: currentY + 50 + index * childNodeSpacing },
           inputs: [
             ...(enricher.params?.provider ? [this.createNodeInput('provider', 'provider')] : []),
@@ -720,6 +724,7 @@ class ConfigStateManager {
           id: `generator-${index}`,
           type: 'generator',
           name: generator.name,
+          pluginName: generator.type || generator.name,
           position: { x: sourceColumnX, y: currentY + 50 + index * childNodeSpacing },
           inputs: [
             ...(generator.params?.provider ? [this.createNodeInput('provider', 'provider')] : []),

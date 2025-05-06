@@ -1,5 +1,6 @@
 export interface PluginInfo {
   name: string;
+  pluginName: string;
   type: PluginType;
   description: string;
   configSchema: {
@@ -22,6 +23,7 @@ export interface PluginInfo {
 export interface PluginConfig {
   type: PluginType;
   name: string;
+  pluginName?: string;
   params: Record<string, any>;
   interval?: number;
   id?: string;

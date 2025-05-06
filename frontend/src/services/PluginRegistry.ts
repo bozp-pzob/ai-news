@@ -49,14 +49,15 @@ class PluginRegistry {
    * Find a plugin by name and type
    */
   findPlugin(name: string, type?: string | undefined): PluginInfo | null {
+    console.log("PASSED IN NAME", name, type )
     let foundPlugin: PluginInfo | null = null;
     
     // Search through all plugin categories
     Object.values(this.plugins).forEach(categoryPlugins => {
       categoryPlugins.forEach(plugin => {
         console.log('🔌 PluginRegistry: Checking plugin', plugin);
-        // Match by name first
-        if (plugin.name === name) {
+        // Match by pluginName instead of name
+        if (plugin.pluginName.toLowerCase() === name.toLowerCase()) {
           // If type is specified, check that too
           if (!type || plugin.type === type) {
             foundPlugin = plugin;
