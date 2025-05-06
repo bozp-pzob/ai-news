@@ -28,6 +28,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   onClose,
   onAdd,
 }) => {
+  console.log("CHOSEN PLUGIN: ", plugin)
   const { showToast } = useToast();
   
   // Store plugin schema from registry
@@ -45,7 +46,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   
   // Store interval for source and generator plugins
   const [interval, setInterval] = useState<number | undefined>(
-    'interval' in plugin ? plugin.interval : 60000
+    'interval' in plugin && plugin.interval !== undefined ? plugin.interval : 60000
   );
 
   // Load available providers and storage
@@ -197,16 +198,34 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     if (!isOpen) return;
     
     const pluginId = getPluginId();
+    console.log('PluginParamDialog - Plugin ID:', pluginId);
+    console.log('PluginParamDialog - Original plugin object:', plugin);
+    
     if (pluginId) {
       const node = configStateManager.findNodeById(pluginId);
+      console.log('PluginParamDialog - Found node from ConfigStateManager:', node);
+      
       if (node && node.params) {
         console.log('Loaded params from node:', node.params);
+        console.log('Node interval value:', node.interval);
         
         // Initialize empty parameters for all constructorInterface parameters
         const initializedParams = { ...node.params };
         
         setParams(initializedParams);
+        
+        // Also update the interval if it's available in the node
+        if (node.interval !== undefined) {
+          console.log('Setting interval from node:', node.interval);
+          setInterval(node.interval);
+        } else {
+          console.log('Node has no interval defined, using default or previously set value:', interval);
+        }
+      } else {
+        console.log('No node found in ConfigStateManager or node has no params');
       }
+    } else {
+      console.log('No plugin ID available, using directly provided values');
     }
   }, [isOpen, plugin]);
 
@@ -753,10 +772,13 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                   if (window.confirm(`Are you sure you want to delete the plugin "${customName}"?`)) {
                     // Call removeNode on the ConfigStateManager
                     const nodeId = getPluginId() as string;
+                    console.log(`Attempting to delete node: ${nodeId}`);
                     const removed = configStateManager.removeNode(nodeId);
                     
                     if (removed) {
                       console.log(`Successfully removed node: ${customName} (${nodeId})`);
+                      // Force a sync to ensure everything is updated properly
+                      configStateManager.forceSync();
                       // Close the dialog after successful deletion
                       onClose();
                     } else {

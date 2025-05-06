@@ -240,7 +240,8 @@ class ConfigStateManager {
                 id: targetNode.id,
                 type: targetNode.type,
                 name: targetNode.name,
-                params: { ...targetNode.params }
+                params: { ...targetNode.params },
+                interval: targetNode.interval
               });
             }, 0);
           }
@@ -255,7 +256,8 @@ class ConfigStateManager {
                 id: targetNode.id,
                 type: targetNode.type,
                 name: targetNode.name,
-                params: { ...targetNode.params }
+                params: { ...targetNode.params },
+                interval: targetNode.interval
               });
             }, 0);
           }
@@ -309,7 +311,8 @@ class ConfigStateManager {
               id: node.id,
               type: node.type,
               name: node.name,
-              params: { ...node.params }
+              params: { ...node.params },
+              interval: node.interval
             });
           }, 0);
         }
@@ -395,6 +398,11 @@ class ConfigStateManager {
       nodeToUpdate.name = plugin.name;
       nodeToUpdate.params = paramsCopy;
       
+      // Update the interval if provided for source and generator nodes
+      if ((plugin.type === 'source' || plugin.type === 'generator') && plugin.interval !== undefined) {
+        nodeToUpdate.interval = plugin.interval;
+      }
+      
       // Create a deep copy of the plugin with our deep-copied params
       const pluginCopy = {
         ...plugin,
@@ -404,7 +412,7 @@ class ConfigStateManager {
       // FIXED: Handle the special case where a node is marked as isChild but needs to be updated directly
       // This fixes the issue with array parameters not being properly saved in the config
       if (plugin.isChild && plugin.type === 'source' && plugin.id.startsWith('source-')) {
-        // Get the node ID parts to determine the correct index
+        
         const [type, indexStr] = plugin.id.split('-');
         const index = parseInt(indexStr);
         
@@ -417,6 +425,12 @@ class ConfigStateManager {
           // Also update the name if needed
           if (this.configData.getData().sources[index].name !== plugin.name) {
             this.configData.getData().sources[index].name = plugin.name;
+          }
+
+          // Update interval if provided for source nodes
+          if (plugin.interval !== undefined) {
+            this.configData.getData().sources[index].interval = plugin.interval;
+            nodeToUpdate.interval = plugin.interval;
           }
         }
       } else {
@@ -524,7 +538,8 @@ class ConfigStateManager {
       this.eventEmitter.emit('config-updated', this.configData.getData());
       this.eventEmitter.emit('plugin-updated', {
         ...plugin,
-        params: nodeToUpdate.params
+        params: nodeToUpdate.params,
+        interval: nodeToUpdate.interval
       });
       
       return true;
@@ -552,6 +567,7 @@ class ConfigStateManager {
     // Base spacing between nodes
     const nodeSpacing = 45;
     const groupSpacing = 80; // Fixed spacing between parent groups
+    const childNodeSpacing = 45; // Spacing for child nodes within parents
     
     // Use a larger spacing for storage nodes to prevent overlap
     const storageNodeSpacing = 100;
@@ -587,35 +603,22 @@ class ConfigStateManager {
       console.log('🏗️ No storage nodes to create');
     }
     
-    // Add AI Provider nodes on left side of canvas with adequate spacing below storage
+    // Add AI/Provider nodes on left side of canvas (below storage)
     if (config.ai && config.ai.length > 0) {
-      console.log('🏗️ Creating AI provider nodes:', config.ai.length);
-      
-      // Use a consistent spacing for AI nodes too
-      const aiNodeSpacing = 80;
-      
-      // Add extra padding between storage and AI sections
-      const sectionPadding = 50;
-      
+      console.log('🏗️ Creating AI nodes:', config.ai.length);
       config.ai.forEach((ai, index) => {
         newNodes.push({
           id: `ai-${index}`,
           type: 'ai',
           name: ai.name,
           pluginName: ai.type || ai.name,
-          position: { x: leftColumnX, y: storageHeight + sectionPadding + index * aiNodeSpacing },
+          position: { x: leftColumnX, y: storageHeight + 100 + index * storageNodeSpacing },
           inputs: [],
           outputs: [this.createNodeOutput('provider', 'provider')],
-          isProvider: true,
           params: ai.params || {},
         });
       });
-    } else {
-      console.log('🏗️ No AI provider nodes to create');
     }
-    
-    // Define a consistent child node spacing
-    const childNodeSpacing = 45;
     
     // Add Sources group - first parent node at the top
     if (config.sources && config.sources.length > 0) {
@@ -634,6 +637,7 @@ class ConfigStateManager {
           ],
           outputs: [],
           params: source.params || {},
+          interval: source.interval !== undefined ? source.interval : 60000
         };
         
         // Add connections
@@ -711,8 +715,8 @@ class ConfigStateManager {
       });
       
       // Update current Y position based on the height of this group
-      const enricherGroupHeight = 50 + (enricherChildren.length * childNodeSpacing);
-      currentY += enricherGroupHeight + groupSpacing;
+      const enrichersGroupHeight = 50 + (enricherChildren.length * childNodeSpacing);
+      currentY += enrichersGroupHeight + groupSpacing;
     }
     
     // Add Generators group below Enrichers
@@ -732,6 +736,7 @@ class ConfigStateManager {
           ],
           outputs: [],
           params: generator.params || {},
+          interval: generator.interval !== undefined ? generator.interval : 60000
         };
         
         // Add connections
@@ -880,6 +885,14 @@ class ConfigStateManager {
               updatedConfig.sources[index].params = deepCopy(node.params);
               hasChanges = true;
             }
+            
+            // Also sync interval values for source nodes
+            const sourceInterval = updatedConfig.sources[index].interval;
+            if (sourceInterval !== undefined && node.interval !== sourceInterval) {
+              console.log(`Updating source[${index}] interval from ${updatedConfig.sources[index].interval} to ${node.interval}`);
+              updatedConfig.sources[index].interval = node.interval;
+              hasChanges = true;
+            }
           }
           break;
         case 'enricher':
@@ -896,6 +909,14 @@ class ConfigStateManager {
             if (JSON.stringify(updatedConfig.generators[index].params) !== JSON.stringify(node.params)) {
               // Use deep copy to ensure arrays are properly cloned
               updatedConfig.generators[index].params = deepCopy(node.params);
+              hasChanges = true;
+            }
+            
+            // Also sync interval values for generator nodes
+            const generatorInterval = updatedConfig.generators[index].interval;
+            if (generatorInterval !== undefined && node.interval !== generatorInterval) {
+              console.log(`Updating generator[${index}] interval from ${updatedConfig.generators[index].interval} to ${node.interval}`);
+              updatedConfig.generators[index].interval = node.interval;
               hasChanges = true;
             }
           }
@@ -1085,6 +1106,76 @@ class ConfigStateManager {
     return `${parentType}-${parentIndex}-child-${childIndex}`;
   }
 
+  // Helper method to reindex nodes after a deletion
+  private reindexNodes(): void {
+    console.log('Reindexing nodes to ensure IDs match array indices');
+    
+    const config = this.configData.getData();
+    
+    // Temporary map to store old-to-new ID mappings
+    const idMappings = new Map<string, string>();
+    
+    // Reindex source nodes
+    if (config.sources) {
+      config.sources.forEach((source, index) => {
+        const oldId = `source-${index}`;
+        const newId = `source-${index}`;
+        idMappings.set(oldId, newId);
+      });
+    }
+    
+    // Reindex enricher nodes
+    if (config.enrichers) {
+      config.enrichers.forEach((enricher, index) => {
+        const oldId = `enricher-${index}`;
+        const newId = `enricher-${index}`;
+        idMappings.set(oldId, newId);
+      });
+    }
+    
+    // Reindex generator nodes
+    if (config.generators) {
+      config.generators.forEach((generator, index) => {
+        const oldId = `generator-${index}`;
+        const newId = `generator-${index}`;
+        idMappings.set(oldId, newId);
+      });
+    }
+    
+    // Reindex AI nodes
+    if (config.ai) {
+      config.ai.forEach((ai, index) => {
+        const oldId = `ai-${index}`;
+        const newId = `ai-${index}`;
+        idMappings.set(oldId, newId);
+      });
+    }
+    
+    // Reindex storage nodes
+    if (config.storage) {
+      config.storage.forEach((storage, index) => {
+        const oldId = `storage-${index}`;
+        const newId = `storage-${index}`;
+        idMappings.set(oldId, newId);
+      });
+    }
+    
+    // Update node IDs in the connections
+    this.connections = this.connections.map(conn => {
+      const fromNodeId = idMappings.get(conn.from.nodeId) || conn.from.nodeId;
+      const toNodeId = idMappings.get(conn.to.nodeId) || conn.to.nodeId;
+      
+      return {
+        ...conn,
+        from: { ...conn.from, nodeId: fromNodeId },
+        to: { ...conn.to, nodeId: toNodeId }
+      };
+    });
+    
+    // Complete rebuild to ensure all references are updated
+    this.rebuildNodesAndConnections();
+  }
+
   // Remove a node from the configuration and graph
   removeNode(nodeId: string): boolean {
     try {
@@ -1096,6 +1187,8 @@ class ConfigStateManager {
         console.error(`Node with ID ${nodeId} not found`);
         return false;
       }
+      
+      // Remove the node from the config first
       const configResult = this.configData.removeNode(nodeId);
       if (!configResult) {
         console.error(`Failed to remove node from config: ${nodeId}`);
@@ -1152,34 +1245,40 @@ class ConfigStateManager {
 
       // If it's not a child node, remove it from the main nodes array
       if (!isChildNode) {
+        // Remove the node from our nodes array
         this.nodes = this.nodes.filter(n => n.id !== nodeId);
+        
+        // Remove any connections involving this node
+        this.connections = this.connections.filter(conn => 
+          conn.from.nodeId !== nodeId && conn.to.nodeId !== nodeId
+        );
       }
-
-      // Find all connections involving this node
-      const connectionsToRemove = this.connections.filter(conn => 
-        conn.from.nodeId === nodeId || conn.to.nodeId === nodeId
-      );
-
-      // Remove connections
-      this.connections = this.connections.filter(conn => 
-        conn.from.nodeId !== nodeId && conn.to.nodeId !== nodeId
-      );
 
       // If the selected node was removed, clear selection
       if (this.selectedNode === nodeId) {
         this.selectedNode = null;
         this.eventEmitter.emit('node-selected', null);
-      }      
-      this.syncConfigWithNodes();
+      }
+      
+      // Reindex nodes to ensure proper ID-to-index mapping
+      this.reindexNodes();
+      
+      // Completely rebuild nodes and connections from the config
+      // This ensures all node IDs are regenerated correctly after deletion
+      this.rebuildNodesAndConnections();
+      
+      // Force sync to ensure all references are clean
+      this.forceSync();
 
       // Mark that we have pending changes
       this.pendingChanges = true;
       
-      // Emit events
+      // Emit events to update the UI
       this.eventEmitter.emit('nodes-updated', this.nodes);
       this.eventEmitter.emit('connections-updated', this.connections);
       this.eventEmitter.emit('config-updated', this.configData.getData());
       
+      console.log('Node removal complete. Nodes count:', this.nodes.length);
       return true;
     } catch (error) {
       console.error("Error in removeNode:", error);
@@ -1333,6 +1432,14 @@ class ConfigStateManager {
               node.params = { ...this.configData.getData().sources[index].params };
               hasChanges = true;
             }
+            
+            // Also sync interval values
+            const sourceInterval = this.configData.getData().sources[index].interval;
+            if (sourceInterval !== undefined && node.interval !== sourceInterval) {
+              console.log(`Syncing source node[${index}] interval from config: ${sourceInterval}`);
+              node.interval = sourceInterval;
+              hasChanges = true;
+            }
           }
           break;
         case 'enricher':
@@ -1347,6 +1454,14 @@ class ConfigStateManager {
           if (this.configData.getData().generators && this.configData.getData().generators[index]) {
             if (JSON.stringify(node.params) !== JSON.stringify(this.configData.getData().generators[index].params)) {
               node.params = { ...this.configData.getData().generators[index].params };
+              hasChanges = true;
+            }
+            
+            // Also sync interval values
+            const generatorInterval = this.configData.getData().generators[index].interval;
+            if (generatorInterval !== undefined && node.interval !== generatorInterval) {
+              console.log(`Syncing generator node[${index}] interval from config: ${generatorInterval}`);
+              node.interval = generatorInterval;
               hasChanges = true;
             }
           }

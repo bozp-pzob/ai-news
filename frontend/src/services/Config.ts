@@ -261,6 +261,11 @@ export class Config {
           this.data[arrayName][index].name = plugin.name;
         }
         
+        // Update interval if it's provided and applicable for this plugin type
+        if ((arrayName === 'sources' || arrayName === 'generators') && plugin.interval !== undefined) {
+          this.data[arrayName][index].interval = plugin.interval;
+        }
+        
         // Log the result of the update
         console.log(`Updated ${arrayName}[${index}]:`, JSON.stringify(this.data[arrayName][index]));
       }

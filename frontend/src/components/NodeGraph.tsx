@@ -1735,12 +1735,20 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         params: deepCopy(pluginCopy.params) || {},
         position: pluginCopy.position || { x: 300, y: 300 },
       };
+
+      const savedConfig = {
+        name: pluginCopy.name,
+        type: pluginCopy.pluginName,
+        params: deepCopy(pluginCopy.params) || {},
+        position: pluginCopy.position || { x: 300, y: 300 },
+        interval: pluginCopy.interval || 60000,
+      }
       
       // Debug log what's being added to the config
       console.log(`Adding new plugin to config[${targetArray}]`, JSON.stringify(pluginConfig));
       
       // Add the new plugin to the config
-      currentConfig[targetArray].push(pluginConfig as any);
+      currentConfig[targetArray].push(savedConfig as any);
       
       // Update the config
       configStateManager.updateConfig(currentConfig);

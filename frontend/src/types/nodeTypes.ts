@@ -20,6 +20,7 @@ export interface Node {
   status?: 'running' | 'success' | 'failed' | null;
   statusMessage?: string;
   statusData?: number | { count: number } | any;
+  interval?: number;
 }
 
 export interface Connection {
