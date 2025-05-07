@@ -39,7 +39,6 @@ function App() {
   // Update node statuses when websocket status updates come in
   useEffect(() => {
     if (status && wsConnected) {
-      console.log('Received websocket status update:', status);
       // Update node statuses in ConfigStateManager
       configStateManager.updateNodeStatus(status);
     }
@@ -79,8 +78,6 @@ function App() {
 
   const loadConfig = async (configName: string) => {
     try {
-      console.log(`Loading configuration: ${configName}`);
-      
       // Show loading indicator or disable UI here if needed
       
       const loadedConfig = await getConfig(configName);
@@ -104,11 +101,7 @@ function App() {
         }
       };
       
-      // Update the state with the fully-validated config
-      console.log(`Setting config state with:`, sanitizedConfig);
       setConfig(sanitizedConfig);
-      
-      console.log(`Configuration ${configName} loaded successfully`);
     } catch (error) {
       console.error('Error loading config:', error);
       showToast(`Failed to load configuration ${configName}. Please try again.`, 'error');
@@ -121,11 +114,6 @@ function App() {
     // Only set unsaved changes if this is not a reset operation
     if (!isReset) {
       setHasUnsavedChanges(true);
-    }
-    
-    // Automatically enable the Save Config button when changes are made
-    if (selectedConfig && !isReset) {
-      console.log(`Config "${selectedConfig}" updated, ready to save`);
     }
   };
   

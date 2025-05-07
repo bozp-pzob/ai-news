@@ -28,7 +28,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   onClose,
   onAdd,
 }) => {
-  console.log("CHOSEN PLUGIN: ", plugin)
   const { showToast } = useToast();
   
   // Store plugin schema from registry
@@ -66,7 +65,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     let pluginName: string | undefined;
     let pluginType: string | undefined;
     
-    console.log( plugin )
     if ('name' in plugin) {
       // Prefer pluginName for lookups if available, fallback to name
       pluginName = 'pluginName' in plugin ? (plugin as any).pluginName : plugin.name;
@@ -82,38 +80,22 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
       
       // Check if we have a mapping for this plugin name
       if (pluginName && pluginNameMapping[pluginName]) {
-        console.log(`Mapping plugin name from "${pluginName}" to "${pluginNameMapping[pluginName]}"`);
         pluginName = pluginNameMapping[pluginName];
       }
     }
     
-    if (pluginName) {
-      console.log(`Looking for plugin schema for ${pluginName}, type: ${pluginType}`);
-      
+    if (pluginName) {      
       // Try to get schema from registry
       const pluginInfo = pluginRegistry.findPlugin(pluginName, pluginType);
       
       if (pluginInfo) {
-        console.log('Found plugin schema:', pluginInfo);
-        
-        // Log the constructor interface to debug
-        if (pluginInfo.constructorInterface) {
-          console.log('Constructor interface:', pluginInfo.constructorInterface);
-        } else {
-          console.log('No constructor interface found in plugin schema');
-        }
-        
         setPluginSchema(pluginInfo);
       } else {
-        console.log('Plugin schema not found, attempting to load plugins');
-        
         // If no exact match found, try getting all plugins and fuzzy matching
         const allPlugins = pluginRegistry.getPlugins();
         let foundPlugin = null;
         
         if (Object.keys(allPlugins).length > 0) {
-          console.log('Trying fuzzy matching with available plugins');
-          
           // Check each category of plugins
           for (const category in allPlugins) {
             // Only check the same category/type if specified
@@ -127,7 +109,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               if (p.pluginName && pluginName && (
                   p.pluginName.toLowerCase().includes(pluginName.toLowerCase()) || 
                   pluginName.toLowerCase().includes(p.pluginName.toLowerCase()))) {
-                console.log(`Found potential match: ${p.pluginName}`);
                 foundPlugin = p;
                 break;
               }
@@ -137,15 +118,12 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
           }
           
           if (foundPlugin) {
-            console.log('Using fuzzy-matched plugin:', foundPlugin);
             setPluginSchema(foundPlugin);
           }
         }
         
         // Load plugins if not already loaded
         if (!pluginRegistry.isPluginsLoaded()) {
-          console.log('Loading plugins from registry');
-          
           // Subscribe to registry updates
           const unsubscribe = pluginRegistry.subscribe(() => {
             if (pluginName) {
@@ -167,7 +145,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                     if (p.pluginName && pluginName && (
                         p.pluginName.toLowerCase().includes(pluginName.toLowerCase()) || 
                         pluginName.toLowerCase().includes(p.pluginName.toLowerCase()))) {
-                      console.log(`Found potential match after loading: ${p.pluginName}`);
                       updatedPluginInfo = p;
                       break;
                     }
@@ -178,7 +155,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               }
               
               if (updatedPluginInfo) {
-                console.log('Found plugin after registry update:', updatedPluginInfo);
                 setPluginSchema(updatedPluginInfo);
               }
             }
@@ -198,17 +174,10 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     if (!isOpen) return;
     
     const pluginId = getPluginId();
-    console.log('PluginParamDialog - Plugin ID:', pluginId);
-    console.log('PluginParamDialog - Original plugin object:', plugin);
-    
     if (pluginId) {
       const node = configStateManager.findNodeById(pluginId);
-      console.log('PluginParamDialog - Found node from ConfigStateManager:', node);
       
       if (node && node.params) {
-        console.log('Loaded params from node:', node.params);
-        console.log('Node interval value:', node.interval);
-        
         // Initialize empty parameters for all constructorInterface parameters
         const initializedParams = { ...node.params };
         
@@ -216,16 +185,9 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         
         // Also update the interval if it's available in the node
         if (node.interval !== undefined) {
-          console.log('Setting interval from node:', node.interval);
           setInterval(node.interval);
-        } else {
-          console.log('Node has no interval defined, using default or previously set value:', interval);
         }
-      } else {
-        console.log('No node found in ConfigStateManager or node has no params');
       }
-    } else {
-      console.log('No plugin ID available, using directly provided values');
     }
   }, [isOpen, plugin]);
 
@@ -252,8 +214,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   useEffect(() => {
     if (!pluginSchema || !pluginSchema.constructorInterface) return;
     
-    console.log('Initializing params from constructorInterface');
-    
     // Get constructor parameters from schema
     const constructorParams = pluginSchema.constructorInterface.parameters;
     
@@ -264,8 +224,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
       // Initialize any missing parameters with appropriate values
       constructorParams.forEach(param => {
         if (updatedParams[param.name] === undefined) {
-          console.log(`Initializing missing parameter: ${param.name}, required: ${param.required}`);
-          
           // Set appropriate default value based on type
           if (param.type === 'boolean') {
             updatedParams[param.name] = false;
@@ -285,7 +243,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
             updatedParams[param.name] === null || 
             (Array.isArray(updatedParams[param.name]) && updatedParams[param.name].length === 0)
           ) {
-            console.log(`Ensuring non-empty value for required parameter: ${param.name}`);
             if (param.type === 'boolean') {
               updatedParams[param.name] = false;
             } else if (param.type === 'number') {
@@ -306,17 +263,12 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   }, [pluginSchema]);
 
   // Handle adding a new item to an array
-  const handleAddArrayItem = (key: string) => {
-    console.log(`Adding new item to array: ${key}`);
-    
+  const handleAddArrayItem = (key: string) => {    
     setParams(prev => {
       // Create a deep copy of the current array or initialize a new one
       const currentArray = Array.isArray(prev[key]) ? [...prev[key]] : [];
       // Add the new empty item
       currentArray.push('');
-      
-      // Log the updated array for debugging
-      console.log(`Updated ${key} array:`, currentArray);
       
       // Return the new params object with the updated array
       return {
@@ -327,17 +279,12 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   };
 
   // Handle removing an item from an array
-  const handleRemoveArrayItem = (key: string, index: number) => {
-    console.log(`Removing item at index ${index} from array: ${key}`);
-    
+  const handleRemoveArrayItem = (key: string, index: number) => {    
     setParams(prev => {
       // Create a deep copy of the current array
       const currentArray = Array.isArray(prev[key]) ? [...prev[key]] : [];
       // Remove the item at the specified index
       const newArray = currentArray.filter((_, i) => i !== index);
-      
-      // Log the updated array for debugging
-      console.log(`Updated ${key} array:`, newArray);
       
       // Return the new params object with the updated array
       return {
@@ -348,18 +295,13 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   };
 
   // Handle updating a single array item
-  const handleUpdateArrayItem = (key: string, index: number, value: string) => {
-    console.log(`Updating item at index ${index} in array: ${key} to "${value}"`);
-    
+  const handleUpdateArrayItem = (key: string, index: number, value: string) => {    
     setParams(prev => {
       // Create a deep copy of the current array
       const currentArray = Array.isArray(prev[key]) ? [...prev[key]] : [];
       // Update the value at the specified index
       const newArray = [...currentArray];
       newArray[index] = value;
-      
-      // Log the updated array for debugging
-      console.log(`Updated ${key} array:`, newArray);
       
       // Return the new params object with the updated array
       return {
@@ -413,9 +355,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     
     // Create a true deep copy of all parameters
     const paramsCopy = deepCopy(params);
-    
-    // Log the params being saved
-    console.log("Saving params:", JSON.stringify(paramsCopy));
+  
     
     // Create updated plugin with new params and custom name
     const updatedPlugin = {
@@ -437,9 +377,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         (updatedPlugin as any).description = pluginSchema.description;
       }
     }
-    
-    console.log('Saving plugin with params:', JSON.stringify(updatedPlugin));
-    
     // Call onAdd callback
     onAdd(updatedPlugin);
     
@@ -489,13 +426,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     // CSS classes for inputs
     const inputClasses = "p-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500";
     
-    // Debug logging to see the constructor interface and params
-    console.log('Current params:', params);
-    if (constructorInterface) {
-      console.log('Rendering fields from constructor interface:', constructorInterface.parameters);
-    } else {
-      console.log('No constructor interface available to render fields from');
-    }
     
     // Check if plugin has provider/storage parameters in constructor interface
     const hasProviderParameter = constructorInterface?.parameters.some(param => param.name === 'provider') ?? false;
@@ -573,9 +503,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               (key === 'storage' && hasStorageParameter)) {
             return null;
           }
-          
-          console.log(`Rendering parameter: ${key}, type: ${param.type}, current value: ${params[key]}`);
-          
           // Render different input types based on parameter type
           if (param.type === 'boolean') {
             return (
@@ -772,11 +699,9 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                   if (window.confirm(`Are you sure you want to delete the plugin "${customName}"?`)) {
                     // Call removeNode on the ConfigStateManager
                     const nodeId = getPluginId() as string;
-                    console.log(`Attempting to delete node: ${nodeId}`);
                     const removed = configStateManager.removeNode(nodeId);
                     
                     if (removed) {
-                      console.log(`Successfully removed node: ${customName} (${nodeId})`);
                       // Force a sync to ensure everything is updated properly
                       configStateManager.forceSync();
                       // Close the dialog after successful deletion

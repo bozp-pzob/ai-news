@@ -281,18 +281,6 @@ export const ConfigBuilder: React.FC<ConfigBuilderProps> = ({
             setSelectedPlugin(null);
           }}
           onAdd={(plugin) => {
-            // Log the plugin parameters to check for array values
-            console.log(`PluginParamDialog onAdd:`, JSON.stringify(plugin));
-            
-            // Check for array parameters
-            if (plugin.params) {
-              for (const key in plugin.params) {
-                if (Array.isArray(plugin.params[key])) {
-                  console.log(`Plugin param ${key} is an array:`, JSON.stringify(plugin.params[key]));
-                }
-              }
-            }
-            
             // Extract params and interval from the plugin object
             const updatedPlugin = {
               ...selectedPlugin!,

@@ -321,12 +321,9 @@ export class WebSocketService {
   }
   
   private notifyJobStatusListeners(jobStatus: JobStatus): void {
-    console.log(`Notifying job status listeners for job: ${jobStatus.jobId}`);
     
     // Debug log registered job IDs
     const registeredJobIds = Array.from(this.jobStatusListeners.keys());
-    console.log("All registered job IDs:", registeredJobIds);
-    console.log("Looking for listeners specifically for:", jobStatus.jobId);
     
     // Check if the job ID is in the right format
     if (typeof jobStatus.jobId !== 'string') {
@@ -335,7 +332,6 @@ export class WebSocketService {
     
     // Notify job-specific listeners
     const specificListeners = this.jobStatusListeners.get(jobStatus.jobId) || [];
-    console.log(`Found ${specificListeners.length} specific listeners for job ${jobStatus.jobId}`);
     
     // If no listeners found, check if there's any issue with case sensitivity or formatting
     if (specificListeners.length === 0) {
@@ -348,7 +344,6 @@ export class WebSocketService {
     
     // Execute the listeners
     specificListeners.forEach((listener, index) => {
-      console.log(`Calling specific listener #${index} for job ${jobStatus.jobId}`);
       try {
         listener(jobStatus);
       } catch (error) {
@@ -357,9 +352,7 @@ export class WebSocketService {
     });
     
     // Notify global listeners
-    console.log(`Notifying ${this.globalJobStatusListeners.length} global job status listeners`);
     this.globalJobStatusListeners.forEach((listener, index) => {
-      console.log(`Calling global listener #${index}`);
       try {
         listener(jobStatus);
       } catch (error) {

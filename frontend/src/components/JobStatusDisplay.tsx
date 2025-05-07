@@ -56,33 +56,13 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
   // Track the previous job ID to detect new jobs
   const prevJobIdRef = useRef<string | null>(null);
   
-  // Debug logging for received props
-  console.log("JobStatusDisplay received props:", { 
-    hasJobStatus: !!jobStatus, 
-    jobId: jobStatus?.jobId,
-    status: jobStatus?.status,
-    progress: jobStatus?.progress,
-    currentPhase: jobStatus?.aggregationStatus?.currentPhase,
-    currentSource: jobStatus?.aggregationStatus?.currentSource,
-    runMode,
-    wasContinuousRef: wasContinuousRef.current
-  });
-  
   // Once a job is flagged as continuous, it should ALWAYS stay continuous
   // This ensures that even if backend sends progress values later, we still treat it as continuous
   const isContinuousJob = wasContinuousRef.current || stableJobStatus?.progress === undefined || runMode === "continuous";
   
-  console.log("Job determined to be continuous:", isContinuousJob, {
-    status: stableJobStatus?.status,
-    phase: stableJobStatus?.aggregationStatus?.currentPhase,
-    progress: stableJobStatus?.progress,
-    runMode
-  });
-  
   // Detect job ID changes to reset display state
   useEffect(() => {
     if (jobStatus && prevJobIdRef.current !== jobStatus.jobId) {
-      console.log(`New job detected (${prevJobIdRef.current} → ${jobStatus.jobId}) - resetting display state`);
       // Reset display state for a new job
       setIsMinimized(false);
       setStableJobStatus(null); // Explicitly clear the stable job status to force a clean state
@@ -107,11 +87,9 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
 
     // IMPORTANT: First check if this is a new job
     if (stableJobStatus?.jobId !== jobStatus.jobId) {
-      console.log("New job detected:", jobStatus.jobId);
       
       // New job detection: if progress is undefined or runMode is continuous, it's a continuous job
       const isContinuous = jobStatus.progress === undefined || runMode === "continuous";
-      console.log("Job is continuous:", isContinuous);
       
       // Set the continuous flag permanently for this job
       wasContinuousRef.current = isContinuous;
@@ -137,8 +115,6 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
     // For continuous jobs, ALWAYS override any status updates
     // This is the key fix - we never allow a continuous job to be marked as anything other than running
     if (wasContinuousRef.current) {
-      console.log("Continuous job update received with status:", jobStatus.status);
-      console.log("FORCING status to remain 'running' regardless of backend status");
       
       setStableJobStatus(prev => ({
         ...jobStatus,
@@ -154,7 +130,6 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
     }
     
     // For NON-continuous jobs, follow normal status transition rules
-    console.log("Regular job status update:", jobStatus.status);
     setStableJobStatus(jobStatus);
     prevStatusRef.current = jobStatus.status;
   }, [jobStatus, runMode]);
@@ -164,7 +139,6 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
     // This runs any time stableJobStatus changes
     // Double-check that continuous jobs remain forced to 'running' status
     if (stableJobStatus && wasContinuousRef.current && stableJobStatus.status !== 'running') {
-      console.log("CORRECTING job status from", stableJobStatus.status, "to 'running'");
       setStableJobStatus(prev => ({
         ...prev!,
         status: 'running',
@@ -229,7 +203,6 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
       const currentSource = stableJobStatus.aggregationStatus.currentSource;
       // Only update the active source ref if it's a different source
       if (activeSourceRef.current?.source !== currentSource) {
-        console.log("New active source detected:", currentSource);
         activeSourceRef.current = {
           source: currentSource,
           timestamp: Date.now()
@@ -282,7 +255,6 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
         throw new Error('Failed to stop job');
       }
       
-      console.log(`Job ${stableJobStatus.jobId} stop request sent successfully`);
       // The WebSocket will receive the status update and update the UI with the actual server state
     } catch (error) {
       console.error('Error stopping job:', error);

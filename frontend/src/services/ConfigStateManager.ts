@@ -79,8 +79,6 @@ class ConfigStateManager {
 
   // Load a new configuration
   loadConfig(config: ConfigType): void {
-    console.log('🔄 loadConfig called with:', config?.name || 'unnamed config');
-
     // First validate that we have a proper config object
     if (!config) {
       console.error('🔄 loadConfig received null or undefined config');
@@ -116,8 +114,6 @@ class ConfigStateManager {
     
     // Reset pending changes flag when loading a new config
     this.pendingChanges = false;
-    
-    console.log('🔄 loadConfig complete, nodes:', this.nodes.length, 'connections:', this.connections.length);
   }
 
   // Set the nodes array directly
@@ -167,8 +163,6 @@ class ConfigStateManager {
 
   // Helper method to update node port connections based on the connections array
   private updatePortConnectionsFromConnections(): void {
-    console.log('🔄 Updating port connections from connections array');
-    
     // Keep track of nodes that previously had provider/storage connections
     const nodesWithProviderStorage = new Map<string, {provider?: boolean, storage?: boolean}>();
     
@@ -345,8 +339,6 @@ class ConfigStateManager {
   // Update a plugin's parameters
   updatePlugin(plugin: PluginConfig): boolean {
     try {
-      console.log('🔄 Updating plugin:', JSON.stringify(plugin));
-      
       // Deep copy helper to ensure arrays are preserved
       const deepCopy = (obj: any): any => {
         if (obj === null || obj === undefined) {
@@ -387,12 +379,6 @@ class ConfigStateManager {
       // Deep copy the plugin params to avoid reference issues
       const paramsCopy = deepCopy(plugin.params || {});
       
-      // Check for array parameters
-      for (const key in paramsCopy) {
-        if (Array.isArray(paramsCopy[key])) {
-          console.log(`📊 Array parameter ${key} in plugin update:`, JSON.stringify(paramsCopy[key]));
-        }
-      }
       
       // Update node properties in the UI
       nodeToUpdate.name = plugin.name;
@@ -417,8 +403,6 @@ class ConfigStateManager {
         const index = parseInt(indexStr);
         
         if (!isNaN(index) && this.configData.getData().sources && this.configData.getData().sources[index]) {
-          console.log(`📊 Direct update of source node with array params that was marked as isChild: ${plugin.id}`);
-          
           // Update the source directly in the config with deep copied params
           this.configData.getData().sources[index].params = deepCopy(plugin.params);
           
@@ -556,10 +540,7 @@ class ConfigStateManager {
 
   // Rebuild nodes and connections from the config
   private rebuildNodesAndConnections(): void {
-    console.log('🏗️ rebuildNodesAndConnections: Starting node rebuild');
-    
     const config = this.configData.getData();
-    console.log('Config:', JSON.stringify(config));
     
     const newNodes: Node[] = [];
     const newConnections: Connection[] = [];
@@ -586,7 +567,6 @@ class ConfigStateManager {
     
     // Add Storage nodes on left side of canvas (top) with increased spacing
     if (config.storage && config.storage.length > 0) {
-      console.log('🏗️ Creating storage nodes:', config.storage.length);
       config.storage.forEach((storage, index) => {
         newNodes.push({
           id: `storage-${index}`,
@@ -599,13 +579,10 @@ class ConfigStateManager {
           params: storage.params || {},
         });
       });
-    } else {
-      console.log('🏗️ No storage nodes to create');
     }
     
     // Add AI/Provider nodes on left side of canvas (below storage)
     if (config.ai && config.ai.length > 0) {
-      console.log('🏗️ Creating AI nodes:', config.ai.length);
       config.ai.forEach((ai, index) => {
         newNodes.push({
           id: `ai-${index}`,
@@ -622,7 +599,6 @@ class ConfigStateManager {
     
     // Add Sources group - first parent node at the top
     if (config.sources && config.sources.length > 0) {
-      console.log('🏗️ Creating source nodes:', config.sources.length);
       const sourceChildren = config.sources.map((source, index) => {
         // Create node
         const node = {
@@ -672,7 +648,6 @@ class ConfigStateManager {
     
     // Add Enrichers group below Sources
     if (config.enrichers && config.enrichers.length > 0) {
-      console.log('🏗️ Creating enricher nodes:', config.enrichers.length);
       const enricherChildren = config.enrichers.map((enricher, index) => {
         // Create node
         const node = {
@@ -721,7 +696,6 @@ class ConfigStateManager {
     
     // Add Generators group below Enrichers
     if (config.generators && config.generators.length > 0) {
-      console.log('🏗️ Creating generator nodes:', config.generators.length);
       const generatorChildren = config.generators.map((generator, index) => {
         // Create node
         const node = {
@@ -764,10 +738,6 @@ class ConfigStateManager {
         children: generatorChildren
       });
     }
-    
-    // Log the results before updating state
-    console.log('🏗️ Rebuild complete - Created Nodes:', newNodes.length, 'Connections:', newConnections.length);
-    
     // Update our state
     this.nodes = newNodes;
     this.connections = newConnections;
@@ -833,8 +803,6 @@ class ConfigStateManager {
   private syncConfigWithNodes(): void {
     if (!this.configData) return;
     
-    console.log('🔄 syncConfigWithNodes: Synchronizing node/connection state to config');
-    
     // Create a deep copy of the config to avoid mutation
     // FIXED: Don't use JSON.parse(JSON.stringify()) as it doesn't handle array references correctly
     // const updatedConfig = JSON.parse(JSON.stringify(this.configData.getData()));
@@ -889,7 +857,6 @@ class ConfigStateManager {
             // Also sync interval values for source nodes
             const sourceInterval = updatedConfig.sources[index].interval;
             if (sourceInterval !== undefined && node.interval !== sourceInterval) {
-              console.log(`Updating source[${index}] interval from ${updatedConfig.sources[index].interval} to ${node.interval}`);
               updatedConfig.sources[index].interval = node.interval;
               hasChanges = true;
             }
@@ -915,7 +882,6 @@ class ConfigStateManager {
             // Also sync interval values for generator nodes
             const generatorInterval = updatedConfig.generators[index].interval;
             if (generatorInterval !== undefined && node.interval !== generatorInterval) {
-              console.log(`Updating generator[${index}] interval from ${updatedConfig.generators[index].interval} to ${node.interval}`);
               updatedConfig.generators[index].interval = node.interval;
               hasChanges = true;
             }
@@ -1087,11 +1053,8 @@ class ConfigStateManager {
     
     // Only update if there were actual changes
     if (hasChanges) {
-      console.log('🔄 syncConfigWithNodes: Changes detected, updating config');
       this.configData.updateConfig(updatedConfig);
       this.notifyListeners();
-    } else {
-      console.log('🔄 syncConfigWithNodes: No changes detected');
     }
   }
 
@@ -1108,8 +1071,6 @@ class ConfigStateManager {
 
   // Helper method to reindex nodes after a deletion
   private reindexNodes(): void {
-    console.log('Reindexing nodes to ensure IDs match array indices');
-    
     const config = this.configData.getData();
     
     // Temporary map to store old-to-new ID mappings
@@ -1179,8 +1140,6 @@ class ConfigStateManager {
   // Remove a node from the configuration and graph
   removeNode(nodeId: string): boolean {
     try {
-      console.log(`🗑️ Removing node: ${nodeId}`);
-
       // Find the node
       const node = this.findNodeById(nodeId);
       if (!node) {
@@ -1207,10 +1166,7 @@ class ConfigStateManager {
           if (childIndex !== -1) {
             isChildNode = true;
             parentNode = n;
-            
-            // Found the child node, remove it from the parent's children array
-            console.log(`Found node ${nodeId} as child of parent ${n.id}, at child index ${childIndex}`);
-            
+
             // Create updated nodes array with the child removed from the parent
             this.nodes = this.nodes.map(node => {
               if (node.id === parentNode!.id && node.children) {
@@ -1232,9 +1188,7 @@ class ConfigStateManager {
             });
             
             // Generate child node ID for config operations
-            const childNodeId = this.generateChildNodeId(parentNode, childIndex);
-            console.log(`Constructed child node ID for config: ${childNodeId}`);
-            
+            const childNodeId = this.generateChildNodeId(parentNode, childIndex);            
             // Remove from config data with the constructed child ID
             this.configData.removeNode(childNodeId);
             
@@ -1276,9 +1230,7 @@ class ConfigStateManager {
       // Emit events to update the UI
       this.eventEmitter.emit('nodes-updated', this.nodes);
       this.eventEmitter.emit('connections-updated', this.connections);
-      this.eventEmitter.emit('config-updated', this.configData.getData());
-      
-      console.log('Node removal complete. Nodes count:', this.nodes.length);
+      this.eventEmitter.emit('config-updated', this.configData.getData());      
       return true;
     } catch (error) {
       console.error("Error in removeNode:", error);
@@ -1288,14 +1240,11 @@ class ConfigStateManager {
 
   // Save the current config to the server
   saveToServer(): Promise<boolean> {
-    console.log('🔄 Saving config to server');
     try {
       // Ensure the config is up-to-date with the current node state
       this.syncConfigWithNodes();
       
       const config = this.configData.getData();
-
-      console.log('CONFIG: ', config)
       
       // Make sure we have a config name
       if (!config.name || typeof config.name !== 'string') {
@@ -1303,34 +1252,10 @@ class ConfigStateManager {
         return Promise.reject(new Error('Config must have a name'));
       }
       
-      // Debug log the config that will be saved
-      console.log('🔄 Config to be saved:', JSON.stringify(config));
-      
-      // Look for array parameters in the config nodes
-      const nodeTypes = ['sources', 'enrichers', 'generators', 'ai', 'storage'] as const;
-      for (const type of nodeTypes) {
-        const configArray = config[type as keyof typeof config];
-        if (configArray && Array.isArray(configArray)) {
-          for (let i = 0; i < configArray.length; i++) {
-            const node = configArray[i] as PluginConfig;
-            if (node && node.params) {
-              // Check if any params are arrays
-              for (const paramKey in node.params) {
-                if (Array.isArray(node.params[paramKey])) {
-                  console.log(`📊 Found array parameter in ${type}[${i}].params.${paramKey}:`, 
-                    JSON.stringify(node.params[paramKey]));
-                }
-              }
-            }
-          }
-        }
-      }
       
       // Use dynamic import to avoid circular dependencies
       return saveConfig(config.name as string, config)
         .then(() => {
-          console.log(`🔄 Configuration ${config.name} saved to server`);
-          
           // Reset pending changes flag after successful save
           this.pendingChanges = false;
           
@@ -1369,8 +1294,6 @@ class ConfigStateManager {
 
   // Force synchronization of state with config - maintained for backwards compatibility
   forceSync(): void {
-    console.log('🔄 ForceSync called - Syncing config data and updating all subscribers');
-    
     // Important: First update port connections from the connections array
     this.updatePortConnectionsFromConnections();
     
@@ -1393,8 +1316,6 @@ class ConfigStateManager {
       
     // Mark that we have pending changes
     this.pendingChanges = true;
-    
-    console.log('🔄 ForceSync complete - All subscribers notified');
   }
 
   private updateNodes(newNodes: Node[]): void {
@@ -1436,7 +1357,6 @@ class ConfigStateManager {
             // Also sync interval values
             const sourceInterval = this.configData.getData().sources[index].interval;
             if (sourceInterval !== undefined && node.interval !== sourceInterval) {
-              console.log(`Syncing source node[${index}] interval from config: ${sourceInterval}`);
               node.interval = sourceInterval;
               hasChanges = true;
             }
@@ -1460,7 +1380,6 @@ class ConfigStateManager {
             // Also sync interval values
             const generatorInterval = this.configData.getData().generators[index].interval;
             if (generatorInterval !== undefined && node.interval !== generatorInterval) {
-              console.log(`Syncing generator node[${index}] interval from config: ${generatorInterval}`);
               node.interval = generatorInterval;
               hasChanges = true;
             }
@@ -1484,9 +1403,7 @@ class ConfigStateManager {
   }
 
   // Update node status based on aggregation status
-  updateNodeStatus(status: AggregationStatus): void {
-    console.log('🔄 ConfigStateManager: updating node status from WebSocket status', status);
-    
+  updateNodeStatus(status: AggregationStatus): void {    
     if (!this.nodes || this.nodes.length === 0) {
       console.warn('No nodes available to update status');
       return;
@@ -1516,7 +1433,6 @@ class ConfigStateManager {
 
         // Update source nodes specifically
         if (node.type === 'source' && node.name === status.currentSource) {
-          console.log(`Updating source node ${node.name} with status`, status.status);
           // Set node status based on current phase and current source
           if (status.status === 'running' && status.currentPhase === 'fetching') {
             node.status = 'running';
@@ -1539,7 +1455,6 @@ class ConfigStateManager {
 
         // Update enricher nodes
         if (node.type === 'enricher' && status.currentPhase === 'enriching') {
-          console.log(`Updating enricher node ${node.name} status to running`);
           // Set node status based on current phase
           if (status.status === 'running') {
             node.status = 'running';
@@ -1550,7 +1465,6 @@ class ConfigStateManager {
 
         // Update generator nodes
         if (node.type === 'generator' && status.currentPhase === 'generating') {
-          console.log(`Updating generator node ${node.name} status to running`);
           // Set node status based on current phase
           if (status.status === 'running') {
             node.status = 'running';

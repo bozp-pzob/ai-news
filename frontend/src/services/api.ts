@@ -23,8 +23,6 @@ export const getConfigs = async (): Promise<string[]> => {
 };
 
 export const getConfig = async (name: string): Promise<Config> => {
-  console.log(`Getting config with name: ${name}`);
-  
   if (!name) {
     console.error("getConfig called with empty name");
     throw new Error("Config name is required");
@@ -38,10 +36,7 @@ export const getConfig = async (name: string): Promise<Config> => {
   while (retryCount <= maxRetries) {
     try {
       const url = `${API_BASE_URL}/config/${encodeURIComponent(name)}`;
-      console.log(`Fetching from URL: ${url} (attempt ${retryCount + 1}/${maxRetries + 1})`);
-      
       const response = await fetch(url);
-      console.log(`Response status: ${response.status}`);
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -58,8 +53,7 @@ export const getConfig = async (name: string): Promise<Config> => {
       
       // Ensure the config has a name property matching the requested name
       data.name = name;
-      
-      console.log(`Successfully fetched config data for ${name}`);
+
       return data;
     } catch (error) {
       lastError = error;
@@ -72,7 +66,6 @@ export const getConfig = async (name: string): Promise<Config> => {
       
       // Wait before retrying (exponential backoff: 1s, 2s)
       const waitTime = 1000 * Math.pow(2, retryCount);
-      console.log(`Waiting ${waitTime}ms before retry...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
       
       retryCount++;
@@ -84,8 +77,6 @@ export const getConfig = async (name: string): Promise<Config> => {
 };
 
 export const saveConfig = async (name: string, config: Config): Promise<void> => {
-  console.log(`Saving config ${name} to server`, JSON.stringify(config));
-  
   // Make sure we deeply clone the config with proper array handling
   const deepCopyWithArrays = (obj: any): any => {
     if (obj === null || obj === undefined) {
@@ -109,9 +100,6 @@ export const saveConfig = async (name: string, config: Config): Promise<void> =>
   
   // Create a clean deep copy with proper array handling
   const cleanConfig = deepCopyWithArrays(config);
-  
-  // Debug log the final config being sent
-  console.log(`Final config being sent:`, JSON.stringify(cleanConfig));
   
   const response = await fetch(`${API_BASE_URL}/config/${name}`, {
     method: 'POST',

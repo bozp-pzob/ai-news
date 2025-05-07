@@ -44,8 +44,6 @@ export const PluginPalette: React.FC<PluginPaletteProps> = ({ onDragPlugin }) =>
   // Log plugins on load for debugging
   useEffect(() => {
     if (!isLoading) {
-      console.log("Loaded plugins:", plugins);
-      
       // Log how many plugins were filtered out due to missing constructor parameters
       let total = 0;
       let filtered = 0;
@@ -56,10 +54,6 @@ export const PluginPalette: React.FC<PluginPaletteProps> = ({ onDragPlugin }) =>
                                         !p.constructorInterface.parameters || 
                                         p.constructorInterface.parameters.length === 0).length;
       });
-      
-      if (filtered > 0) {
-        console.log(`Filtered out ${filtered} of ${total} plugins that had no constructor parameters`);
-      }
     }
   }, [isLoading, plugins]);
 

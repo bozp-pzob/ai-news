@@ -407,7 +407,6 @@ export class AggregatorService {
   }
 
   stopAggregation(configName: string): void {
-    console.log(`Stopping aggregation for config: ${configName}`);
     
     // Find any jobs associated with this config and mark them as stopped
     const configJobs = this.getJobsByConfig(configName);
@@ -417,7 +416,6 @@ export class AggregatorService {
       if (job.status === 'running' || job.status === 'pending') {
         // Clear intervals associated with this job
         if (job.intervals && job.intervals.length > 0) {
-          console.log(`Clearing ${job.intervals.length} intervals for job ${job.jobId}`);
           job.intervals.forEach(interval => clearInterval(interval));
           job.intervals = [];
         }
@@ -437,8 +435,6 @@ export class AggregatorService {
       
       // Emit status update
       this.emitStatusUpdate(configName);
-      
-      console.log(`Aggregator for ${configName} has been stopped`);
     }
   }
 
@@ -464,7 +460,6 @@ export class AggregatorService {
     
     // Clear all interval timers associated with this job
     if (jobStatus.intervals && jobStatus.intervals.length > 0) {
-      console.log(`Clearing ${jobStatus.intervals.length} intervals for job ${jobId}`);
       jobStatus.intervals.forEach(intervalId => {
         clearInterval(intervalId);
       });

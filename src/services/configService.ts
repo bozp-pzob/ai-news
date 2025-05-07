@@ -67,7 +67,6 @@ export class ConfigService {
     };
     
     const cleanConfig = deepCopy(config);
-    console.log(`Server saving config to file with array parameters:`, JSON.stringify(cleanConfig));
     
     const configPath = path.join(this.configDir, `${name}.json`);
     await fs.promises.writeFile(configPath, JSON.stringify(cleanConfig, null, 2));

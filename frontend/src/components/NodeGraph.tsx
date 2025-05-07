@@ -111,17 +111,11 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
 
   // Create a reusable function for processing job status updates
   const createJobStatusHandler = useCallback((jobId: string) => (status: JobStatus) => {
-    console.log(`Job ${jobId} status update received:`, {
-      status: status.status,
-      phase: status.aggregationStatus?.currentPhase,
-      progress: status.progress
-    });
     
     // Check if this is a stale update by comparing timestamps with current job status
     if (jobStatus && jobStatus.jobId === status.jobId) {
       // If we have a newer update already, ignore this one
       if (jobStatus.startTime > status.startTime) {
-        console.log(`Ignoring stale job status update for ${jobId}`);
         return;
       }
     }
@@ -137,14 +131,10 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       ? jobTypesRef.current.get(jobId)
       : isRunOnceJob;
     
-    console.log(`Job ${jobId} is ${isJobRunOnce ? 'RUN-ONCE' : 'CONTINUOUS'} job type`);
-    
     // For continuous jobs, special handling
     if (status.status === 'running') {
       // For continuous jobs, we force undefined progress to show indeterminate progress
       if (!isJobRunOnce) {
-        console.log(`Enforcing continuous job behavior: forcing undefined progress for indeterminate display`);
-        
         // Create a modified status without progress field for continuous jobs
         status = {
           ...status,
@@ -158,8 +148,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         const elapsed = Date.now() - startTime;
         const estimatedProgress = Math.min(Math.round((elapsed / 30000) * 100), 95);
         
-        console.log(`Adding estimated progress for run-once job: ${estimatedProgress}%`);
-        
         status = {
           ...status,
           progress: estimatedProgress
@@ -168,8 +156,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     }
     // For continuous jobs, prevent "completed" status
     else if (status.status === 'completed' && !isJobRunOnce) {
-      console.log(`Preventing completed status for continuous job ${jobId}`);
-      
       // Override the status to keep it as "running"
       status = {
         ...status,
@@ -183,21 +169,17 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     
     // Update aggregation running state based on job status
     if (status.status === 'failed') {
-      console.log(`Job ${status.jobId} ${status.status} - stopping aggregation`);
       setIsAggregationRunning(false);
     } else if (status.status === 'completed') {
       // For run-once jobs, mark as no longer running when completed
       if (isJobRunOnce) {
-        console.log(`Run-once job ${status.jobId} completed - stopping aggregation`);
         setIsAggregationRunning(false);
         // Don't set jobStatus to null - let the component display the completed state
       } else {
         // For continuous jobs, keep running
-        console.log(`Continuous job ${status.jobId} completed phase - continuing aggregation`);
         setIsAggregationRunning(true);
       }
     } else if (status.status === 'running') {
-      console.log(`Job ${status.jobId} ${status.status} - aggregation is running`);
       setIsAggregationRunning(true);
     }
     
@@ -209,20 +191,13 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
 
   // Effect to listen for job status updates
   useEffect(() => {
-    console.log("Setting up global job status listeners");
-    
     // Create a function to handle any job status updates globally
     const globalJobStatusHandler = (status: JobStatus) => {
-      console.log("Global job status handler received status:", status);
       
       // Compare the current job ID with the incoming status
       if (currentJobId && status.jobId === currentJobId) {
-        console.log(`Matching current job ID: ${currentJobId}, processing update`);
-        
         // Use our shared processor function
         createJobStatusHandler(status.jobId)(status);
-      } else {
-        console.log(`Received status for job ${status.jobId} but current job is ${currentJobId || 'none'}`);
       }
     };
     
@@ -231,21 +206,18 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     
     // Set up job started listener
     const handleJobStarted = (jobId: string) => {
-      console.log(`Job started with ID: ${jobId}`);
       setCurrentJobId(jobId);
       
       // For newly started jobs, check if we have config.runOnce information to determine type
       // Default to the current state if we don't know
       const currentConfig = configStateManager.getConfig();
       if (currentConfig && typeof currentConfig.runOnce === 'boolean') {
-        console.log(`Setting job ${jobId} type based on config.runOnce:`, currentConfig.runOnce);
         jobTypesRef.current.set(jobId, currentConfig.runOnce);
         
         // Also update current state if this is becoming the current job
         setIsRunOnceJob(currentConfig.runOnce);
       } else if (!jobTypesRef.current.has(jobId)) {
         // If we don't have the jobType set yet, use the current state as default
-        console.log(`No specific config info for job ${jobId}, using current state:`, isRunOnceJob);
         jobTypesRef.current.set(jobId, isRunOnceJob);
       }
       
@@ -256,12 +228,8 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     // Add job started listener
     websocketService.addJobStartedListener(handleJobStarted);
     
-    // Debug output to verify component mount and job status
-    console.log("Effect running: Added global job status listener");
-    
     // Clean up on unmount
     return () => {
-      console.log("Cleaning up global job status listener");
       websocketService.removeJobStartedListener(handleJobStarted);
       websocketService.removeJobStatusListener(globalJobStatusHandler);
     };
@@ -277,9 +245,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     // Load plugins if not already loaded
     if (!pluginRegistry.isPluginsLoaded()) {
       pluginRegistry.loadPlugins()
-        .then(() => {
-          console.log("NodeGraph: Plugins loaded successfully");
-        })
+        .then(() => {})
         .catch(error => {
           console.error("NodeGraph: Error loading plugins:", error);
         });
@@ -295,11 +261,9 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   useEffect(() => {
     // Check if we're reloading the same config (prevent infinite loops)
     if (config?.name && prevConfigNameRef.current === config.name) {
-      console.log(`🔄 NodeGraph: skipping re-initialization of same config "${config.name}"`);
       return;
     }
     
-    console.log("🔄 NodeGraph: initializing with config", config);
     // Save the current config name for future comparisons
     if (config?.name) {
       prevConfigNameRef.current = config.name;
@@ -307,8 +271,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     
     // Check if config is valid - if not, create an empty graph for drag and drop
     if (!config || !config.name) {
-      console.log("🔄 NodeGraph: invalid config, initializing empty graph for drag and drop");
-      
       // Create a minimal default config that satisfies the Config type
       const emptyConfig: Config = {
         name: 'new-config',
@@ -359,22 +321,15 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       setConnections(configStateManager.getConnections());
       setSelectedNode(configStateManager.getSelectedNode());
       
-      console.log("🔄 NodeGraph: nodes after initialization:", configStateManager.getNodes().length);
-      
       // Schedule auto-centering after the canvas and nodes are ready
       const nodesLoaded = configStateManager.getNodes().length > 0;
       if (nodesLoaded) {
-        console.log("Scheduling auto-center after config load");
-        
         // Use timeout to ensure the component is fully rendered
         setTimeout(() => {
           if (canvasRef.current) {
-            console.log("Auto-centering after config load");
             // Define a local function to handle centering
             const autoCenterOnLoad = () => {
               if (!canvasRef.current) return;
-              
-              console.log("Running auto-center calculation");
               
               // Calculate the bounds of all nodes
               let minX = Infinity;
@@ -424,10 +379,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
               // Get canvas dimensions
               const canvasWidth = canvasRef.current.width;
               const canvasHeight = canvasRef.current.height;
-              
-              console.log(`Canvas dimensions: ${canvasWidth}x${canvasHeight}`);
-              console.log(`Node bounds: (${minX},${minY}) to (${maxX},${maxY})`);
-              
               // Calculate scale to fit nodes in view with padding
               const scaleX = canvasWidth / nodeWidth;
               const scaleY = canvasHeight / nodeHeight;
@@ -438,9 +389,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
                 x: (canvasWidth / 2) - (centerX * targetScale),
                 y: (canvasHeight / 2) - (centerY * targetScale)
               };
-              
-              console.log(`Setting scale=${targetScale}, offset=(${targetOffset.x},${targetOffset.y})`);
-              
+
               // Apply changes directly without animation
               setScale(targetScale);
               setOffset(targetOffset);
@@ -604,7 +553,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
 
   // Enhanced version of handleWheel
   const handleWheelZoom = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
-    console.log("Wheel event detected", e.deltaY);
     e.preventDefault();
     
     if (!canvasRef.current) return;
@@ -629,8 +577,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     
     const offsetX = offset.x - (mouseX - offset.x) * (scaleChange - 1);
     const offsetY = offset.y - (mouseY - offset.y) * (scaleChange - 1);
-    
-    console.log(`Zooming: delta=${delta}, new scale=${newScale}, new offset=(${offsetX}, ${offsetY})`);
     
     // Update the scale and offset 
     setScale(newScale);
@@ -1186,8 +1132,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   // Subscribe to state changes from ConfigStateManager
   useEffect(() => {
     const unsubscribeNodes = configStateManager.subscribe('nodes-updated', (updatedNodes) => {
-      console.log('🔄 NodeGraph: Received nodes-updated event, nodes count:', updatedNodes.length);
-      
       // Schedule update instead of immediate state change
       scheduleUpdate(() => {
         setNodes(updatedNodes);
@@ -1204,8 +1148,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     });
     
     const unsubscribeConnections = configStateManager.subscribe('connections-updated', (updatedConnections) => {
-      console.log('🔄 NodeGraph: Received connections-updated event, connections count:', updatedConnections.length);
-      
       // Schedule update instead of immediate state change
       scheduleUpdate(() => {
         setConnections(updatedConnections);
@@ -1216,16 +1158,12 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     });
     
     const unsubscribeSelected = configStateManager.subscribe('node-selected', (nodeId) => {
-      console.log('🔄 NodeGraph: Received node-selected event:', nodeId);
-      
       scheduleUpdate(() => {
         setSelectedNode(nodeId);
       });
     });
     
     const unsubscribeConfig = configStateManager.subscribe('config-updated', (updatedConfig) => {
-      console.log('🔄 NodeGraph: Received config-updated event');
-      
       scheduleUpdate(() => {
         onConfigUpdate(updatedConfig);
         if (!resetInProgress.current) {
@@ -1235,8 +1173,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     });
     
     const unsubscribePluginUpdated = configStateManager.subscribe('plugin-updated', (updatedPlugin) => {
-      console.log("🔌 NodeGraph: Received plugin-updated event:", updatedPlugin);
-      
       // Force a redraw to ensure UI reflects the latest state
       scheduleUpdate(() => {
         // If this is a node removal event, we want to make sure our local state is up-to-date
@@ -1410,14 +1346,10 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         let nodeParams = {};
         
         if (latestNode && latestNode.params) {
-          console.log('🔍 Using latest node state from ConfigStateManager for dialog');
           nodeParams = { ...latestNode.params }; // Make a deep copy to avoid reference issues
         } else {
-          console.log('🔍 Using state from node object for dialog');
           nodeParams = { ...(actualNode.params || {}) }; // Make a deep copy
         }
-        
-        console.log( latestNode, actualNode )
         // Create plugin info structure based on node type
         let plugin: any = {
           name: latestNode?.name || actualNode.name,
@@ -1453,20 +1385,13 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         }
         
         // Get plugin schema from the registry based on the node's plugin name and type
-        console.log("PLUGIN", plugin)
         const pluginSchema = pluginRegistry.findPlugin(plugin.pluginName || plugin.name, plugin.type);
         if (pluginSchema) {
-          console.log('Found plugin schema from registry:', pluginSchema);
           // Add schema information to the plugin
           plugin.constructorInterface = pluginSchema.constructorInterface;
           plugin.configSchema = pluginSchema.configSchema;
           plugin.description = pluginSchema.description;
-        } else {
-          console.log('Plugin schema not found in registry for:', plugin.name, plugin.type);
         }
-        
-        console.log('Opening plugin dialog for:', plugin);
-        
         // Open dialog to edit params
         setSelectedPlugin(plugin);
         setShowPluginDialog(true);
@@ -1647,9 +1572,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
 
   // Handle adding/editing a plugin
   const handleAddPlugin = async (updatedPlugin: any) => {
-    // Update with the modified plugin
-    console.log("Adding/Updating plugin original:", JSON.stringify(updatedPlugin));
-    
     // Deep copy helper to ensure arrays are preserved
     const deepCopy = (obj: any): any => {
       if (obj === null || obj === undefined) {
@@ -1743,10 +1665,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         position: pluginCopy.position || { x: 300, y: 300 },
         interval: pluginCopy.interval || 60000,
       }
-      
-      // Debug log what's being added to the config
-      console.log(`Adding new plugin to config[${targetArray}]`, JSON.stringify(pluginConfig));
-      
       // Add the new plugin to the config
       currentConfig[targetArray].push(savedConfig as any);
       
@@ -1756,8 +1674,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       // Force a sync to rebuild nodes from the config
       configStateManager.forceSync();
       
-      console.log(`Added new plugin "${pluginCopy.name}" to ${targetArray}`, JSON.stringify(pluginConfig));
-      
       // Update local state directly for new plugins
       setNodes(configStateManager.getNodes());
       setConnections(configStateManager.getConnections());
@@ -1766,17 +1682,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       onConfigUpdate(configStateManager.getConfig());
     }
     else {
-      // For existing plugins, use updatePlugin
-      console.log("Updating existing plugin with params:", JSON.stringify(pluginCopy.params));
-      
-      // Special handling for array parameters
-      if (pluginCopy.params) {
-        for (const key in pluginCopy.params) {
-          if (Array.isArray(pluginCopy.params[key])) {
-            console.log(`Found array parameter ${key}:`, JSON.stringify(pluginCopy.params[key]));
-          }
-        }
-      }
       
       // Try to update the plugin in the config state manager
       const updated = configStateManager.updatePlugin(pluginCopy);
@@ -1786,11 +1691,8 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         return;
       }
       
-      console.log("Plugin updated successfully in state manager");
-      
       // Get the updated config and make sure our changes persisted
       const updatedConfig = configStateManager.getConfig();
-      console.log("Updated config after plugin update:", JSON.stringify(updatedConfig));
       
       // Update local state
       setNodes(configStateManager.getNodes());
@@ -1899,8 +1801,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       configSchema: draggedPlugin.configSchema,
       description: draggedPlugin.description
     };
-    
-    console.log('Creating new plugin from drag and drop:', newPlugin);
     
     // Set as selected plugin
     setSelectedPlugin(newPlugin);
@@ -2125,9 +2025,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       // Check if any node has a status
       const hasStatusNodes = nodes.some(node => node.status !== undefined && node.status !== null);
       
-      if (hasStatusNodes) {
-        console.log('Nodes with status detected, redrawing canvas');
-      }
       
       // Force redraw on the next frame
       if (canvasRef.current) {
@@ -2152,8 +2049,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       
       // Set runOnce to true - this is a one-time operation
       currentConfig.runOnce = true;
-      
-      console.log("Starting RUN-ONCE aggregation");
       
       // Reset the job status display closed state when starting a new job
       setJobStatusDisplayClosed(false);
@@ -2194,8 +2089,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       setIsRunOnceJob(true);
       jobTypesRef.current.set(jobId, true); // true = is run once
       
-      console.log(`Started run-once aggregation job with ID: ${jobId}`);
-      
       // Connect to the job's WebSocket for status updates
       websocketService.disconnect();
       websocketService.connectToJob(jobId);
@@ -2232,8 +2125,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
             throw new Error('Failed to stop job');
           }
           
-          console.log(`Stopped job with ID: ${currentJobId}`);
-          
           // Clear job-related state after stopping
           setCurrentJobId(null);
           setJobStatus(null);
@@ -2250,7 +2141,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
             throw new Error('Failed to stop aggregation');
           }
           
-          console.log('Stopped aggregation');
         }
         
         setIsAggregationRunning(false);
@@ -2262,7 +2152,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       const currentConfig = configStateManager.getConfig();
       currentConfig.runOnce = false;
       
-      console.log("Starting CONTINUOUS aggregation");
       
       // Reset the job status display closed state when starting a new continuous job
       setJobStatusDisplayClosed(false);
@@ -2304,7 +2193,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       setIsRunOnceJob(false);
       jobTypesRef.current.set(jobId, false); // false = continuous job
       
-      console.log(`Started continuous aggregation with job ID: ${jobId}`);
       
       // Connect to the job's WebSocket for status updates
       websocketService.disconnect();
@@ -2327,7 +2215,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         try {
           // Disconnect the WebSocket
           websocketService.disconnect();
-          console.log(`Disconnected WebSocket for job: ${currentJobId}`);
         } catch (error) {
           console.error('Error disconnecting WebSocket:', error);
         }

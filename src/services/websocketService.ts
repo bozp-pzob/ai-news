@@ -68,7 +68,6 @@ export class WebSocketService {
       }
       
       this.clients.get(configName)?.add(ws);
-      console.log(`WebSocket client connected for config: ${configName}`);
 
       // Send initial status
       this.sendStatusToClient(ws, configName);
@@ -105,7 +104,6 @@ export class WebSocketService {
             }
           }
         }
-        console.log(`WebSocket client disconnected from config: ${configName}`);
       });
     });
   }
@@ -125,7 +123,6 @@ export class WebSocketService {
     }
     
     this.jobClients.get(jobId)?.add(ws);
-    console.log(`WebSocket client connected for job: ${jobId}`);
 
     // Send initial job status
     this.sendJobStatusToClient(ws, jobId);
@@ -145,7 +142,6 @@ export class WebSocketService {
           }
         }
       }
-      console.log(`WebSocket client disconnected from job: ${jobId}`);
     });
   }
 

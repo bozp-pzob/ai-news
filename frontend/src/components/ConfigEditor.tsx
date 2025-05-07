@@ -148,8 +148,6 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
   const currentStatus = wsConnected ? status || { status: 'stopped' } : polledStatus;
 
   const handleAddPlugin = (plugin: PluginInfo, pluginConfig: Record<string, any>, interval?: number) => {
-    console.log('handleAddPlugin called with:', { plugin, pluginConfig, interval });
-    
     if (plugin) {
       const newPlugin = {
         type: plugin.type,
@@ -158,17 +156,11 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
         interval
       };
       
-      console.log('Creating new plugin:', newPlugin);
-      console.log('Current config:', config);
-      
       setConfig(prevConfig => {
         const pluginType = plugin.type as PluginType;
-        console.log('Plugin type:', pluginType);
         
         // Map plugin type to config property
         const configProperty = mapPluginTypeToConfigProperty(pluginType);
-        console.log('Config property:', configProperty);
-        console.log('Previous config for property:', prevConfig[configProperty]);
         
         // Check if this is an array property
         if (configProperty === 'sources' || 
@@ -186,7 +178,6 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
             [arrayProp]: [...(prevConfig[arrayProp] || []), newPlugin]
           };
           
-          console.log('Updated config:', updatedConfig);
           return updatedConfig;
         }
         

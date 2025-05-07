@@ -58,20 +58,6 @@ app.get('/config/:name', async (req, res) => {
 // POST /config/:name - Create or update a configuration
 app.post('/config/:name', async (req, res) => {
   try {
-    console.log(`Saving config ${req.params.name}`, JSON.stringify(req.body));
-    
-    // Verify arrays are being received correctly
-    if (req.body.sources) {
-      req.body.sources.forEach((source: any, index: number) => {
-        if (source.params) {
-          for (const key in source.params) {
-            if (Array.isArray(source.params[key])) {
-              console.log(`📊 Source[${index}].params.${key} is an array:`, JSON.stringify(source.params[key]));
-            }
-          }
-        }
-      });
-    }
     
     await configService.saveConfig(req.params.name, req.body);
     

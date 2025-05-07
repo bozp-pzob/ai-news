@@ -58,9 +58,7 @@ export const GithubStats: React.FC = () => {
     const loadGitHubStats = async () => {
       try {
         setLoading(true);
-        console.log(`Fetching GitHub stats for ${REPO_OWNER}/${REPO_NAME}...`);
         const data = await fetchGitHubStats(REPO_OWNER, REPO_NAME);
-        console.log('GitHub stats received:', data);
         setStats(data);
         setError(null);
       } catch (err) {

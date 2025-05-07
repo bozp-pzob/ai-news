@@ -71,7 +71,6 @@ export class Config {
     
     // For backward compatibility, ensure providers matches ai content
     if (configCopy.ai && configCopy.ai.length > 0 && configCopy.providers.length === 0) {
-      console.log('Setting providers to match AI array');
       configCopy.providers = [...configCopy.ai];
     }
     
@@ -91,8 +90,6 @@ export class Config {
    */
   updatePlugin(plugin: PluginConfig): boolean {
     try {
-      console.log('Updating plugin:', JSON.stringify(plugin));
-      
       // Ensure params is an object
       if (!plugin.params || typeof plugin.params !== 'object') {
         console.error('Invalid plugin params:', plugin.params);
@@ -154,8 +151,6 @@ export class Config {
     isChild: boolean,
     index: number
   ): void {
-    console.log(`updatePluginInArray: Updating plugin in ${arrayName} at index ${index}`, JSON.stringify(plugin));
-    
     // Helper for proper deep copy with array handling
     const deepCopy = (obj: any): any => {
       if (obj === null || obj === undefined) {
@@ -164,7 +159,6 @@ export class Config {
       
       if (Array.isArray(obj)) {
         // Special handling for arrays to ensure each element is properly copied
-        console.log(`📊 Copying array with ${obj.length} elements:`, JSON.stringify(obj));
         return obj.map(item => deepCopy(item));
       }
       
@@ -240,18 +234,6 @@ export class Config {
         // Make a deep copy of the plugin params to preserve array values
         const deepCopiedParams = deepCopy(plugin.params);
         
-        // Log the parameters being updated
-        console.log(`Updating ${arrayName}[${index}].params with:`, JSON.stringify(deepCopiedParams));
-        
-        // Check for arrays in parameters
-        if (deepCopiedParams) {
-          for (const key in deepCopiedParams) {
-            if (Array.isArray(deepCopiedParams[key])) {
-              console.log(`📊 Array parameter ${key} in ${arrayName}[${index}]:`, 
-                JSON.stringify(deepCopiedParams[key]));
-            }
-          }
-        }
         
         // Update the plugin params with the deep copy
         this.data[arrayName][index].params = deepCopiedParams;
@@ -266,8 +248,6 @@ export class Config {
           this.data[arrayName][index].interval = plugin.interval;
         }
         
-        // Log the result of the update
-        console.log(`Updated ${arrayName}[${index}]:`, JSON.stringify(this.data[arrayName][index]));
       }
     }
   }
@@ -277,8 +257,6 @@ export class Config {
    */
   removeNode(nodeId: string): boolean {
     try {
-      console.log(`Removing node: ${nodeId}`);
-
       // Parse the node ID to determine its type and index
       const idParts = nodeId.split('-');
       const nodeType = idParts[0];
@@ -314,7 +292,6 @@ export class Config {
             
             // Remove the child from the children array
             parent.params.children.splice(childIndex, 1);
-            console.log(`Removed child node at index ${childIndex} from parent ${parentType}-${parentIndex}`);
             return true;
           }
         }
