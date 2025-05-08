@@ -4,6 +4,8 @@ import { Config } from "./configService";
 import { AggregationStatus, JobStatus } from "../types";
 import EventEmitter from "events";
 import { v4 as uuidv4 } from 'uuid';
+import { HistoricalAggregator } from "../aggregator/HistoricalAggregator";
+import { callbackDateRangeLogic } from "../helpers/dateHelper";
 
 export class AggregatorService {
   private activeAggregators: { [key: string]: ContentAggregator } = {};
@@ -119,7 +121,7 @@ export class AggregatorService {
     }, interval);
   }
 
-  async startAggregation(configName: string, config: Config): Promise<string> {
+  async startAggregation(configName: string, config: Config, settings: any): Promise<string> {
     // Create a job ID
     const jobId = uuidv4();
     
@@ -136,7 +138,7 @@ export class AggregatorService {
     this.eventEmitter.emit(`job:${jobId}`, jobStatus);
     
     // Start the continuous aggregation process in the background without blocking
-    this.startContinuousAggregationProcess(jobId, configName, config).catch(error => {
+    this.startContinuousAggregationProcess(jobId, configName, config, settings).catch(error => {
       console.error(`Error in background continuous aggregation process for job ${jobId}:`, error);
       // Error handling is done inside startContinuousAggregationProcess, so no need to handle it here
     });
@@ -145,11 +147,20 @@ export class AggregatorService {
     return jobId;
   }
 
-  private async startContinuousAggregationProcess(jobId: string, configName: string, config: Config): Promise<void> {
+  private async startContinuousAggregationProcess(jobId: string, configName: string, config: Config, settings: any): Promise<void> {
     const jobStatus = this.jobs.get(jobId)!;
     
     // Initialize the intervals array
     jobStatus.intervals = [];
+    
+    // Ensure settings exists
+    if (!settings) {
+      settings = {
+        runOnce: false,
+        onlyFetch: false,
+        onlyGenerate: false
+      };
+    }
     
     try {
       // Load all necessary modules
@@ -201,29 +212,31 @@ export class AggregatorService {
       this.jobs.set(jobId, jobStatus);
       this.emitJobStatusUpdate(jobId);
 
-      // Start fetching and generating content
-      for (const config of sourceConfigs) {
-        this.updateSourceStatus(configName, config.instance.name, jobId); // Set source name before fetch
-        await aggregator.fetchAndStore(config.instance.name);
-        this.emitStatusUpdate(configName, jobId);
-        
-        // Initialize intervals array if it doesn't exist
-        if (!jobStatus.intervals) {
-          jobStatus.intervals = [];
-        }
-        
-        // Track interval ID for cleanup
-        const intervalId = setInterval(() => {
+      // Start fetching and generating content if not in generate-only mode
+      if (!settings?.onlyGenerate) {
+        for (const config of sourceConfigs) {
           this.updateSourceStatus(configName, config.instance.name, jobId); // Set source name before fetch
-          aggregator.fetchAndStore(config.instance.name)
-            .then(() => this.emitStatusUpdate(configName, jobId));
-        }, config.interval);
-        
-        // Add the interval ID to the job for tracking
-        if (!jobStatus.intervals) {
-          jobStatus.intervals = [];
+          await aggregator.fetchAndStore(config.instance.name);
+          this.emitStatusUpdate(configName, jobId);
+          
+          // Initialize intervals array if it doesn't exist
+          if (!jobStatus.intervals) {
+            jobStatus.intervals = [];
+          }
+          
+          // Track interval ID for cleanup
+          const intervalId = setInterval(() => {
+            this.updateSourceStatus(configName, config.instance.name, jobId); // Set source name before fetch
+            aggregator.fetchAndStore(config.instance.name)
+              .then(() => this.emitStatusUpdate(configName, jobId));
+          }, config.interval);
+          
+          // Add the interval ID to the job for tracking
+          if (!jobStatus.intervals) {
+            jobStatus.intervals = [];
+          }
+          jobStatus.intervals.push(intervalId);
         }
-        jobStatus.intervals.push(intervalId);
       }
 
       // Update job status
@@ -231,7 +244,7 @@ export class AggregatorService {
       this.jobs.set(jobId, jobStatus);
       this.emitJobStatusUpdate(jobId);
 
-      if (!config.settings?.onlyFetch) {
+      if (!settings?.onlyFetch) {
         for (const generator of generatorConfigs) {
           await generator.instance.generateContent();
           this.emitStatusUpdate(configName, jobId);
@@ -261,7 +274,7 @@ export class AggregatorService {
     }
   }
 
-  async runAggregationOnce(configName: string, config: Config): Promise<string> {
+  async runAggregationOnce(configName: string, config: Config, settings: any): Promise<string> {
     // Create a job ID
     const jobId = uuidv4();
     
@@ -278,7 +291,7 @@ export class AggregatorService {
     this.eventEmitter.emit(`job:${jobId}`, jobStatus);
     
     // Start the aggregation process in the background without blocking
-    this.runAggregationProcess(jobId, configName, config).catch(error => {
+    this.runAggregationProcess(jobId, configName, config, settings).catch(error => {
       console.error(`Error in background aggregation process for job ${jobId}:`, error);
       // Error handling is done inside runAggregationProcess, so no need to handle it here
     });
@@ -287,11 +300,20 @@ export class AggregatorService {
     return jobId;
   }
 
-  private async runAggregationProcess(jobId: string, configName: string, config: Config): Promise<void> {
+  private async runAggregationProcess(jobId: string, configName: string, config: Config, settings: any): Promise<void> {
     const jobStatus = this.jobs.get(jobId)!;
     
     // Initialize the intervals array (even though one-time jobs don't use intervals)
     jobStatus.intervals = [];
+    
+    // Ensure settings exists
+    if (!settings) {
+      settings = {
+        runOnce: true,
+        onlyFetch: false,
+        onlyGenerate: false
+      };
+    }
     
     try {
       // Load all necessary modules
@@ -324,7 +346,117 @@ export class AggregatorService {
       enricherConfigs = await loadProviders(enricherConfigs, aiConfigs);
       generatorConfigs = await loadProviders(generatorConfigs, aiConfigs);
       generatorConfigs = await loadStorage(generatorConfigs, storageConfigs);
+      
+      // Check if we're running in historical mode
+      const isHistoricalMode = settings?.historicalDate?.enabled === true;
+      
+      // Update job status
+      jobStatus.aggregationStatus = { 
+        mode: isHistoricalMode ? 'historical' : 'standard',
+        config: settings?.historicalDate || {}
+      };
+      this.jobs.set(jobId, jobStatus);
+      this.emitJobStatusUpdate(jobId);
 
+      if (isHistoricalMode) {
+        // Use HistoricalAggregator for historical data
+        console.log('Running in historical mode with settings:', settings.historicalDate);
+        const aggregator = new HistoricalAggregator();
+        
+        // Register sources that support historical fetching
+        sourceConfigs.forEach((config) => {
+          if (config.instance?.fetchHistorical) {
+            aggregator.registerSource(config.instance);
+          } else {
+            console.warn(`Source ${config.instance.name} does not support historical data fetching`);
+          }
+        });
+        
+        // Register enrichers and storage
+        enricherConfigs.forEach((config) => aggregator.registerEnricher(config.instance));
+        
+        for (const storage of storageConfigs) {
+          await storage.instance.init();
+          aggregator.registerStorage(storage.instance);
+        }
+        
+        // Set up date filter based on historicalDate settings
+        const dateFilter: any = {};
+        const { mode, startDate, endDate } = settings.historicalDate;
+        
+        if (mode === 'range') {
+          // Date range mode
+          dateFilter.after = startDate;
+          dateFilter.before = endDate;
+        } else {
+          // Single date mode
+          dateFilter.filterType = 'during';
+          dateFilter.date = startDate;
+        }
+        
+        // Update job status
+        jobStatus.progress = 30;
+        jobStatus.aggregationStatus = { 
+          mode: 'historical',
+          config: settings.historicalDate,
+          filter: dateFilter
+        };
+        this.jobs.set(jobId, jobStatus);
+        this.emitJobStatusUpdate(jobId);
+        
+        // Fetch historical data if not in generate-only mode
+        if (!settings?.onlyGenerate) {
+          for (const config of sourceConfigs) {
+            if (config.instance?.fetchHistorical) {
+              this.updateSourceStatus(configName, config.instance.name, jobId);
+              
+              if (mode === 'range') {
+                await aggregator.fetchAndStoreRange(config.instance.name, dateFilter);
+              } else {
+                await aggregator.fetchAndStore(config.instance.name, startDate);
+              }
+              
+              this.emitStatusUpdate(configName, jobId);
+            }
+          }
+        }
+        
+        // Update job status
+        jobStatus.progress = 60;
+        this.jobs.set(jobId, jobStatus);
+        this.emitJobStatusUpdate(jobId);
+        
+        // Generate content if not in fetch-only mode
+        if (!settings?.onlyFetch) {
+          if (mode === 'range') {
+            for (const generator of generatorConfigs) {
+              await generator.instance.storage.init();
+              // Use callbackDateRangeLogic to process each date in the range
+              await callbackDateRangeLogic(dateFilter, (dateStr: string) => 
+                generator.instance.generateAndStoreSummary(dateStr)
+              );
+              this.emitStatusUpdate(configName, jobId);
+            }
+          } else {
+            // Single date mode
+            for (const generator of generatorConfigs) {
+              await generator.instance.storage.init();
+              await generator.instance.generateAndStoreSummary(startDate);
+              this.emitStatusUpdate(configName, jobId);
+            }
+          }
+        }
+        
+        // Update job status to completed
+        jobStatus.status = 'completed';
+        jobStatus.progress = 100;
+        this.jobs.set(jobId, jobStatus);
+        this.emitJobStatusUpdate(jobId);
+        
+        return; // Exit early, we're done with historical processing
+      }
+      
+      // Standard non-historical aggregation continues below...
       // Always create a new aggregator for one-time runs to avoid cache issues
       // This ensures we get fresh data on each run
       const aggregator = new ContentAggregator();
@@ -349,21 +481,23 @@ export class AggregatorService {
       this.jobs.set(jobId, jobStatus);
       this.emitJobStatusUpdate(jobId);
 
-      // Run all sources once without setting up intervals
-      for (const config of sourceConfigs) {
-        this.updateSourceStatus(configName, config.instance.name, jobId); // Set source name before fetch
-        await aggregator.fetchAndStore(config.instance.name);
-        this.emitStatusUpdate(configName, jobId);
+      // Run all sources once without setting up intervals if not in generate-only mode
+      if (!settings?.onlyGenerate) {
+        for (const config of sourceConfigs) {
+          this.updateSourceStatus(configName, config.instance.name, jobId); // Set source name before fetch
+          await aggregator.fetchAndStore(config.instance.name);
+          this.emitStatusUpdate(configName, jobId);
+        }
       }
 
       // Update job status
-        this.updateSourceStatus(configName, undefined, jobId);
+      this.updateSourceStatus(configName, undefined, jobId);
       jobStatus.progress = 60;
       this.jobs.set(jobId, jobStatus);
       this.emitJobStatusUpdate(jobId);
 
       // Run all generators once if not in fetch-only mode
-      if (!config.settings?.onlyFetch) {
+      if (!settings?.onlyFetch) {
         for (const generator of generatorConfigs) {
           await generator.instance.generateContent();
           this.emitStatusUpdate(configName, jobId);

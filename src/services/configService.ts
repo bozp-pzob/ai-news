@@ -10,6 +10,13 @@ export interface Config {
   settings?: {
     runOnce?: boolean;
     onlyFetch?: boolean;
+    onlyGenerate?: boolean;
+    historicalDate?: {
+      enabled: boolean;
+      mode?: "single" | "range";
+      startDate?: string;
+      endDate?: string;
+    };
   };
 }
 

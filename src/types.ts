@@ -66,6 +66,9 @@ export interface JobStatus {
   aggregationStatus?: {
     currentSource?: string;
     currentPhase?: 'fetching' | 'enriching' | 'generating' | 'idle' | 'connecting' | 'waiting';
+    mode?: 'standard' | 'historical';
+    config?: any;
+    filter?: any;
     errors?: Array<{
       message: string;
       source?: string;

@@ -60,6 +60,22 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
   // This ensures that even if backend sends progress values later, we still treat it as continuous
   const isContinuousJob = wasContinuousRef.current || stableJobStatus?.progress === undefined || runMode === "continuous";
   
+  // Check if we're in historical mode
+  const isHistoricalMode = stableJobStatus?.aggregationStatus?.mode === 'historical';
+  
+  // Get historical date information if available
+  const getHistoricalDateInfo = () => {
+    if (!isHistoricalMode || !stableJobStatus?.aggregationStatus?.config) return null;
+    
+    const { mode, startDate, endDate } = stableJobStatus.aggregationStatus.config;
+    
+    if (mode === 'range') {
+      return `${startDate} to ${endDate}`;
+    } else {
+      return startDate;
+    }
+  };
+  
   // Detect job ID changes to reset display state
   useEffect(() => {
     if (jobStatus && prevJobIdRef.current !== jobStatus.jobId) {
@@ -346,7 +362,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
                 cy="25" 
                 r={progressRadius} 
                 fill="transparent" 
-                stroke="url(#amber-gradient)" 
+                stroke={isHistoricalMode ? "url(#purple-gradient)" : "url(#amber-gradient)"} 
                 strokeWidth="4"
                 strokeDasharray={`${progressCircumference * 0.3} ${progressCircumference * 0.7}`}
                 transform="rotate(-90 25 25)"
@@ -360,7 +376,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
                 cy="25" 
                 r={progressRadius} 
                 fill="transparent" 
-                stroke="url(#amber-gradient)" 
+                stroke={isHistoricalMode ? "url(#purple-gradient)" : "url(#amber-gradient)"}
                 strokeWidth="4"
                 strokeDasharray={progressCircumference}
                 strokeDashoffset={strokeDashoffset}
@@ -374,6 +390,10 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
                 <stop offset="0%" stopColor="#f59e0b" />
                 <stop offset="100%" stopColor="#f59e0b" />
               </linearGradient>
+              <linearGradient id="purple-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#a855f7" />
+                <stop offset="100%" stopColor="#a855f7" />
+              </linearGradient>
             </defs>
             
             {/* Text in the center */}
@@ -382,7 +402,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
               y="25" 
               textAnchor="middle" 
               dominantBaseline="middle" 
-              fill={isContinuousJob ? "#f59e0b" : "white"}
+              fill={isContinuousJob ? (isHistoricalMode ? "#a855f7" : "#f59e0b") : "white"}
               style={{ fontSize: '10px', fontWeight: 500 }}
             >
               {isContinuousJob ? (
@@ -393,9 +413,10 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
             </text>
           </svg>
           <div className={`absolute top-0 right-0 h-3 w-3 rounded-full ${
-            displayStatus === 'RUNNING' ? 'bg-amber-400' : 
-            displayStatus === 'COMPLETED' ? 'bg-green-400' : 
-            displayStatus === 'FAILED' ? 'bg-destructive' : 'bg-red-400'
+            displayStatus === 'RUNNING' 
+              ? isHistoricalMode ? 'bg-purple-400' : 'bg-amber-400' 
+              : displayStatus === 'COMPLETED' ? 'bg-green-400' 
+              : displayStatus === 'FAILED' ? 'bg-destructive' : 'bg-red-400'
           }`} />
         </div>
         
@@ -501,6 +522,20 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
       
       {/* Rest of content is only visible when not minimized */}
       <div className={`mt-2 ${isMinimized ? 'invisible h-0' : 'visible'}`}>
+        {/* Historical Mode Info - shown when in historical mode */}
+        {isHistoricalMode && (
+          <div className="mb-3 bg-purple-900/20 px-3 py-2 rounded text-xs border border-purple-500/30">
+            <div className="flex justify-between items-center">
+              <span className="text-stone-300">Mode:</span>
+              <span className="text-purple-300 font-medium">Historical Data</span>
+            </div>
+            <div className="flex justify-between items-center mt-1">
+              <span className="text-stone-300">Date{stableJobStatus?.aggregationStatus?.config?.mode === 'range' ? ' Range' : ''}:</span>
+              <span className="text-white font-medium">{getHistoricalDateInfo()}</span>
+            </div>
+          </div>
+        )}
+        
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2">
           <div className="flex justify-between items-center">
             <span className="text-muted-foreground">Status:</span>

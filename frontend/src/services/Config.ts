@@ -18,7 +18,8 @@ export class Config {
       providers: [],
       settings: {
         runOnce: false,
-        onlyFetch: false
+        onlyFetch: false,
+        onlyGenerate: false
       }
     };
   }
@@ -66,7 +67,8 @@ export class Config {
     // Ensure settings object exists
     configCopy.settings = configCopy.settings || {
       runOnce: false,
-      onlyFetch: false
+      onlyFetch: false,
+      onlyGenerate: false
     };
     
     // For backward compatibility, ensure providers matches ai content

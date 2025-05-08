@@ -4,9 +4,15 @@ import { pluginRegistry } from '../services/PluginRegistry';
 
 interface PluginPaletteProps {
   onDragPlugin: (plugin: PluginInfo, clientX: number, clientY: number) => void;
+  onlyFetch?: boolean;
+  onlyGenerate?: boolean;
 }
 
-export const PluginPalette: React.FC<PluginPaletteProps> = ({ onDragPlugin }) => {
+export const PluginPalette: React.FC<PluginPaletteProps> = ({ 
+  onDragPlugin, 
+  onlyFetch = false, 
+  onlyGenerate = false
+}) => {
   // This component displays available plugins in categories
   // Plugins without constructorInterface.parameters are filtered out
   const [plugins, setPlugins] = useState<Record<string, PluginInfo[]>>({});
@@ -101,24 +107,51 @@ export const PluginPalette: React.FC<PluginPaletteProps> = ({ onDragPlugin }) =>
            plugin.description.toLowerCase().includes(searchTerm.toLowerCase());
   };
 
+  // Check if a plugin is usable in the current mode
+  const isPluginUsableInCurrentMode = (plugin: PluginInfo) => {
+    if (onlyGenerate && (plugin.type === 'source' || plugin.type === 'enricher')) {
+      return false;
+    }
+    if (onlyFetch && plugin.type === 'generator') {
+      return false;
+    }
+    return true;
+  };
+
   // Render a single plugin item with a modern card design
-  const renderPluginItem = (plugin: PluginInfo) => (
-    <div
-      key={`${plugin.type}-${plugin.name}`}
-      draggable
-      onDragStart={(e) => handleDragStart(plugin, e)}
-      className="group relative bg-stone-700 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 mb-3 cursor-move border border-gray-800 hover:border-amber-400"
-      title={plugin.description}
-    >
-      <div className="flex items-center">
-        <div className="flex-1 min-w-0">
-          <div className="font-medium text-gray-300 group-hover:text-amber-300 transition-colors truncate">{plugin.name}</div>
-          <div className="text-xs text-gray-400 mt-1 line-clamp-2">{plugin.description}</div>
+  const renderPluginItem = (plugin: PluginInfo) => {
+    const isUsable = isPluginUsableInCurrentMode(plugin);
+    
+    return (
+      <div
+        key={`${plugin.type}-${plugin.name}`}
+        draggable={isUsable}
+        onDragStart={isUsable ? (e) => handleDragStart(plugin, e) : undefined}
+        className={`group relative bg-stone-700 p-4 rounded-xl shadow-sm transition-all duration-200 mb-3 
+          ${isUsable 
+            ? 'hover:shadow-md cursor-move border border-gray-800 hover:border-amber-400' 
+            : 'opacity-50 border border-gray-800 cursor-not-allowed'}`}
+        title={isUsable 
+          ? plugin.description 
+          : `${plugin.description} (Not available in ${onlyGenerate ? 'Generate Only' : 'Fetch Only'} mode)`}
+      >
+        <div className="flex items-center">
+          <div className="flex-1 min-w-0">
+            <div className={`font-medium text-gray-300 ${isUsable ? 'group-hover:text-amber-300' : ''} transition-colors truncate`}>
+              {plugin.name}
+              {!isUsable && (
+                <span className="ml-2 text-xs text-gray-400">(unavailable)</span>
+              )}
+            </div>
+            <div className="text-xs text-gray-400 mt-1 line-clamp-2">{plugin.description}</div>
+          </div>
         </div>
+        {isUsable && (
+          <div className="absolute inset-0 border-2 border-transparent group-hover:border-amber-400 rounded-xl pointer-events-none transition-colors duration-200 opacity-0 group-hover:opacity-30"></div>
+        )}
       </div>
-      <div className="absolute inset-0 border-2 border-transparent group-hover:border-amber-400 rounded-xl pointer-events-none transition-colors duration-200 opacity-0 group-hover:opacity-30"></div>
-    </div>
-  );
+    );
+  };
 
   // Category info with names only
   const categories = [
@@ -144,11 +177,23 @@ export const PluginPalette: React.FC<PluginPaletteProps> = ({ onDragPlugin }) =>
     }
   ];
 
+  // Helper function to check if a category should be visible based on run mode
+  const isCategoryVisible = (categoryId: string) => {
+    // Always show all categories in the sidebar
+    return true;
+  };
+
   return (
     <div className="bg-stone-950 w-80 h-full overflow-hidden flex flex-col border-r border-amber-200">
       <div className="flex-shrink-0 p-4">
-        <h2 className="text-xl font-bold text-gray-300">
+        <h2 className="text-xl font-bold text-gray-300 flex items-center">
           Modules
+          {onlyGenerate && (
+            <span className="ml-2 text-xs bg-purple-600 text-white px-2 py-1 rounded-full">Generate Only</span>
+          )}
+          {onlyFetch && (
+            <span className="ml-2 text-xs bg-blue-600 text-white px-2 py-1 rounded-full">Fetch Only</span>
+          )}
         </h2>
         <div className="mt-3 relative">
           <input
@@ -176,6 +221,11 @@ export const PluginPalette: React.FC<PluginPaletteProps> = ({ onDragPlugin }) =>
             ) : (
               <div className="space-y-6">
                 {Object.entries(plugins).map(([categoryKey, categoryPlugins]) => {
+                  // Skip categories that shouldn't be visible based on run mode
+                  if (!isCategoryVisible(categoryKey)) {
+                    return null;
+                  }
+                  
                   // Find the matching category from our display categories
                   const category = categories.find(c => c.id === categoryKey) || {
                     id: categoryKey,

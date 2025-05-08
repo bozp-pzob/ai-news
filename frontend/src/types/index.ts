@@ -43,6 +43,13 @@ export interface Config {
   settings: {
     runOnce: boolean;
     onlyFetch: boolean;
+    onlyGenerate?: boolean;
+    historicalDate?: {
+      enabled: boolean;
+      mode?: "single" | "range";
+      startDate?: string;
+      endDate?: string;
+    };
   };
   activePlugin?: PluginConfig | { type: 'settings'; name: 'Settings' };
   runOnce?: boolean;
@@ -81,6 +88,9 @@ export interface JobStatus {
   aggregationStatus?: {
     currentSource?: string;
     currentPhase?: 'fetching' | 'enriching' | 'generating' | 'idle' | 'connecting' | 'waiting';
+    mode?: 'standard' | 'historical';
+    config?: any;
+    filter?: any;
     errors?: Array<{
       message: string;
       source?: string;

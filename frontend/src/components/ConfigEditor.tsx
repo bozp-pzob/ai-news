@@ -397,6 +397,20 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
                 <span className="ml-2 text-sm text-gray-700">Only Fetch</span>
               </label>
             </div>
+            <div>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={config.settings?.onlyGenerate || false}
+                  onChange={(e) => onConfigUpdate({
+                    ...config,
+                    settings: { ...config.settings, onlyGenerate: e.target.checked }
+                  })}
+                  className="rounded border-gray-300 text-amber-500 shadow-sm focus:border-amber-400 focus:ring-amber-400"
+                />
+                <span className="ml-2 text-sm text-gray-700">Only Generate</span>
+              </label>
+            </div>
           </div>
         </div>
       );

@@ -15,10 +15,19 @@ import { websocketService } from '../services/websocket';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { JobStatusDisplay } from './JobStatusDisplay';
 import { useToast } from './ToastProvider';
+import ReactDOM from 'react-dom';
 
 // Add type constants to represent the pipeline flow steps
 const PIPELINE_STEPS = ['sources', 'enrichers', 'generators'] as const;
 type PipelineStep = typeof PIPELINE_STEPS[number];
+
+// Add type for historical date settings
+interface HistoricalDateSettings {
+  enabled: boolean;
+  mode?: "single" | "range";
+  startDate?: string;
+  endDate?: string;
+}
 
 interface NodeGraphProps {
   config: Config;
@@ -69,6 +78,21 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   const [isAggregationRunning, setIsAggregationRunning] = useState(false);
   // Before the [showPipelineFlow, setShowPipelineFlow] state declaration, add:
   const [isRunOnceJob, setIsRunOnceJob] = useState(false);
+  // Add new state for toggles
+  const [onlyFetch, setOnlyFetch] = useState(false);
+  const [onlyGenerate, setOnlyGenerate] = useState(false);
+  // Add state for run mode selection
+  const [selectedRunMode, setSelectedRunMode] = useState<"once" | "continuous">("once");
+  // Add state for run options dropdown
+  const [showRunOptions, setShowRunOptions] = useState(false);
+  const [showRunOptionsDropdown, setShowRunOptionsDropdown] = useState(false);
+  // Add state to track settings button position
+  const [settingsButtonPosition, setSettingsButtonPosition] = useState<{top: number; right: number; bottom: number; left: number} | null>(null);
+  // Add state for historical date options
+  const [useHistoricalDates, setUseHistoricalDates] = useState(false);
+  const [dateRangeMode, setDateRangeMode] = useState<"single" | "range">("single");
+  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
   // After the other useRef declarations, add:
   const jobTypesRef = useRef<Map<string, boolean>>(new Map()); // Maps jobId -> isRunOnce
 
@@ -621,6 +645,11 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     
     // Only update mouse position if needed for drawing connections
     if (connectingFrom) {
+      // Don't update mouse position for generator nodes when onlyFetch is true
+      if (onlyFetch && connectingFrom.nodeId.startsWith('generator')) {
+        setConnectingFrom(null);
+        return;
+      }
       setMousePosition({ x: mouseX, y: mouseY });
     }
 
@@ -755,10 +784,13 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     ctx.drawImage(backBufferRef.current, 0, 0);
   }, []);
 
-  // Draw the default pipeline flow in the background
+  // Restore the original drawPipelineFlow function
   const drawPipelineFlow = useCallback((ctx: CanvasRenderingContext2D) => {
     // Skip if pipeline flow is disabled
     if (!showPipelineFlow) return;
+    
+    // Skip drawing pipeline flow in Generate Only mode
+    if (onlyGenerate) return;
     
     // Group nodes by type (sources, enrichers, generators)
     const nodesByType = {
@@ -804,15 +836,15 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     const groupCenters = {
       sources: { 
         ...getNodeGroupCenter(nodesByType.sources),
-        exists: nodesByType.sources.length > 0
+        exists: nodesByType.sources.length > 0 && !onlyGenerate // Don't need to change this since we're skipping the whole function in onlyGenerate mode
       },
       enrichers: { 
         ...getNodeGroupCenter(nodesByType.enrichers),
-        exists: nodesByType.enrichers.length > 0
+        exists: nodesByType.enrichers.length > 0 && !onlyGenerate // Don't need to change this since we're skipping the whole function in onlyGenerate mode
       },
       generators: { 
         ...getNodeGroupCenter(nodesByType.generators),
-        exists: nodesByType.generators.length > 0
+        exists: nodesByType.generators.length > 0 && !onlyFetch
       }
     };
     
@@ -827,16 +859,16 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       });
     }
     
-    // Enrichers → Generators connection
-    if (groupCenters.enrichers.exists && groupCenters.generators.exists) {
+    // Enrichers → Generators connection - skip if onlyFetch is true
+    if (groupCenters.enrichers.exists && groupCenters.generators.exists && !onlyFetch) {
       flowConnections.push({
         from: groupCenters.enrichers,
         to: groupCenters.generators
       });
     }
     
-    // Direct Sources → Generators connection (if no enrichers)
-    if (!groupCenters.enrichers.exists && groupCenters.sources.exists && groupCenters.generators.exists) {
+    // Direct Sources → Generators connection (if no enrichers) - skip if onlyFetch is true
+    if (!groupCenters.enrichers.exists && groupCenters.sources.exists && groupCenters.generators.exists && !onlyFetch) {
       flowConnections.push({
         from: groupCenters.sources,
         to: groupCenters.generators
@@ -874,14 +906,14 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     
     // Restore the original context
     ctx.restore();
-  }, [nodes, showPipelineFlow]);
+  }, [nodes, showPipelineFlow, onlyFetch, onlyGenerate]);
 
   // Store the pipeline flow function in the ref to break circular dependency
   useEffect(() => {
     pipelineFlowFnRef.current = drawPipelineFlow;
   }, [drawPipelineFlow]);
 
-  // Improved drawing to implement double buffering
+  // In the drawToBackBuffer function, modify the line that calls the pipeline flow function
   const drawToBackBuffer = useCallback(() => {
     if (!backBufferRef.current || !canvasRef.current) return;
     
@@ -910,13 +942,27 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     // This is important because node statuses may have been updated externally
     const syncedNodes = syncNodePortsWithParams(nodes);
 
+    // Filter nodes based on selected mode
+    let visibleNodes = syncedNodes;
+    if (onlyFetch) {
+      // In Fetch Only mode, hide generator nodes
+      visibleNodes = syncedNodes.filter(node => !node.id.startsWith('generator'));
+    } else if (onlyGenerate) {
+      // In Generate Only mode, hide sources and enrichers, but keep generators, storage, and AI
+      visibleNodes = syncedNodes.filter(node => 
+        !node.id.startsWith('source') && 
+        !node.id.startsWith('enricher')
+      );
+    }
+
     // Draw the default pipeline flow in the background using the function from ref
-    if (pipelineFlowFnRef.current) {
+    // Only if not in Generate Only mode (which doesn't need the flow visualization)
+    if (pipelineFlowFnRef.current && !onlyGenerate) {
       pipelineFlowFnRef.current(ctx);
     }
     
     // Show help message if graph is empty
-    if (syncedNodes.length === 0 && !draggedPlugin) {
+    if (visibleNodes.length === 0 && !draggedPlugin) {
       // Reset transformations to draw in screen coordinates
       ctx.restore();
       ctx.save();
@@ -926,10 +972,12 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       const centerY = backBufferRef.current.height / 2;
       
       ctx.font = '18px Arial';
-      ctx.fillStyle = `rgba(251, 191, 36, ${emptyStateOpacityRef.current})`; // Brighter yellow amber color
+      ctx.fillStyle = `rgba(251, 191, 36, 1)`; // Brighter yellow amber color
       ctx.textAlign = 'center';
       
-      ctx.fillText('Drag plugins from the sidebar to build your graph', centerX, centerY);
+      let message = 'Drag plugins from the sidebar to build your graph';
+      
+      ctx.fillText(message, centerX, centerY);
       
       // Restore transformations for further drawing
       ctx.restore();
@@ -943,6 +991,18 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     // Draw connections
     if (connections.length > 0) {
       connections.forEach(connection => {
+        // Skip connections involving hidden nodes based on current mode
+        const shouldSkipConnection = 
+          (onlyFetch && (connection.from.nodeId.startsWith('generator') || connection.to.nodeId.startsWith('generator'))) ||
+          (onlyGenerate && (
+            (connection.from.nodeId.startsWith('source') || connection.from.nodeId.startsWith('enricher')) ||
+            (connection.to.nodeId.startsWith('source') || connection.to.nodeId.startsWith('enricher'))
+          ));
+          
+        if (shouldSkipConnection) {
+          return;
+        }
+        
         const fromNode = findNodeRecursive(syncedNodes, connection.from.nodeId);
         const toNode = findNodeRecursive(syncedNodes, connection.to.nodeId);
         
@@ -956,9 +1016,9 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       });
     }
     
-    // Draw nodes and ensure status is properly visualized
-    if (syncedNodes.length > 0) {
-      syncedNodes.forEach(node => {
+    // Draw nodes
+    if (visibleNodes.length > 0) {
+      visibleNodes.forEach(node => {
         // Draw the node with the current status
         drawNode(ctx, node, scale, hoveredPort, selectedNode);
       });
@@ -966,6 +1026,13 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     
     // Draw dragged plugin ghost/preview
     if (draggedPlugin && dragPosition) {
+      // Skip drawing plugin previews that don't match the current mode
+      if ((onlyFetch && draggedPlugin.type === 'generator') || 
+          (onlyGenerate && (draggedPlugin.type === 'source' || draggedPlugin.type === 'enricher'))) {
+        ctx.restore();
+        return;
+      }
+      
       // Create a simple temporary node object for the dragged plugin
       const tempNode: Node = {
         id: 'temp-dragged-node',
@@ -985,6 +1052,13 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     
     // Draw connection line if currently connecting
     if (connectingFrom && mousePosition) {
+      // Skip drawing connection lines that don't match the current mode
+      if ((onlyFetch && connectingFrom.nodeId.startsWith('generator')) ||
+          (onlyGenerate && (connectingFrom.nodeId.startsWith('source') || connectingFrom.nodeId.startsWith('enricher')))) {
+        ctx.restore();
+        return;
+      }
+      
       const fromNode = findNodeRecursive(syncedNodes, connectingFrom.nodeId);
       if (fromNode) {
         const fromPort = connectingFrom.isOutput ? 
@@ -1007,32 +1081,19 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     }
     
     ctx.restore();
-  }, [nodes, connections, selectedNode, scale, offset, hoveredPort, connectingFrom, mousePosition, draggedPlugin, dragPosition]);
+  }, [nodes, connections, selectedNode, scale, offset, hoveredPort, connectingFrom, mousePosition, draggedPlugin, dragPosition, onlyFetch, onlyGenerate]);
 
-  // Update the dependency array of drawToBackBuffer to fix the circular dependency
+  // Update the dependency array of useEffect to prevent any circular dependencies
   useEffect(() => {
     // Skip redrawing during animation to prevent interference
     if (isAnimatingRef.current) {
       return;
     }
     
-    // Cancel any existing animation frame
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-    
-    // Schedule a new frame to apply changes and force a complete redraw
-    animationFrameRef.current = requestAnimationFrame(() => {
-      drawToBackBuffer();
-      drawToScreen();
-    });
-    
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [scale, offset, drawToBackBuffer, drawToScreen]);
+    // Use our double buffer technique
+    drawToBackBuffer();
+    drawToScreen();
+  }, [drawToBackBuffer, drawToScreen, isAnimatingRef]);
 
   // Add a forceRedraw function using useCallback to clear and redraw the canvas
   const forceRedraw = useCallback(() => {
@@ -1426,6 +1487,11 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     const portInfo = findPortAtCoordinates(x, y, nodes);
     
     if (portInfo) {
+      // Skip connecting from generator nodes if onlyFetch is true
+      if (onlyFetch && portInfo.nodeId.startsWith('generator')) {
+        return;
+      }
+      
       // Starting a connection from an output port
       if (portInfo.isOutput) {
         setConnectingFrom({
@@ -1784,6 +1850,21 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     
     if (!draggedPlugin) return;
     
+    // Check if the plugin is allowed in the current mode
+    if (onlyFetch && draggedPlugin.type === 'generator') {
+      showToast("Cannot add generator plugins in Fetch Only mode", "error");
+      setDraggedPlugin(null);
+      setDragPosition(null);
+      return;
+    }
+    
+    if (onlyGenerate && (draggedPlugin.type === 'source' || draggedPlugin.type === 'enricher')) {
+      showToast("Source and enricher plugins cannot be added in Generate Only mode", "error");
+      setDraggedPlugin(null);
+      setDragPosition(null);
+      return;
+    }
+    
     // Get drop position in canvas coordinates
     const rect = canvasRef.current!.getBoundingClientRect();
     const dropX = (e.clientX - rect.left - offset.x) / scale;
@@ -2050,6 +2131,28 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       // Set runOnce to true - this is a one-time operation
       currentConfig.runOnce = true;
       
+      // Set onlyFetch and onlyGenerate settings
+      if (!currentConfig.settings) {
+        currentConfig.settings = { runOnce: true, onlyFetch: false };
+      }
+      currentConfig.settings.onlyFetch = onlyFetch;
+      currentConfig.settings.onlyGenerate = onlyGenerate;
+      
+      // Add historical date settings if enabled
+      if (useHistoricalDates) {
+        currentConfig.settings.historicalDate = {
+          enabled: true,
+          mode: dateRangeMode,
+          startDate: startDate,
+          endDate: dateRangeMode === "range" ? endDate : startDate
+        };
+      } else {
+        // Clear historical date settings if disabled
+        currentConfig.settings.historicalDate = {
+          enabled: false
+        };
+      }
+      
       // Reset the job status display closed state when starting a new job
       setJobStatusDisplayClosed(false);
       
@@ -2147,11 +2250,30 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         return;
       }
       
+      // Historical data can only work with run-once mode, so switch to handleRunAggregation
+      if (useHistoricalDates) {
+        showToast("Historical data mode requires using 'Run Once'. Switching to run once mode.", "info");
+        setSelectedRunMode("once");
+        await handleRunAggregation();
+        return;
+      }
+      
       // This is for starting a CONTINUOUS job
       // Get the latest config from the state manager
       const currentConfig = configStateManager.getConfig();
       currentConfig.runOnce = false;
       
+      // Set onlyFetch and onlyGenerate settings
+      if (!currentConfig.settings) {
+        currentConfig.settings = { runOnce: false, onlyFetch: false };
+      }
+      currentConfig.settings.onlyFetch = onlyFetch;
+      currentConfig.settings.onlyGenerate = onlyGenerate;
+      
+      // Clear historical date settings for continuous jobs
+      currentConfig.settings.historicalDate = {
+        enabled: false
+      };
       
       // Reset the job status display closed state when starting a new continuous job
       setJobStatusDisplayClosed(false);
@@ -2247,10 +2369,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     }
   }, [config.name]);
 
-  const [showRunOptionsDropdown, setShowRunOptionsDropdown] = useState(false);
-  // Add state for run mode selection
-  const [selectedRunMode, setSelectedRunMode] = useState<"once" | "continuous">("once");
-
   return (
     <div className="relative w-full h-full">
       <div 
@@ -2266,7 +2384,11 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           boxShadow: '5px 0 15px rgba(0, 0, 0, 0.5)'
         }}
       >
-        <PluginPalette onDragPlugin={handleDragPlugin} />
+        <PluginPalette 
+          onDragPlugin={handleDragPlugin} 
+          onlyFetch={onlyFetch} 
+          onlyGenerate={onlyGenerate} 
+        />
       </div>
       
       <div 
@@ -2365,39 +2487,14 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
               ) : (
                 <div className="flex items-center gap-2">
                   {/* Run control panel with toggle switch */}
-                  <div className="flex items-center bg-stone-800/90 border-stone-600/50 rounded-md shadow-md overflow-hidden border pl-3">
-                    {/* Mode toggle switch */}
-                    <div className="flex items-center mr-2">
-                      <span className={`text-xs mr-2 ${selectedRunMode === "once" ? "text-amber-300 font-medium" : "text-stone-400"}`}>Once</span>
-                      <button 
-                        onClick={() => setSelectedRunMode(selectedRunMode === "once" ? "continuous" : "once")}
-                        className="relative inline-flex items-center h-5 rounded-full w-10 transition-colors focus:outline-none"
-                        aria-pressed={selectedRunMode === "continuous"}
-                        aria-label="Toggle run mode"
-                      >
-                        <span 
-                          className={`
-                            inline-block w-10 h-5 rounded-full transition-colors duration-200 ease-in-out
-                            ${selectedRunMode === "continuous" ? "bg-green-600/50" : "bg-stone-600"}
-                          `}
-                        />
-                        <span 
-                          className={`
-                            absolute inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200 ease-in-out
-                            ${selectedRunMode === "continuous" ? "translate-x-5" : "translate-x-1"}
-                          `}
-                        />
-                      </button>
-                      <span className={`text-xs ml-2 ${selectedRunMode === "continuous" ? "text-green-400 font-medium" : "text-stone-400"}`}>Stream</span>
-                    </div>
-                    
-                    {/* Divider */}
-                    <div className="h-10 w-px bg-stone-600"></div>
+                  <div className="flex items-center bg-stone-800/90 border-stone-600/50 rounded-md shadow-md overflow-hidden border">
+                    {/* Mode toggle switch - removed from here */}
                     
                     {/* Run button */}
                     <button
                       onClick={() => {
-                        if (selectedRunMode === "once") {
+                        // Always use handleRunAggregation with historical data
+                        if (useHistoricalDates || selectedRunMode === "once") {
                           handleRunAggregation();
                         } else {
                           handleToggleAggregation();
@@ -2405,14 +2502,284 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
                       }}
                       className={`
                         h-10 px-4 focus:outline-none flex items-center justify-center transition-colors duration-200
-                        ${selectedRunMode === "once" 
-                          ? "bg-stone-800 text-amber-300 hover:bg-stone-700" 
-                          : "bg-stone-800 text-green-400 hover:bg-stone-700"}
+                        ${useHistoricalDates 
+                          ? "bg-stone-800 text-purple-300 hover:bg-stone-700 border-l border-purple-500/30" 
+                          : selectedRunMode === "once" 
+                            ? "bg-stone-800 text-amber-300 hover:bg-stone-700" 
+                            : "bg-stone-800 text-green-400 hover:bg-stone-700"}
                       `}
-                      title={selectedRunMode === "once" ? "Run once and stop when complete" : "Run continuously until stopped"}
+                      title={
+                        useHistoricalDates 
+                          ? `Run with historical data: ${dateRangeMode === "single" 
+                              ? `Single date ${startDate}` 
+                              : `Date range ${startDate} to ${endDate}`}` 
+                          : (selectedRunMode === "once" ? "Run once and stop when complete" : "Run continuously until stopped")
+                      }
                     >
-                      <span className="text-sm font-medium">Run</span>
+                      <span className="text-sm font-medium flex items-center">
+                        {useHistoricalDates && (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        )}
+                        {selectedRunMode === "continuous" && !useHistoricalDates && (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        )}
+                        Run
+                      </span>
                     </button>
+                    {/* Settings button */}
+                    <div className="flex items-center">
+                      <button
+                        id="settings-button"
+                        onClick={() => {
+                          if (!showRunOptions) {
+                            const buttonElement = document.getElementById('settings-button');
+                            if (buttonElement) {
+                              const rect = buttonElement.getBoundingClientRect();
+                              setSettingsButtonPosition({
+                                top: rect.top,
+                                right: rect.right,
+                                bottom: rect.bottom,
+                                left: rect.left
+                              });
+                            }
+                          }
+                          setShowRunOptions(!showRunOptions);
+                        }}
+                        className={`h-10 px-3 flex items-center justify-center transition-all duration-200 ${
+                          showRunOptions 
+                            ? 'text-amber-300 bg-stone-700 shadow-inner' 
+                            : 'text-stone-300 hover:text-amber-300 hover:bg-stone-700/50'
+                        }`}
+                        title={
+                          useHistoricalDates
+                            ? `Historical data enabled: ${dateRangeMode === "single" 
+                                ? `Single date ${startDate}` 
+                                : `Date range ${startDate} to ${endDate}`}`
+                            : "Process mode settings"
+                        }
+                        aria-expanded={showRunOptions}
+                        aria-controls="process-mode-dropdown"
+                      >
+                        <div className="relative">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <circle cx="10" cy="4" r="1.75" />
+                            <circle cx="10" cy="10" r="1.75" />
+                            <circle cx="10" cy="16" r="1.75" />
+                          </svg>
+                          {(showRunOptions || useHistoricalDates) && (
+                            <span className={`absolute -top-1 -right-1 h-2 w-2 rounded-full ${
+                              useHistoricalDates ? "bg-purple-400" : "bg-amber-400"
+                            }`}></span>
+                          )}
+                        </div>
+                      </button>
+                      
+                      {/* Collapsible Process Mode Panel with improved visibility */}
+                      {showRunOptions && ReactDOM.createPortal(
+                        <div 
+                          id="process-mode-dropdown"
+                          className="fixed bg-stone-800 border border-stone-600 rounded-md shadow-xl z-[9999] transition-all duration-300 ease-in-out overflow-visible"
+                          style={{
+                            width: '220px',
+                            top: settingsButtonPosition?.bottom ? `${settingsButtonPosition.bottom + 4}px` : 'auto',
+                            left: settingsButtonPosition?.left ? `${settingsButtonPosition.left - 175}px` : 'auto',
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(251, 191, 36, 0.1)'
+                          }}
+                        >
+                          <div className="p-3">
+                            <div className="flex flex-col">
+                              <h3 className="text-xs text-stone-300 mb-2 font-medium">Run Mode</h3>
+                              <div className="flex items-center mb-3 justify-between">
+                                <div className="flex items-center gap-2 mr-2">
+                                  <button
+                                    onClick={() => {
+                                      if (!useHistoricalDates) {
+                                        setSelectedRunMode("once");
+                                      }
+                                    }}
+                                    className={`text-xs px-3 py-1 rounded ${
+                                      selectedRunMode === "once"
+                                        ? "bg-amber-500/20 text-amber-300 font-medium"
+                                        : "bg-stone-700/50 text-stone-400 hover:bg-stone-700"
+                                    }`}
+                                    disabled={useHistoricalDates && selectedRunMode === "once"}
+                                  >
+                                    <span className="flex items-center">
+                                      <span className={`w-2 h-2 rounded-full mr-1.5 ${selectedRunMode === "once" ? "bg-amber-400" : "bg-stone-600"}`}></span>
+                                      Run Once
+                                    </span>
+                                  </button>
+                                  
+                                  <button
+                                    onClick={() => {
+                                      if (!useHistoricalDates) {
+                                        setSelectedRunMode("continuous");
+                                      }
+                                    }}
+                                    className={`text-xs px-3 py-1 rounded ${
+                                      selectedRunMode === "continuous"
+                                        ? "bg-green-500/20 text-green-300 font-medium"
+                                        : "bg-stone-700/50 text-stone-400 hover:bg-stone-700"
+                                    } ${useHistoricalDates ? "opacity-50 cursor-not-allowed" : ""}`}
+                                    disabled={useHistoricalDates}
+                                    title={useHistoricalDates ? "Historical data mode only works with 'Run Once'" : "Run continuously until stopped"}
+                                  >
+                                    <span className="flex items-center">
+                                      <span className={`w-2 h-2 rounded-full mr-1.5 ${selectedRunMode === "continuous" ? "bg-green-400" : "bg-stone-600"}`}></span>
+                                      Stream
+                                    </span>
+                                  </button>
+                                </div>
+                              </div>
+                              
+                              <div className="h-px bg-stone-700 mb-3 w-full"></div>
+                              
+                              <h3 className="text-xs text-stone-300 mb-2 font-medium">Process Mode</h3>
+                              <div className="flex flex-col space-y-1.5">
+                                <button
+                                  onClick={() => {
+                                    setOnlyFetch(false);
+                                    setOnlyGenerate(false);
+                                    setShowRunOptions(false); // Close after selection
+                                  }}
+                                  className={`px-2 py-1.5 text-xs rounded text-left transition-colors flex items-center ${
+                                    !onlyFetch && !onlyGenerate
+                                      ? 'bg-amber-500/20 text-amber-300 font-medium'
+                                      : 'bg-stone-700/50 text-stone-400 hover:bg-stone-700'
+                                  }`}
+                                  title="Run complete pipeline with fetch and generate phases"
+                                >
+                                  <span className={`w-3 h-3 rounded-full mr-2 ${!onlyFetch && !onlyGenerate ? 'bg-amber-400' : 'bg-stone-600'}`}></span>
+                                  Complete Pipeline
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setOnlyFetch(true);
+                                    setOnlyGenerate(false);
+                                    setShowRunOptions(false); // Close after selection
+                                  }}
+                                  className={`px-2 py-1.5 text-xs rounded text-left transition-colors flex items-center ${
+                                    onlyFetch
+                                      ? 'bg-blue-500/20 text-blue-400 font-medium'
+                                      : 'bg-stone-700/50 text-stone-400 hover:bg-stone-700'
+                                  }`}
+                                  title="Only fetch data from sources - skip generation phase"
+                                >
+                                  <span className={`w-3 h-3 rounded-full mr-2 ${onlyFetch ? 'bg-blue-400' : 'bg-stone-600'}`}></span>
+                                  Fetch Data Only
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setOnlyFetch(false);
+                                    setOnlyGenerate(true);
+                                    setShowRunOptions(false); // Close after selection
+                                  }}
+                                  className={`px-2 py-1.5 text-xs rounded text-left transition-colors flex items-center ${
+                                    onlyGenerate
+                                      ? 'bg-purple-500/20 text-purple-400 font-medium'
+                                      : 'bg-stone-700/50 text-stone-400 hover:bg-stone-700'
+                                  }`}
+                                  title="Only generate content from existing data - skip fetch phase"
+                                >
+                                  <span className={`w-3 h-3 rounded-full mr-2 ${onlyGenerate ? 'bg-purple-400' : 'bg-stone-600'}`}></span>
+                                  Generate Content Only
+                                </button>
+                              </div>
+                              
+                              {/* Historical date range selector */}
+                              <div className="mt-3 border-t border-stone-600 pt-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <h3 className="text-xs text-stone-300 font-medium">Historical Data</h3>
+                                  <button 
+                                    onClick={() => {
+                                      const newHistoricalState = !useHistoricalDates;
+                                      setUseHistoricalDates(newHistoricalState);
+                                      // If enabling historical data, force run mode to "once"
+                                      if (newHistoricalState) {
+                                        setSelectedRunMode("once");
+                                      }
+                                    }}
+                                    className="relative inline-flex items-center h-4 rounded-full w-8 transition-colors focus:outline-none"
+                                    aria-pressed={useHistoricalDates}
+                                  >
+                                    <span 
+                                      className={`
+                                        inline-block w-8 h-4 rounded-full transition-colors duration-200 ease-in-out
+                                        ${useHistoricalDates ? "bg-purple-600/60" : "bg-stone-600"}
+                                      `}
+                                    />
+                                    <span 
+                                      className={`
+                                        absolute inline-block h-3 w-3 rounded-full bg-white shadow transform transition-transform duration-200 ease-in-out
+                                        ${useHistoricalDates ? "translate-x-4" : "translate-x-1"}
+                                      `}
+                                    />
+                                  </button>
+                                </div>
+                                
+                                {useHistoricalDates && (
+                                  <div className="mt-2 space-y-2">
+                                    <div className="flex items-center justify-between mb-1.5">
+                                      <div className="flex space-x-3">
+                                        <button
+                                          onClick={() => setDateRangeMode("single")}
+                                          className={`text-xs px-2 py-0.5 rounded ${
+                                            dateRangeMode === "single" 
+                                              ? "bg-purple-500/20 text-purple-300 font-medium" 
+                                              : "bg-stone-700 text-stone-400 hover:bg-stone-600"
+                                          }`}
+                                        >
+                                          Single Date
+                                        </button>
+                                        <button
+                                          onClick={() => setDateRangeMode("range")}
+                                          className={`text-xs px-2 py-0.5 rounded ${
+                                            dateRangeMode === "range" 
+                                              ? "bg-purple-500/20 text-purple-300 font-medium" 
+                                              : "bg-stone-700 text-stone-400 hover:bg-stone-600"
+                                          }`}
+                                        >
+                                          Date Range
+                                        </button>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="flex flex-col space-y-2">
+                                      <div className="flex items-center">
+                                        <label className="text-xs text-stone-400 w-16">{dateRangeMode === "single" ? "Date:" : "Start:"}</label>
+                                        <input
+                                          type="date"
+                                          value={startDate}
+                                          onChange={(e) => setStartDate(e.target.value)}
+                                          className="bg-stone-700 text-stone-200 text-xs p-1 rounded w-full border border-stone-600 focus:border-purple-500 focus:outline-none"
+                                        />
+                                      </div>
+                                      
+                                      {dateRangeMode === "range" && (
+                                        <div className="flex items-center">
+                                          <label className="text-xs text-stone-400 w-16">End:</label>
+                                          <input
+                                            type="date"
+                                            value={endDate}
+                                            onChange={(e) => setEndDate(e.target.value)}
+                                            className="bg-stone-700 text-stone-200 text-xs p-1 rounded w-full border border-stone-600 focus:border-purple-500 focus:outline-none"
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>,
+                        document.body
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

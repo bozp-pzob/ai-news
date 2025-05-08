@@ -87,11 +87,23 @@ app.post('/aggregate/:configName', async (req, res) => {
     const config = await configService.getConfig(configName);
     // Determine run mode: continuous or one-time
     const runOnce: boolean = req.body?.runOnce === true;
+    const onlyGenerate: boolean = req.body?.settings?.onlyGenerate === true;
+    const onlyFetch: boolean = req.body?.settings?.onlyFetch === true;
+    const historicalDate = req.body?.settings?.historicalDate;
+    
+    const runtimeSettings = {
+      runOnce,
+      onlyGenerate,
+      onlyFetch,
+      historicalDate
+    }
+    
+    console.log('Runtime settings:', runtimeSettings);
     let jobId: string;
     if (runOnce) {
-      jobId = await aggregatorService.runAggregationOnce(configName, config);
+      jobId = await aggregatorService.runAggregationOnce(configName, config, runtimeSettings);
     } else {
-      jobId = await aggregatorService.startAggregation(configName, config);
+      jobId = await aggregatorService.startAggregation(configName, config, runtimeSettings);
     }
     
     // Broadcast updated status and job status to all WebSocket clients
@@ -113,8 +125,21 @@ app.post('/aggregate/:configName', async (req, res) => {
 // POST /aggregate/:configName/run - Run aggregation once without starting continuous process
 app.post('/aggregate/:configName/run', async (req, res) => {
   try {
+    const runOnce: boolean = req.body?.runOnce === true;
+    const onlyGenerate: boolean = req.body?.settings?.onlyGenerate === true;
+    const onlyFetch: boolean = req.body?.settings?.onlyFetch === true;
+    const historicalDate = req.body?.settings?.historicalDate;
+    
+    const runtimeSettings = {
+      runOnce,
+      onlyGenerate,
+      onlyFetch,
+      historicalDate
+    }
+
+    console.log('Runtime settings:', runtimeSettings);
     const config = await configService.getConfig(req.params.configName);
-    const jobId = await aggregatorService.runAggregationOnce(req.params.configName, config);
+    const jobId = await aggregatorService.runAggregationOnce(req.params.configName, config, runtimeSettings);
     
     // Broadcast the updated status to all WebSocket clients
     webSocketService.broadcastStatus(req.params.configName);
