@@ -478,7 +478,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               value={params.storage || ''}
               name="storage"
               onChange={(e) => handleParamChange('storage', e.target.value)}
-              className="w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+              className="py-2 px-1 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
               required={isStorageRequired}
             >
               <option value="">No storage selected</option>

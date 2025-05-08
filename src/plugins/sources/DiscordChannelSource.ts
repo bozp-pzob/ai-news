@@ -48,6 +48,12 @@ export class DiscordChannelSource implements ContentSource {
         description: 'Array of Discord channel IDs to monitor'
       },
       {
+        name: 'storage',
+        type: 'StoragePlugin',
+        required: true,
+        description: 'Storage to store data fetching cursors'
+      },
+      {
         name: 'provider',
         type: 'AiProvider',
         required: false,

@@ -75,10 +75,28 @@ export class DailySummaryGenerator {
         description: 'Type for summary to store in the database.'
       },
       {
+        name: 'source',
+        type: 'string',
+        required: false,
+        description: 'Specific source to generate the summary off.'
+      },
+      {
         name: 'outputPath',
         type: 'string',
         required: false,
         description: 'Location to store summary for md and json generation'
+      },
+      {
+        name: 'maxGroupsToSummarize',
+        type: 'string',
+        required: false,
+        description: 'Max number of groups to generate summaries off ( Default 10 ).'
+      },
+      {
+        name: 'groupBySourceType',
+        type: 'boolean',
+        required: false,
+        description: 'Group by source type from storage, instead of topics generated from enriching.'
       }
     ]
   };
