@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
 import http from 'http';
+import path from 'path';
 import { ConfigService, Config } from './services/configService';
 import { AggregatorService } from './services/aggregatorService';
 import { PluginService } from './services/pluginService';
@@ -16,6 +17,9 @@ const server = http.createServer(app);
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
+
+// Serve static files from the frontend build directory
+app.use(express.static(path.join(__dirname, '../frontend/build')));
 
 // Initialize services
 const configService = new ConfigService();
@@ -239,7 +243,13 @@ app.post('/job/:jobId/stop', (req, res) => {
   }
 });
 
+// Serve the React app for any other routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
+});
+
 // Start the server
 server.listen(port, () => {
   console.log(`API server running on port ${port}`);
+  console.log(`Frontend served at http://localhost:${port}`);
 }); 
