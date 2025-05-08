@@ -2,6 +2,11 @@
 
 import { EnricherPlugin, ContentItem, AiEnricherConfig, AiProvider } from "../../types";
 
+/**
+ * AiImageEnricher class implements the EnricherPlugin interface to add AI-generated images
+ * to content items. This enricher uses an AI provider to generate images based on the
+ * content text and adds them to the item's metadata.
+ */
 export class AiImageEnricher implements EnricherPlugin {
   private provider: AiProvider;
   private maxTokens?: number;
@@ -30,11 +35,21 @@ export class AiImageEnricher implements EnricherPlugin {
     ]
   };
 
+  /**
+   * Creates a new instance of AiImageEnricher.
+   * @param config - Configuration object containing the AI provider and optional parameters
+   */
   constructor(config: AiEnricherConfig) {
     this.provider = config.provider;
     this.maxTokens = config.maxTokens;
   }
 
+  /**
+   * Enriches content items by generating and adding AI-created images.
+   * Only processes items that meet the length threshold and don't already have images.
+   * @param contentItems - Array of content items to enrich
+   * @returns Promise<ContentItem[]> Array of enriched content items
+   */
   public async enrich(contentItems: ContentItem[]): Promise<ContentItem[]> {
     const enrichedContent: ContentItem[] = [];
     const thresholdLength = this.thresholdLength || 300;

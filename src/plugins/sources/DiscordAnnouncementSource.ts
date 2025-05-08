@@ -1,19 +1,38 @@
-// src/plugins/sources/DiscordSource.ts
+/**
+ * @fileoverview Implementation of a content source for fetching announcements from Discord channels
+ * Handles message retrieval from specified Discord channels using bot authentication
+ */
 
 import { ContentSource } from "./ContentSource";
 import { ContentItem } from "../../types";
 import { Client, GatewayIntentBits, TextChannel } from "discord.js";
 
+/**
+ * Configuration interface for DiscordAnnouncementSource
+ * @interface DiscordAnnouncementSourceConfig
+ * @property {string} name - The name identifier for this Discord source
+ * @property {string} botToken - Discord bot token for authentication
+ * @property {string[]} channelIds - Array of Discord channel IDs to monitor
+ */
 interface DiscordAnnouncementSourceConfig {
   name: string;
   botToken: string;
   channelIds: string[];
 }
 
+/**
+ * DiscordAnnouncementSource class that implements ContentSource interface for Discord messages
+ * Fetches and processes messages from specified Discord channels using a bot account
+ * @implements {ContentSource}
+ */
 export class DiscordAnnouncementSource implements ContentSource {
+  /** Name identifier for this Discord source */
   public name: string;
+  /** Discord bot token for authentication */
   private botToken: string = '';
+  /** List of Discord channel IDs to monitor */
   private channelIds: string[];
+  /** Discord.js client instance */
   private client: Client;
 
   static constructorInterface = {
@@ -33,6 +52,10 @@ export class DiscordAnnouncementSource implements ContentSource {
     ]
   };
 
+  /**
+   * Creates a new DiscordAnnouncementSource instance
+   * @param {DiscordAnnouncementSourceConfig} config - Configuration object for the Discord source
+   */
   constructor(config: DiscordAnnouncementSourceConfig) {
     this.name = config.name;
     this.botToken = config.botToken;
@@ -42,11 +65,14 @@ export class DiscordAnnouncementSource implements ContentSource {
     });
   }
 
+  /**
+   * Fetches recent messages from configured Discord channels
+   * @returns {Promise<ContentItem[]>} Array of content items containing Discord messages
+   */
   public async fetchItems(): Promise<ContentItem[]> {
     if (!this.client.isReady()) {
       await this.client.login(this.botToken);
     }
-
 
     let discordResponse : any[] = [];
 
@@ -81,6 +107,11 @@ export class DiscordAnnouncementSource implements ContentSource {
     return discordResponse
   }
 
+  /**
+   * Fetches historical messages from Discord channels for a specific date
+   * @param {string} date - ISO date string to fetch historical messages from
+   * @returns {Promise<ContentItem[]>} Array of content items containing historical Discord messages
+   */
   public async fetchHistorical(date: string): Promise<ContentItem[]> {
     if (!this.client.isReady()) {
       await this.client.login(this.botToken);

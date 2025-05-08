@@ -1,0 +1,41 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Aggregator Components
+
+The `[src/aggregator/](mdc:src/aggregator)` directory contains the core logic for orchestrating the data flow.
+
+## 1. Content Aggregator (`[ContentAggregator.ts](mdc:src/aggregator/ContentAggregator.ts)`)
+
+This is the primary aggregator used by the main `[src/index.ts](mdc:src/index.ts)` script for continuous operation.
+
+*   **Responsibilities:**
+    *   Manages registered plugins: Sources, Enrichers, Storage.
+    *   Initiates data fetching from sources (`fetchAndStore`).
+    *   Passes fetched data through registered enrichers.
+    *   Saves processed data using the registered storage plugin.
+    *   (Note: Generators are managed separately by `index.ts` but interact with data produced via the aggregator and stored).
+*   **Key Methods:**
+    *   `registerSource(source: SourcePlugin)`
+    *   `registerEnricher(enricher: EnricherPlugin)`
+    *   `registerStorage(storage: StoragePlugin)`
+    *   `fetchAndStore(sourceName: string)`: Fetches from a specific source, enriches, and stores.
+
+## 2. Historical Aggregator (`[HistoricalAggregator.ts](mdc:src/aggregator/HistoricalAggregator.ts)`)
+
+This aggregator is specifically used by the `[src/historical.ts](mdc:src/historical.ts)` script for fetching past data.
+
+*   **Responsibilities:**
+    *   Similar to `ContentAggregator` but designed for fetching data for specific dates or ranges.
+    *   Manages sources that implement the `fetchHistorical` method.
+    *   Manages registered Enrichers and Storage.
+*   **Key Methods:**
+    *   `registerSource(source: SourcePlugin & { fetchHistorical: Function })`
+    *   `registerEnricher(enricher: EnricherPlugin)`
+    *   `registerStorage(storage: StoragePlugin)`
+    *   `fetchAndStore(sourceName: string, date: string)`: Fetches data for a specific date.
+    *   `fetchAndStoreRange(sourceName: string, filter: DateConfig)`: Fetches data for a date range.
+
+Both aggregators rely heavily on the plugin system and the shared interfaces defined in `[src/types.ts](mdc:src/types.ts)`.

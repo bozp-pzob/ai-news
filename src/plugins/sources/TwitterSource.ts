@@ -1,4 +1,7 @@
-// src/plugins/sources/TwitterSource.ts
+/**
+ * @fileoverview Implementation of a content source for fetching Twitter data
+ * Handles authentication, tweet retrieval, and caching for specified Twitter accounts
+ */
 
 import { ContentSource } from "./ContentSource";
 import { ContentItem } from "../../types";
@@ -7,23 +10,46 @@ import { ContentItem } from "../../types";
 import { SearchMode, Scraper } from 'agent-twitter-client';
 import { TwitterCache } from "../../helpers/cache";
 
+/**
+ * Configuration interface for TwitterSource
+ * @interface TwitterSourceConfig
+ * @property {string} name - The name identifier for this Twitter source
+ * @property {string} [username] - Twitter account username for authentication
+ * @property {string} [password] - Twitter account password
+ * @property {string} [email] - Email associated with Twitter account
+ * @property {string} [cookies] - Serialized cookies for authentication
+ * @property {string[]} accounts - Array of Twitter accounts to monitor
+ */
 interface TwitterSourceConfig {
   name: string;
   username: string | undefined;
   password: string | undefined;
   email: string | undefined;
   cookies: string | undefined;
-  accounts: string[];          // e.g., user to watch
+  accounts: string[];
 }
 
+/**
+ * TwitterSource class that implements ContentSource interface for Twitter data
+ * Handles Twitter authentication, tweet fetching, and data caching
+ * @implements {ContentSource}
+ */
 export class TwitterSource implements ContentSource {
+  /** Name identifier for this Twitter source */
   public name: string;
+  /** Twitter scraper client instance */
   private client: Scraper;
+  /** List of Twitter accounts to monitor */
   private accounts: string[];
+  /** Twitter account username */
   private username: string | undefined;
+  /** Twitter account password */
   private password: string | undefined;
+  /** Serialized cookies for authentication */
   private cookies: string | undefined;
+  /** Email associated with Twitter account */
   private email: string | undefined;
+  /** Cache instance for storing Twitter data */
   private cache: TwitterCache;
 
   static constructorInterface = {
@@ -61,6 +87,10 @@ export class TwitterSource implements ContentSource {
     ]
   };
 
+  /**
+   * Creates a new TwitterSource instance
+   * @param {TwitterSourceConfig} config - Configuration object for the Twitter source
+   */
   constructor(config: TwitterSourceConfig) {
     this.name = config.name;
     this.client = new Scraper();
@@ -72,6 +102,12 @@ export class TwitterSource implements ContentSource {
     this.cache = new TwitterCache();
   }
 
+  /**
+   * Initializes the Twitter client with authentication
+   * Handles login with credentials or cookies
+   * @private
+   * @throws {Error} If authentication fails after maximum retries
+   */
   private async init() {
     let retries = 5;
 
@@ -80,7 +116,6 @@ export class TwitterSource implements ContentSource {
     }
     if (this.cookies) {
       const cookiesArray = JSON.parse(this.cookies);
-
       await this.setCookiesFromArray(cookiesArray);
     } else {
       const cachedCookies = await this.getCachedCookies(this.username);
@@ -118,6 +153,12 @@ export class TwitterSource implements ContentSource {
     }
   }
 
+  /**
+   * Processes raw tweet data into ContentItem format
+   * @private
+   * @param {any[]} tweets - Array of raw tweet objects
+   * @returns {Promise<ContentItem[]>} Array of processed tweet content items
+   */
   private async processTweets(tweets: any[]): Promise<any> {
     let tweetsResponse : any[] = [];
 
@@ -151,6 +192,12 @@ export class TwitterSource implements ContentSource {
     return tweetsResponse;
   }
 
+  /**
+   * Fetches historical tweets from a specific date
+   * Implements caching to improve performance
+   * @param {string} date - ISO date string to fetch historical tweets from
+   * @returns {Promise<ContentItem[]>} Array of historical tweet content items
+   */
   public async fetchHistorical(date:string): Promise<ContentItem[]> {
     const isLoggedIn = await this.client.isLoggedIn();
     
@@ -170,9 +217,7 @@ export class TwitterSource implements ContentSource {
       }
 
       let cursor = this.cache.getCursor(account);
-
       const tweetsByDate: Record<string, ContentItem[]> = {};
-
       let query = `from:${account}`;
       let tweets : any = await this.client.fetchSearchTweets(query, 100, 1);
       
@@ -210,6 +255,10 @@ export class TwitterSource implements ContentSource {
     return resultTweets;
   }
 
+  /**
+   * Fetches recent tweets from configured accounts
+   * @returns {Promise<ContentItem[]>} Array of recent tweet content items
+   */
   public async fetchItems(): Promise<ContentItem[]> {
     const isLoggedIn = await this.client.isLoggedIn();
     
@@ -235,6 +284,11 @@ export class TwitterSource implements ContentSource {
     return tweetsResponse
   }
   
+  /**
+   * Sets cookies from an array of cookie objects
+   * @private
+   * @param {any[]} cookiesArray - Array of cookie objects
+   */
   private async setCookiesFromArray(cookiesArray: any[]) {
     const cookieStrings = cookiesArray.map(
         (cookie) =>
@@ -247,6 +301,12 @@ export class TwitterSource implements ContentSource {
     await this.client.setCookies(cookieStrings);
   }
 
+  /**
+   * Retrieves cached cookies for a username
+   * @private
+   * @param {string} username - Twitter username
+   * @returns {Promise<any>} Cached cookies if available
+   */
   private async getCachedCookies(username: string) {
     return await this.cache.get(
       `twitter/${username}/cookies`,
@@ -254,6 +314,12 @@ export class TwitterSource implements ContentSource {
     );
   }
   
+  /**
+   * Caches cookies for a username
+   * @private
+   * @param {string} username - Twitter username
+   * @param {any[]} cookies - Array of cookies to cache
+   */
   private async cacheCookies(username: string, cookies: any[]) {
     await this.cache.set(
       `twitter/${username}/cookies`,

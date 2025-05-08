@@ -1,16 +1,36 @@
+/**
+ * @fileoverview Implementation of a content source for fetching token analytics data from Codex API
+ * Handles token price, volume, and market data retrieval through GraphQL queries
+ */
+
 import { ContentItem } from "../../types";
 import { ContentSource } from "./ContentSource";
 import fetch from "node-fetch";
 
-interface Config {
+/**
+ * Configuration interface for CodexAnalyticsSource
+ * @interface CodexAnalyticsSourceConfig
+ * @property {string} name - The name identifier for this analytics source
+ * @property {string} apiKey - The API key for Codex API authentication
+ * @property {string[]} tokenAddresses - Array of token contract addresses to track
+ */
+interface CodexAnalyticsSourceConfig {
   name: string;
   apiKey: string;
   tokenAddresses: string[];
 }
 
+/**
+ * CodexAnalyticsSource class that implements ContentSource interface for token analytics
+ * Fetches and processes token market data from Codex API using GraphQL
+ * @implements {ContentSource}
+ */
 export class CodexAnalyticsSource implements ContentSource {
+  /** Name identifier for this analytics source */
   public name: string;
+  /** API key for authentication */
   private apiKey: string;
+  /** List of token addresses to track */
   private tokenAddresses: string[];
 
   static constructorInterface = {
@@ -30,12 +50,20 @@ export class CodexAnalyticsSource implements ContentSource {
     ]
   };
 
-  constructor(config: Config) {
+  /**
+   * Creates a new CodexAnalyticsSource instance
+   * @param {CodexAnalyticsSourceConfig} config - Configuration object for the analytics source
+   */
+  constructor(config: CodexAnalyticsSourceConfig) {
     this.name = config.name;
     this.apiKey = config.apiKey;
     this.tokenAddresses = config.tokenAddresses;
   }
 
+  /**
+   * Fetches current token analytics data for configured tokens
+   * @returns {Promise<ContentItem[]>} Array of content items containing token analytics
+   */
   async fetchItems(): Promise<ContentItem[]> {
     const codexResponse: ContentItem[] = [];
 
@@ -74,7 +102,11 @@ export class CodexAnalyticsSource implements ContentSource {
     return codexResponse;
   }
 
-  
+  /**
+   * Fetches historical token analytics data for a specific date
+   * @param {string} date - ISO date string to fetch historical data for
+   * @returns {Promise<ContentItem[]>} Array of content items containing historical token analytics
+   */
   async fetchHistorical(date:string): Promise<ContentItem[]> {
     const targetDate = new Date(date).getTime() / 1000;
     const codexResponse: ContentItem[] = [];
@@ -114,8 +146,13 @@ export class CodexAnalyticsSource implements ContentSource {
     return codexResponse;
   }
 
-  async getTokenPrices(addresses:any[]): Promise<any[]> {
-    
+  /**
+   * Fetches token prices for specified addresses and timestamps
+   * @param {Array<{address: string, networkId: string, timestamp: number}>} addresses - Array of token addresses with network IDs and timestamps
+   * @returns {Promise<Array<{address: string, networkId: string, priceUsd: number}>>} Array of token prices
+   * @private
+   */
+  private async getTokenPrices(addresses:any[]): Promise<any[]> {
     const query = `
     {
         getTokenPrices(
@@ -130,16 +167,20 @@ export class CodexAnalyticsSource implements ContentSource {
 
     try {
         const responseData : any = await this.makeGraphQLQuery(query);
-
         let prices = responseData?.data?.getTokenPrices || [];
-
         return prices
     } catch (error) {
         return [];
     }
   }
 
-  async getTokenDetails(addresses:string[]): Promise<any[]> {
+  /**
+   * Fetches detailed token information for specified addresses
+   * @param {string[]} addresses - Array of token contract addresses
+   * @returns {Promise<Array<any>>} Array of token details including price, volume, and market data
+   * @private
+   */
+  private async getTokenDetails(addresses:string[]): Promise<any[]> {
     const query = `
     {
         filterTokens(tokens: ${JSON.stringify(this.tokenAddresses)}) {
@@ -169,16 +210,20 @@ export class CodexAnalyticsSource implements ContentSource {
 
     try {
         const responseData : any = await this.makeGraphQLQuery(query);
-
         let analytics = responseData?.data?.filterTokens?.results || [];
-
         return analytics;
     } catch (error) {
         return [];
     }
   }
 
-  async makeGraphQLQuery(query:string): Promise<any> {
+  /**
+   * Makes a GraphQL query to the Codex API
+   * @param {string} query - GraphQL query string
+   * @returns {Promise<any>} Query response data
+   * @private
+   */
+  private async makeGraphQLQuery(query:string): Promise<any> {
     try {
         const response = await fetch("https://graph.codex.io/graphql", {
             method: "POST",
@@ -202,7 +247,7 @@ export class CodexAnalyticsSource implements ContentSource {
 
         return responseData;
     } catch (error) {
-        console.error( error);
+        console.error(error);
         return;
     }
   }
