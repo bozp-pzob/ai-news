@@ -6,7 +6,6 @@
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
-    "@types/jest": "^27.5.2",
     "@types/node": "^16.18.42",
     "@types/prismjs": "^1.26.5",
     "@types/react": "^18.2.20",
@@ -49,6 +48,16 @@
     ]
   },
   "devDependencies": {
-    "@types/three": "^0.175.0"
+    "@babel/core": "^7.27.1",
+    "@babel/preset-env": "^7.27.2",
+    "@babel/preset-react": "^7.27.1",
+    "@babel/preset-typescript": "^7.27.1",
+    "@types/jest": "^27.5.2",
+    "@types/three": "^0.175.0",
+    "babel-jest": "^29.7.0",
+    "identity-obj-proxy": "^3.0.0",
+    "jest": "^29.7.0",
+    "jest-watch-typeahead": "^2.2.2",
+    "ts-jest": "^29.3.2"
   }
 }

@@ -13,6 +13,16 @@ class PluginRegistry {
   private listeners: Set<() => void> = new Set();
 
   /**
+   * Reset the registry state (for testing purposes)
+   */
+  reset(): void {
+    this.plugins = {};
+    this.isLoading = false;
+    this.isLoaded = false;
+    this.listeners.clear();
+  }
+
+  /**
    * Fetch plugins from the API if they haven't been loaded yet
    */
   async loadPlugins(): Promise<void> {
@@ -23,11 +33,9 @@ class PluginRegistry {
 
     try {
       this.isLoading = true;
-      console.log('🔌 PluginRegistry: Fetching plugins from API');
       const plugins = await getPlugins();
       this.plugins = plugins;
       this.isLoaded = true;
-      console.log('🔌 PluginRegistry: Plugins loaded successfully', Object.keys(plugins));
       
       // Notify all listeners that plugins have been loaded
       this.notifyListeners();
@@ -49,13 +57,11 @@ class PluginRegistry {
    * Find a plugin by name and type
    */
   findPlugin(name: string, type?: string | undefined): PluginInfo | null {
-    console.log("PASSED IN NAME", name, type )
     let foundPlugin: PluginInfo | null = null;
     
     // Search through all plugin categories
     Object.values(this.plugins).forEach(categoryPlugins => {
       categoryPlugins.forEach(plugin => {
-        console.log('🔌 PluginRegistry: Checking plugin', plugin);
         // Match by pluginName instead of name
         if (plugin.pluginName.toLowerCase() === name.toLowerCase()) {
           // If type is specified, check that too
