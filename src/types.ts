@@ -15,7 +15,22 @@ export interface ContentItem {
   link?: string;         // URL to the item
   topics?: string[];
   date?: number;           // When it was created/published
-  metadata?: Record<string, any>; // Additional key-value data
+  metadata?: {
+    quotedTweet?: QuoteTweet;
+    [key: string]: any;
+  };
+}
+
+/**
+ * Represents the data structure for a quoted tweet.
+ */
+export interface QuoteTweet {
+  id?: string;
+  text?: string;
+  link?: string;
+  userId?: string;
+  userName?: string; // e.g., screen name of the original author
+  // Add any other relevant fields from the quoted tweet you might want to store
 }
 
 /**

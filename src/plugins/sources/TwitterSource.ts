@@ -29,6 +29,8 @@ interface TwitterSourceConfig {
   accounts: string[];
 }
 
+const QUOTED_TWEET_FETCH_TIMEOUT = 15000; // 15 seconds timeout
+
 /**
  * TwitterSource class that implements ContentSource interface for Twitter data
  * Handles Twitter authentication, tweet fetching, and data caching
@@ -135,6 +137,83 @@ export class TwitterSource implements ContentSource {
       let retweetVideos = tweet.retweetedStatus?.videos.map((img : any) => img.url) || [];
       let retweetVideoPreview = tweet.retweetedStatus?.videos.map((img : any) => img.preview) || [];
       
+      const metadata: any = {
+        userId: tweet.userId,
+        tweetId: tweet.id,
+        likes: tweet.likes,
+        replies: tweet.replies,
+        retweets: tweet.retweets,
+        photos: photos.concat(retweetPhotos,videoPreview,retweetVideoPreview),
+        videos: videos.concat(retweetVideos),
+        // Add other relevant raw tweet fields if necessary
+        isRetweet: tweet.isRetweet,
+        isPin: tweet.isPin,
+        isReply: tweet.isReply,
+        isSelfThread: tweet.isSelfThread,
+        hashtags: tweet.hashtags,
+        mentions: tweet.mentions,
+        urls: tweet.urls,
+        sensitiveContent: tweet.sensitiveContent,
+        // Placeholder for poll data if you add it later
+        // poll: tweet.poll 
+      };
+
+      if (tweet.isQuoted && tweet.quotedStatusId) {
+        try {
+          let quotedTweetDetails: any = null;
+
+          // Option 1: Check if quotedStatus is already populated with enough details
+          if (tweet.quotedStatus && tweet.quotedStatus.id && tweet.quotedStatus.text) {
+            quotedTweetDetails = tweet.quotedStatus;
+            console.info(`[TwitterSource] Using pre-populated quotedStatus for tweet: ${tweet.id}, quoted: ${tweet.quotedStatusId}`);
+          } else {
+            console.info(`[TwitterSource] Attempting to fetch quoted tweet ${tweet.quotedStatusId} for main tweet ${tweet.id}...`);
+            
+            const fetchPromise = this.client.getTweet(tweet.quotedStatusId);
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error(`Timeout fetching quoted tweet ${tweet.quotedStatusId}`)), QUOTED_TWEET_FETCH_TIMEOUT)
+            );
+
+            try {
+              quotedTweetDetails = await Promise.race([
+                fetchPromise,
+                timeoutPromise
+              ]);
+              if (quotedTweetDetails) {
+                console.info(`[TwitterSource] Successfully fetched quoted tweet ${tweet.quotedStatusId}`);
+              } else {
+                console.warn(`[TwitterSource] Fetch for quoted tweet ${tweet.quotedStatusId} returned null or empty.`);
+              }
+            } catch (fetchError: any) {
+              if (fetchError.message.startsWith('Timeout')) {
+                console.warn(`[TwitterSource] ${fetchError.message} for main tweet ${tweet.id}`);
+              } else {
+                console.error(`[TwitterSource] Error fetching quoted tweet ${tweet.quotedStatusId} for main tweet ${tweet.id}:`, fetchError);
+              }
+              quotedTweetDetails = null; // Ensure it's null on error/timeout
+            }
+          }
+
+          if (quotedTweetDetails) {
+            metadata.quotedTweet = {
+              id: quotedTweetDetails.id,
+              text: quotedTweetDetails.text,
+              link: quotedTweetDetails.permanentUrl,
+              userId: quotedTweetDetails.userId,
+              userName: quotedTweetDetails.username || quotedTweetDetails.name, // Handle both possible fields
+              date: quotedTweetDetails.timestamp, // Add date if available
+              // Add any other relevant fields from quotedTweetDetails
+            };
+          } else {
+            console.warn(`[TwitterSource] Could not retrieve details for quoted tweet ${tweet.quotedStatusId} for main tweet ${tweet.id}`);
+            metadata.quotedTweetError = `Details not found for quoted tweet: ${tweet.quotedStatusId}`;
+          }
+        } catch (error) {
+          console.error(`[TwitterSource] Outer error processing quoted tweet ${tweet.quotedStatusId} for main tweet ${tweet.id}:`, error);
+          metadata.quotedTweetError = `Failed to process/fetch: ${tweet.quotedStatusId}`;
+        }
+      }
+      
       tweetsResponse.push({
         cid: tweet.id,
         type: "tweet",
@@ -142,15 +221,7 @@ export class TwitterSource implements ContentSource {
         text: tweet.text,
         link: tweet.permanentUrl,
         date: tweet.timestamp,
-        metadata: {
-          userId: tweet.userId,
-          tweetId: tweet.id,
-          likes: tweet.likes,
-          replies: tweet.replies,
-          retweets: tweet.retweets,
-          photos: photos.concat(retweetPhotos,videoPreview,retweetVideoPreview),
-          videos: videos.concat(retweetVideos)
-        },
+        metadata: metadata,
       })
     }
     

@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 /**
  * Prompt generation utilities for the AI News Aggregator.
  * This module provides functions for creating prompts for AI models.
@@ -32,6 +35,7 @@ The markdown should:
 - DO NOT include statements about what is missing, not done, or needs improvement
 - DO NOT include recommendations or suggestions
 - DO NOT include phrases like "no technical discussions" or "limited content"
+- Add a short source link and source name to the end of each source
 
 Given the following JSON summary for ${dateStr}, generate a markdown report accordingly:
 
@@ -39,6 +43,30 @@ ${jsonStr}
 
 Only return the final markdown text.`;
 }
+
+const logsDir = path.join(__dirname, '../../logs/prompts'); // Define a logs directory
+
+// Helper function to ensure log directory exists
+const ensureLogDirectoryExists = (dirPath: string) => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+    console.log(`Created log directory: ${dirPath}`);
+  }
+};
+
+// Helper function to write prompt to a file
+const logPromptToFile = (topic: string, dateStr: string, prompt: string) => {
+  ensureLogDirectoryExists(logsDir);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `${dateStr}_${topic.replace(/\s+/g, '_')}_${timestamp}.log`;
+  const filePath = path.join(logsDir, filename);
+  try {
+    fs.writeFileSync(filePath, prompt);
+    console.log(`Prompt for topic '${topic}' logged to: ${filePath}`);
+  } catch (error) {
+    console.error(`Failed to write prompt to file ${filePath}:`, error);
+  }
+};
 
 /**
  * Creates a prompt for generating a JSON summary of topics from content items.
@@ -56,18 +84,52 @@ Only return the final markdown text.`;
  */
 export const createJSONPromptForTopics = (topic: string, objects: any[], dateStr: string): string => {
   let prompt = `Generate a summary for the topic. Focus on the following details:\n\n`;
-  objects.forEach((item) => {
-    prompt += `\n***source***\n`;
+  console.log(`[PromptHelper] Creating JSON prompt for topic: "${topic}" on date: ${dateStr} with ${objects.length} objects.`);
+  objects.forEach((item, index) => {
+    prompt += `\n***source ${index + 1}***\n`; // Add index to distinguish sources
     if (item.text) prompt += `text: ${item.text}\n`;
-    if (item.link) prompt += `sources: ${item.link}\n`;
+    
+    // Combine main link and quoted link under the 'sources:' label
+    let sourceLinks = [];
+    if (item.link) sourceLinks.push(item.link);
+    if (item.metadata?.quotedTweet?.link) {
+      // Ensure we don't duplicate if the main link itself was the quoted link (edge case, unlikely here)
+      if (!sourceLinks.includes(item.metadata.quotedTweet.link)) {
+        sourceLinks.push(item.metadata.quotedTweet.link);
+      }
+    }
+    if (sourceLinks.length > 0) {
+      prompt += `sources: ${sourceLinks.join(', ')}\n`; // Present as a comma-separated list if multiple
+    }
+
     if (item.metadata?.photos) prompt += `photos: ${item.metadata?.photos}\n`;
     if (item.metadata?.videos) prompt += `videos: ${item.metadata?.videos}\n`;
+    
+    // Include quoted tweet text and user information if available (link is now part of sources)
+    if (item.metadata?.quotedTweet) {
+      console.log(`[PromptHelper] Item ${index + 1} (ID: ${item.cid || 'N/A'}) has a quoted tweet. Adding its text & user to prompt.`);
+      prompt += `\n--- Quoted Tweet Context ---\n`;
+      if (item.metadata.quotedTweet.text) {
+        prompt += `quoted_text_content: ${item.metadata.quotedTweet.text}\n`;
+        console.log(`[PromptHelper] Added quoted_text_content for item ${index + 1}`);
+      }
+      // Link is handled above
+      if (item.metadata.quotedTweet.userName) {
+        prompt += `quoted_user_handle: @${item.metadata.quotedTweet.userName}\n`;
+        console.log(`[PromptHelper] Added quoted_user_handle for item ${index + 1}`);
+      }
+      prompt += `--- End Quoted Tweet Context ---\n`;
+    } else {
+      // console.log(`[PromptHelper] Item ${index + 1} (ID: ${item.cid || 'N/A'}) does not have a quoted tweet.`);
+    }
+    
     prompt += `\n***source_end***\n\n`;
   });
 
-  prompt += `Provide a clear and concise summary based on the ***sources*** above for the topic. DO NOT PULL DATA FROM OUTSIDE SOURCES'${topic}'. Combine similar sources into a longer summary if it makes sense.\n\n`;
+  prompt += `Provide a detailed and comprehensive summary based on the ***sources*** above for the topic: '${topic}'. Be succinct, factual, and objective. Only include key information, updates, and developments. Merge similar sources into a longer summary if it makes sense. Integrate quoted tweet content with the main tweet. Exclude casual conversation, general sentiment, and unrelated commentary. Do not use information not present in the sources. All URLs under 'sources:' must be included in the 'sources' array of your JSON response.\n\n`;
 
   prompt += `Response MUST be a valid JSON object containing:\n- 'title': The title of the topic.\n- 'content': A list of messages with keys 'text', 'sources', 'images', and 'videos'.\n\n`;
 
+  logPromptToFile(topic, dateStr, prompt); // Log the generated prompt
   return prompt;
 }

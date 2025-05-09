@@ -106,6 +106,7 @@ export class DailySummaryGenerator {
           if (!topic || !objects || objects.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) continue;
 
           const prompt = createJSONPromptForTopics(topic, objects, dateStr);
+          console.log(`[DailySummaryGenerator] Sending prompt for topic '${topic}' to AI provider. (See logs/prompts/ for full prompt)`);
           const summaryText = await retryOperation(() => this.provider.summarize(prompt));
           const summaryJSONString = summaryText.replace(/```json\n|```/g, "");
           let summaryJSON = JSON.parse(summaryJSONString);
