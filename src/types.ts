@@ -16,7 +16,33 @@ export interface ContentItem {
   topics?: string[];
   date?: number;           // When it was created/published
   metadata?: {
+    // For all tweets (standard or original part of retweet)
+    authorUserId?: string;       // User ID of the tweet's author (for standard tweets, or original author for retweets)
+    authorUserName?: string;     // UserName of the tweet's author ( " )
+
     quotedTweet?: QuoteTweet;
+    // Fields for retweets
+    retweetedByTweetId?: string; // The ID of the retweet action itself
+    retweetedByUserId?: string;  // User ID of the account that retweeted
+    retweetedByUserName?: string;// UserName of the account that retweeted
+    originalTweetId?: string;    // ID of the original tweet that was retweeted
+    originalUserId?: string;     // User ID of the original tweet's author
+    originalUserName?: string;   // UserName of the original tweet's author
+    originalTweetTimestamp?: number; // Timestamp of the original tweet
+    // Standard metadata fields that would apply to the original tweet if it's a retweet context
+    photos?: any[]; 
+    videos?: any[];
+    likes?: number;
+    replies?: number;
+    retweets?: number; // Number of retweets the original tweet received
+    isPin?: boolean;
+    isReply?: boolean;
+    isSelfThread?: boolean;
+    hashtags?: string[];
+    mentions?: any[]; // Assuming Mention might have a structure like { id: string, username?: string, name?: string }
+    urls?: string[];
+    sensitiveContent?: boolean;
+    // Keep allowing other dynamic keys
     [key: string]: any;
   };
 }

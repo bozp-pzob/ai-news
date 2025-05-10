@@ -122,19 +122,24 @@ export class DailySummaryGenerator {
 
       const mdPrompt = createMarkdownPromptForJSON(allSummaries, dateStr);
       const markdownReport = await retryOperation(() => this.provider.summarize(mdPrompt));
-      const markdownString = markdownReport.replace(/```markdown\n|```/g, "");
+      const markdownStringFromAI = markdownReport.replace(/```markdown\n|```/g, "");
+
+      const finalReportTitle = `Daily Report - ${dateStr}`;
 
       const summaryItem: SummaryItem = {
         type: this.summaryType,
-        title: `Daily Report - ${dateStr}`,
+        title: finalReportTitle,
         categories: JSON.stringify(allSummaries, null, 2),
-        markdown: markdownString,
+        markdown: markdownStringFromAI,
         date: currentTime,
       };
 
       await this.storage.saveSummaryItem(summaryItem);
       await this.writeSummaryToFile(dateStr, currentTime, allSummaries);
-      await this.writeMDToFile(dateStr, markdownString);
+      
+      // Construct the full markdown content for the file
+      const finalMarkdownContentForFile = `# ${finalReportTitle}\n\n${markdownStringFromAI}`;
+      await this.writeMDToFile(dateStr, finalMarkdownContentForFile);
 
       console.log(`Daily report for ${dateStr} generated and stored successfully.`);
     } catch (error) {

@@ -5,6 +5,7 @@
 
 import { ContentSource } from "./ContentSource";
 import { ContentItem } from "../../types";
+import { parseDate, addOneDay, formatDate } from "../../helpers/dateHelper";
 
 // Hypothetical Twitter client
 import { SearchMode, Scraper } from 'agent-twitter-client';
@@ -129,100 +130,136 @@ export class TwitterSource implements ContentSource {
   private async processTweets(tweets: any[]): Promise<any> {
     let tweetsResponse : any[] = [];
 
-    for (const tweet of tweets) {
-      let photos = tweet.photos.map((img : any) => img.url) || [];
-      let retweetPhotos = tweet.retweetedStatus?.photos?.map((img : any) => img.url) || [];
-      let videos = tweet.videos.map((img : any) => img.url) || [];
-      let videoPreview = tweet.videos.map((img : any) => img.preview) || [];
-      let retweetVideos = tweet.retweetedStatus?.videos.map((img : any) => img.url) || [];
-      let retweetVideoPreview = tweet.retweetedStatus?.videos.map((img : any) => img.preview) || [];
-      
-      const metadata: any = {
-        userId: tweet.userId,
-        tweetId: tweet.id,
-        likes: tweet.likes,
-        replies: tweet.replies,
-        retweets: tweet.retweets,
-        photos: photos.concat(retweetPhotos,videoPreview,retweetVideoPreview),
-        videos: videos.concat(retweetVideos),
-        // Add other relevant raw tweet fields if necessary
-        isRetweet: tweet.isRetweet,
-        isPin: tweet.isPin,
-        isReply: tweet.isReply,
-        isSelfThread: tweet.isSelfThread,
-        hashtags: tweet.hashtags,
-        mentions: tweet.mentions,
-        urls: tweet.urls,
-        sensitiveContent: tweet.sensitiveContent,
-        // Placeholder for poll data if you add it later
-        // poll: tweet.poll 
-      };
+    for (const rawTweet of tweets) { 
+      console.log(`[TwitterSource] Inspecting rawTweet ID: ${rawTweet.id}, isRetweet: ${rawTweet.isRetweet}, text: "${rawTweet.text?.substring(0,30)}..."`);
 
-      if (tweet.isQuoted && tweet.quotedStatusId) {
-        try {
-          let quotedTweetDetails: any = null;
+      let contentItem: Partial<ContentItem> = { source: this.name };
+      let metadata: any = {}; 
+      let tweetToProcessForContent: any = rawTweet; 
+      let originalContentFetchedSuccessfully = false;
 
-          // Option 1: Check if quotedStatus is already populated with enough details
-          if (tweet.quotedStatus && tweet.quotedStatus.id && tweet.quotedStatus.text) {
-            quotedTweetDetails = tweet.quotedStatus;
-            console.info(`[TwitterSource] Using pre-populated quotedStatus for tweet: ${tweet.id}, quoted: ${tweet.quotedStatusId}`);
-          } else {
-            console.info(`[TwitterSource] Attempting to fetch quoted tweet ${tweet.quotedStatusId} for main tweet ${tweet.id}...`);
-            
-            const fetchPromise = this.client.getTweet(tweet.quotedStatusId);
-            const timeoutPromise = new Promise((_, reject) => 
-              setTimeout(() => reject(new Error(`Timeout fetching quoted tweet ${tweet.quotedStatusId}`)), QUOTED_TWEET_FETCH_TIMEOUT)
+      // 1. Set the definitive ContentItem ID and Date from the rawTweet (action itself)
+      contentItem.cid = rawTweet.id;
+      contentItem.date = rawTweet.timestamp;
+
+      // 2. Check if it's a retweet
+      if (rawTweet.isRetweet) {
+        contentItem.type = "retweet";
+        console.log(`[TwitterSource.processTweets] rawTweet ID: ${rawTweet.id} - IS A RETWEET (rawTweet.isRetweet: ${rawTweet.isRetweet}). Set contentItem.type to 'retweet'.`);
+        metadata.retweetedByTweetId = rawTweet.id;
+        metadata.retweetedByUserId = rawTweet.userId;
+        metadata.retweetedByUserName = rawTweet.username;
+
+        let originalContent = rawTweet.retweetedStatus; // Prefer embedded original content
+
+        if (!originalContent && rawTweet.retweetedStatusId) {
+          console.info(`[TwitterSource] Retweet ${rawTweet.id}: retweetedStatus not embedded, trying to fetch original ${rawTweet.retweetedStatusId}`);
+          try {
+            const fetchPromise = this.client.getTweet(rawTweet.retweetedStatusId);
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error(`Timeout fetching original tweet ${rawTweet.retweetedStatusId} for RT ${rawTweet.id}`)), QUOTED_TWEET_FETCH_TIMEOUT)
             );
-
-            try {
-              quotedTweetDetails = await Promise.race([
-                fetchPromise,
-                timeoutPromise
-              ]);
-              if (quotedTweetDetails) {
-                console.info(`[TwitterSource] Successfully fetched quoted tweet ${tweet.quotedStatusId}`);
-              } else {
-                console.warn(`[TwitterSource] Fetch for quoted tweet ${tweet.quotedStatusId} returned null or empty.`);
-              }
-            } catch (fetchError: any) {
-              if (fetchError.message.startsWith('Timeout')) {
-                console.warn(`[TwitterSource] ${fetchError.message} for main tweet ${tweet.id}`);
-              } else {
-                console.error(`[TwitterSource] Error fetching quoted tweet ${tweet.quotedStatusId} for main tweet ${tweet.id}:`, fetchError);
-              }
-              quotedTweetDetails = null; // Ensure it's null on error/timeout
+            originalContent = await Promise.race([fetchPromise, timeoutPromise]);
+            if (originalContent) {
+              console.info(`[TwitterSource] Retweet ${rawTweet.id}: Successfully fetched original content ${originalContent.id}`);
+              originalContentFetchedSuccessfully = true;
+            } else {
+              console.warn(`[TwitterSource] Retweet ${rawTweet.id}: Failed to fetch original content for ${rawTweet.retweetedStatusId} (getTweet returned null/undefined).`);
             }
+          } catch (err: any) {
+            console.warn(`[TwitterSource] Retweet ${rawTweet.id}: Error/Timeout fetching original content for ${rawTweet.retweetedStatusId}: ${err.message}.`);
+            originalContent = null; 
+          }
+        } else if (originalContent) {
+          console.info(`[TwitterSource] Retweet ${rawTweet.id}: Using embedded retweetedStatus. Original ID: ${originalContent.id}`);
+          originalContentFetchedSuccessfully = true;
+        } else if (!originalContent && !rawTweet.retweetedStatusId) {
+          console.warn(`[TwitterSource] Retweet ${rawTweet.id}: isRetweet is true, but no retweetedStatus or retweetedStatusId. Original content unknown.`);
+        }
+
+        if (originalContentFetchedSuccessfully && originalContent) {
+          tweetToProcessForContent = originalContent; 
+          metadata.originalTweetId = originalContent.id;
+          metadata.originalUserId = originalContent.userId;
+          metadata.originalUserName = originalContent.username;
+          metadata.originalTweetTimestamp = originalContent.timestamp;
+        } else {
+          console.warn(`[TwitterSource] Retweet ${rawTweet.id}: Original content could not be obtained/verified. Displaying retweet's own text/link if available.`);
+          // tweetToProcessForContent remains rawTweet
+          // originalTweetId might be set if retweetedStatusId was known, even if fetch failed.
+          if (rawTweet.retweetedStatusId) metadata.originalTweetId = rawTweet.retweetedStatusId; 
+        }
+      } else { 
+        contentItem.type = "tweet";
+        console.log(`[TwitterSource.processTweets] rawTweet ID: ${rawTweet.id} - NOT a retweet (rawTweet.isRetweet: ${rawTweet.isRetweet}). Set contentItem.type to 'tweet'.`);
+        // tweetToProcessForContent is already rawTweet
+      }
+
+      // 3. Populate contentItem and metadata from tweetToProcessForContent
+      contentItem.text = tweetToProcessForContent.text;
+      contentItem.link = tweetToProcessForContent.permanentUrl;
+      // contentItem.title = ... // if applicable
+
+      // Author of the displayed content
+      metadata.authorUserId = tweetToProcessForContent.userId;
+      metadata.authorUserName = tweetToProcessForContent.username;
+
+      // Common metadata from tweetToProcessForContent
+      metadata.photos = (tweetToProcessForContent.photos?.map((img: any) => img.url) || []).concat(tweetToProcessForContent.videos?.map((vid: any) => vid.preview) || []);
+      metadata.videos = tweetToProcessForContent.videos?.map((vid: any) => vid.url) || [];
+      metadata.likes = tweetToProcessForContent.likes; 
+      metadata.replies = tweetToProcessForContent.replies;
+      metadata.retweets = tweetToProcessForContent.retweets; 
+      metadata.isPin = tweetToProcessForContent.isPin;
+      metadata.isReply = tweetToProcessForContent.isReply;
+      metadata.isSelfThread = tweetToProcessForContent.isSelfThread;
+      metadata.hashtags = tweetToProcessForContent.hashtags;
+      metadata.mentions = tweetToProcessForContent.mentions;
+      metadata.urls = tweetToProcessForContent.urls;
+      metadata.sensitiveContent = tweetToProcessForContent.sensitiveContent;
+      // metadata.poll = tweetToProcessForContent.poll; 
+
+      // 4. Handle quoted tweet (based on tweetToProcessForContent)
+      if (tweetToProcessForContent.isQuoted && tweetToProcessForContent.quotedStatusId) {
+        const quoteTweetLogPrefix = contentItem.type === 'retweet' ? `Retweet's original ${tweetToProcessForContent.id}` : `Standard tweet ${tweetToProcessForContent.id}`;
+        console.info(`[TwitterSource] ${quoteTweetLogPrefix} is a quote of ${tweetToProcessForContent.quotedStatusId}. Processing...`);
+        try {
+          let quotedDetails: any = null;
+          // Prefer pre-populated quotedStatus if available and seems valid
+          if (tweetToProcessForContent.quotedStatus && tweetToProcessForContent.quotedStatus.id === tweetToProcessForContent.quotedStatusId) {
+            quotedDetails = tweetToProcessForContent.quotedStatus;
+            console.info(`[TwitterSource] Using pre-populated quotedStatus for ${quoteTweetLogPrefix}`);
+          } else {
+            console.info(`[TwitterSource] Pre-populated quotedStatus not used or mismatched for ${quoteTweetLogPrefix}. Fetching ${tweetToProcessForContent.quotedStatusId}.`);
+            const fetchPromise = this.client.getTweet(tweetToProcessForContent.quotedStatusId);
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error(`Timeout fetching quoted status ${tweetToProcessForContent.quotedStatusId} for ${quoteTweetLogPrefix}`)), QUOTED_TWEET_FETCH_TIMEOUT)
+            );
+            quotedDetails = await Promise.race([fetchPromise, timeoutPromise]);
           }
 
-          if (quotedTweetDetails) {
+          if (quotedDetails) {
             metadata.quotedTweet = {
-              id: quotedTweetDetails.id,
-              text: quotedTweetDetails.text,
-              link: quotedTweetDetails.permanentUrl,
-              userId: quotedTweetDetails.userId,
-              userName: quotedTweetDetails.username || quotedTweetDetails.name, // Handle both possible fields
-              date: quotedTweetDetails.timestamp, // Add date if available
-              // Add any other relevant fields from quotedTweetDetails
+              id: quotedDetails.id,
+              text: quotedDetails.text,
+              link: quotedDetails.permanentUrl,
+              userId: quotedDetails.userId,
+              userName: quotedDetails.username || quotedDetails.name, // Fallback to name if username not present
+              date: quotedDetails.timestamp,
             };
+            console.info(`[TwitterSource] Successfully processed quoted tweet ${quotedDetails.id} within ${quoteTweetLogPrefix}`);
           } else {
-            console.warn(`[TwitterSource] Could not retrieve details for quoted tweet ${tweet.quotedStatusId} for main tweet ${tweet.id}`);
-            metadata.quotedTweetError = `Details not found for quoted tweet: ${tweet.quotedStatusId}`;
+            metadata.quotedTweetError = `Details not found/fetched for quoted status ${tweetToProcessForContent.quotedStatusId}`;
+            console.warn(`[TwitterSource] Failed to get details for quoted tweet ${tweetToProcessForContent.quotedStatusId} for ${quoteTweetLogPrefix}`);
           }
-        } catch (error) {
-          console.error(`[TwitterSource] Outer error processing quoted tweet ${tweet.quotedStatusId} for main tweet ${tweet.id}:`, error);
-          metadata.quotedTweetError = `Failed to process/fetch: ${tweet.quotedStatusId}`;
+        } catch (qError: any) {
+          console.warn(`[TwitterSource] Error/Timeout fetching quoted status ${tweetToProcessForContent.quotedStatusId} for ${quoteTweetLogPrefix}: ${qError.message}`);
+          metadata.quotedTweetError = `Failed to fetch/process quoted status ${tweetToProcessForContent.quotedStatusId}: ${qError.message}`;
         }
       }
       
-      tweetsResponse.push({
-        cid: tweet.id,
-        type: "tweet",
-        source: this.name,
-        text: tweet.text,
-        link: tweet.permanentUrl,
-        date: tweet.timestamp,
-        metadata: metadata,
-      })
+      contentItem.metadata = metadata;
+      tweetsResponse.push(contentItem as ContentItem);
     }
     
     return tweetsResponse;
@@ -242,52 +279,85 @@ export class TwitterSource implements ContentSource {
     }
 
     let resultTweets: ContentItem[] = [];
-    let targetDate = new Date(date).getTime() / 1000;
+    const targetDateObj = parseDate(date);
+    const targetDateEpoch = targetDateObj.getTime() / 1000; 
+    const untilDateObj = addOneDay(targetDateObj);
+    const untilDateEpoch = untilDateObj.getTime() / 1000;
     
-    for await (const account of this.accounts) {
-      const cachedData = this.cache.get(account, date);
+    console.log(`[TwitterSource.fetchHistorical] Target date: ${date} (Epoch: ${targetDateEpoch} to ${untilDateEpoch})`);
+    console.log(`[TwitterSource.fetchHistorical] Will process accounts: ${JSON.stringify(this.accounts)}`);
 
+    const MAX_TWEETS_TO_SCAN_PER_USER = 400; // Max tweets to check per user for the date range
+
+    for await (const account of this.accounts) {
+      console.log(`[TwitterSource.fetchHistorical] ----- Processing account: ${account} for date: ${date} -----`);
+      
+      const cachedData = this.cache.get(account, date);
       if (cachedData) {
+        console.log(`[TwitterSource.fetchHistorical] Using cached data for ${account} on ${date}. Count: ${cachedData.length}`);
         resultTweets = resultTweets.concat(cachedData);
         continue;
       }
 
-      let cursor = this.cache.getCursor(account);
-      const tweetsByDate: Record<string, ContentItem[]> = {};
-      let query = `from:${account}`;
-      let tweets : any = await this.client.fetchSearchTweets(query, 100, 1);
-      
-      while ( tweets["tweets"].length > 0 ) {
-        let processedTweets = await this.processTweets(tweets["tweets"]);
-        for (const tweet of processedTweets) {
-          const tweetDateStr = new Date((tweet.date) * 1000).toISOString().slice(0, 10);
-          if (!tweetsByDate[tweetDateStr]) {
-            tweetsByDate[tweetDateStr] = [];
-          }
-          tweetsByDate[tweetDateStr].push(tweet);
+      let userId: string;
+      try {
+        userId = await this.client.getUserIdByScreenName(account);
+        if (!userId) {
+          console.warn(`[TwitterSource.fetchHistorical] Could not get userId for account: ${account}. Skipping.`);
+          continue;
         }
+        console.log(`[TwitterSource.fetchHistorical] Got userId ${userId} for account ${account}.`);
+      } catch (error: any) {
+        console.error(`[TwitterSource.fetchHistorical] Error getting userId for ${account}: ${error.message}. Skipping.`);
+        continue;
+      }
 
-        const lastTweet = tweets["tweets"][tweets["tweets"].length - 1];
-        if (lastTweet.timestamp < targetDate) {
-          if (cursor) {
-            this.cache.setCursor(account, cursor);
+      const tweetsForAccountOnDate: any[] = [];
+      let tweetsScanned = 0;
+
+      try {
+        console.log(`[TwitterSource.fetchHistorical] Fetching tweets for user ${account} (ID: ${userId}) using getUserTweetsIterator.`);
+        const tweetIterator = this.client.getUserTweetsIterator(userId, MAX_TWEETS_TO_SCAN_PER_USER);
+        
+        for await (const rawTweet of tweetIterator) {
+          tweetsScanned++;
+          if (!rawTweet.timestamp) {
+            // console.warn(`[TwitterSource.fetchHistorical] Tweet ID ${rawTweet.id} from ${account} missing timestamp. Skipping.`);
+            continue;
           }
-          break;
+
+          if (rawTweet.timestamp >= targetDateEpoch && rawTweet.timestamp < untilDateEpoch) {
+            // console.log(`[TwitterSource.fetchHistorical] Tweet ${rawTweet.id} from ${account} (Timestamp: ${rawTweet.timestamp}) is within target date range.`);
+            tweetsForAccountOnDate.push(rawTweet);
+          } else if (rawTweet.timestamp < targetDateEpoch) {
+            // console.log(`[TwitterSource.fetchHistorical] Tweet ${rawTweet.id} from ${account} (Timestamp: ${rawTweet.timestamp}) is older than target date. Assuming reverse chronological order, stopping scan for this user.`);
+            break; // Tweets are generally reverse chronological in user timelines
+          }
         }
+        console.log(`[TwitterSource.fetchHistorical] Scanned ${tweetsScanned} tweets for ${account}. Found ${tweetsForAccountOnDate.length} tweets for date ${date}.`);
 
-        cursor = tweets["next"];
-        tweets = await this.client.fetchSearchTweets(`from:${account}`, 100, 1, cursor);
+      } catch (error: any) {
+        console.error(`[TwitterSource.fetchHistorical] Error fetching/iterating tweets for ${account} (ID: ${userId}): ${error.message}`, error.stack);
+        // Continue to next account even if one fails
       }
 
-      for (const [tweetDate, tweetList] of Object.entries(tweetsByDate)) {
-        this.cache.set(account, tweetDate, tweetList, 300);
+      if (tweetsForAccountOnDate.length > 0) {
+        const processedTweets = await this.processTweets(tweetsForAccountOnDate);
+        console.log(`[TwitterSource.fetchHistorical] Processed ${processedTweets.length} tweets for ${account} on ${date}.`);
+        if (processedTweets.length > 0) {
+          this.cache.set(account, date, processedTweets, 300); // Cache for 5 minutes
+          resultTweets = resultTweets.concat(processedTweets);
+          console.log(`[TwitterSource.fetchHistorical] Added ${processedTweets.length} tweets from ${account} to results.`);
+        }
+      } else {
+        console.log(`[TwitterSource.fetchHistorical] No tweets found for ${account} on date ${date} after scanning timeline.`);
+        // Cache empty result to avoid re-fetching for a short period if desired, but not strictly necessary for empty results
+        // this.cache.set(account, date, [], 300); 
       }
-  
-      if (tweetsByDate[date]) {
-        resultTweets = resultTweets.concat(tweetsByDate[date]);
-      }
+      console.log(`[TwitterSource.fetchHistorical] Finished processing account: ${account}. Total resultTweets now: ${resultTweets.length}`);
     }
 
+    console.log(`[TwitterSource.fetchHistorical] Finished all accounts. Total tweets for date ${date}: ${resultTweets.length}`);
     return resultTweets;
   }
 
