@@ -108,7 +108,7 @@ export class TwitterSource implements ContentSource {
         console.info("Successfully logged in and cookies cached.");
         break;
       }
-
+      
       try {
         await this.client.login(
           this.username,
@@ -320,7 +320,7 @@ export class TwitterSource implements ContentSource {
 
         let cursor = this.cache.getCursor(account); // Search mode might use cursors differently or not at all from client
         const tweetsByDate: Record<string, ContentItem[]> = {};
-        const query = `from:${account} since:${date} until:${untilDateStr}`;
+        const query = `(from:${account}) since:${date} until:${untilDateStr} include:nativeretweets`;
         console.log(`[TwitterSource.fetchHistorical] Query for ${account}: ${query}`);
 
         try {
