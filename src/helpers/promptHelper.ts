@@ -58,6 +58,7 @@ const logPromptToFile = (topic: string, dateStr: string, prompt: string) => {
   ensureDirectoryExists(logsDir);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `${dateStr}_${topic.replace(/\s+/g, '_')}_${timestamp}`;
+  console.log(`Prompt for topic '${topic}' logged to: ${filename}`);
   writeFile(logsDir, filename, prompt, 'log');
 };
 
