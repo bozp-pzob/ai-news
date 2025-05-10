@@ -106,10 +106,10 @@ jobs:
             elif [ -n "${{ inputs.before_date }}" ]; then
               npm run historical -- --source=elizaos.json --before=${{ inputs.before_date }} --output=./output/elizaos
             else
-              npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/elizaos
+              npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --fetchMode=timeline --output=./output/elizaos
             fi
           else
-            npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/elizaos
+            npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --fetchMode=timeline --output=./output/elizaos
           fi
         env:
           RUN_ONCE: true
