@@ -184,7 +184,6 @@ export class TwitterSource implements ContentSource {
       let cursor = this.cache.getCursor(account);
       const tweetsByDate: Record<string, ContentItem[]> = {};
       let query = `(from:${account}) include:nativeretweets`;
-      console.log( query )
       let tweets : any = await this.client.fetchSearchTweets(query, 100, 1);
       
       while ( tweets["tweets"].length > 0 ) {
