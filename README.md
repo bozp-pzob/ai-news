@@ -133,6 +133,10 @@ npm run historical -- --source=discord-raw.json --after=2024-01-15 --output=./ou
 
 # Run historical for dates before a specific date
 npm run historical -- --source=discord-raw.json --before=2024-01-10 --output=./output/discord
+
+# Run historical with specific Twitter fetch mode
+npm run historical -- --source=elizaos.json --date=2025-04-26 --fetchMode=timeline
+# (--fetchMode can be 'search' or 'timeline'. 'search' is default for historical runs; 'timeline' is better for retweets but slower.)
 ```
 
 ## Project Structure
@@ -155,6 +159,24 @@ src/
 └── historical.ts       # Entry point for historical data processing
 # ... other config and project files
 ```
+
+## Twitter Data Fetching Notes
+
+When fetching historical Twitter data using `npm run historical`, you can specify a fetch mode using the `--fetchMode` flag:
+
+-   `--fetchMode=search` (Default for `historical` script):
+    -   Uses Twitter's search API for the specified date(s).
+    -   Generally faster and more efficient for fetching tweets from a precise date or range.
+    -   May be less reliable for comprehensively capturing all retweets or all activities for some accounts.
+    -   Recommended if your primary goal is original tweets from specific dates and speed is a priority.
+
+-   `--fetchMode=timeline`:
+    -   Scans user timelines by fetching recent tweets and then filters by date.
+    -   More comprehensive for capturing all tweet types, including retweets.
+    -   Can be slower as it might process more tweets than strictly necessary for the target date, especially for very active users.
+    -   Recommended for initial large historical data fetches where completeness of retweets is important, or if the `search` mode is not yielding desired results for specific accounts/dates.
+
+For continuous operation (`npm start`), `TwitterSource` defaults to the `timeline` mode to ensure better capture of all tweet types, including retweets, over time.
 
 ## Adding New Sources
 

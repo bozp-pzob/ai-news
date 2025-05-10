@@ -105,7 +105,53 @@ export class DailySummaryGenerator {
           
           if (!topic || !objects || objects.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) continue;
 
-          const prompt = createJSONPromptForTopics(topic, objects, dateStr);
+          let promptCustomInstructions: { title?: string, aiPrompt?: string, repositoryName?: string, dataProviderName?: string } = {};
+          let topicForPrompt = topic;
+
+          if (topic === "twitter_activity") { 
+            topicForPrompt = "Twitter Activity"; 
+            promptCustomInstructions.title = (this as any).config?.twitterSummaryTitle || "Thematic Twitter Activity Summary"; 
+            promptCustomInstructions.aiPrompt = (this as any).config?.twitterAdditionalInstructions;
+
+            // Sort Twitter items to group threads by user and conversationId
+            if (objects && objects.length > 0) {
+              objects.sort((a: ContentItem, b: ContentItem) => {
+                const userA = a.metadata?.authorUserName || a.metadata?.retweetedByUserName || '';
+                const userB = b.metadata?.authorUserName || b.metadata?.retweetedByUserName || '';
+                
+                if (userA.localeCompare(userB) !== 0) {
+                  return userA.localeCompare(userB);
+                }
+                
+                const convoIdA = a.metadata?.thread?.conversationId || '';
+                const convoIdB = b.metadata?.thread?.conversationId || '';
+                
+                if (convoIdA.localeCompare(convoIdB) !== 0) {
+                  return convoIdA.localeCompare(convoIdB);
+                }
+                
+                return (a.date || 0) - (b.date || 0);
+              });
+            }
+            
+          } else if (topic === "issue" || topic === "pull_request") {
+            // Assuming objects[0]?.metadata contains githubCompany and githubRepo
+            const repoCompany = objects[0]?.metadata?.githubCompany;
+            const repoName = objects[0]?.metadata?.githubRepo;
+            if (repoCompany && repoName) {
+              promptCustomInstructions.repositoryName = `${repoCompany}/${repoName}`;
+            } else {
+              // Fallback or specific log if repo details are missing
+              console.warn(`[DailySummaryGenerator] Repository details missing for GitHub topic: ${topic}`);
+            }
+          } else if (topic === "crypto market") {
+            // Assuming dataProvider comes from config or is known for this topic
+            // For example, this.config.marketDataProviderName
+            promptCustomInstructions.dataProviderName = (this as any).config?.marketDataProviderName || "codexAnalytics";
+          }
+
+          const prompt = createJSONPromptForTopics(topicForPrompt, objects, dateStr, promptCustomInstructions);
+          console.log(`[DailySummaryGenerator] Sending prompt for topic '${topicForPrompt}' to AI provider. (See logs/prompts/ for full prompt)`);
           const summaryText = await retryOperation(() => this.provider.summarize(prompt));
           const summaryJSONString = summaryText.replace(/```json\n|```/g, "");
           let summaryJSON = JSON.parse(summaryJSONString);
@@ -119,21 +165,31 @@ export class DailySummaryGenerator {
         }
       }
 
+      if (allSummaries.length === 0 && contentItems.length > 0) {
+        console.warn(`[DailySummaryGenerator] No summaries were successfully generated for ${dateStr} despite having content items. Check AI provider or prompt issues.`);
+        return;
+      }
+
       const mdPrompt = createMarkdownPromptForJSON(allSummaries, dateStr);
       const markdownReport = await retryOperation(() => this.provider.summarize(mdPrompt));
-      const markdownString = markdownReport.replace(/```markdown\n|```/g, "");
+      const markdownStringFromAI = markdownReport.replace(/```markdown\n|```/g, "");
+
+      const finalReportTitle = `Daily Report - ${dateStr}`;
 
       const summaryItem: SummaryItem = {
         type: this.summaryType,
-        title: `Daily Report - ${dateStr}`,
+        title: finalReportTitle,
         categories: JSON.stringify(allSummaries, null, 2),
-        markdown: markdownString,
+        markdown: markdownStringFromAI,
         date: currentTime,
       };
 
       await this.storage.saveSummaryItem(summaryItem);
       await this.writeSummaryToFile(dateStr, currentTime, allSummaries);
-      await this.writeMDToFile(dateStr, markdownString);
+      
+      // Construct the full markdown content for the file
+      const finalMarkdownContentForFile = `# ${finalReportTitle}\n\n${markdownStringFromAI}`;
+      await this.writeMDToFile(dateStr, finalMarkdownContentForFile);
 
       console.log(`Daily report for ${dateStr} generated and stored successfully.`);
     } catch (error) {
@@ -312,8 +368,6 @@ export class DailySummaryGenerator {
           github_topic = 'commit';
         } else if (obj.type === 'githubStatsSummary') {
           github_topic = 'github_summary';
-        } else if (obj.type === 'githubTopContributors') {
-          github_topic = 'contributors';
         } else if (obj.type === 'githubCompletedItem') {
           github_topic = 'completed_items';
         } else {
@@ -347,7 +401,16 @@ export class DailySummaryGenerator {
       }
       // Handle general content with topics
       else {
-        if (obj.topics && obj.topics.length > 0 && !this.groupBySourceType) {
+        if (obj.source && (obj.source.toLowerCase().includes('twitter') || obj.source.toLowerCase().includes('tweet'))) {
+          // Group all Twitter items (tweets and retweets) under a single topic
+          const twitterActivityTopic = "twitter_activity"; 
+          if (!this.blockedTopics.includes(twitterActivityTopic)) {
+            if (!topicMap.has(twitterActivityTopic)) {
+              topicMap.set(twitterActivityTopic, []);
+            }
+            topicMap.get(twitterActivityTopic).push(obj);
+          }
+        } else if (obj.topics && obj.topics.length > 0 && !this.groupBySourceType) {
           obj.topics.forEach((topic: any) => {
             let shortCase = topic.toLowerCase();
             if (!this.blockedTopics.includes(shortCase)) {

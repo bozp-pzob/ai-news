@@ -15,7 +15,55 @@ export interface ContentItem {
   link?: string;         // URL to the item
   topics?: string[];
   date?: number;           // When it was created/published
-  metadata?: Record<string, any>; // Additional key-value data
+  metadata?: {
+    // For all tweets (standard or original part of retweet)
+    authorUserId?: string;       // User ID of the tweet's author (for standard tweets, or original author for retweets)
+    authorUserName?: string;     // UserName of the tweet's author ( " )
+
+    quotedTweet?: QuoteTweet;
+    // Fields for retweets
+    retweetedByTweetId?: string; // The ID of the retweet action itself
+    retweetedByUserId?: string;  // User ID of the account that retweeted
+    retweetedByUserName?: string;// UserName of the account that retweeted
+    originalTweetId?: string;    // ID of the original tweet that was retweeted
+    originalUserId?: string;     // User ID of the original tweet's author
+    originalUserName?: string;   // UserName of the original tweet's author
+    originalTweetTimestamp?: number; // Timestamp of the original tweet
+
+    // Thread information
+    thread?: {
+      conversationId?: string; // ID of the root tweet of the conversation/thread
+      isContinuation?: boolean; // True if this tweet is a reply in a thread by the same author
+    };
+
+    // Standard metadata fields that would apply to the original tweet if it's a retweet context
+    photos?: any[]; 
+    videos?: any[];
+    likes?: number;
+    replies?: number;
+    retweets?: number; // Number of retweets the original tweet received
+    isPin?: boolean;
+    isReply?: boolean;
+    isSelfThread?: boolean;
+    hashtags?: string[];
+    mentions?: any[]; // Assuming Mention might have a structure like { id: string, username?: string, name?: string }
+    urls?: string[];
+    sensitiveContent?: boolean;
+    // Keep allowing other dynamic keys
+    [key: string]: any;
+  };
+}
+
+/**
+ * Represents the data structure for a quoted tweet.
+ */
+export interface QuoteTweet {
+  id?: string;
+  text?: string;
+  link?: string;
+  userId?: string;
+  userName?: string; // e.g., screen name of the original author
+  // Add any other relevant fields from the quoted tweet you might want to store
 }
 
 /**
