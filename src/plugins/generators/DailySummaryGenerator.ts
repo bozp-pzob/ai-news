@@ -368,8 +368,6 @@ export class DailySummaryGenerator {
           github_topic = 'commit';
         } else if (obj.type === 'githubStatsSummary') {
           github_topic = 'github_summary';
-        } else if (obj.type === 'githubTopContributors') {
-          github_topic = 'contributors';
         } else if (obj.type === 'githubCompletedItem') {
           github_topic = 'completed_items';
         } else {
