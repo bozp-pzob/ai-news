@@ -29,6 +29,13 @@ export interface ContentItem {
     originalUserId?: string;     // User ID of the original tweet's author
     originalUserName?: string;   // UserName of the original tweet's author
     originalTweetTimestamp?: number; // Timestamp of the original tweet
+
+    // Thread information
+    thread?: {
+      conversationId?: string; // ID of the root tweet of the conversation/thread
+      isContinuation?: boolean; // True if this tweet is a reply in a thread by the same author
+    };
+
     // Standard metadata fields that would apply to the original tweet if it's a retweet context
     photos?: any[]; 
     videos?: any[];

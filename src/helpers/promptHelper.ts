@@ -102,7 +102,7 @@ export const createJSONPromptForTopics = (topic: string, objects: any[], dateStr
     prompt += `Below are several tweet and retweet sources. Your primary task is to:\n`;
     prompt += `1. Analyze all tweet sources to identify the main themes, subjects, or discussions present in the content.\n`;
     prompt += `2. For each distinct theme you identify, provide a consolidated summary.\n`;
-    prompt += `3. In your summary for each theme, incorporate information from all relevant source tweets. Make sure to clearly attribute who made specific statements or retweets (e.g., "User @X tweeted...", "User @Y retweeted @Z's post about...").\n`;
+    prompt += `3. In your summary for each theme, incorporate information from all relevant source tweets. Make sure to clearly attribute who made specific statements or retweets (e.g., "User @X tweeted...", "User @Y retweeted @Z's post about..."). When summarizing themes, if multiple tweets from the same user appear to form a coherent thread (you may see a shared 'conversationId' and an 'isContinuation' flag in the source details below), try to summarize the thread's main points as a single narrative within the theme, still attributing to the user.\n`;
     prompt += `4. If multiple tweets discuss the same point within a theme, synthesize this information rather than listing each tweet separately.\n\n`;
     if (additionalAiPrompt) {
         prompt += `ADDITIONAL INSTRUCTIONS: ${additionalAiPrompt}\n\n`;
@@ -121,6 +121,12 @@ export const createJSONPromptForTopics = (topic: string, objects: any[], dateStr
       }
       
       prompt += `\n***source ${index + 1} (user: @${actingUser}, type: ${item.type})***\n`;
+      if (item.metadata?.thread?.conversationId) {
+        prompt += `conversationId: ${item.metadata.thread.conversationId}\n`;
+      }
+      if (typeof item.metadata?.thread?.isContinuation === 'boolean') {
+        prompt += `isContinuationInThread: ${item.metadata.thread.isContinuation}\n`;
+      }
 
       if (item.type === 'retweet') {
         prompt += `retweet_details: Retweeted by @${item.metadata?.retweetedByUserName || 'unknown'} (Original post by @${item.metadata?.originalUserName || 'unknown'})\n`;
