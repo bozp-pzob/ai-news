@@ -183,7 +183,8 @@ export class TwitterSource implements ContentSource {
 
       let cursor = this.cache.getCursor(account);
       const tweetsByDate: Record<string, ContentItem[]> = {};
-      let query = `from:${account}`;
+      let query = `(from:${account}) include:nativeretweets`;
+      console.log( query )
       let tweets : any = await this.client.fetchSearchTweets(query, 100, 1);
       
       while ( tweets["tweets"].length > 0 ) {
@@ -205,7 +206,7 @@ export class TwitterSource implements ContentSource {
         }
 
         cursor = tweets["next"];
-        tweets = await this.client.fetchSearchTweets(`from:${account}`, 100, 1, cursor);
+        tweets = await this.client.fetchSearchTweets(query, 100, 1, cursor);
       }
 
       for (const [tweetDate, tweetList] of Object.entries(tweetsByDate)) {
