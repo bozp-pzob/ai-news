@@ -68,6 +68,23 @@ dotenv.config();
     const configFile = fs.readFileSync(configPath, "utf8");
     const configJSON = JSON.parse(configFile);
     
+    // --- Set default fetchMode for TwitterSource in continuous mode --- 
+    if (configJSON.sources && Array.isArray(configJSON.sources)) {
+      configJSON.sources.forEach((sourceConfig: any) => {
+        if (sourceConfig.type === "TwitterSource") {
+          if (!sourceConfig.params) {
+            sourceConfig.params = {};
+          }
+          // If fetchMode is not already set by the config file, default to 'timeline' for continuous mode
+          if (typeof sourceConfig.params.fetchMode === 'undefined') {
+            sourceConfig.params.fetchMode = 'timeline';
+            console.log(`[IndexConfig] Defaulting TwitterSource fetchMode to: 'timeline' for continuous operation.`);
+          }
+        }
+      });
+    }
+    // --- End Set default fetchMode ---
+    
     /**
      * Apply configuration overrides from the JSON file
      * These settings control the behavior of the aggregator
