@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { ensureDirectoryExists, writeFile } from './fileHelper';
 
 /**
  * Prompt generation utilities for the AI News Aggregator.
@@ -50,28 +51,15 @@ ${jsonStr}
 Only return the final markdown text.`;
 }
 
-const logsDir = path.join(__dirname, '../../logs/prompts'); // Define a logs directory
-
-// Helper function to ensure log directory exists
-const ensureLogDirectoryExists = (dirPath: string) => {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
-    console.log(`Created log directory: ${dirPath}`);
-  }
-};
 
 // Helper function to write prompt to a file
 const logPromptToFile = (topic: string, dateStr: string, prompt: string) => {
-  ensureLogDirectoryExists(logsDir);
+  const logsDir = path.join(__dirname, '../../logs/prompts'); // Define a logs directory
+  ensureDirectoryExists(logsDir);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `${dateStr}_${topic.replace(/\s+/g, '_')}_${timestamp}.log`;
-  const filePath = path.join(logsDir, filename);
-  try {
-    fs.writeFileSync(filePath, prompt);
-    console.log(`Prompt for topic '${topic}' logged to: ${filePath}`);
-  } catch (error) {
-    console.error(`Failed to write prompt to file ${filePath}:`, error);
-  }
+  const filename = `${dateStr}_${topic.replace(/\s+/g, '_')}_${timestamp}`;
+  console.log(`Prompt for topic '${topic}' logged to: ${filename}`);
+  writeFile(logsDir, filename, prompt, 'log');
 };
 
 /**
@@ -264,6 +252,8 @@ Exclude casual conversation, general sentiment, and unrelated commentary. Do not
     prompt += responseFormatInstruction;
   }
 
-  logPromptToFile(topic, dateStr, prompt); // Log the generated prompt
+  if (process.env.DEBUG || process.env.LOG_PROMPT) {
+    logPromptToFile(topic, dateStr, prompt); // Log the generated prompt
+  }
   return prompt;
 }
