@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
   # Run after the main workflow completes
   workflow_run:
-    workflows: ["Run ElizaOS Daily Task"]
+    workflows: ["ElizaOS Daily Summary"]
     branches: [main]
     types:
       - completed
