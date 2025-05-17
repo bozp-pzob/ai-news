@@ -37,7 +37,8 @@ export class OpenAIProvider implements AiProvider {
         name: 'apiKey',
         type: 'string',
         required: true,
-        description: 'OpenAI API key for authentication'
+        description: 'OpenAI API key for authentication',
+        secret: true
       },
       {
         name: 'model',

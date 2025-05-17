@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Config } from './types';
+import { Config, PluginInfo } from './types';
 import { getConfigs, saveConfig, getConfig, runAggregation } from './services/api';
 import { NodeGraph } from './components/NodeGraph';
 import { useWebSocket } from './hooks/useWebSocket';
 import { configStateManager } from './services/ConfigStateManager';
 import { useToast } from './components/ToastProvider';
+import { SecretsManagerDialog } from './components/SecretsManagerDialog';
+import { ResetDialog } from './components/ResetDialog';
+import Sidebar from './components/Sidebar';
+
+// Add a variable at module level to track the last processed config
+let lastProcessedConfig: string | null = null;
 
 function App() {
   const [configs, setConfigs] = useState<string[]>([]);
@@ -22,7 +28,15 @@ function App() {
     }
   });
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [secretSettingsOpen, setSecretSettingsOpen] = useState(false);
+  const [secretsManagerOpen, setSecretsManagerOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('configs'); // State for sidebar tab
+  const [viewMode, setViewMode] = useState<'graph' | 'json'>('graph'); // State for view mode
+  const [showResetDialog, setShowResetDialog] = useState(false);
   const { showToast } = useToast();
+  
+  // Reference to the NodeGraph component for accessing its functions
+  const nodeGraphRef = useRef<any>(null);
   
   // Add file input ref for importing JSON
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,6 +48,9 @@ function App() {
     isConnected: wsConnected,
     refreshStatus
   } = useWebSocket(selectedConfig);
+
+  // Add a flag to track if we're currently in a reset operation
+  const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
     loadConfigs();
@@ -111,13 +128,39 @@ function App() {
     }
   };
 
-  const handleConfigUpdate = (config: Config, isReset?: boolean) => {
-    setConfig(config);
+  // Handle updates to the configuration from NodeGraph
+  const handleConfigUpdate = (updatedConfig: Config, isReset: boolean = false) => {
+    // Create a string representation of the updated config for comparison
+    const updatedConfigString = JSON.stringify(updatedConfig);
     
-    // Only set unsaved changes if this is not a reset operation
-    if (!isReset) {
-      setHasUnsavedChanges(true);
+    // If this is exactly the same config we just processed, break the loop
+    if (lastProcessedConfig === updatedConfigString) {
+      return;
     }
+    
+    // Keep track of this config to prevent duplicate processing
+    lastProcessedConfig = updatedConfigString;
+    
+    // If this is a reset operation or we're in reset protection mode, don't set hasUnsavedChanges
+    if (isReset || isResetting) {
+      setConfig(updatedConfig);
+      return;
+    }
+    
+    // Check if this is a substantive change to avoid unnecessary state updates
+    if (config) {
+      // Use the configStateManager to check for substantive changes
+      const hasSubstantiveChanges = configStateManager.isSubstantiveChange(config, updatedConfig);
+      
+      // If there are no substantive changes, skip state update
+      if (!hasSubstantiveChanges) {
+        return;
+      }
+    }
+    
+    // Normal update - set the config and mark as having unsaved changes
+    setConfig(updatedConfig);
+    setHasUnsavedChanges(true);
   };
   
   // Function to save the current configuration that can be called by child components
@@ -134,48 +177,109 @@ function App() {
       }
       
       // If the configuration needs a name, prompt for it
-      let configName = selectedConfig || '';
+      let configName = selectedConfig || config.name || '';
       if (!configName || configName.trim() === '') {
         const userInput = prompt('Please enter a name for this configuration:', 'my-config');
         if (!userInput || userInput.trim() === '') {
           return false; // User cancelled or provided empty name
         }
         configName = userInput.trim();
+        
+        // Update configuration with the new name
+        const updatedConfig = { ...config, name: configName };
+        setConfig(updatedConfig);
+        setSelectedConfig(configName);
+        configStateManager.updateConfig(updatedConfig);
       }
 
-      await configStateManager.saveToServer()
+      // Make sure everything is in sync before saving
+      configStateManager.forceSync(true);
       
-      // // Force sync the config state manager to ensure all changes are captured
-      // configStateManager.forceSync();
+      // Get the current config from ConfigStateManager
+      const currentConfig = configStateManager.getConfig();
       
-      // // Get the latest config directly from the state manager rather than using the local state
-      // const latestConfig = configStateManager.getConfig();
+      // Use the API's saveConfig function with both name and config parameters
+      // saveConfig returns Promise<void>, so if no exception is thrown, it succeeded
+      await saveConfig(configName, currentConfig);
       
-      // // Ensure the name is properly set
-      // latestConfig.name = configName;
-      
-      // // Save the LATEST config to the server
-      // await saveConfig(configName, latestConfig);
-      
-      // // Update our local state with the latest config that was saved
-      // setConfig(latestConfig);
-      
-      // // Update the selected config name if it was a new config
-      // if (!selectedConfig) {
-      //   setSelectedConfig(configName);
-        
-      //   // Also refresh the list of configs
-      //   await loadConfigs();
-      // }
-      
+      // If we got here, the save was successful
       // Clear unsaved changes flag
       setHasUnsavedChanges(false);
+      // Also clear the pending changes in configStateManager
+      configStateManager.resetPendingChanges();
+      showToast(`Configuration ${configName} saved successfully`, 'success');
+      
+      // Reload configs list to ensure it's up to date
+      loadConfigs();
       
       return true;
     } catch (error) {
       console.error('Error saving config:', error);
       showToast('Failed to save configuration. Please try again.', 'error');
       return false;
+    }
+  };
+
+  // Handle the reset functionality to restore the last saved configuration
+  const handleReset = async () => {
+    try {
+      // Set the resetting flag to true to prevent changes during reset
+      setIsResetting(true);
+      
+      // Get the current config name
+      const configName = config.name;
+      if (!configName) {
+        console.error('Cannot reset without a config name');
+        setIsResetting(false);
+        return;
+      }
+
+      // Load the saved config from the server
+      const savedConfig = await getConfig(configName);
+      if (!savedConfig) {
+        console.error('Failed to load saved config');
+        setIsResetting(false);
+        return;
+      }
+
+      // Make sure the name is set correctly
+      if (!savedConfig.name) {
+        savedConfig.name = configName;
+      }
+
+      // Force sync before changing anything - don't set pending changes
+      configStateManager.forceSync(false);
+      
+      // Update the config state manager with the saved version
+      configStateManager.loadConfig(savedConfig);
+      
+      // Explicitly reset the pendingChanges flag in ConfigStateManager
+      configStateManager.resetPendingChanges();
+      
+      // Set the config in local state
+      setConfig({...savedConfig});
+      
+      // Update the parent component with reset flag
+      // The isReset parameter is crucial for the handleConfigUpdate function
+      handleConfigUpdate(savedConfig, true);
+      
+      // Important: Explicitly set hasUnsavedChanges to false AFTER everything else
+      setHasUnsavedChanges(false);
+      
+      // Close the reset dialog
+      setShowResetDialog(false);
+      
+      // Use a timeout to keep reset protection for a short period
+      // This allows any pending updates to be ignored before we disable reset protection
+      setTimeout(() => {
+        setIsResetting(false);
+      }, 1000);
+      
+      showToast('Configuration has been reset to the last saved state', 'success');
+    } catch (error) {
+      console.error('Error resetting config:', error);
+      showToast('Failed to reset configuration. Please try again.', 'error');
+      setIsResetting(false);
     }
   };
 
@@ -200,7 +304,7 @@ function App() {
   const handleExportJSON = () => {
     try {
       // Make sure everything is in sync before exporting
-      configStateManager.forceSync();
+      configStateManager.forceSync(true);
       
       // Get the current config from ConfigStateManager
       const currentConfig = configStateManager.getConfig();
@@ -248,7 +352,7 @@ function App() {
     if (!file) return;
     
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = (event: ProgressEvent<FileReader>) => {
       try {
         const content = event.target?.result as string;
         const importedConfig = JSON.parse(content) as Config;
@@ -283,7 +387,7 @@ function App() {
         
         // Load the imported config
         configStateManager.loadConfig(importedConfig);
-        configStateManager.forceSync();
+        configStateManager.forceSync(true);
         
         // Update local state
         setConfig(importedConfig);
@@ -312,39 +416,8 @@ function App() {
     reader.readAsText(file);
   };
 
-  return (
-    <div className="min-h-screen bg-stone-950 text-white">
-      {/* Hidden file input for JSON import */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileUpload}
-        accept=".json"
-        className="hidden"
-      />
-      
-      {/* Top Bar */}
-      <div className="bg-stone-900 border-b border-amber-100/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold">AI News Configuration</h1>
-              <div className="ml-8 flex items-center space-x-4">
-                <select
-                  value={selectedConfig || ''}
-                  onChange={(e) => handleConfigSelect(e.target.value)}
-                  className="px-2 py-1 bg-stone-500 text-white rounded-md border-gray-600 shadow-sm focus:border-amber-400 focus:ring-amber-400"
-                >
-                  <option value="">Select a configuration</option>
-                  {configs.map((config) => (
-                    <option key={config} value={config}>
-                      {config}
-                    </option>
-                  ))}
-                </select>
-                
-                <button
-                  onClick={() => {
+  // Handle new config creation
+  const handleNewConfig = () => {
                     // Clear selected config and reset state to empty
                     setSelectedConfig(null);
                     setConfig({
@@ -361,47 +434,87 @@ function App() {
                       }
                     });
                     setHasUnsavedChanges(false);
-                  }}
-                  className="px-3 py-1 text-black bg-amber-300 rounded-md hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-gray-800"
-                >
-                  New Config
-                </button>
-                
-                {/* Export JSON button */}
-                <button
-                  onClick={handleExportJSON}
-                  className="px-3 py-1 bg-stone-800 text-amber-300 border border-amber-400/30 rounded-md hover:bg-stone-700 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-gray-800 flex items-center"
-                  title="Export configuration as JSON"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" className="mr-1.5">
-                    <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-                    <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
-                  </svg>
-                  Export
-                </button>
-                
-                {/* Import JSON button */}
-                <button
-                  onClick={handleImportJSON}
-                  className="px-3 py-1 bg-stone-800 text-amber-300 border border-amber-400/30 rounded-md hover:bg-stone-700 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-gray-800 flex items-center"
-                  title="Import configuration from JSON"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" className="mr-1.5">
-                    <path d="M.5 3a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h14a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5H.5zm1 5.5A.5.5 0 0 1 2 8h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1-.5-.5z"/>
-                    <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
-                  </svg>
-                  Import
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+  };
+  
+  // Function to handle plugin drag from sidebar to NodeGraph
+  const handleDragPlugin = (plugin: PluginInfo, clientX: number, clientY: number) => {
+    // Pass the drag event to the NodeGraph component
+    if (nodeGraphRef.current) {
+      // Access the handleDragPlugin method from the NodeGraph ref
+      nodeGraphRef.current.handleDragPlugin(plugin, clientX, clientY);
+    }
+  };
 
-      {/* Main Content */}
-      <div className="h-[calc(100vh-4rem)]">
-        <div className="h-full">
+  // Handle view mode change
+  const handleViewModeChange = (mode: 'graph' | 'json') => {
+    // If switching to JSON view, ensure ConfigStateManager is synced
+    if (mode === 'json' && viewMode === 'graph') {
+      configStateManager.forceSync();
+    }
+    setViewMode(mode);
+  };
+
+  // Show the reset confirmation dialog
+  const handleResetConfiguration = () => {
+    setShowResetDialog(true);
+  };
+
+  return (
+    <div className="fixed inset-0 flex flex-col bg-stone-950 text-white overflow-hidden">
+      {/* Full-width Toolbar */}
+      <div className="h-12 bg-stone-900 border-b border-stone-700 flex items-center px-4 flex-shrink-0">
+        <h1 className="text-xl font-semibold">AI News Aggregator</h1>
+      </div>
+      
+      <div className="flex flex-1 overflow-hidden">
+        {/* Hidden file input for JSON import */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileUpload}
+          accept=".json"
+          className="hidden"
+        />
+        
+        {/* Sidebar */}
+        <Sidebar 
+          configs={configs}
+          selectedConfig={selectedConfig}
+          onConfigSelect={handleConfigSelect}
+          onNewConfig={handleNewConfig}
+          onExportJSON={handleExportJSON}
+          onImportJSON={handleImportJSON}
+          onOpenSecretsManager={() => setSecretsManagerOpen(true)}
+          onOpenSecretSettings={() => setSecretSettingsOpen(true)}
+          fileInputRef={fileInputRef}
+          hasUnsavedChanges={hasUnsavedChanges}
+          onRunAggregation={handleRunAggregation}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onDragPlugin={handleDragPlugin}
+          config={config}
+          onConfigNameSave={(name) => {
+            // Update config name
+            const updatedConfig = { ...config, name };
+            setConfig(updatedConfig);
+            setSelectedConfig(name);
+            
+            // Update in config state manager
+            configStateManager.updateConfig(updatedConfig);
+            
+            // Mark as having unsaved changes
+            setHasUnsavedChanges(true);
+          }}
+          viewMode={viewMode}
+          onViewModeChange={handleViewModeChange}
+          saveConfiguration={saveConfiguration}
+          resetConfiguration={handleResetConfiguration}
+        />
+
+        {/* Main Content */}
+        <div className="flex-1 overflow-hidden">
           <NodeGraph
+            ref={nodeGraphRef}
             config={selectedConfig ? config : {
               name: '',
               sources: [],
@@ -418,9 +531,25 @@ function App() {
             onConfigUpdate={handleConfigUpdate}
             saveConfiguration={saveConfiguration}
             runAggregation={selectedConfig ? handleRunAggregation : undefined}
+            viewMode={viewMode}
+            hasUnsavedChanges={hasUnsavedChanges}
           />
         </div>
       </div>
+      
+      {/* Secrets Manager Dialog */}
+      <SecretsManagerDialog
+        open={secretsManagerOpen}
+        onClose={() => setSecretsManagerOpen(false)}
+      />
+
+      {/* Reset Dialog */}
+      {showResetDialog && (
+        <ResetDialog
+          onClose={() => setShowResetDialog(false)}
+          onConfirm={() => handleReset()}
+        />
+      )}
     </div>
   );
 }

@@ -16,6 +16,12 @@ export interface PluginInfo {
       type: 'string' | 'number' | 'boolean' | 'string[]';
       required: boolean;
       description: string;
+      /**
+       * When true, this parameter will be treated as sensitive data and will
+       * use the SecretInputSelectField component, allowing users to select
+       * from predefined secrets or enter environment variable references.
+       */
+      secret?: boolean;
     }>;
   };
 }

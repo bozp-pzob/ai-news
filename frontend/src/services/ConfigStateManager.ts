@@ -21,6 +21,7 @@ class ConfigStateManager {
   private selectedNode: string | null = null;
   private eventEmitter = createEventEmitter<ConfigStateEvent>();
   private pendingChanges: boolean = false;
+  private currentEditorText: string = '';
 
   constructor() {
     // Initialize the Config class
@@ -1252,19 +1253,19 @@ class ConfigStateManager {
         return Promise.reject(new Error('Config must have a name'));
       }
       
-      
       // Use dynamic import to avoid circular dependencies
-      return saveConfig(config.name as string, config)
-        .then(() => {
-          // Reset pending changes flag after successful save
-          this.pendingChanges = false;
-          
-          return true;
-        })
-        .catch(error => {
-          console.error('🔄 Error saving config to server:', error);
-            return false;
-        });
+      return new Promise((resolve, reject) => {
+        saveConfig(config.name as string, config)
+          .then(() => {
+            // Reset pending changes flag after successful save
+            this.pendingChanges = false;
+            resolve(true);
+          })
+          .catch(error => {
+            console.error('🔄 Error saving config to server:', error);
+            reject(error);
+          });
+      });
     } catch (error) {
       console.error('Error in saveToServer:', error);
       return Promise.reject(error);
@@ -1293,7 +1294,7 @@ class ConfigStateManager {
   }
 
   // Force synchronization of state with config - maintained for backwards compatibility
-  forceSync(): void {
+  forceSync(setPendingChanges: boolean = false): void {
     // Important: First update port connections from the connections array
     this.updatePortConnectionsFromConnections();
     
@@ -1314,8 +1315,10 @@ class ConfigStateManager {
     this.eventEmitter.emit('nodes-updated', this.nodes);
     this.eventEmitter.emit('connections-updated', this.connections);
       
-    // Mark that we have pending changes
-    this.pendingChanges = true;
+    // Only set pendingChanges if specified
+    if (setPendingChanges) {
+      this.pendingChanges = true;
+    }
   }
 
   private updateNodes(newNodes: Node[]): void {
@@ -1483,6 +1486,109 @@ class ConfigStateManager {
       this.nodes = updatedNodes;
       this.eventEmitter.emit('nodes-updated', this.nodes);
     }
+  }
+
+  // Explicitly reset the pending changes flag to false
+  // This is useful after operations like reset where we want to ensure the flag is properly cleared
+  resetPendingChanges(): void {
+    this.pendingChanges = false;
+  }
+
+  // Store the current editor text for persistance during invalid JSON state
+  setCurrentEditorText(text: string): void {
+    this.currentEditorText = text;
+  }
+
+  // Get the current editor text
+  getCurrentEditorText(): string {
+    return this.currentEditorText;
+  }
+
+  // Attempt to update config from text, but don't fail if JSON is invalid
+  tryUpdateConfigFromText(text: string): boolean {
+    // Store the text regardless of validity
+    this.setCurrentEditorText(text);
+    
+    try {
+      // Attempt to parse the JSON
+      const parsedConfig = JSON.parse(text);
+      
+      // If we can parse it, update the actual config
+      this.configData.updateConfig(parsedConfig);
+      
+      // Rebuild the node graph with the new config
+      this.rebuildNodesAndConnections();
+      
+      // Ensure port connections are correctly updated
+      this.updatePortConnectionsFromConnections();
+      
+      // Make sure nodes and connections are in sync
+      this.nodes = syncNodePortsWithParams(this.nodes);
+      this.connections = cleanupStaleConnections(this.nodes, this.connections);
+      
+      // Mark that we have pending changes
+      this.pendingChanges = true;
+      
+      // Notify all listeners about the changes
+      this.notifyListeners();
+      
+      return true;
+    } catch (error) {
+      // If we can't parse it, don't update the config but don't fail
+      return false;
+    }
+  }
+
+  // Compare two configs to check if there's a substantive change
+  isSubstantiveChange(configA: ConfigType, configB: ConfigType): boolean {
+    // Helper function to normalize a config by removing position info and other UI states
+    const normalizeConfig = (cfg: ConfigType) => {
+      if (!cfg) return null;
+      
+      const copy = {...cfg};
+      
+      // Helper to strip positions from node arrays
+      const stripPositions = (items: any[] | undefined) => {
+        if (!items || !Array.isArray(items)) return [];
+        
+        return items.map(item => {
+          if (!item) return item;
+          
+          const newItem = {...item};
+          
+          // Remove UI-specific properties that don't affect functionality
+          if (newItem.position) delete newItem.position;
+          if (newItem.width) delete newItem.width;
+          if (newItem.height) delete newItem.height;
+          if (newItem.zIndex) delete newItem.zIndex;
+          if (newItem.expanded) delete newItem.expanded;
+          if (newItem.status) delete newItem.status;
+          if (newItem.lastRun) delete newItem.lastRun;
+          
+          return newItem;
+        });
+      };
+      
+      // Normalize each node category
+      if (copy.sources) copy.sources = stripPositions(copy.sources);
+      if (copy.ai) copy.ai = stripPositions(copy.ai);
+      if (copy.enrichers) copy.enrichers = stripPositions(copy.enrichers);
+      if (copy.generators) copy.generators = stripPositions(copy.generators);
+      if (copy.providers) copy.providers = stripPositions(copy.providers);
+      if (copy.storage) copy.storage = stripPositions(copy.storage);
+      
+      return copy;
+    };
+    
+    // Normalize both configs
+    const normalizedA = normalizeConfig(configA);
+    const normalizedB = normalizeConfig(configB);
+    
+    // If either config is null, we can't compare, so assume a change
+    if (!normalizedA || !normalizedB) return true;
+    
+    // Compare the stringified versions
+    return JSON.stringify(normalizedA) !== JSON.stringify(normalizedB);
   }
 }
 

@@ -1,8 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { PluginInfo, PluginConfig } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
 import { configStateManager } from '../services/ConfigStateManager';
+import { PluginInfo, PluginConfig, PluginType } from '../types';
+import { SecretInputField } from './SecretInputField';
+import { SecretInputSelectField } from './SecretInputSelectField';
 import { pluginRegistry } from '../services/PluginRegistry';
 import { useToast } from './ToastProvider';
+
+// Array of parameter name patterns that should be treated as sensitive
+const SENSITIVE_PARAM_PATTERNS = [
+  'api_key', 'apikey', 'key', 'token', 'secret', 'password', 'auth', 'credential',
+  'access_token', 'access_key', 'private_key', 'client_secret', 'security'
+];
+
+// Function to check if a parameter is sensitive based on its name
+const isSensitiveParameter = (paramName: string): boolean => {
+  const lowerName = paramName.toLowerCase();
+  return SENSITIVE_PARAM_PATTERNS.some(pattern => lowerName.includes(pattern));
+};
 
 interface PluginParamDialogProps {
   plugin: PluginInfo | PluginConfig;
@@ -21,6 +35,19 @@ const supportsProviderStorage = (pluginType: string): { provider: boolean, stora
   // Other types don't support provider/storage connections
   return { provider: false, storage: false };
 };
+
+// Add TypeScript interface to type param.secret property
+interface ConstructorInterfaceParameter {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'string[]';
+  required: boolean;
+  description: string;
+  secret?: boolean;
+}
+
+interface ConstructorInterface {
+  parameters: ConstructorInterfaceParameter[];
+}
 
 export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   plugin,
@@ -421,21 +448,21 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     
     // Get constructor interface from plugin or schema
     const constructorInterface = pluginSchema?.constructorInterface || 
-                               ('constructorInterface' in plugin ? plugin.constructorInterface : null);
+                               ('constructorInterface' in plugin ? (plugin as any).constructorInterface : null);
     
     // CSS classes for inputs
     const inputClasses = "p-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500";
     
     
     // Check if plugin has provider/storage parameters in constructor interface
-    const hasProviderParameter = constructorInterface?.parameters.some(param => param.name === 'provider') ?? false;
+    const hasProviderParameter = constructorInterface?.parameters.some((param: { name: string }) => param.name === 'provider') ?? false;
     const isProviderRequired = constructorInterface?.parameters.some(
-      param => param.name === 'provider' && param.required
+      (param: { name: string; required: boolean }) => param.name === 'provider' && param.required
     ) ?? false;
     
-    const hasStorageParameter = constructorInterface?.parameters.some(param => param.name === 'storage') ?? false;
+    const hasStorageParameter = constructorInterface?.parameters.some((param: { name: string }) => param.name === 'storage') ?? false;
     const isStorageRequired = constructorInterface?.parameters.some(
-      param => param.name === 'storage' && param.required
+      (param: { name: string; required: boolean }) => param.name === 'storage' && param.required
     ) ?? false;
     
     return (
@@ -495,7 +522,13 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         )}
         
         {/* Render constructor interface parameters */}
-        {constructorInterface && constructorInterface.parameters.map(param => {
+        {constructorInterface && (constructorInterface.parameters as Array<{
+          name: string;
+          type: 'string' | 'number' | 'boolean' | 'string[]';
+          required: boolean;
+          description: string;
+          secret?: boolean;
+        }>).map(param => {
           const key = param.name;
           
           // Skip provider and storage fields (handled separately)
@@ -588,24 +621,44 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               </div>
             );
           } else {
-            return (
-              <div key={key} className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  {key}
-                  {param.required && <span className="text-red-500 ml-1">*</span>}
-                </label>
-                <input
-                  type="text"
-                  value={params[key] !== undefined ? params[key] : ''}
-                  onChange={(e) => handleParamChange(key, e.target.value)}
-                  className={inputClasses}
-                  required={param.required}
-                />
-                <p className="mt-1 text-xs text-gray-400">
-                  {param.description}
-                </p>
-              </div>
-            );
+            // Check if this is a sensitive parameter that should use SecretInputSelectField
+            // @ts-ignore: param.secret is added to the constructorInterface.parameters type in index.ts
+            if (param.secret === true || isSensitiveParameter(key)) {
+              return (
+                <div key={key} className="mb-4">
+                  <SecretInputSelectField
+                    id={`param-${key}`}
+                    label={key}
+                    value={params[key] !== undefined ? params[key] : ''}
+                    onChange={(value) => handleParamChange(key, value)}
+                    placeholder={`Enter value for ${key}`}
+                    required={param.required}
+                    description={param.description}
+                    secretType={key}
+                  />
+                </div>
+              );
+            } else {
+              // Standard input for non-sensitive string parameters
+              return (
+                <div key={key} className="mb-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    {key}
+                    {param.required && <span className="text-red-500 ml-1">*</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={params[key] !== undefined ? params[key] : ''}
+                    onChange={(e) => handleParamChange(key, e.target.value)}
+                    className={inputClasses}
+                    required={param.required}
+                  />
+                  <p className="mt-1 text-xs text-gray-400">
+                    {param.description}
+                  </p>
+                </div>
+              );
+            }
           }
         })}
         

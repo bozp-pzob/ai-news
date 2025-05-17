@@ -39,7 +39,8 @@ export class SolanaAnalyticsSource implements ContentSource {
         name: 'apiKey',
         type: 'string',
         required: true,
-        description: 'API key for Solana Analytics'
+        description: 'API key for Solana Analytics',
+        secret: true
       },
       {
         name: 'tokenAddresses',

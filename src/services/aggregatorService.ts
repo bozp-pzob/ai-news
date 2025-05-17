@@ -121,7 +121,7 @@ export class AggregatorService {
     }, interval);
   }
 
-  async startAggregation(configName: string, config: Config, settings: any): Promise<string> {
+  async startAggregation(configName: string, config: Config, settings: any, secrets: any): Promise<string> {
     // Create a job ID
     const jobId = uuidv4();
     
@@ -138,7 +138,7 @@ export class AggregatorService {
     this.eventEmitter.emit(`job:${jobId}`, jobStatus);
     
     // Start the continuous aggregation process in the background without blocking
-    this.startContinuousAggregationProcess(jobId, configName, config, settings).catch(error => {
+    this.startContinuousAggregationProcess(jobId, configName, config, settings, secrets).catch(error => {
       console.error(`Error in background continuous aggregation process for job ${jobId}:`, error);
       // Error handling is done inside startContinuousAggregationProcess, so no need to handle it here
     });
@@ -147,7 +147,7 @@ export class AggregatorService {
     return jobId;
   }
 
-  private async startContinuousAggregationProcess(jobId: string, configName: string, config: Config, settings: any): Promise<void> {
+  private async startContinuousAggregationProcess(jobId: string, configName: string, config: Config, settings: any, secrets: any): Promise<void> {
     const jobStatus = this.jobs.get(jobId)!;
     
     // Initialize the intervals array
@@ -177,11 +177,11 @@ export class AggregatorService {
       this.emitJobStatusUpdate(jobId);
 
       // Load configurations
-      let aiConfigs = await loadItems(config.ai, aiClasses, "ai");
-      let sourceConfigs = await loadItems(config.sources, sourceClasses, "source");
-      let enricherConfigs = await loadItems(config.enrichers, enricherClasses, "enrichers");
-      let generatorConfigs = await loadItems(config.generators, generatorClasses, "generators");
-      let storageConfigs = await loadItems(config.storage, storageClasses, "storage");
+      let aiConfigs = await loadItems(config.ai, aiClasses, "ai", secrets);
+      let sourceConfigs = await loadItems(config.sources, sourceClasses, "source", secrets);
+      let enricherConfigs = await loadItems(config.enrichers, enricherClasses, "enrichers", secrets);
+      let generatorConfigs = await loadItems(config.generators, generatorClasses, "generators", secrets);
+      let storageConfigs = await loadItems(config.storage, storageClasses, "storage", secrets);
 
       // Update job status
       jobStatus.progress = 20;
@@ -274,7 +274,7 @@ export class AggregatorService {
     }
   }
 
-  async runAggregationOnce(configName: string, config: Config, settings: any): Promise<string> {
+  async runAggregationOnce(configName: string, config: Config, settings: any, secrets: any): Promise<string> {
     // Create a job ID
     const jobId = uuidv4();
     
@@ -291,7 +291,7 @@ export class AggregatorService {
     this.eventEmitter.emit(`job:${jobId}`, jobStatus);
     
     // Start the aggregation process in the background without blocking
-    this.runAggregationProcess(jobId, configName, config, settings).catch(error => {
+    this.runAggregationProcess(jobId, configName, config, settings, secrets).catch(error => {
       console.error(`Error in background aggregation process for job ${jobId}:`, error);
       // Error handling is done inside runAggregationProcess, so no need to handle it here
     });
@@ -300,7 +300,7 @@ export class AggregatorService {
     return jobId;
   }
 
-  private async runAggregationProcess(jobId: string, configName: string, config: Config, settings: any): Promise<void> {
+  private async runAggregationProcess(jobId: string, configName: string, config: Config, settings: any, secrets: any): Promise<void> {
     const jobStatus = this.jobs.get(jobId)!;
     
     // Initialize the intervals array (even though one-time jobs don't use intervals)
@@ -330,11 +330,11 @@ export class AggregatorService {
       this.emitJobStatusUpdate(jobId);
 
       // Load configurations
-      let aiConfigs = await loadItems(config.ai, aiClasses, "ai");
-      let sourceConfigs = await loadItems(config.sources, sourceClasses, "source");
-      let enricherConfigs = await loadItems(config.enrichers, enricherClasses, "enrichers");
-      let generatorConfigs = await loadItems(config.generators, generatorClasses, "generators");
-      let storageConfigs = await loadItems(config.storage, storageClasses, "storage");
+      let aiConfigs = await loadItems(config.ai, aiClasses, "ai", secrets);
+      let sourceConfigs = await loadItems(config.sources, sourceClasses, "source", secrets);
+      let enricherConfigs = await loadItems(config.enrichers, enricherClasses, "enrichers", secrets);
+      let generatorConfigs = await loadItems(config.generators, generatorClasses, "generators", secrets);
+      let storageConfigs = await loadItems(config.storage, storageClasses, "storage", secrets);
 
       // Update job status after loading configurations
       jobStatus.progress = 20;

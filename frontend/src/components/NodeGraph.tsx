@@ -1,21 +1,20 @@
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
 import { Config, PluginInfo, JobStatus } from '../types';
 import { PluginParamDialog } from './PluginParamDialog';
-import { ConfigDialog } from './ConfigDialog';
-import { PluginPalette } from './PluginPalette';
 import { drawNode, drawGrid, drawConnection, drawConnectionLine } from '../utils/nodeRenderer';
 import { findPortAtCoordinates, isPointInNode, removeNodeConnection, handleNodeConnection, findNodeAtCoordinates, findNodeRecursive, isPointInCollapseButton, syncNodePortsWithParams, cleanupStaleConnections } from '../utils/nodeHandlers';
 import { Node, Connection, PortInfo } from '../types/nodeTypes';
 import { configStateManager } from '../services/ConfigStateManager';
 import { pluginRegistry } from '../services/PluginRegistry';
 import { animateCenterView } from '../utils/animation/centerViewAnimation';
-import { ResetDialog } from './ResetDialog';
 import { getConfig } from '../services/api';
 import { websocketService } from '../services/websocket';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { JobStatusDisplay } from './JobStatusDisplay';
 import { useToast } from './ToastProvider';
 import ReactDOM from 'react-dom';
+import { secretManager } from '../services/SecretManager';
+import { ConfigJsonEditor } from './ConfigJsonEditor';
 
 // Add type constants to represent the pipeline flow steps
 const PIPELINE_STEPS = ['sources', 'enrichers', 'generators'] as const;
@@ -29,14 +28,20 @@ interface HistoricalDateSettings {
   endDate?: string;
 }
 
+// Update the NodeGraphProps interface to include hasUnsavedChanges
 interface NodeGraphProps {
   config: Config;
   onConfigUpdate: (config: Config, isReset?: boolean) => void;
   saveConfiguration?: () => Promise<boolean>;
   runAggregation?: () => Promise<void>;
+  viewMode?: 'graph' | 'json';
+  hasUnsavedChanges?: boolean;
 }
 
-export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, saveConfiguration, runAggregation }) => {
+export const NodeGraph = forwardRef<
+  { handleDragPlugin: (plugin: PluginInfo, clientX: number, clientY: number) => void },
+  NodeGraphProps
+>(({ config, onConfigUpdate, saveConfiguration, runAggregation, viewMode = 'graph', hasUnsavedChanges = false }, ref) => {
   const { showToast } = useToast();
   
   // Get the initial state from the ConfigStateManager
@@ -53,7 +58,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   const [mousePosition, setMousePosition] = useState<{ x: number, y: number } | null>(null);
   const [hoveredPort, setHoveredPort] = useState<PortInfo | null>(null);
   const [showPluginDialog, setShowPluginDialog] = useState(false);
-  const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [selectedPlugin, setSelectedPlugin] = useState<any>(null);
   const [isRedrawing, setIsRedrawing] = useState(false);
   const [autoAdjustViewport, setAutoAdjustViewport] = useState(true);
@@ -64,12 +68,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   const [pluginsLoaded, setPluginsLoaded] = useState(pluginRegistry.isPluginsLoaded());
   const [draggedPlugin, setDraggedPlugin] = useState<PluginInfo | null>(null);
   const [dragPosition, setDragPosition] = useState<{ x: number, y: number } | null>(null);
-  const [showPalette, setShowPalette] = useState(true);
-  const [paletteAnimation, setPaletteAnimation] = useState<'opening' | 'closing' | 'idle'>('idle');
-  const [paletteVisible, setPaletteVisible] = useState(true);
   const [showPipelineFlow, setShowPipelineFlow] = useState(true);
-  const [showResetDialog, setShowResetDialog] = useState(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   // Add state to track if the job status display was manually closed by the user
@@ -93,14 +92,13 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   const [dateRangeMode, setDateRangeMode] = useState<"single" | "range">("single");
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  // After the other useRef declarations, add:
-  const jobTypesRef = useRef<Map<string, boolean>>(new Map()); // Maps jobId -> isRunOnce
-
-  // Add resetInProgress ref
-  const resetInProgress = useRef(false);
   
+  // Add a ref for preventing config update loops
+  const preventConfigUpdateLoopRef = useRef(false);
   // Add a ref to track the previous config name to prevent reloading the same config
   const prevConfigNameRef = useRef<string | null>(null);
+  // After the other useRef declarations, add:
+  const jobTypesRef = useRef<Map<string, boolean>>(new Map()); // Maps jobId -> isRunOnce
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const backBufferRef = useRef<HTMLCanvasElement | null>(null);
@@ -319,9 +317,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       setConnections([]);
       setSelectedNode(null);
       
-      // Always show palette when starting with empty graph
-      setShowPalette(true);
-      
       // Force a redraw to show empty graph
       setTimeout(() => {
         if (canvasRef.current) {
@@ -383,7 +378,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
               nodesToProcess.forEach(processNode);
               
               if (minX === Infinity || minY === Infinity || maxX === -Infinity || maxY === -Infinity) {
-                console.warn('Invalid node bounds calculated');
+                // Invalid node bounds, skip centering
                 return;
               }
               
@@ -1111,7 +1106,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   // Enhanced centering function with proper padding and smooth animation
   const centerView = useCallback(() => {
     if (nodes.length === 0 || !canvasRef.current) {
-      console.warn('Cannot center view: no nodes or canvas not available');
+      // Cannot center view without nodes or canvas
       return;
     }
     
@@ -1141,7 +1136,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     nodes.forEach(processNode);
     
     if (minX === Infinity || minY === Infinity || maxX === -Infinity || maxY === -Infinity) {
-      console.warn('Invalid node bounds calculated');
+      // Invalid node bounds, skip centering
       return;
     }
     
@@ -1196,9 +1191,9 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       // Schedule update instead of immediate state change
       scheduleUpdate(() => {
         setNodes(updatedNodes);
-        if (!resetInProgress.current) {
-          setHasUnsavedChanges(true);
-        }
+        // Instead of updating local state, notify parent of config change
+        const currentConfig = configStateManager.getConfig();
+        onConfigUpdate(currentConfig);
         
         // If nodes were removed and we had a selected node that no longer exists
         if (selectedNode && !findNodeRecursive(updatedNodes, selectedNode)) {
@@ -1212,9 +1207,9 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       // Schedule update instead of immediate state change
       scheduleUpdate(() => {
         setConnections(updatedConnections);
-        if (!resetInProgress.current) {
-          setHasUnsavedChanges(true);
-        }
+        // Instead of updating local state, notify parent of config change
+        const currentConfig = configStateManager.getConfig();
+        onConfigUpdate(currentConfig);
       });
     });
     
@@ -1227,9 +1222,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     const unsubscribeConfig = configStateManager.subscribe('config-updated', (updatedConfig) => {
       scheduleUpdate(() => {
         onConfigUpdate(updatedConfig);
-        if (!resetInProgress.current) {
-          setHasUnsavedChanges(true);
-        }
       });
     });
     
@@ -1777,34 +1769,20 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     drawToScreen();
   };
 
-  // Handle config save
-  const handleConfigSave = (name: string) => {
-    const updatedConfig = { ...config, name };
-    configStateManager.updateConfig(updatedConfig);
-    setShowConfigDialog(false);
-    setHasUnsavedChanges(true);
-  };
-
   // Handle saving config to server
   const handleSaveToServer = async () => {
     try {
-      // Make sure everything is in sync before saving
-      configStateManager.forceSync();
-      
-      // Get the current config from ConfigStateManager
+      // Make sure the config is up to date with current node state
       const currentConfig = configStateManager.getConfig();
       
-      // If the config doesn't have a name or has the default empty name, prompt for a name
-      let configName = currentConfig.name;
-      if (!configName || configName === 'new-config') {
-        const userProvidedName = prompt('Please enter a name for this configuration', 'my-configuration');
-        // If user cancels the prompt, abort saving
-        if (!userProvidedName) {
-          return;
+      // If the configuration is missing a name, prompt for it
+      let configName = currentConfig.name || '';
+      if (!configName || configName.trim() === '') {
+        const userInput = prompt('Please enter a name for this configuration:', 'my-config');
+        if (!userInput || userInput.trim() === '') {
+          return false; // User cancelled or provided empty name
         }
-        configName = userProvidedName;
-        
-        // Update the config with the new name
+        configName = userInput.trim();
         currentConfig.name = configName;
         configStateManager.updateConfig(currentConfig);
       }
@@ -1814,20 +1792,21 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       if (!saveConfiguration) {
         throw new Error('saveConfiguration function is not defined');
       }
-      const success = await saveConfiguration();
+      const result = await saveConfiguration();
       
-      if (success) {
+      // Consider it successful if result is true or undefined (void Promise that completed)
+      if (result === false) {
+        showToast('Failed to save configuration. Please try again.', 'error');
+        return false;
+      } else {
         // Show success message
         showToast(`Configuration ${configName} saved successfully`, 'success');
-        
-        // Reset unsaved changes flag
-        setHasUnsavedChanges(false);
-      } else {
-        throw new Error('Save operation failed');
+        return true;
       }
     } catch (error) {
       console.error('Error saving config to server:', error);
       showToast('Failed to save configuration. Please try again.', 'error');
+      return false;
     }
   };
 
@@ -1911,31 +1890,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
   const handleDragLeave = () => {
     // Clear drag position but keep dragged plugin
     setDragPosition(null);
-  };
-  
-  // Toggle palette visibility with animation
-  const togglePalette = () => {
-    if (paletteAnimation === 'idle') {
-      if (paletteVisible) {
-        // Start closing animation
-        setPaletteAnimation('closing');
-        setShowPalette(false);
-        // After animation completes, hide palette completely
-        setTimeout(() => {
-          setPaletteVisible(false);
-          setPaletteAnimation('idle');
-        }, 300); // Match animation duration
-      } else {
-        // Make palette visible but start with animation
-        setPaletteVisible(true);
-        setShowPalette(true);
-        setPaletteAnimation('opening');
-        // After animation completes, set to idle
-        setTimeout(() => {
-          setPaletteAnimation('idle');
-        }, 300); // Match animation duration
-      }
-    }
   };
 
   // Add animation effect for empty state
@@ -2046,66 +2000,12 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     return () => {};
   }, [showPluginDialog, selectedPlugin]);
 
-  // Handle reset to saved config
-  const handleReset = async () => {
-    try {
-      // Set reset in progress flag
-      resetInProgress.current = true;
-      
-      // Get the current config name
-      const configName = config.name;
-      if (!configName) {
-        console.error('Cannot reset without a config name');
-        return;
-      }
-
-      // Immediately set hasUnsavedChanges to false to prevent any state updates from enabling the button
-      setHasUnsavedChanges(false);
-
-      // Load the saved config from the server
-      const savedConfig = await getConfig(configName);
-      if (!savedConfig) {
-        console.error('Failed to load saved config');
-        return;
-      }
-
-      // Update the config state manager with the saved version
-      configStateManager.loadConfig(savedConfig);
-      
-      // Force a sync to rebuild nodes and connections
-      configStateManager.forceSync();
-      
-      // Update local state with the latest from state manager
-      setNodes(configStateManager.getNodes());
-      setConnections(configStateManager.getConnections());
-      
-      // Update the parent component with the saved config
-      onConfigUpdate(savedConfig);
-      
-      // Force a redraw to show the reset state
-      drawToBackBuffer();
-      drawToScreen();
-      
-      setShowResetDialog(false);
-      
-      // Clear reset in progress flag after a short delay to ensure all state updates are complete
-      setTimeout(() => {
-        resetInProgress.current = false;
-      }, 100);
-    } catch (error) {
-      console.error('Error resetting config:', error);
-      showToast('Failed to reset configuration. Please try again.', 'error');
-      resetInProgress.current = false;
-    }
-  };
-
   // Add an effect to force redraw when nodes change, particularly when their status changes
   useEffect(() => {
     // This effect should trigger whenever nodes change, especially their status
     if (nodes.length > 0) {
       // Check if any node has a status
       const hasStatusNodes = nodes.some(node => node.status !== undefined && node.status !== null);
-      
       
       // Force redraw on the next frame
       if (canvasRef.current) {
@@ -2127,9 +2027,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     try {
       // Get the latest config from the state manager
       const currentConfig = configStateManager.getConfig();
-      
-      // Set runOnce to true - this is a one-time operation
-      currentConfig.runOnce = true;
       
       // Set onlyFetch and onlyGenerate settings
       if (!currentConfig.settings) {
@@ -2171,13 +2068,20 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         }
       }
       
+      // Extract secrets from the configuration instead of replacing them directly
+      // This keeps references like "process.env.API_KEY" in the config but sends the actual values separately
+      const { config: cleanConfig, secrets } = await secretManager.extractSecretsForBackend(currentConfig);
+      
       // Make a direct REST API call to run the aggregation
-      const response = await fetch(`http://localhost:3000/aggregate/${config.name}/run`, {
+      const response = await fetch(`http://localhost:3000/aggregate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(currentConfig),
+        body: JSON.stringify({
+          config: cleanConfig,
+          secrets: secrets // Pass secrets as a separate object
+        }),
       });
       
       if (!response.ok) {
@@ -2203,7 +2107,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
       showToast("Failed to run aggregation. Please try again.", 'error');
     }
   };
-
+  
   // Handle start/stop continuous aggregation
   const handleToggleAggregation = async () => {
     if (!config || !config.name) {
@@ -2293,13 +2197,20 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
         }
       }
       
+      // Extract secrets from the configuration instead of replacing them directly
+      // This keeps references like "process.env.API_KEY" in the config but sends the actual values separately
+      const { config: cleanConfig, secrets } = await secretManager.extractSecretsForBackend(currentConfig);
+      
       // Start the aggregation
       const response = await fetch(`http://localhost:3000/aggregate/${config.name}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(currentConfig),
+        body: JSON.stringify({
+          config: cleanConfig,
+          secrets: secrets // Pass secrets as a separate object
+        }),
       });
       
       if (!response.ok) {
@@ -2369,102 +2280,88 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
     }
   }, [config.name]);
 
+  // Expose methods to the parent component via ref
+  useImperativeHandle(ref, () => ({
+    handleDragPlugin
+  }));
+
+  // Add effect to ensure ConfigStateManager is synced when in JSON view
+  useEffect(() => {
+    if (viewMode === 'json') {
+      // Make sure the ConfigStateManager has the latest state
+      configStateManager.forceSync();
+    }
+  }, [viewMode, nodes, connections]);
+
+  // Add event listeners for custom events
+  useEffect(() => {
+    // Event handler for centering the graph view
+    const handleCenterGraph = () => {
+      if (viewMode === 'graph') {
+        centerView();
+      }
+    };
+
+    // Event handler for formatting JSON
+    const handleFormatJson = () => {
+      if (viewMode === 'json') {
+        // Find and dispatch an event to the ConfigJsonEditor's format button
+        const formatJsonButton = document.querySelector('.json-editor-format-button');
+        if (formatJsonButton) {
+          formatJsonButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        }
+      }
+    };
+
+    // Add event listeners
+    window.addEventListener('centerGraph', handleCenterGraph);
+    window.addEventListener('formatJson', handleFormatJson);
+
+    // Cleanup function
+    return () => {
+      window.removeEventListener('centerGraph', handleCenterGraph);
+      window.removeEventListener('formatJson', handleFormatJson);
+    };
+  }, [viewMode]);
+
   return (
-    <div className="relative w-full h-full">
-      <div 
-        className={`${paletteVisible ? 'block' : 'hidden'} absolute top-0 left-0 bottom-0 z-10 transition-all duration-300 ease-in-out ${
-          paletteAnimation === 'opening' ? 'animate-slide-in-left' : 
-          paletteAnimation === 'closing' ? 'animate-slide-out-left' : ''
-        }`}
-        style={{
-          width: '20rem', // 320px same as w-80
-          transform: paletteAnimation === 'closing' ? 'translateX(-100%)' : 
-                     paletteAnimation === 'opening' ? 'translateX(0)' : '',
-          transition: 'transform 300ms ease-in-out',
-          boxShadow: '5px 0 15px rgba(0, 0, 0, 0.5)'
-        }}
-      >
-        <PluginPalette 
-          onDragPlugin={handleDragPlugin} 
-          onlyFetch={onlyFetch} 
-          onlyGenerate={onlyGenerate} 
-        />
-      </div>
-      
+    <div className="h-full w-full flex flex-col overflow-hidden">
       <div 
         className="flex-1 flex flex-col relative transition-all duration-300 ease-in-out h-full"
-        style={{
-          marginLeft: paletteVisible && paletteAnimation !== 'closing' ? '20rem' : '0'
-        }}
       >
         <div className="absolute top-4 left-4 z-10 flex space-x-2">
-          <button
-            onClick={togglePalette}
-            className="w-10 h-10 bg-stone-800/90 text-amber-300 border-stone-600/50 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30 transition-colors duration-300"
-            title={paletteVisible ? "Hide plugin palette" : "Show plugin palette"}
-            disabled={paletteAnimation !== 'idle'}
-          >
-            {paletteVisible ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 4 16 16" stroke="currentColor" className="transition-transform duration-300">
-                <rect x="3" y="4" width="2" height="16" rx="1" fill="currentColor" />
-                <polyline points="14,8 10,12 14,16" fill="none" stroke="currentColor" strokeWidth="2" />
+          {viewMode === 'graph' && (
+            <button
+              onClick={centerView}
+              className="w-10 h-10 bg-stone-800/90 text-amber-300 border-stone-600/50 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30"
+              title="Center view"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+                <line x1="12" y1="3" x2="12" y2="6" stroke="currentColor" strokeWidth="2" />
+                <line x1="12" y1="18" x2="12" y2="21" stroke="currentColor" strokeWidth="2" />
+                <line x1="3" y1="12" x2="6" y2="12" stroke="currentColor" strokeWidth="2" />
+                <line x1="18" y1="12" x2="21" y2="12" stroke="currentColor" strokeWidth="2" />
+                <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="2" fill="none" />
               </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 4 16 16" stroke="currentColor" className="transition-transform duration-300">
-                <rect x="3" y="4" width="2" height="16" rx="1" fill="currentColor" />
-                <polyline points="10,8 14,12 10,16" fill="none" stroke="currentColor" strokeWidth="2" />
+            </button>
+          )}
+          {viewMode === 'json' && (
+            <button
+              onClick={() => {
+                const formatJsonButton = document.querySelector('.json-editor-format-button');
+                if (formatJsonButton) {
+                  formatJsonButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                }
+              }}
+              className="w-10 h-10 bg-stone-800/90 text-amber-300 border-stone-600/50 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30"
+              title="Format JSON"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
               </svg>
-            )}
-          </button>
-          
-          <button
-            onClick={centerView}
-            className="w-10 h-10 bg-stone-800/90 text-amber-300 border-stone-600/50 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30"
-            title="Center view"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-              <line x1="12" y1="3" x2="12" y2="6" stroke="currentColor" strokeWidth="2" />
-              <line x1="12" y1="18" x2="12" y2="21" stroke="currentColor" strokeWidth="2" />
-              <line x1="3" y1="12" x2="6" y2="12" stroke="currentColor" strokeWidth="2" />
-              <line x1="18" y1="12" x2="21" y2="12" stroke="currentColor" strokeWidth="2" />
-              <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="2" fill="none" />
-            </svg>
-          </button>
-          
-          <button
-            onClick={() => setShowConfigDialog(true)}
-            className="w-10 h-10 bg-stone-800/90 text-amber-300 border-stone-600/50 rounded hover:bg-stone-700 focus:outline-none flex items-center justify-center border border-amber-400/30"
-            title="Configure node graph"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-              <path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/>
-            </svg>
-          </button>
-          <button
-            onClick={() => setShowResetDialog(true)}
-            className={`w-10 h-10 rounded focus:outline-none flex items-center justify-center ${
-              hasUnsavedChanges 
-                ? 'bg-stone-800/90 text-amber-300 border-stone-600/50 hover:bg-stone-600 border-amber-400/30 border' 
-                : 'bg-stone-900 text-gray-300 cursor-not-allowed'
-            }`}
-            title="Reset to saved configuration"
-            disabled={!hasUnsavedChanges}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M480-80q-75 0-140.5-28.5t-114-77q-48.5-48.5-77-114T120-440h80q0 117 81.5 198.5T480-160q117 0 198.5-81.5T760-440q0-117-81.5-198.5T480-720h-6l62 62-56 58-160-160 160-160 56 58-62 62h6q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-440q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-80Z"/></svg>
-          </button>
-          <button
-            onClick={handleSaveToServer}
-            className={`px-4 h-10 rounded focus:outline-none flex items-center justify-center shadow-md ${
-              hasUnsavedChanges 
-                ? 'text-black bg-amber-300 hover:bg-amber-400' 
-                : 'bg-stone-900 text-gray-300 cursor-not-allowed'
-            }`}
-            title={hasUnsavedChanges ? "Save configuration to server" : "No changes to save"}
-            disabled={!hasUnsavedChanges}
-          >
-            Save Config
-          </button>
+            </button>
+          )}
         </div>
         <div className="absolute top-4 right-4 z-10 flex space-x-2">
           {/* Completely redesigned run control panel */}
@@ -2787,31 +2684,86 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           </div>
         </div>
         
-        <div className="flex-1 overflow-hidden w-full h-full" ref={containerRef}>
-          <canvas
-            ref={canvasRef}
-            className="w-full h-full block"
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onDragOver={handleDragOver}
-            onDrop={handleDropPlugin}
-            onDragLeave={handleDragLeave}
-          ></canvas>
-          
-          {/* Display Job Status */}
-          {jobStatus && !jobStatusDisplayClosed && (
-            <div className="absolute bottom-4 right-4 z-50 w-96 shadow-xl">
-              <div className="bg-red-500 absolute top-0 right-0 h-3 w-3 rounded-full animate-ping"></div>
-              <JobStatusDisplay 
-                key={jobStatus.jobId}
-                jobStatus={jobStatus}
-                runMode={isRunOnceJob ? "once" : "continuous"}
-                onClose={() => setJobStatusDisplayClosed(true)}
-              />
-            </div>
-          )}
-        </div>
+        {/* Conditionally render either the graph canvas or the JSON editor based on viewMode */}
+        {viewMode === 'graph' ? (
+          <div className="flex-1 overflow-hidden w-full h-full" ref={containerRef}>
+            <canvas
+              ref={canvasRef}
+              className="w-full h-full block"
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onDragOver={handleDragOver}
+              onDrop={handleDropPlugin}
+              onDragLeave={handleDragLeave}
+            ></canvas>
+            
+            {/* Display Job Status */}
+            {jobStatus && !jobStatusDisplayClosed && (
+              <div className="absolute bottom-4 right-4 z-50 w-96 shadow-xl">
+                <div className="bg-red-500 absolute top-0 right-0 h-3 w-3 rounded-full animate-ping"></div>
+                <JobStatusDisplay 
+                  key={jobStatus.jobId}
+                  jobStatus={jobStatus}
+                  runMode={isRunOnceJob ? "once" : "continuous"}
+                  onClose={() => setJobStatusDisplayClosed(true)}
+                />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex-1 w-full h-full">
+            {/* Force synchronization before rendering the JSON editor */}
+            {(() => {
+              // Immediately synchronize the state
+              configStateManager.forceSync();
+              
+              return (
+                <ConfigJsonEditor 
+                  config={configStateManager.getConfig()}
+                  onConfigUpdate={(updatedConfig: Config) => {
+                    // Prevent duplicate updates by checking if we're already in an update
+                    if (preventConfigUpdateLoopRef.current) return;
+                    
+                    // Create a string representation for comparison
+                    const updatedConfigString = JSON.stringify(updatedConfig);
+                    
+                    // Set the flag to prevent recursive updates
+                    preventConfigUpdateLoopRef.current = true;
+                    
+                    try {
+                      // Check if this update represents a substantive change
+                      const currentConfig = configStateManager.getConfig();
+                      const hasSubstantiveChanges = configStateManager.isSubstantiveChange(
+                        currentConfig, updatedConfig
+                      );
+                      
+                      // Only process meaningful changes
+                      if (hasSubstantiveChanges) {
+                        // Update the config via ConfigStateManager to ensure consistency
+                        configStateManager.loadConfig(updatedConfig);
+                        configStateManager.forceSync();
+                        
+                        // Update local state
+                        setNodes(configStateManager.getNodes());
+                        setConnections(configStateManager.getConnections());
+                        
+                        // Update parent
+                        onConfigUpdate(updatedConfig);
+                      }
+                    } finally {
+                      // Reset the flag after a short delay to ensure all updates have completed
+                      setTimeout(() => {
+                        preventConfigUpdateLoopRef.current = false;
+                      }, 50); // Increase timeout to ensure all updates have time to complete
+                    }
+                  }}
+                  saveConfig={handleSaveToServer}
+                />
+              );
+            })()}
+          </div>
+        )}
       </div>
       
       {showPluginDialog && selectedPlugin && (
@@ -2822,21 +2774,6 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({ config, onConfigUpdate, sa
           onAdd={handleAddPlugin}
         />
       )}
-      
-      {showConfigDialog && (
-        <ConfigDialog
-          config={config}
-          onClose={() => setShowConfigDialog(false)}
-          onSave={handleConfigSave}
-        />
-      )}
-
-      {showResetDialog && (
-        <ResetDialog
-          onClose={() => setShowResetDialog(false)}
-          onConfirm={handleReset}
-        />
-      )}
     </div>
   );
-};
+});

@@ -58,25 +58,29 @@ export class TwitterSource implements ContentSource {
         name: 'username',
         type: 'string',
         required: false,
-        description: 'Twitter username for authentication'
+        description: 'Twitter username for authentication',
+        secret: true
       },
       {
         name: 'password',
         type: 'string',
         required: false,
-        description: 'Twitter password for authentication'
+        description: 'Twitter password for authentication',
+        secret: true
       },
       {
         name: 'email',
         type: 'string',
         required: false,
-        description: 'Email associated with Twitter account'
+        description: 'Email associated with Twitter account',
+        secret: true
       },
       {
         name: 'cookies',
         type: 'string',
         required: false,
-        description: 'JSON string of Twitter cookies'
+        description: 'JSON string of Twitter cookies',
+        secret: true
       },
       {
         name: 'accounts',

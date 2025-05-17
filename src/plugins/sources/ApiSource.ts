@@ -66,7 +66,8 @@ export class ApiSource implements ContentSource {
         name: 'apiKey',
         type: 'string',
         required: true,
-        description: 'API key for authentication'
+        description: 'API key for authentication',
+        secret: true
       }
     ]
   };

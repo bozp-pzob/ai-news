@@ -152,22 +152,6 @@ export class WebSocketService {
       }
 
       switch (data.action) {
-        case 'start':
-          const startJobId = await this.aggregatorService.startAggregation(configName, data.config, undefined);
-          ws.send(JSON.stringify({
-            type: 'jobStarted',
-            jobId: startJobId
-          }));
-          break;
-          
-        case 'run':
-          const runJobId = await this.aggregatorService.runAggregationOnce(configName, data.config, undefined);
-          ws.send(JSON.stringify({
-            type: 'jobStarted',
-            jobId: runJobId
-          }));
-          break;
-          
         case 'stop':
           this.aggregatorService.stopAggregation(configName);
           break;

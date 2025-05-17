@@ -84,69 +84,37 @@ app.delete('/config/:name', async (req, res) => {
   }
 });
 
-// POST /aggregate/:configName - Start content aggregation or run once based on request body { runOnce: true }
-app.post('/aggregate/:configName', async (req, res) => {
+// POST /aggregate/:configName/run - Run aggregation once without starting continuous process
+app.post('/aggregate', async (req, res) => {
   try {
-    const configName = req.params.configName;
+    const _config: any = req.body?.config || {};
+    // SECRETS PASSED IN FROM CLIENT. NEVER LOG. NEVER SAVE
+    const secrets: any = req.body?.secrets || {};
+
+    const configName: string = _config?.name || '';
+    const runOnce: boolean = _config?.settings?.runOnce === true;
+    const onlyGenerate: boolean = _config?.settings?.onlyGenerate === true;
+    const onlyFetch: boolean = _config?.settings?.onlyFetch === true;
+    const historicalDate = _config?.settings?.historicalDate;
+
     const config = await configService.getConfig(configName);
-    // Determine run mode: continuous or one-time
-    const runOnce: boolean = req.body?.runOnce === true;
-    const onlyGenerate: boolean = req.body?.settings?.onlyGenerate === true;
-    const onlyFetch: boolean = req.body?.settings?.onlyFetch === true;
-    const historicalDate = req.body?.settings?.historicalDate;
-    
+
     const runtimeSettings = {
       runOnce,
       onlyGenerate,
       onlyFetch,
       historicalDate
     }
-    
-    console.log('Runtime settings:', runtimeSettings);
+
     let jobId: string;
     if (runOnce) {
-      jobId = await aggregatorService.runAggregationOnce(configName, config, runtimeSettings);
+      jobId = await aggregatorService.runAggregationOnce(configName, config, runtimeSettings, secrets);
     } else {
-      jobId = await aggregatorService.startAggregation(configName, config, runtimeSettings);
+      jobId = await aggregatorService.startAggregation(configName, config, runtimeSettings, secrets);
     }
-    
-    // Broadcast updated status and job status to all WebSocket clients
-    webSocketService.broadcastStatus(configName);
-    webSocketService.broadcastJobStatus(jobId);
-    
-    res.json({ 
-      message: runOnce ? 'Content aggregation executed successfully' : 'Content aggregation started successfully',
-      jobId
-    });
-  } catch (error: any) {
-    const errMsg = (req.body?.runOnce === true)
-      ? 'Failed to execute content aggregation'
-      : 'Failed to start content aggregation';
-    res.status(500).json({ error: error.message || errMsg });
-  }
-});
-
-// POST /aggregate/:configName/run - Run aggregation once without starting continuous process
-app.post('/aggregate/:configName/run', async (req, res) => {
-  try {
-    const runOnce: boolean = req.body?.runOnce === true;
-    const onlyGenerate: boolean = req.body?.settings?.onlyGenerate === true;
-    const onlyFetch: boolean = req.body?.settings?.onlyFetch === true;
-    const historicalDate = req.body?.settings?.historicalDate;
-    
-    const runtimeSettings = {
-      runOnce,
-      onlyGenerate,
-      onlyFetch,
-      historicalDate
-    }
-
-    console.log('Runtime settings:', runtimeSettings);
-    const config = await configService.getConfig(req.params.configName);
-    const jobId = await aggregatorService.runAggregationOnce(req.params.configName, config, runtimeSettings);
     
     // Broadcast the updated status to all WebSocket clients
-    webSocketService.broadcastStatus(req.params.configName);
+    webSocketService.broadcastStatus(configName);
     // Also broadcast the initial job status
     webSocketService.broadcastJobStatus(jobId);
     

@@ -41,7 +41,8 @@ export class DiscordAnnouncementSource implements ContentSource {
         name: 'botToken',
         type: 'string',
         required: true,
-        description: 'Discord bot token for authentication'
+        description: 'Discord bot token for authentication',
+        secret: true
       },
       {
         name: 'channelIds',

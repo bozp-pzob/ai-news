@@ -39,7 +39,8 @@ export class CodexAnalyticsSource implements ContentSource {
         name: 'apiKey',
         type: 'string',
         required: true,
-        description: 'API key for Codex Analytics'
+        description: 'API key for Codex Analytics',
+        secret: true
       },
       {
         name: 'tokenAddresses',

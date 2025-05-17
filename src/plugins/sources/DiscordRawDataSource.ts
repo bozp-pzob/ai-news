@@ -65,7 +65,8 @@ export class DiscordRawDataSource implements ContentSource {
         name: 'botToken',
         type: 'string',
         required: true,
-        description: 'Discord bot token for authentication'
+        description: 'Discord bot token for authentication',
+        secret: true
       },
       {
         name: 'channelIds',
@@ -77,7 +78,8 @@ export class DiscordRawDataSource implements ContentSource {
         name: 'guildId',
         type: 'string',
         required: true,
-        description: 'Discord bot token for authentication'
+        description: 'Discord bot token for authentication',
+        secret: true
       },
       {
         name: 'storage',
