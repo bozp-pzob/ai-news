@@ -27,6 +27,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
+    "prebuild": "mkdir -p public/static",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"

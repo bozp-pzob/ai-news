@@ -330,3 +330,25 @@ CREATE TABLE IF NOT EXISTS cursor (
   message_id TEXT NOT NULL  -- Last fetched Discord message snowflake ID
 );
 ```
+
+## Static Plugin Build Module
+
+The project now includes a static build module that pre-generates a JSON file containing all plugin modules and their constructor interfaces. This allows the frontend to load plugin data without requiring backend API calls, which is useful for:
+
+1. Static hosting scenarios where the frontend is deployed independently
+2. Faster initial loading experience
+3. Fallback mechanism when the backend is unavailable
+
+### Using the Static Build
+
+```bash
+# Generate only the static plugins file
+npm run build:plugins
+
+# Full build including TypeScript compilation, static plugins, and frontend
+npm run build:all
+```
+
+The frontend will automatically attempt to load plugins from the static file first, falling back to the API if needed. This provides a more resilient application that can start with a complete set of available plugins even when experiencing backend connectivity issues.
+
+See [README-static-plugins.md](README-static-plugins.md) for detailed documentation about this feature.
