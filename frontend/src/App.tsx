@@ -8,6 +8,8 @@ import { useToast } from './components/ToastProvider';
 import { SecretsManagerDialog } from './components/SecretsManagerDialog';
 import { ResetDialog } from './components/ResetDialog';
 import Sidebar from './components/Sidebar';
+import { secretManager } from './services/SecretManager';
+import { UnlockDatabaseDialog } from './components/UnlockDatabaseDialog';
 
 // Add a variable at module level to track the last processed config
 let lastProcessedConfig: string | null = null;
@@ -33,6 +35,8 @@ function App() {
   const [activeTab, setActiveTab] = useState('configs'); // State for sidebar tab
   const [viewMode, setViewMode] = useState<'graph' | 'json'>('graph'); // State for view mode
   const [showResetDialog, setShowResetDialog] = useState(false);
+  const [unlockDatabaseOpen, setUnlockDatabaseOpen] = useState(false);
+  const [databaseLocked, setDatabaseLocked] = useState(false);
   const { showToast } = useToast();
   
   // Reference to the NodeGraph component for accessing its functions
@@ -81,6 +85,41 @@ function App() {
       }
     };
   }, [wsConnected, selectedConfig, refreshStatus]);
+
+  // Initialize SecretManager on app startup
+  useEffect(() => {
+    console.log('App starting, initializing SecretManager...');
+    secretManager.initialize().then(() => {
+      console.log('SecretManager initialized in App component');
+      checkDatabaseLockStatus();
+    }).catch(error => {
+      console.error('Error initializing SecretManager in App component:', error);
+    });
+  }, []);
+
+  // Check if the database is password-protected and locked
+  const checkDatabaseLockStatus = () => {
+    const persistence = (secretManager as any).persistence;
+    if (persistence?.enabled && persistence?.passwordProtected) {
+      // Check if we can access secrets to determine if the database is locked
+      const secrets = secretManager.listSecrets();
+      const isLocked = secrets.length === 0; // If we can't access secrets, the database is likely locked
+      setDatabaseLocked(isLocked);
+      if (isLocked) {
+        console.log('Database is locked and requires a password');
+        // Only automatically show the unlock dialog if we're not already in a different dialog
+        if (!secretSettingsOpen && !secretsManagerOpen && !showResetDialog) {
+          setUnlockDatabaseOpen(true);
+        }
+      }
+    }
+  };
+  
+  // Handle successful database unlock
+  const handleDatabaseUnlocked = () => {
+    setDatabaseLocked(false);
+    showToast('Database unlocked successfully', 'success');
+  };
 
   const loadConfigs = async () => {
     try {
@@ -486,6 +525,7 @@ function App() {
           onImportJSON={handleImportJSON}
           onOpenSecretsManager={() => setSecretsManagerOpen(true)}
           onOpenSecretSettings={() => setSecretSettingsOpen(true)}
+          onUnlockDatabase={() => setUnlockDatabaseOpen(true)}
           fileInputRef={fileInputRef}
           hasUnsavedChanges={hasUnsavedChanges}
           onRunAggregation={handleRunAggregation}
@@ -550,6 +590,12 @@ function App() {
           onConfirm={() => handleReset()}
         />
       )}
+
+      <UnlockDatabaseDialog
+        open={unlockDatabaseOpen}
+        onClose={() => setUnlockDatabaseOpen(false)}
+        onUnlocked={handleDatabaseUnlocked}
+      />
     </div>
   );
 }

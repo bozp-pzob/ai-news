@@ -27,6 +27,7 @@ export const ConfigJsonEditor: React.FC<ConfigJsonEditorProps> = ({
   const lineNumbersRef = useRef<HTMLDivElement>(null);
   const isInternalUpdate = useRef<boolean>(false);
   const lastParsedConfig = useRef<string>('');
+  const lastConfigProp = useRef<string>('');
 
   // Format the JSON with proper indentation when component mounts or config changes
   useEffect(() => {
@@ -37,6 +38,10 @@ export const ConfigJsonEditor: React.FC<ConfigJsonEditorProps> = ({
       // Get the JSON string representation of the current config
       const configString = JSON.stringify(config);
       
+      // Store the current config prop for comparison with future updates
+      const previousConfigProp = lastConfigProp.current;
+      lastConfigProp.current = configString;
+      
       // If this is exactly the same config we already processed, skip entirely
       if (lastParsedConfig.current === configString) {
         return;
@@ -45,8 +50,9 @@ export const ConfigJsonEditor: React.FC<ConfigJsonEditorProps> = ({
       // Check if there's stored editor text from a previous editing session
       const storedText = configStateManager.getCurrentEditorText();
       
-      // If we have no stored text or this is initial load
-      if (!storedText || !storedText.trim()) {
+      // If we have no stored text, this is initial load, or the config has completely changed
+      // (determined by comparing with previous config prop)
+      if (!storedText || !storedText.trim() || (previousConfigProp && previousConfigProp !== configString)) {
         // Use the formatted config
         const formatted = JSON.stringify(config, null, 2);
         setJsonText(formatted);
