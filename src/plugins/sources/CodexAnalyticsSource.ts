@@ -33,6 +33,24 @@ export class CodexAnalyticsSource implements ContentSource {
   /** List of token addresses to track */
   private tokenAddresses: string[];
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'apiKey',
+        type: 'string',
+        required: true,
+        description: 'API key for Codex Analytics',
+        secret: true
+      },
+      {
+        name: 'tokenAddresses',
+        type: 'string[]',
+        required: true,
+        description: 'Array of token addresses to track'
+      }
+    ]
+  };
+
   /**
    * Creates a new CodexAnalyticsSource instance
    * @param {CodexAnalyticsSourceConfig} config - Configuration object for the analytics source

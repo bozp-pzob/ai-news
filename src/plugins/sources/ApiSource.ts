@@ -48,6 +48,30 @@ export class ApiSource implements ContentSource {
   /** API authentication key */
   private apiKey: string;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'name',
+        type: 'string',
+        required: true,
+        description: 'Name of the API source'
+      },
+      {
+        name: 'endpoint',
+        type: 'string',
+        required: true,
+        description: 'API endpoint URL'
+      },
+      {
+        name: 'apiKey',
+        type: 'string',
+        required: true,
+        description: 'API key for authentication',
+        secret: true
+      }
+    ]
+  };
+
   /**
    * Creates a new ApiSource instance
    * @param {ApiSourceConfig} config - Configuration object for the API source

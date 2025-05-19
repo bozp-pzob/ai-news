@@ -54,6 +54,53 @@ export class DailySummaryGenerator {
   /** Force Content grouping to be by Source types */
   private groupBySourceType: boolean;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'provider',
+        type: 'AIProvider',
+        required: true,
+        description: 'AI Provider plugin for the generator to use to create the Daily Summary.'
+      },
+      {
+        name: 'storage',
+        type: 'StoragePlugin',
+        required: true,
+        description: 'Storage Plugin to store the generated Daily Summary.'
+      },
+      {
+        name: 'summaryType',
+        type: 'string',
+        required: true,
+        description: 'Type for summary to store in the database.'
+      },
+      {
+        name: 'source',
+        type: 'string',
+        required: false,
+        description: 'Specific source to generate the summary off.'
+      },
+      {
+        name: 'outputPath',
+        type: 'string',
+        required: false,
+        description: 'Location to store summary for md and json generation'
+      },
+      {
+        name: 'maxGroupsToSummarize',
+        type: 'string',
+        required: false,
+        description: 'Max number of groups to generate summaries off ( Default 10 ).'
+      },
+      {
+        name: 'groupBySourceType',
+        type: 'boolean',
+        required: false,
+        description: 'Group by source type from storage, instead of topics generated from enriching.'
+      }
+    ]
+  };
+  
   /**
    * Creates a new DailySummaryGenerator instance
    * @param {DailySummaryGeneratorConfig} config - Configuration object for the generator
