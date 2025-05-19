@@ -4,6 +4,17 @@
     },
     "sources": [
       {
+        "type": "TwitterSource",
+        "name": "twitter",
+        "interval": 1800000,
+        "params": {
+          "username": "process.env.TWITTER_USERNAME",
+          "password": "process.env.TWITTER_PASSWORD",
+          "email": "process.env.TWITTER_EMAIL",
+          "accounts": ["hyperfy_io", "ashconnell"]
+        }
+      },
+      {
         "type": "DiscordRawDataSource",
         "name": "hyperfyDiscordRaw",
         "interval": 360000,
@@ -77,6 +88,18 @@
             "storage": "SQLiteStorage",
             "source": "discordRawData",
             "outputPath": "./output/hyperfy/raw"
+          }
+        },
+        {
+          "type": "DailySummaryGenerator",
+          "name": "HyperfyDailySummary",
+          "interval": 3600000,
+          "params": {
+            "provider": "summaryOpenAiProvider",
+            "storage": "SQLiteStorage",
+            "summaryType": "hyperfyDailySummary",
+            "outputPath": "./output/hyperfy",
+            "groupBySourceType": true
           }
         },
         {
