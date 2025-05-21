@@ -5,8 +5,9 @@ import { ContentItem } from "../../types";
 import Parser from 'rss-parser';
 import { ContentParser } from "../parsers/ContentParser";
 import { StoragePlugin } from "../storage/StoragePlugin";
-import { getCookies,getKasadaProtectedCookies } from "../../helpers/cookieHelper";
-import { bypassRealtorProtection, debugRealtorAccess } from "../../helpers/realtorHelper";
+// import { getCookies,getKasadaProtectedCookies } from "../../helpers/cookieHelper";
+import { formatCookiesForRequest, debugRealtorAccess } from "../../helpers/realtorHelper"; // Using debugRealtorAccess now
+import { Page, Browser } from 'puppeteer'; // Import Page and Browser types
 
 interface RSSSourceConfig {
   name: string;
@@ -25,6 +26,8 @@ export class RSSSource implements ContentSource {
   private headers: Record<string, string> | undefined;
   private parser: ContentParser | undefined;
   private storage: StoragePlugin | undefined;
+  private page: Page | undefined; // Added page member
+  private browser: Browser | undefined; // Added browser member
 
   constructor(config: RSSSourceConfig) {
     this.name = config.name;
@@ -87,72 +90,183 @@ export class RSSSource implements ContentSource {
   }
 
   public async fetchItems(): Promise<ContentItem[]> {
-    for (const feedUrl of this.feeds) {
-      // let websiteData = await getKasadaProtectedCookies('https://realtor.com')
-      let websiteData = await debugRealtorAccess()
-      console.log( websiteData )
-      // console.log( websiteData.cookies, websiteData.headers, websiteData.rawCookieString )
+    let dynamicCookies: any[] | undefined;
+    let dynamicCookieString: string | undefined;
+    // let dynamicHeaders: Record<string, string> | undefined; // Headers from realtorHelper might not be directly applicable for RSS
 
-      // let _headers = {
-      //   "Cookie": websiteData.rawCookieString,
-      // }
-      let resultItems: ContentItem[] = [];
-      let parsedItems: ContentItem[] = [];
+    try {
+      // TODO: Determine when to call bypassRealtorProtection. For now, assume it's for realtor.com feeds.
+      // This logic might need refinement based on feedUrl or a config flag.
+      // For now, assume debugRealtorAccess is relevant if any feed contains 'realtor.com'
+      // or if specific conditions for needing advanced headers are met.
+      const needsDynamicHeaders = this.feeds.some(feed => feed.includes('realtor.com'));
 
-      try {
-        let feed;
+      if (needsDynamicHeaders) {
+        console.log('[RSSSource] Attempting to run debugRealtorAccess to fetch dynamic page context (cookies, etc.)...');
         try {
-          feed = await this.rssParser.parseURL(feedUrl);
+          const realtorContext = await debugRealtorAccess({
+            // headless: true, // Consider making this configurable or true by default for RSS fetching
+            initialUrl: this.feeds.find(feed => feed.includes('realtor.com')) || 'https://www.realtor.com/'
+          });
+
+          if (realtorContext && realtorContext.success && realtorContext.page) {
+            this.page = realtorContext.page;
+            this.browser = realtorContext.browser;
+            
+            const pageCookies = await this.page.cookies();
+            if (pageCookies && pageCookies.length > 0) {
+              dynamicCookies = pageCookies;
+              dynamicCookieString = formatCookiesForRequest(dynamicCookies);
+              console.log('[RSSSource] Successfully fetched dynamic cookies via debugRealtorAccess:', dynamicCookieString);
+            } else {
+              console.log('[RSSSource] debugRealtorAccess successful, but no cookies were extracted from the page.');
+            }
+          } else {
+            console.warn('[RSSSource] debugRealtorAccess did not succeed or did not return a page object.');
+          }
+        } catch (realtorError) {
+          console.error('[RSSSource] Error during debugRealtorAccess execution:', realtorError);
+          // this.page and this.browser remain undefined.
+        }
+      }
+    } catch (initializationError) { 
+      console.error('[RSSSource] Error during initial dynamic header fetching phase:', initializationError);
+      // this.page and this.browser remain undefined.
+    }
+    
+    let allFetchedItems: ContentItem[] = [];
+
+    // Wrap the main feed processing and parsing logic in a try...finally block
+    // to ensure browser cleanup.
+    try {
+      for (const feedUrl of this.feeds) {
+        let resultItems: ContentItem[] = [];
+        let parsedItems: ContentItem[] = [];
+
+        try { // Inner try for processing a single feed URL
+          let feed;
+          const requestOptions: Parser.RequestOptions = { headers: {} };
+        
+        // Start with base headers
+        if (this.userAgent) {
+          requestOptions.headers!['User-Agent'] = this.userAgent;
+        }
+        if (this.headers) {
+          requestOptions.headers = { ...requestOptions.headers, ...this.headers };
+        }
+
+        // Add dynamic cookies if available
+        if (dynamicCookieString) {
+          requestOptions.headers!['Cookie'] = dynamicCookieString;
+        }
+        
+        console.log(`[RSSSource] Fetching RSS feed: ${feedUrl} with options:`, JSON.stringify(requestOptions.headers, null, 2));
+
+        try {
+          feed = await this.rssParser.parseURL(feedUrl, requestOptions);
         } catch (initialError) {
-          const headerObj: HeadersInit = {};
+          console.warn(`[RSSSource] Initial rssParser.parseURL failed for ${feedUrl}: ${initialError.message}. Attempting fallback fetch...`);
+          // console.log('[RSSSource] Attempting fallback fetch...'); // Already part of the warn message
+
+          const fallbackHeaderObj: HeadersInit = {};
+
+          // Start with base headers
           if (this.userAgent) {
-            headerObj['User-Agent'] = this.userAgent;
+            fallbackHeaderObj['User-Agent'] = this.userAgent;
+          }
+          if (this.headers) {
+            for (const [key, value] of Object.entries(this.headers)) {
+                fallbackHeaderObj[key] = value;
+            }
+          }
+          // Add dynamic cookies if available, potentially overwriting static 'Cookie' header
+          if (dynamicCookieString) {
+            fallbackHeaderObj['Cookie'] = dynamicCookieString;
           }
           
-          // Add any additional headers
-          if (this.headers) {
-              for (const [key, value] of Object.entries(this.headers)) {
-                headerObj[key] = value;
-              }
-          }
+          console.log(`[RSSSource] Fallback fetch for ${feedUrl} with headers:`, JSON.stringify(fallbackHeaderObj, null, 2));
           
           const response = await fetch(feedUrl, {
-            headers: headerObj
+            headers: fallbackHeaderObj as Record<string, string>,
           });
           
           if (response.ok) {
             const text = await response.text();
             feed = await this.rssParser.parseString(text);
           } else {
-            throw new Error(`Failed to fetch with status: ${response.status}`);
+            throw new Error(`Fallback fetch failed for ${feedUrl} with status: ${response.status}`);
           }
         }
         
         if (feed && feed.items && feed.items.length > 0) {
+          // Pass page and browser to processItems if needed, or handle them in parseDetails
           const processedItems = await this.processItems(feed.items, feedUrl);
-
           resultItems = resultItems.concat(processedItems);
         }
         
-        if ( this.parser ) {
-            for (const item of resultItems) {
-                if ( item.link ) {
-                    const parsedDetails = await this.parser.parseDetails(item.link, this.headers, item.title || '');
-                    
-                    if ( parsedDetails ) {
-                        parsedItems.push( parsedDetails );
-                    }
+        if (this.parser) {
+          for (const item of resultItems) {
+            if (item.link) {
+              try { // Specific try-catch for each item's parsing
+                if (this.page && this.parser.name === "RealtorParser") {
+                  // Temporary logging already added in a previous step, ensure it has [RSSSource] prefix
+                  console.log(`[RSSSource] Attempting to call RealtorParser.parseDetails for ${item.link} using ${this.page ? 'valid' : 'invalid'} page object from debugRealtorAccess.`);
+                  if (this.page) { // Check this.page again
+                    console.log(`[RSSSource] Current URL of this.page before passing to RealtorParser: ${this.page.url()}`);
+                  }
+                  const parsedDetails = await (this.parser as any).parseDetails(item.link, this.page, item.title || '');
+                  if (parsedDetails) {
+                    parsedItems.push(parsedDetails);
+                  } else {
+                    console.warn(`[RSSSource] RealtorParser.parseDetails returned undefined for item link: ${item.link}`);
+                  }
+                } else if (this.parser) { 
+                  console.log(`[RSSSource] Calling default parser.parseDetails for item link: ${item.link}.`);
+                  const currentHeadersForParser = { ...this.headers }; 
+                  if (dynamicCookieString) { 
+                    currentHeadersForParser['Cookie'] = dynamicCookieString;
+                  }
+                  const parsedDetails = await (this.parser as any).parseDetails(item.link, currentHeadersForParser, item.title || '');
+                  if (parsedDetails) {
+                    parsedItems.push(parsedDetails);
+                  } else {
+                    console.warn(`[RSSSource] Default parser.parseDetails returned undefined for item link: ${item.link}`);
+                  }
                 }
+              } catch (parsingError) {
+                console.error(`[RSSSource] Error parsing item link ${item.link} with parser ${this.parser.name ? this.parser.name : 'unknown'}:`, parsingError);
+                // Continue to the next item
+              }
+                }
+              }
             }
+          }
         }
-
-        return parsedItems;
-      } catch (error) {
-        console.error(`ERROR: Fetching feed - ${feedUrl}`, error);
+        allFetchedItems = allFetchedItems.concat(parsedItems.length > 0 ? parsedItems : resultItems);
+        
+      } catch (feedProcessingError) { // This catch is for errors during a single feed's processing (fetch or processing all its items)
+        console.error(`[RSSSource] Error processing feed URL ${feedUrl}:`, feedProcessingError);
+        // Continue to the next feed URL
       }
     }
-    // console.log( resultItems )
-    return [];
-    // return resultItems;
+    
+    // Browser closing logic will be moved to a finally block for the outer try in the next step.
+    // For now, the existing logic is kept for this intermediate step.
+    } finally {
+      // This 'finally' block ensures browser cleanup happens even if errors occur 
+      // within the main feed processing try block.
+      if (this.browser) {
+        console.log('[RSSSource] Closing browser instance from RSSSource after processing all feeds...');
+        try {
+          await this.browser.close();
+        } catch (browserCloseError) {
+          console.error('[RSSSource] Error closing browser in RSSSource:', browserCloseError);
+        }
+        this.browser = undefined;
+        this.page = undefined; // Clear page reference as well
+      }
+    }
+
+    return allFetchedItems;
   }
 }
