@@ -9,6 +9,12 @@ import { StoragePlugin } from "../storage/StoragePlugin";
 import { formatCookiesForRequest, debugRealtorAccess } from "../../helpers/realtorHelper"; // Using debugRealtorAccess now
 import { Page, Browser } from 'puppeteer'; // Import Page and Browser types
 
+interface ProxyConfig { // Re-define or import from a shared types file if available
+  server: string;
+  username?: string;
+  password?: string;
+}
+
 interface RSSSourceConfig {
   name: string;
   feeds: string[];
@@ -16,6 +22,7 @@ interface RSSSourceConfig {
   headers?: Record<string, string>;
   parser?: ContentParser | undefined;
   storage?: StoragePlugin | undefined;
+  proxy?: ProxyConfig; // Added proxy config
 }
 
 export class RSSSource implements ContentSource {
@@ -26,8 +33,9 @@ export class RSSSource implements ContentSource {
   private headers: Record<string, string> | undefined;
   private parser: ContentParser | undefined;
   private storage: StoragePlugin | undefined;
-  private page: Page | undefined; // Added page member
-  private browser: Browser | undefined; // Added browser member
+  private page: Page | undefined; 
+  private browser: Browser | undefined; 
+  private proxyConfig?: ProxyConfig; // Added proxyConfig member
 
   constructor(config: RSSSourceConfig) {
     this.name = config.name;
@@ -37,6 +45,7 @@ export class RSSSource implements ContentSource {
     this.headers = config.headers;
     this.parser = config.parser;
     this.storage = config.storage;
+    this.proxyConfig = config.proxy; // Store proxy config
   }
 
   private async processItems(items: Parser.Item[], feedUrl: string): Promise<ContentItem[]> {
@@ -104,10 +113,17 @@ export class RSSSource implements ContentSource {
       if (needsDynamicHeaders) {
         console.log('[RSSSource] Attempting to run debugRealtorAccess to fetch dynamic page context (cookies, etc.)...');
         try {
-          const realtorContext = await debugRealtorAccess({
-            // headless: true, // Consider making this configurable or true by default for RSS fetching
-            initialUrl: this.feeds.find(feed => feed.includes('realtor.com')) || 'https://www.realtor.com/'
-          });
+          const initialUrlForPuppeteer = this.feeds.find(feed => feed.includes('realtor.com')) || 'https://www.realtor.com/';
+          console.log(`[RSSSource] Initial URL for debugRealtorAccess: ${initialUrlForPuppeteer}`);
+          
+          const realtorContext = await debugRealtorAccess(
+            {
+              // headless: true, // Already default in debugRealtorAccess
+              initialUrl: initialUrlForPuppeteer,
+              // Potentially pass other relevant options from this.config if needed
+            },
+            this.proxyConfig // Pass proxy configuration
+          );
 
           if (realtorContext && realtorContext.success && realtorContext.page) {
             this.page = realtorContext.page;

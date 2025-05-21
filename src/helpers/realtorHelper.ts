@@ -7,9 +7,15 @@ import path from 'path';
 // Add the stealth plugin
 puppeteer.use(StealthPlugin());
 
-async function debugRealtorAccess(options: any = {}) { // Add 'any' type for options for now
+interface ProxyConfig {
+  server: string;
+  username?: string;
+  password?: string;
+}
+
+async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) { 
     const defaultOptions = {
-      headless: true, // Changed default to true for automation
+      headless: true, 
       userDataDir: path.join(__dirname, 'chrome-profile-realtor'),
       screenshotsPath: path.join(__dirname, 'screenshots'),
       initialUrl: 'https://www.realtor.com/',
@@ -30,62 +36,167 @@ async function debugRealtorAccess(options: any = {}) { // Add 'any' type for opt
     try {
       console.log('[RealtorHelper] Launching browser with comprehensive settings...');
       
-      // Launch browser with extensive anti-detection settings
-      browser = await puppeteer.launch({
-        headless: mergedOptions.headless,
-        userDataDir: mergedOptions.userDataDir,
-        args: [
+      const launchArgs = [
+          // Essential for some environments, but can be fingerprinting vectors.
+          // Evaluate if they can be removed or made conditional for your specific environment.
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-infobars',
-          '--disable-dev-shm-usage',
-          '--disable-blink-features=AutomationControlled',
-          '--disable-web-security',
-          '--disable-blink-features=AutomationControlled',
-          '--disable-extensions',
-          '--disable-gpu',
-          '--no-first-run',
-          '--no-zygote',
-          '--deterministic-fetch',
-          '--disable-features=IsolateOrigins',
-          '--disable-site-isolation-trials',
-          '--disable-features=VizDisplayCompositor',
-          `--window-size=1920,1080`,
-        ],
+          '--disable-dev-shm-usage', 
+
+          // Core stealth args
+          '--disable-blink-features=AutomationControlled', // Primary flag to hide automation
+          
+          // Common settings for stability & consistency
+          '--disable-infobars', // No "Chrome is being controlled" infobar
+          '--disable-extensions', // No extensions loaded
+          '--disable-popup-blocking', // Allow popups which some sites use for auth flows
+          '--no-first-run', // Skip first run wizards
+          '--no-zygote', // Helps in some environments
+          `--window-size=1920,1080`, // Consistent window size
+          
+          // Performance & resource management mimics real user behavior better
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+
+          // GPU & WebGL - important for modern sites
+          // '--disable-gpu', // Keeping this for now with headless:true, but it's a trade-off. 'new' headless might allow removing it.
+          '--enable-webgl',
+          '--use-gl=desktop', // or 'egl' on Linux without a display server
+
+          // Network stack improvements
+          '--enable-features=NetworkService,NetworkServiceInProcess',
+          
+          // Reduce chattiness
+          '--metrics-recording-only',
+          '--disable-breakpad', // Disable crash reporter
+
+          // Color profile consistency
+          '--force-color-profile=srgb',
+
+          // '--disable-web-security', // Removed: Highly detectable and security risk. Only use if absolutely necessary for specific local testing.
+          // '--deterministic-fetch', // Removed: Might be a fingerprint.
+          // '--disable-features=IsolateOrigins', // Removed: Prefer default security features.
+          // '--disable-site-isolation-trials', // Removed: Prefer default security features.
+          // '--disable-features=VizDisplayCompositor', // Removed: Less common override.
+      ];
+
+      if (proxy && proxy.server) {
+        launchArgs.push(`--proxy-server=${proxy.server}`);
+        console.log(`[RealtorHelper] Using proxy server: ${proxy.server}`);
+      }
+      
+      // Launch browser with extensive anti-detection settings
+      console.log(`[RealtorHelper] Launching Puppeteer with args: ${JSON.stringify(launchArgs)}`);
+      console.log(`[RealtorHelper] Ignoring default args: ['--enable-automation', '--disable-background-networking', '--disable-default-apps', '--disable-sync', '--mute-audio']`);
+      browser = await puppeteer.launch({
+        headless: mergedOptions.headless, // Consider 'new' for more modern headless if issues arise with 'true'
+        userDataDir: mergedOptions.userDataDir,
+        args: launchArgs,
         ignoreDefaultArgs: [
-          '--enable-automation',
-          '--disable-background-networking',
+          '--enable-automation', // Critical: remove default automation flag
+          '--disable-background-networking', // Let Puppeteer control this if needed via other args
           '--disable-default-apps',
-          '--disable-extensions',
-          '--disable-sync'
+          // '--disable-extensions', // Already in args
+          '--disable-sync',
+          '--mute-audio', // Often good to ignore if not needed
         ],
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       });
   
       console.log('[RealtorHelper] Creating injected page...');
-      page = await newInjectedPage(browser, {
-        fingerprintOptions: {
-          devices: ['desktop'],
-          browsers: [{ name: 'chrome', minVersion: 116 }],
-          operatingSystems: ['windows']
+      const fingerprintOptions = { 
+        devices: ['desktop'],
+        browsers: [{ name: 'chrome', minVersion: 120 }], 
+        operatingSystems: ['windows']
+      };
+      console.log(`[RealtorHelper] Using fingerprint-injector with options: ${JSON.stringify(fingerprintOptions)}`);
+      page = await newInjectedPage(browser, { fingerprintOptions });
+
+      // Authenticate proxy if credentials are provided
+      if (proxy && proxy.username && proxy.password && page) {
+        await page.authenticate({
+          username: proxy.username,
+          password: proxy.password,
+        });
+        console.log('[RealtorHelper] Authenticated with proxy using provided credentials.');
+      }
+
+      // Enable request interception
+      await page.setRequestInterception(true);
+      // Request interception enabled log is already present.
+      // Script detection log for ips.js is already present.
+
+      page.on('request', async (request) => {
+        try {
+          if (request.resourceType() === 'script' && request.url().includes('ips.js')) {
+            // Log already exists: `[RealtorHelper] Intercepted script (potential Kasada): ${request.url()}`
+          }
+        } catch (e) {
+          console.error(`[RealtorHelper] Error in request handler for ${request.url()}:`, e);
+        } finally {
+          if (!request.isInterceptResolutionHandled()) {
+            try {
+              await request.continue();
+            } catch (e) {
+              console.warn(`[RealtorHelper] Warning: Failed to continue request for ${request.url()}: ${e.message}`);
+            }
+          }
         }
       });
   
       // Comprehensive evasion techniques
+      console.log('[RealtorHelper] Applying JavaScript environment overrides for stealth via evaluateOnNewDocument.');
       await page.evaluateOnNewDocument(() => {
         // Extensive navigator and webdriver evasion
+        // == Basic Navigator Spoofing ==
         Object.defineProperty(navigator, 'webdriver', { get: () => false });
-        
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 }); // Common value
+        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 }); // Common value
+
         // Fake plugins
         Object.defineProperty(navigator, 'plugins', { 
           get: () => [
-            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-            { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: 'Portable Document Format' },
-            { name: 'Native Client', filename: 'internal-nacl-plugin', description: 'Native Client' },
+            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format', mimeTypes: [{ type: 'application/pdf', suffixes: 'pdf' }] },
+            { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: 'Portable Document Format', mimeTypes: [{ type: 'application/pdf', suffixes: 'pdf' }] },
+            { name: 'Native Client', filename: 'internal-nacl-plugin', description: 'Native Client', mimeTypes: [{ type: 'application/x-nacl', suffixes: ''},{ type: 'application/x-pnacl', suffixes: ''}]  },
           ],
         });
+        // Mimic a real mimeTypes object for each plugin
+        try {
+          //@ts-ignore
+          navigator.plugins.forEach(plugin => {
+            //@ts-ignore
+            plugin.mimeTypes.forEach(mimeType => {
+              //@ts-ignore
+              plugin[mimeType.type] = mimeType;
+            });
+          });
+        } catch(e) {
+          console.error('[RealtorHelper] Error spoofing plugin mimeTypes:', e);
+        }
+
+
+        // Permissions API
+        //@ts-ignore
+        if (navigator.permissions) {
+          //@ts-ignore
+          const originalQuery = navigator.permissions.query;
+          //@ts-ignore
+          navigator.permissions.query = (parameters) => {
+            if (parameters.name === 'notifications') {
+              return Promise.resolve({ state: 'granted', onchange: null });
+            }
+            if (parameters.name === 'geolocation') {
+              return Promise.resolve({ state: 'prompt', onchange: null });
+            }
+            // Add more permissions as needed, or fall back to original for others
+            return originalQuery.call(navigator.permissions, parameters);
+          };
+        }
   
-        // Chrome object spoofing
+        // == Chrome object Spoofing (already present, ensure consistency) ==
         Object.defineProperty(window, 'chrome', {
           value: {
             app: { isInstalled: false },
@@ -101,28 +212,73 @@ async function debugRealtorAccess(options: any = {}) { // Add 'any' type for opt
           const getContext = HTMLCanvasElement.prototype.getContext;
           //@ts-ignore
           HTMLCanvasElement.prototype.getContext = function(type, ...args) {
+            const context = getContext.call(this, type, ...args);
             if (type === 'webgl' || type === 'webgl2') {
-              // Slightly modify WebGL context to break exact fingerprinting
-              const context = getContext.call(this, type, ...args);
-              //@ts-ignore
-              const getParameter = context.getParameter;
-              //@ts-ignore
-              context.getParameter = function(parameter) {
-                //@ts-ignore
-                if (parameter === context.RENDERER || parameter === context.VENDOR) {
-                  return 'Modified Renderer';
+              if (context) {
+                // Spoof WebGL Vendor and Renderer
+                const ext = context.getExtension('WEBGL_debug_renderer_info');
+                if (ext) {
+                  //@ts-ignore
+                  Object.defineProperty(context, 'getParameter', {
+                    value: (parameter) => {
+                      if (parameter === ext.UNMASKED_VENDOR_WEBGL) {
+                        return 'Google Inc. (Intel)'; // Example
+                      }
+                      if (parameter === ext.UNMASKED_RENDERER_WEBGL) {
+                        return 'Intel Iris OpenGL Engine'; // Example
+                      }
+                      //@ts-ignore
+                      return getContext.call(this, type, ...args).getParameter(parameter);
+                    }
+                  });
                 }
-                return getParameter.call(context, parameter);
-              };
-              return context;
+              }
+            } else if (type === '2d' && context) {
+              // Basic Canvas Fingerprint Spoofing for 2D context
+              // Add a tiny, almost invisible modification
+              try {
+                //@ts-ignore
+                const originalToDataURL = this.toDataURL;
+                //@ts-ignore
+                this.toDataURL = function(...args) {
+                  // Draw a small, nearly transparent line
+                  context.fillStyle = `rgba(${Math.floor(Math.random()*5)}, ${Math.floor(Math.random()*5)}, ${Math.floor(Math.random()*5)}, 0.01)`;
+                  context.fillRect(0, 0, 1, 1); 
+                  return originalToDataURL.apply(this, args);
+                };
+              } catch(e) {
+                console.error('[RealtorHelper] Canvas 2D toDataURL spoofing failed:', e);
+              }
             }
-            return getContext.call(this, type, ...args);
+            return context;
           };
         } catch (e) {
-          console.error('[RealtorHelper] WebGL context modification failed:', e);
+          console.error('[RealtorHelper] WebGL/Canvas context modification failed:', e);
+        }
+        
+        // == Screen Properties Spoofing ==
+        try {
+            Object.defineProperty(screen, 'width', { get: () => 1920 });
+            Object.defineProperty(screen, 'height', { get: () => 1080 });
+            Object.defineProperty(screen, 'availWidth', { get: () => 1920 });
+            Object.defineProperty(screen, 'availHeight', { get: () => 1040 }); // Assuming taskbar
+            Object.defineProperty(screen, 'colorDepth', { get: () => 24 });
+            Object.defineProperty(screen, 'pixelDepth', { get: () => 24 });
+        } catch (e) {
+            console.error('[RealtorHelper] Screen properties spoofing failed:', e);
         }
 
-        // Override Notification permissions
+        // == Window outer/inner dimensions ==
+        // For headless, outerWidth/Height might be 0. Set them to viewport size.
+        try {
+            if (window.outerWidth === 0) Object.defineProperty(window, 'outerWidth', { get: () => 1920 });
+            if (window.outerHeight === 0) Object.defineProperty(window, 'outerHeight', { get: () => 1080 });
+        } catch(e) {
+            console.error('[RealtorHelper] Window outer dimensions spoofing failed:', e);
+        }
+
+
+        // == Notification permissions (already present, ensure consistency) ==
         try {
           //@ts-ignore
           const originalRequestPermission = Notification.requestPermission;
@@ -180,6 +336,16 @@ async function debugRealtorAccess(options: any = {}) { // Add 'any' type for opt
         timeout: mergedOptions.timeout
       });
   
+      // Add a small, human-like mouse movement shortly after navigation
+      try {
+        const randomX = Math.floor(Math.random() * 300) + 50; // Move within a small area (e.g., 50-350)
+        const randomY = Math.floor(Math.random() * 300) + 50; // Move within a small area (e.g., 50-350)
+        await page.mouse.move(randomX, randomY, { steps: 5 }); // Small number of steps for quick movement
+        console.log(`[RealtorHelper] Performed initial mouse movement to (${randomX},${randomY}).`);
+      } catch (mouseMoveError) {
+        console.warn('[RealtorHelper] Minor error during initial mouse movement:', mouseMoveError.message);
+      }
+
       // Check page content after navigation
       const pageContent = await page.content();
       
