@@ -35,13 +35,16 @@ export interface StoragePlugin {
    * @returns Promise<ContentItem | null> Retrieved content item or null if not found
    */
   getContentItem(cid: string): Promise<ContentItem | null>;
+<<<<<<< HEAD
   getContentItemByLink(link: string): Promise<ContentItem | null>;
+=======
 
   /**
    * Saves or updates a summary item in the storage.
    * @param item - Summary item to save
    * @returns Promise<void>
    */
+>>>>>>> origin/main
   saveSummaryItem(item: SummaryItem): Promise<void>;
 
   /**

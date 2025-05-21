@@ -161,7 +161,7 @@ export class RSSSource implements ContentSource {
 
         try { // Inner try for processing a single feed URL
           let feed;
-          const requestOptions: any = { headers: {} };
+          const requestOptions: Parser.RequestOptions = { headers: {} };
         
         // Start with base headers
         if (this.userAgent) {
@@ -179,11 +179,13 @@ export class RSSSource implements ContentSource {
         console.log(`[RSSSource] Fetching RSS feed: ${feedUrl} with options:`, JSON.stringify(requestOptions.headers, null, 2));
 
         try {
-          feed = await this.rssParser.parseURL(feedUrl, requestOptions);
-          console.log( feed )
-        } catch (initialError:any) {
+          feed = await this.rssParser.parseURL(feedUrl, requestOptions)
+            .catch(parserError => {
+              console.error(`[RSSSource] Error directly from rssParser.parseURL for ${feedUrl}:`, parserError.message);
+              throw parserError; // Re-throw to trigger the existing fallback logic
+            });
+        } catch (initialError) {
           console.warn(`[RSSSource] Initial rssParser.parseURL failed for ${feedUrl}: ${initialError.message}. Attempting fallback fetch...`);
-          // console.log('[RSSSource] Attempting fallback fetch...'); // Already part of the warn message
 
           const fallbackHeaderObj: HeadersInit = {};
 
@@ -209,14 +211,22 @@ export class RSSSource implements ContentSource {
           
           if (response.ok) {
             const text = await response.text();
-            feed = await this.rssParser.parseString(text);
+            if (text && text.trim().startsWith('<')) { // Basic check for XML-like content
+              feed = await this.rssParser.parseString(text).catch(parserError => {
+                console.error(`[RSSSource] Error from rssParser.parseString for ${feedUrl}:`, parserError.message);
+                return null; // Return null to indicate parsing failure
+              });
+            } else {
+              console.warn(`[RSSSource] Fetched content for ${feedUrl} does not appear to be XML. Content snippet: ${text.substring(0,100)}`);
+              feed = null; // Content is not XML-like
+            }
           } else {
+            // This error will be caught by the outer try-catch for the feed URL processing
             throw new Error(`Fallback fetch failed for ${feedUrl} with status: ${response.status}`);
           }
         }
         
         if (feed && feed.items && feed.items.length > 0) {
-          // Pass page and browser to processItems if needed, or handle them in parseDetails
           const processedItems = await this.processItems(feed.items, feedUrl);
           resultItems = resultItems.concat(processedItems);
         }
@@ -253,6 +263,8 @@ export class RSSSource implements ContentSource {
               } catch (parsingError) {
                 console.error(`[RSSSource] Error parsing item link ${item.link} with parser ${this.parser.name ? this.parser.name : 'unknown'}:`, parsingError);
                 // Continue to the next item
+              }
+                }
               }
             }
           }

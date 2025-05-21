@@ -105,7 +105,7 @@ async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) {
       });
   
       console.log('[RealtorHelper] Creating injected page...');
-      const fingerprintOptions : any = { 
+      const fingerprintOptions = { 
         devices: ['desktop'],
         browsers: [{ name: 'chrome', minVersion: 120 }], 
         operatingSystems: ['windows']
@@ -129,8 +129,22 @@ async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) {
 
       page.on('request', async (request) => {
         try {
-          if (request.resourceType() === 'script' && request.url().includes('ips.js')) {
-            // Log already exists: `[RealtorHelper] Intercepted script (potential Kasada): ${request.url()}`
+          // General script logging
+          if (request.resourceType() === 'script') {
+            console.log(`[RealtorHelper] Script requested: ${request.url()}`);
+            const redirectChain = request.redirectChain();
+            if (redirectChain.length > 0) {
+                console.log(`[RealtorHelper]   Redirect chain: ${redirectChain.map(r => r.url()).join(' -> ')}`);
+            }
+          }
+
+          // Specific logging for ips.js (Kasada candidate)
+          if (request.resourceType() === 'script' && request.url().toLowerCase().includes('/ips.js')) {
+            console.log(`[RealtorHelper] ##### Intercepted Kasada script candidate (ips.js): ${request.url()} #####`);
+            const redirectChain = request.redirectChain();
+            if (redirectChain.length > 0) {
+                console.log(`[RealtorHelper]   ips.js Redirect chain: ${redirectChain.map(r => r.url()).join(' -> ')}`);
+            }
           }
         } catch (e) {
           console.error(`[RealtorHelper] Error in request handler for ${request.url()}:`, e);
@@ -138,7 +152,7 @@ async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) {
           if (!request.isInterceptResolutionHandled()) {
             try {
               await request.continue();
-            } catch (e:any) {
+            } catch (e) {
               console.warn(`[RealtorHelper] Warning: Failed to continue request for ${request.url()}: ${e.message}`);
             }
           }
@@ -212,7 +226,7 @@ async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) {
           const getContext = HTMLCanvasElement.prototype.getContext;
           //@ts-ignore
           HTMLCanvasElement.prototype.getContext = function(type, ...args) {
-            const context : any = getContext.call(this, type, ...args);
+            const context = getContext.call(this, type, ...args);
             if (type === 'webgl' || type === 'webgl2') {
               if (context) {
                 // Spoof WebGL Vendor and Renderer
@@ -220,7 +234,7 @@ async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) {
                 if (ext) {
                   //@ts-ignore
                   Object.defineProperty(context, 'getParameter', {
-                    value: (parameter:any) => {
+                    value: (parameter) => {
                       if (parameter === ext.UNMASKED_VENDOR_WEBGL) {
                         return 'Google Inc. (Intel)'; // Example
                       }
@@ -329,12 +343,42 @@ async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) {
   
       // Enhanced error handling for navigation
       console.log(`[RealtorHelper] Navigating to: ${mergedOptions.initialUrl}`);
+
+      // Set minimal, standard HTTP headers for the initial request
+      try {
+        const minimalHeaders = {
+            'Accept': 'application/xml,text/xml,application/xhtml+xml,text/html;q=0.9,text/plain;q=0.8,*/*;q=0.7',
+            'User-Agent': await browser.userAgent(), 
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br', 
+        };
+        await page.setExtraHTTPHeaders(minimalHeaders);
+        console.log(`[RealtorHelper] Set minimal extra HTTP headers for initial navigation: ${JSON.stringify(minimalHeaders)}`);
+      } catch (headerError) {
+        console.warn(`[RealtorHelper] Warning: Failed to set extra HTTP headers: ${headerError.message}`);
+      }
       
       // Simplified navigation with built-in timeout handling from page.goto
-      await page.goto(mergedOptions.initialUrl, {
+      console.log(`[RealtorHelper] Attempting page.goto for: ${mergedOptions.initialUrl}`);
+      const response = await page.goto(mergedOptions.initialUrl, {
         waitUntil: 'networkidle2',
         timeout: mergedOptions.timeout
       });
+
+      // Log response status and redirect chain
+      if (response) {
+        console.log(`[RealtorHelper] Initial navigation response status: ${response.status()} for URL: ${response.url()}`);
+        const redirectChain = response.request().redirectChain();
+        if (redirectChain.length > 0) {
+            console.log(`[RealtorHelper] Initial navigation redirect chain: ${redirectChain.map(r => `${r.url()} (${r.response()?.status()})`).join(' -> ')} -> ${response.url()} (${response.status()})`);
+        } else {
+            console.log(`[RealtorHelper] No redirects for initial navigation to ${mergedOptions.initialUrl}. Final URL: ${response.url()} (${response.status()})`);
+        }
+      } else {
+        console.warn(`[RealtorHelper] Initial navigation to ${mergedOptions.initialUrl} returned a null response (possibly failed).`);
+      }
+      
+      console.log(`[RealtorHelper] URL after page.goto() execution: ${page.url()}`);
   
       // Add a small, human-like mouse movement shortly after navigation
       try {
@@ -342,7 +386,7 @@ async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) {
         const randomY = Math.floor(Math.random() * 300) + 50; // Move within a small area (e.g., 50-350)
         await page.mouse.move(randomX, randomY, { steps: 5 }); // Small number of steps for quick movement
         console.log(`[RealtorHelper] Performed initial mouse movement to (${randomX},${randomY}).`);
-      } catch (mouseMoveError:any) {
+      } catch (mouseMoveError) {
         console.warn('[RealtorHelper] Minor error during initial mouse movement:', mouseMoveError.message);
       }
 
