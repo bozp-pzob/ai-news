@@ -161,7 +161,7 @@ export class RSSSource implements ContentSource {
 
         try { // Inner try for processing a single feed URL
           let feed;
-          const requestOptions: Parser.RequestOptions = { headers: {} };
+          const requestOptions: any = { headers: {} };
         
         // Start with base headers
         if (this.userAgent) {
@@ -180,7 +180,8 @@ export class RSSSource implements ContentSource {
 
         try {
           feed = await this.rssParser.parseURL(feedUrl, requestOptions);
-        } catch (initialError) {
+          console.log( feed )
+        } catch (initialError:any) {
           console.warn(`[RSSSource] Initial rssParser.parseURL failed for ${feedUrl}: ${initialError.message}. Attempting fallback fetch...`);
           // console.log('[RSSSource] Attempting fallback fetch...'); // Already part of the warn message
 
@@ -252,8 +253,6 @@ export class RSSSource implements ContentSource {
               } catch (parsingError) {
                 console.error(`[RSSSource] Error parsing item link ${item.link} with parser ${this.parser.name ? this.parser.name : 'unknown'}:`, parsingError);
                 // Continue to the next item
-              }
-                }
               }
             }
           }

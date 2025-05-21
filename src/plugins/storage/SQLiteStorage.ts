@@ -326,7 +326,7 @@ export class SQLiteStorage implements StoragePlugin {
       SELECT * FROM items WHERE type = ?
     `, [type]);
 
-    return rows.map(row => ({
+    return rows.map((row:any) => ({
       id: row.id,
       cid: row.cid,
       type: row.type,
@@ -384,7 +384,7 @@ export class SQLiteStorage implements StoragePlugin {
       logger.debug(`[SQLiteStorage:${operation}] Query returned ${rows.length} rows.`);
 
       // Map rows to ContentItem objects
-      return rows.map(row => ({
+      return rows.map((row:any) => ({
         id: row.id,
         type: row.type,
         source: row.source,
@@ -434,7 +434,7 @@ export class SQLiteStorage implements StoragePlugin {
     try {
       const rows = await this.db.all(query, params);
 
-      return rows.map(row => ({
+      return rows.map((row:any) => ({
         id: row.id,
         type: row.type,
         title: row.title || undefined,
