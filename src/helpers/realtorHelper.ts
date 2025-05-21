@@ -105,7 +105,7 @@ async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) {
       });
   
       console.log('[RealtorHelper] Creating injected page...');
-      const fingerprintOptions = { 
+      const fingerprintOptions:any = { 
         devices: ['desktop'],
         browsers: [{ name: 'chrome', minVersion: 120 }], 
         operatingSystems: ['windows']
@@ -152,7 +152,7 @@ async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) {
           if (!request.isInterceptResolutionHandled()) {
             try {
               await request.continue();
-            } catch (e) {
+            } catch (e:any) {
               console.warn(`[RealtorHelper] Warning: Failed to continue request for ${request.url()}: ${e.message}`);
             }
           }
@@ -226,7 +226,7 @@ async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) {
           const getContext = HTMLCanvasElement.prototype.getContext;
           //@ts-ignore
           HTMLCanvasElement.prototype.getContext = function(type, ...args) {
-            const context = getContext.call(this, type, ...args);
+            const context:any = getContext.call(this, type, ...args);
             if (type === 'webgl' || type === 'webgl2') {
               if (context) {
                 // Spoof WebGL Vendor and Renderer
@@ -234,7 +234,7 @@ async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) {
                 if (ext) {
                   //@ts-ignore
                   Object.defineProperty(context, 'getParameter', {
-                    value: (parameter) => {
+                    value: (parameter:any) => {
                       if (parameter === ext.UNMASKED_VENDOR_WEBGL) {
                         return 'Google Inc. (Intel)'; // Example
                       }
@@ -354,7 +354,7 @@ async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) {
         };
         await page.setExtraHTTPHeaders(minimalHeaders);
         console.log(`[RealtorHelper] Set minimal extra HTTP headers for initial navigation: ${JSON.stringify(minimalHeaders)}`);
-      } catch (headerError) {
+      } catch (headerError:any) {
         console.warn(`[RealtorHelper] Warning: Failed to set extra HTTP headers: ${headerError.message}`);
       }
       
@@ -386,7 +386,7 @@ async function debugRealtorAccess(options: any = {}, proxy?: ProxyConfig) {
         const randomY = Math.floor(Math.random() * 300) + 50; // Move within a small area (e.g., 50-350)
         await page.mouse.move(randomX, randomY, { steps: 5 }); // Small number of steps for quick movement
         console.log(`[RealtorHelper] Performed initial mouse movement to (${randomX},${randomY}).`);
-      } catch (mouseMoveError) {
+      } catch (mouseMoveError:any) {
         console.warn('[RealtorHelper] Minor error during initial mouse movement:', mouseMoveError.message);
       }
 
