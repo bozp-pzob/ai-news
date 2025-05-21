@@ -116,6 +116,7 @@ export const loadProviders = async (instances: InstanceConfig[], providers: Inst
   return instances;
 }
 
+<<<<<<< HEAD
 export const loadParsers = async (instances: InstanceConfig[], parsers: InstanceConfig[]): Promise<InstanceConfig[]> => {
   instances.forEach(({ instance }) => {
     if ("parser" in instance && instance.parser) {
@@ -135,9 +136,11 @@ export const loadParsers = async (instances: InstanceConfig[], parsers: Instance
   return instances;
 }
 
+=======
 /**
  * Injects storage plugins into components that require them.
  */
+>>>>>>> origin/main
 export const loadStorage = async (instances: InstanceConfig[], storages: InstanceConfig[]): Promise<InstanceConfig[]> => {
   instances.forEach(({ instance }) => {
     const requiredStorageName = instance.storage; // Storage name often stored directly

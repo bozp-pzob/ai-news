@@ -64,7 +64,7 @@ export class RealtorParser implements ContentParser {
       // Adding a try-catch for waitForSelector or making it more flexible might be needed in the future.
       try {
         await page.waitForSelector("[data-testid='ldp-page-container']", { timeout: 10000 });
-      } catch (selectorError:any) {
+      } catch (selectorError) {
         console.warn(`[RealtorParser] Selector "[data-testid='ldp-page-container']" not found for URL: ${url}. Attempting to proceed. Error: ${selectorError.message}`);
         // Optionally, take a screenshot here for debugging if the page content is not as expected.
         // await page.screenshot({ path: `realtor_parser_selector_error_${Date.now()}.png` });

@@ -161,14 +161,18 @@ export class RSSSource implements ContentSource {
 
         try { // Inner try for processing a single feed URL
           let feed;
-          const requestOptions:any = { headers: {} };
+          const requestOptions: Parser.RequestOptions = { headers: {} };
         
         // Start with base headers
         if (this.userAgent) {
           requestOptions.headers!['User-Agent'] = this.userAgent;
         }
         if (this.headers) {
-          requestOptions.headers = { ...requestOptions.headers, ...this.headers };
+          for (const [key, value] of Object.entries(this.headers)) {
+            if (!key.toLowerCase().startsWith('sec-ch-ua')) {
+              requestOptions.headers![key] = value;
+            }
+          }
         }
 
         // Add dynamic cookies if available
@@ -177,16 +181,30 @@ export class RSSSource implements ContentSource {
         }
         
         console.log(`[RSSSource] Fetching RSS feed: ${feedUrl} with options:`, JSON.stringify(requestOptions.headers, null, 2));
+        
+        // Initialize feed to a safe default structure
+        feed = { items: [] } as Parser.Output<{ [key: string]: any; }>;
+
 
         try {
-          feed = await this.rssParser.parseURL(feedUrl, requestOptions)
+          // Attempt to parse the URL
+          const parsedOutput = await this.rssParser.parseURL(feedUrl, requestOptions)
             .catch(parserError => {
-              console.error(`[RSSSource] Error directly from rssParser.parseURL for ${feedUrl}:`, parserError.message);
-              throw parserError; // Re-throw to trigger the existing fallback logic
+              console.error(`[RSSSource] Error during direct rssParser.parseURL for ${feedUrl}:`, parserError.message);
+              // Return null to signal failure and trigger fallback in the outer catch
+              return null; 
             });
-        } catch (initialError:any) {
-          console.warn(`[RSSSource] Initial rssParser.parseURL failed for ${feedUrl}: ${initialError.message}. Attempting fallback fetch...`);
 
+          if (parsedOutput) {
+            feed = parsedOutput;
+          } else {
+            // If parseURL's .catch returned null, throw a generic error to trigger the main fallback.
+            throw new Error(`rssParser.parseURL for ${feedUrl} failed or returned null.`);
+          }
+
+        } catch (initialError) {
+          console.warn(`[RSSSource] Initial attempt to parse URL ${feedUrl} failed (Error: ${initialError.message}). Attempting fallback fetch...`);
+          
           const fallbackHeaderObj: HeadersInit = {};
 
           // Start with base headers
@@ -195,7 +213,9 @@ export class RSSSource implements ContentSource {
           }
           if (this.headers) {
             for (const [key, value] of Object.entries(this.headers)) {
+              if (!key.toLowerCase().startsWith('sec-ch-ua')) {
                 fallbackHeaderObj[key] = value;
+              }
             }
           }
           // Add dynamic cookies if available, potentially overwriting static 'Cookie' header
@@ -206,39 +226,51 @@ export class RSSSource implements ContentSource {
           console.log(`[RSSSource] Fallback fetch for ${feedUrl} with headers:`, JSON.stringify(fallbackHeaderObj, null, 2));
           
           const response = await fetch(feedUrl, {
-            headers: fallbackHeaderObj as Record<string, string>,
+            headers: fallbackHeaderObj as Record<string, string>, // Cast to Record<string, string>
           });
+
+          const contentType = response.headers.get('content-type');
+          console.log(`[RSSSource] Fallback fetch for ${feedUrl} - Response Content-Type: ${contentType}`);
           
           if (response.ok) {
             const text = await response.text();
-            if (text && text.trim().startsWith('<')) { // Basic check for XML-like content
-              feed = await this.rssParser.parseString(text).catch(parserError => {
-                console.error(`[RSSSource] Error from rssParser.parseString for ${feedUrl}:`, parserError.message);
-                return null; // Return null to indicate parsing failure
-              });
+            if (text && text.trim().startsWith('<')) {
+              try {
+                feed = await this.rssParser.parseString(text);
+              } catch (parserError) {
+                console.error(`[RSSSource] Error from rssParser.parseString for ${feedUrl} after fallback:`, parserError.message);
+                feed = { items: [] } as Parser.Output<{ [key: string]: any; }>; // Default to empty items
+              }
             } else {
-              console.warn(`[RSSSource] Fetched content for ${feedUrl} does not appear to be XML. Content snippet: ${text.substring(0,100)}`);
-              feed = null; // Content is not XML-like
+              console.warn(`[RSSSource] Fetched content for ${feedUrl} in fallback does not appear to be XML or is empty. Snippet: ${text.substring(0,100)}`);
+              feed = { items: [] } as Parser.Output<{ [key: string]: any; }>; // Default to empty items
             }
           } else {
-            // This error will be caught by the outer try-catch for the feed URL processing
-            throw new Error(`Fallback fetch failed for ${feedUrl} with status: ${response.status}`);
+            console.warn(`[RSSSource] Fallback fetch for ${feedUrl} failed with status: ${response.status}`);
+            feed = { items: [] } as Parser.Output<{ [key: string]: any; }>; // Default to empty items on fetch error
           }
         }
         
-        if (feed && feed.items && feed.items.length > 0) {
+        // Ensure feed is an object with items before proceeding
+        if (!feed || !feed.items) {
+            console.warn(`[RSSSource] Feed object for ${feedUrl} is invalid or has no items after parsing attempts. Defaulting to empty items.`);
+            feed = { items: [] } as Parser.Output<{ [key: string]: any; }>;
+        }
+
+        if (feed.items.length > 0) {
           const processedItems = await this.processItems(feed.items, feedUrl);
           resultItems = resultItems.concat(processedItems);
+        } else {
+            console.log(`[RSSSource] No valid feed items found for ${feedUrl} after parsing attempts.`);
         }
         
-        if (this.parser) {
+        if (this.parser && resultItems.length > 0) { // Only parse if there are items to parse
           for (const item of resultItems) {
             if (item.link) {
-              try { // Specific try-catch for each item's parsing
+              try { 
                 if (this.page && this.parser.name === "RealtorParser") {
-                  // Temporary logging already added in a previous step, ensure it has [RSSSource] prefix
                   console.log(`[RSSSource] Attempting to call RealtorParser.parseDetails for ${item.link} using ${this.page ? 'valid' : 'invalid'} page object from debugRealtorAccess.`);
-                  if (this.page) { // Check this.page again
+                  if (this.page) { 
                     console.log(`[RSSSource] Current URL of this.page before passing to RealtorParser: ${this.page.url()}`);
                   }
                   const parsedDetails = await (this.parser as any).parseDetails(item.link, this.page, item.title || '');
@@ -262,24 +294,19 @@ export class RSSSource implements ContentSource {
                 }
               } catch (parsingError) {
                 console.error(`[RSSSource] Error parsing item link ${item.link} with parser ${this.parser.name ? this.parser.name : 'unknown'}:`, parsingError);
-                // Continue to the next item
               }
             }
           }
         }
+        // Concatenate parsed items if any, otherwise use resultItems (which might be empty if feed processing failed)
         allFetchedItems = allFetchedItems.concat(parsedItems.length > 0 ? parsedItems : resultItems);
         
-      } catch (feedProcessingError) { // This catch is for errors during a single feed's processing (fetch or processing all its items)
-        console.error(`[RSSSource] Error processing feed URL ${feedUrl}:`, feedProcessingError);
-        // Continue to the next feed URL
+      } catch (feedProcessingError) { 
+        console.error(`[RSSSource] Critical error processing feed URL ${feedUrl}:`, feedProcessingError);
+        // Continue to the next feed URL, allFetchedItems will not include items from this failed feed.
       }
     }
-    
-    // Browser closing logic will be moved to a finally block for the outer try in the next step.
-    // For now, the existing logic is kept for this intermediate step.
     } finally {
-      // This 'finally' block ensures browser cleanup happens even if errors occur 
-      // within the main feed processing try block.
       if (this.browser) {
         console.log('[RSSSource] Closing browser instance from RSSSource after processing all feeds...');
         try {
@@ -288,7 +315,7 @@ export class RSSSource implements ContentSource {
           console.error('[RSSSource] Error closing browser in RSSSource:', browserCloseError);
         }
         this.browser = undefined;
-        this.page = undefined; // Clear page reference as well
+        this.page = undefined; 
       }
     }
 
