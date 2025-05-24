@@ -88,18 +88,27 @@ export async function getRealtorPageWithPatchright(
             responseUrl = response.url();
             console.log(`[PatchrightHelper] Initial navigation response status: ${initialNavigationStatus} for response URL: ${responseUrl}`);
             
-            const requestChain = response.request().redirectChain(); 
-            if (requestChain.length > 0) {
-                const chainDetails = [];
-                for (const req of requestChain) {
-                    const res = await req.response(); 
-                    chainDetails.push(`${req.url()} (${res ? res.status() : 'N/A'})`);
-                }
-                // Add the final response from page.goto()
-                chainDetails.push(`${response.url()} (${response.status()})`);
+            // Corrected redirect chain logging
+            const requestsInChain: import('playwright-core').Request[] = [];
+            let currentRequest = response.request();
+            while (currentRequest) {
+                requestsInChain.push(currentRequest);
+                currentRequest = currentRequest.redirectedFrom(); // Get the request that redirected to this one
+            }
+            requestsInChain.reverse(); // Reverse to get chronological order
+
+            if (requestsInChain.length > 1) { // Only log if there was at least one redirect (chain has more than the final request)
+                const chainDetailsPromises = requestsInChain.map(async (req, index) => {
+                    const res = await req.response();
+                    // For the last request in the chain, its response is the main 'response' object
+                    const status = (index === requestsInChain.length - 1) ? response.status() : (res ? res.status() : 'N/A');
+                    return `${req.url()} (${status})`;
+                });
+                const chainDetails = await Promise.all(chainDetailsPromises);
                 console.log(`[PatchrightHelper] Initial navigation redirect chain: ${chainDetails.join(' -> ')}`);
             } else {
-                 console.log(`[PatchrightHelper] No redirects for initial navigation to ${initialUrl}. Final URL: ${response.url()} (${response.status()})`);
+                // No redirects, or only the final request (which is not a "chain" of redirects)
+                console.log(`[PatchrightHelper] No redirects for initial navigation to ${initialUrl}. Final URL: ${response.url()} (${response.status()})`);
             }
         } else {
             initialNavigationStatus = -1; 
