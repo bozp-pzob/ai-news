@@ -87,9 +87,19 @@ export async function getRealtorPageWithPatchright(
             initialNavigationStatus = response.status();
             responseUrl = response.url();
             console.log(`[PatchrightHelper] Initial navigation response status: ${initialNavigationStatus} for response URL: ${responseUrl}`);
-            const redirectChain = response.request().redirectChain();
-            if (redirectChain.length > 0) {
-                console.log(`[PatchrightHelper] Initial navigation redirect chain: ${redirectChain.map(r => `${r.url()} (${r.response()?.status()})`).join(' -> ')} -> ${responseUrl} (${initialNavigationStatus})`);
+            
+            const requestChain = response.request().redirectChain(); 
+            if (requestChain.length > 0) {
+                const chainDetails = [];
+                for (const req of requestChain) {
+                    const res = await req.response(); 
+                    chainDetails.push(`${req.url()} (${res ? res.status() : 'N/A'})`);
+                }
+                // Add the final response from page.goto()
+                chainDetails.push(`${response.url()} (${response.status()})`);
+                console.log(`[PatchrightHelper] Initial navigation redirect chain: ${chainDetails.join(' -> ')}`);
+            } else {
+                 console.log(`[PatchrightHelper] No redirects for initial navigation to ${initialUrl}. Final URL: ${response.url()} (${response.status()})`);
             }
         } else {
             initialNavigationStatus = -1; 
