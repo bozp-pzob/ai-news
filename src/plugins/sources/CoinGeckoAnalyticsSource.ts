@@ -30,6 +30,17 @@ export class CoinGeckoAnalyticsSource implements ContentSource {
     /** List of token symbols to track */
     private tokenSymbols: string[];
   
+    static constructorInterface = {
+      parameters: [
+        {
+          name: 'tokenSymbols',
+          type: 'string[]',
+          required: true,
+          description: 'Array of cryptocurrency symbols to track (e.g., ["bitcoin", "ethereum"])'
+        }
+      ]
+    };
+  
     /**
      * Creates a new CoinGeckoAnalyticsSource instance
      * @param {CoinGeckoAnalyticsSourceConfig} config - Configuration object for the analytics source
