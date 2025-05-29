@@ -3,29 +3,29 @@ import { Scraper } from 'agent-twitter-client';
 
 // Mock the agent-twitter-client
 jest.mock('agent-twitter-client', () => {
-  // Mock the Scraper class
   return {
     Scraper: jest.fn().mockImplementation(() => {
       return {
         getTweet: jest.fn(),
-        getUserProfile: jest.fn(),
-        // Add any other methods that might be called by TwitterSource
+        getProfile: jest.fn(), // Changed from getUserProfile to getProfile
         login: jest.fn().mockResolvedValue(undefined),
         isLoggedIn: jest.fn().mockResolvedValue(true),
         getCookies: jest.fn().mockResolvedValue([]),
         setCookies: jest.fn().mockResolvedValue(undefined),
         getUserIdByScreenName: jest.fn().mockImplementation(async (screenName: string) => {
+          // This mock might still be needed if getUserIdByScreenName is used elsewhere,
+          // but for processTweets, username is taken directly from tweetToProcessForContent.
           if (screenName === 'retweeter') return 'retweeter789';
           if (screenName === 'originalposter') return 'originalUser1';
           if (screenName === 'originalposter2') return 'originalUser2';
           return `${screenName}Id`;
         }),
-        getUserTweetsIterator: jest.fn().mockImplementation(async function*() { yield {}; }), // Empty generator
+        getUserTweetsIterator: jest.fn().mockImplementation(async function*() { yield {}; }),
         fetchSearchTweets: jest.fn().mockResolvedValue({ tweets: [], next: null }),
       };
     }),
     SearchMode: {
-      Latest: 'Latest', // Or whatever the actual value is
+      Latest: 'Latest',
     },
   };
 });
@@ -36,72 +36,70 @@ describe('TwitterSource.processTweets', () => {
 
   const baseConfig = {
     name: 'testTwitterSource',
-    accounts: ['testuser1'],
-    username: 'testUsername',
-    password: 'testPassword',
-    email: 'testEmail',
+    accounts: ['testuser_config'], // Changed to avoid collision with test data
+    username: 'testUsername_config',
+    password: 'testPassword_config',
+    email: 'testEmail_config',
     cookies: undefined,
   };
 
   beforeEach(() => {
-    // Create a new instance of Scraper mock for each test
-    // and assign it to where TwitterSource will use it.
-    // The mockImplementation in jest.mock is for the constructor,
-    // this is for the instance methods.
-    Scraper.prototype.getTweet = jest.fn();
-    Scraper.prototype.getUserProfile = jest.fn();
-    Scraper.prototype.isLoggedIn = jest.fn().mockResolvedValue(true); // Ensure it's logged in by default
-    
-    twitterSource = new TwitterSource(baseConfig);
-    // Access the mocked instance used by twitterSource
-    // This relies on the fact that the constructor of TwitterSource calls `new Scraper()`
-    // and jest.mock replaces that with our mock constructor, which returns a mock instance.
-    // To make this more robust, we can grab the instance from the mocked constructor.
-    const MockedScraper = Scraper as jest.MockedClass<typeof Scraper>;
-    mockScraperInstance = MockedScraper.mock.instances[0] as jest.Mocked<Scraper>;
-  });
-
-  afterEach(() => {
+    // Reset all mocks including constructor calls for Scraper
     jest.clearAllMocks();
+
+    // Create a new instance of Scraper mock for each test
+    // Scraper.prototype.getProfile is now part of the main mock via jest.fn() in the factory
+    // So, we just need to ensure we get the correct instance.
+    twitterSource = new TwitterSource(baseConfig);
+    const MockedScraper = Scraper as jest.MockedClass<typeof Scraper>;
+    // Assuming TwitterSource constructor creates one Scraper instance
+    // If it creates more, this might need adjustment or a more specific way to get the instance.
+    if (MockedScraper.mock.instances.length > 0) {
+        mockScraperInstance = MockedScraper.mock.instances[MockedScraper.mock.instances.length -1] as jest.Mocked<Scraper>;
+    } else {
+        // Fallback if constructor wasn't called as expected (e.g. if init isn't called in test path)
+        // This shouldn't happen if TwitterSource always instantiates Scraper.
+        // Forcing a new instance for safety, though ideally the above works.
+        mockScraperInstance = new (Scraper as any)() as jest.Mocked<Scraper>;
+    }
+    
+    // Ensure specific method mocks are fresh if needed, though jest.clearAllMocks should handle it.
+    // mockScraperInstance.getProfile = jest.fn(); // This is now done by the factory mock.
+    // mockScraperInstance.getTweet = jest.fn(); // Also handled by factory mock.
   });
 
   // Helper to call the private method
   const callProcessTweets = async (tweets: any[]) => {
+    // Temporarily make isLoggedIn return true if not already mocked for the instance
+    if (!mockScraperInstance.isLoggedIn) {
+        mockScraperInstance.isLoggedIn = jest.fn().mockResolvedValue(true);
+    }
+    // Ensure init() is called if it's relevant to setting up the client for processTweets
+    // For now, assuming client is ready or processTweets doesn't depend on init state not covered by mocks
     return (twitterSource as any).processTweets(tweets);
   };
 
-  test('Test Case 1: Profile Image URL Directly on Tweet user object', async () => {
+  test('Scenario 1: Profile Image URL Successfully Fetched by getProfile (profile_image_url_https)', async () => {
     const tweet = {
       id: 'tweet1',
       text: 'Test tweet 1',
       userId: 'user123',
       username: 'testuser1',
-      user: { profile_image_url_https: 'http://example.com/direct_image.jpg' },
       timestamp: Date.now() / 1000,
     };
+    mockScraperInstance.getProfile.mockResolvedValue({ 
+      profile_image_url_https: 'http://example.com/profile.jpg',
+      name: 'Test User 1',
+      // other fields that might be on a profile object
+    });
+
     const result = await callProcessTweets([tweet]);
-    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/direct_image.jpg');
+    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/profile.jpg');
     expect(result[0].metadata.authorUserName).toBe('testuser1');
-    expect(mockScraperInstance.getUserProfile).not.toHaveBeenCalled();
-  });
-  
-  test('Test Case 1.1: Profile Image URL Directly on Tweet author object (avatar)', async () => {
-    const tweet = {
-      id: 'tweet1.1',
-      text: 'Test tweet 1.1',
-      userId: 'user1234',
-      username: 'testuser1.1',
-      author: { avatar: 'http://example.com/author_avatar.jpg' }, // Using author.avatar
-      timestamp: Date.now() / 1000,
-    };
-    const result = await callProcessTweets([tweet]);
-    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/author_avatar.jpg');
-    expect(result[0].metadata.authorUserName).toBe('testuser1.1');
-    expect(mockScraperInstance.getUserProfile).not.toHaveBeenCalled();
+    expect(mockScraperInstance.getProfile).toHaveBeenCalledWith('testuser1');
   });
 
-
-  test('Test Case 2: Profile Image URL from Hypothetical getUserProfile', async () => {
+  test('Scenario 2: Profile Image URL Successfully Fetched by getProfile (profileImageUrl as fallback)', async () => {
     const tweet = {
       id: 'tweet2',
       text: 'Test tweet 2',
@@ -109,124 +107,36 @@ describe('TwitterSource.processTweets', () => {
       username: 'testuser2',
       timestamp: Date.now() / 1000,
     };
-    mockScraperInstance.getUserProfile.mockResolvedValue({ profile_image_url_https: 'http://example.com/fetched_image.jpg' });
+    mockScraperInstance.getProfile.mockResolvedValue({ 
+      profileImageUrl: 'http://example.com/avatar.png', 
+      name: 'Test User 2' 
+    });
 
     const result = await callProcessTweets([tweet]);
-    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/fetched_image.jpg');
-    expect(result[0].metadata.authorUserName).toBe('testuser2');
-    expect(mockScraperInstance.getUserProfile).toHaveBeenCalledWith('user456');
-  });
-
-  test('Test Case 3: Retweet - Profile Image of Original Poster (Directly on Original Tweet)', async () => {
-    const tweet = {
-      id: 'rt1',
-      isRetweet: true,
-      userId: 'retweeter789',
-      username: 'retweeter',
-      retweetedStatusId: 'originalTweet1',
-      retweetedStatus: {
-        id: 'originalTweet1',
-        text: 'Original tweet content',
-        userId: 'originalUser1',
-        username: 'originalposter',
-        user: { profile_image_url_https: 'http://example.com/original_direct.jpg' },
-        timestamp: Date.now() / 1000,
-      },
-      timestamp: Date.now() / 1000 + 100,
-    };
-
-    const result = await callProcessTweets([tweet]);
-    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/original_direct.jpg');
-    expect(result[0].metadata.authorUserName).toBe('originalposter'); // Original poster's username
-    expect(result[0].metadata.retweetedByUserName).toBe('retweeter'); // Retweeter's username
-    expect(mockScraperInstance.getUserProfile).not.toHaveBeenCalled();
-  });
-
-  test('Test Case 4: Retweet - Profile Image of Original Poster (via getUserProfile)', async () => {
-    const tweet = {
-      id: 'rt2',
-      isRetweet: true,
-      userId: 'retweeter789',
-      username: 'retweeter',
-      retweetedStatusId: 'originalTweet2',
-      retweetedStatus: { // Original status present but lacks user.profile_image_url_https
-        id: 'originalTweet2',
-        text: 'Original tweet content',
-        userId: 'originalUser2', // userId is present
-        username: 'originalposter2',
-        timestamp: Date.now() / 1000,
-      },
-      timestamp: Date.now() / 1000 + 100,
-    };
-    mockScraperInstance.getUserProfile.mockResolvedValue({ profile_image_url_https: 'http://example.com/original_fetched.jpg' });
-
-    const result = await callProcessTweets([tweet]);
-    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/original_fetched.jpg');
-    expect(result[0].metadata.authorUserName).toBe('originalposter2');
-    expect(mockScraperInstance.getUserProfile).toHaveBeenCalledWith('originalUser2');
+    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/avatar.png');
+    expect(mockScraperInstance.getProfile).toHaveBeenCalledWith('testuser2');
   });
   
-  test('Test Case 4.1: Retweet - Fetches missing retweetedStatus, then uses direct image from it', async () => {
-    const rawTweet = {
-        id: 'rt_fetch_direct',
-        isRetweet: true,
-        userId: 'retweeterReal',
-        username: 'retweeterRealName',
-        retweetedStatusId: 'originalTweetFetchedDirect', // ID to fetch
-        // retweetedStatus is MISSING
-        timestamp: Date.now() / 1000 + 200,
+  test('Scenario 2.1: Profile Image URL Successfully Fetched by getProfile (avatar as fallback)', async () => {
+    const tweet = {
+      id: 'tweet2.1',
+      text: 'Test tweet 2.1',
+      userId: 'user4561',
+      username: 'testuser21',
+      timestamp: Date.now() / 1000,
     };
-    const fetchedOriginalTweet = {
-        id: 'originalTweetFetchedDirect',
-        text: 'Fetched original tweet text',
-        userId: 'originalUserFetchedDirect',
-        username: 'originalUserFetchedDirectName',
-        user: { profile_image_url_https: 'http://example.com/fetched_original_direct.jpg' },
-        timestamp: Date.now() / 1000,
-    };
+    mockScraperInstance.getProfile.mockResolvedValue({ 
+      avatar: 'http://example.com/avatar_fallback.png', 
+      name: 'Test User 2.1' 
+    });
 
-    mockScraperInstance.getTweet.mockResolvedValue(fetchedOriginalTweet);
-
-    const result = await callProcessTweets([rawTweet]);
-
-    expect(mockScraperInstance.getTweet).toHaveBeenCalledWith('originalTweetFetchedDirect');
-    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/fetched_original_direct.jpg');
-    expect(result[0].metadata.authorUserName).toBe('originalUserFetchedDirectName');
-    expect(mockScraperInstance.getUserProfile).not.toHaveBeenCalled();
-  });
-
-  test('Test Case 4.2: Retweet - Fetches missing retweetedStatus, then uses getUserProfile for image', async () => {
-    const rawTweet = {
-        id: 'rt_fetch_indirect',
-        isRetweet: true,
-        userId: 'retweeterReal2',
-        username: 'retweeterRealName2',
-        retweetedStatusId: 'originalTweetFetchedIndirect', // ID to fetch
-        // retweetedStatus is MISSING
-        timestamp: Date.now() / 1000 + 300,
-    };
-    const fetchedOriginalTweetWithoutImage = { // Original tweet data, but no direct image URL
-        id: 'originalTweetFetchedIndirect',
-        text: 'Fetched original tweet text (no image)',
-        userId: 'originalUserFetchedIndirect',
-        username: 'originalUserFetchedIndirectName',
-        // NO user.profile_image_url_https
-        timestamp: Date.now() / 1000,
-    };
-
-    mockScraperInstance.getTweet.mockResolvedValue(fetchedOriginalTweetWithoutImage);
-    mockScraperInstance.getUserProfile.mockResolvedValue({ profile_image_url_https: 'http://example.com/fetched_original_indirect.jpg' });
-
-    const result = await callProcessTweets([rawTweet]);
-
-    expect(mockScraperInstance.getTweet).toHaveBeenCalledWith('originalTweetFetchedIndirect');
-    expect(mockScraperInstance.getUserProfile).toHaveBeenCalledWith('originalUserFetchedIndirect');
-    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/fetched_original_indirect.jpg');
-    expect(result[0].metadata.authorUserName).toBe('originalUserFetchedIndirectName');
+    const result = await callProcessTweets([tweet]);
+    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/avatar_fallback.png');
+    expect(mockScraperInstance.getProfile).toHaveBeenCalledWith('testuser21');
   });
 
 
-  test('Test Case 5: Profile Image URL Not Available (getUserProfile returns null)', async () => {
+  test('Scenario 3: getProfile Returns Profile Object Without Image URL', async () => {
     const tweet = {
       id: 'tweet3',
       text: 'Test tweet 3',
@@ -234,114 +144,171 @@ describe('TwitterSource.processTweets', () => {
       username: 'testuser3',
       timestamp: Date.now() / 1000,
     };
-    mockScraperInstance.getUserProfile.mockResolvedValue(null); // getUserProfile finds no image
+    mockScraperInstance.getProfile.mockResolvedValue({ username: 'testuser3', name: 'Another User' });
 
     const result = await callProcessTweets([tweet]);
     expect(result[0].metadata.authorProfileImageUrl).toBeUndefined();
-    expect(result[0].metadata.authorUserName).toBe('testuser3');
-    expect(mockScraperInstance.getUserProfile).toHaveBeenCalledWith('user789');
+    expect(mockScraperInstance.getProfile).toHaveBeenCalledWith('testuser3');
   });
-  
-  test('Test Case 5.1: Profile Image URL Not Available (getUserProfile returns empty object)', async () => {
+
+  test('Scenario 4: getProfile Returns null', async () => {
     const tweet = {
-      id: 'tweet3.1',
-      text: 'Test tweet 3.1',
-      userId: 'user7891',
-      username: 'testuser31',
+      id: 'tweet4',
+      text: 'Test tweet 4',
+      userId: 'user101',
+      username: 'testuser4',
       timestamp: Date.now() / 1000,
     };
-    mockScraperInstance.getUserProfile.mockResolvedValue({}); // getUserProfile finds no image
+    mockScraperInstance.getProfile.mockResolvedValue(null);
 
     const result = await callProcessTweets([tweet]);
     expect(result[0].metadata.authorProfileImageUrl).toBeUndefined();
-    expect(mockScraperInstance.getUserProfile).toHaveBeenCalledWith('user7891');
+    expect(mockScraperInstance.getProfile).toHaveBeenCalledWith('testuser4');
   });
   
-  test('Test Case 5.2: Profile Image URL Not Available (getUserProfile throws error)', async () => {
+  test('Scenario 4.1: getProfile Returns undefined', async () => {
     const tweet = {
-      id: 'tweet3.2',
-      text: 'Test tweet 3.2',
-      userId: 'user7892',
-      username: 'testuser32',
+      id: 'tweet4.1',
+      text: 'Test tweet 4.1',
+      userId: 'user1011',
+      username: 'testuser41',
       timestamp: Date.now() / 1000,
     };
-    mockScraperInstance.getUserProfile.mockRejectedValue(new Error("API error"));
+    mockScraperInstance.getProfile.mockResolvedValue(undefined);
 
     const result = await callProcessTweets([tweet]);
     expect(result[0].metadata.authorProfileImageUrl).toBeUndefined();
-    expect(mockScraperInstance.getUserProfile).toHaveBeenCalledWith('user7892');
+    expect(mockScraperInstance.getProfile).toHaveBeenCalledWith('testuser41');
   });
 
 
-  test('Test Case 6: Quoted Tweet - Profile Image of Main Tweet Poster (direct)', async () => {
+  test('Scenario 5: getProfile Throws an Error', async () => {
+    const tweet = {
+      id: 'tweet5',
+      text: 'Test tweet 5',
+      userId: 'user202',
+      username: 'testuser5',
+      timestamp: Date.now() / 1000,
+    };
+    mockScraperInstance.getProfile.mockRejectedValue(new Error('Failed to fetch profile'));
+
+    const result = await callProcessTweets([tweet]);
+    expect(result[0].metadata.authorProfileImageUrl).toBeUndefined();
+    expect(mockScraperInstance.getProfile).toHaveBeenCalledWith('testuser5');
+  });
+
+  test('Scenario 6: Retweet - Profile Image of Original Poster (via getProfile)', async () => {
+    const tweet = {
+      id: 'rt1',
+      isRetweet: true,
+      userId: 'retweeterId', // Irrelevant for original author image
+      username: 'retweeterName', // Irrelevant for original author image
+      retweetedStatusId: 'originalTweet1',
+      retweetedStatus: {
+        id: 'originalTweet1',
+        text: 'Original tweet content',
+        userId: 'originalUserId',
+        username: 'originalPosterUsername', // This username should be used for getProfile
+        timestamp: Date.now() / 1000,
+      },
+      timestamp: Date.now() / 1000 + 100,
+    };
+    mockScraperInstance.getProfile.mockResolvedValue({ 
+      profile_image_url_https: 'http://example.com/original_profile.jpg',
+      name: 'Original Poster'
+    });
+
+    const result = await callProcessTweets([tweet]);
+    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/original_profile.jpg');
+    expect(result[0].metadata.authorUserName).toBe('originalPosterUsername');
+    expect(mockScraperInstance.getProfile).toHaveBeenCalledWith('originalPosterUsername');
+  });
+  
+  test('Scenario 6.1: Retweet - Fetches missing retweetedStatus, then uses getProfile for image', async () => {
+    const rawTweet = {
+        id: 'rt_fetch_getProfile',
+        isRetweet: true,
+        userId: 'retweeterRealNameId',
+        username: 'retweeterRealName',
+        retweetedStatusId: 'originalTweetFetchedForGetProfile', // ID to fetch
+        timestamp: Date.now() / 1000 + 300,
+    };
+    const fetchedOriginalTweet = { 
+        id: 'originalTweetFetchedForGetProfile',
+        text: 'Fetched original tweet text',
+        userId: 'originalUserFetchedId',
+        username: 'originalUserFetchedUsername', // This username will be used
+        timestamp: Date.now() / 1000,
+    };
+
+    mockScraperInstance.getTweet.mockResolvedValue(fetchedOriginalTweet);
+    mockScraperInstance.getProfile.mockResolvedValue({ profile_image_url_https: 'http://example.com/fetched_original_via_getprofile.jpg' });
+
+    const result = await callProcessTweets([rawTweet]);
+
+    expect(mockScraperInstance.getTweet).toHaveBeenCalledWith('originalTweetFetchedForGetProfile');
+    expect(mockScraperInstance.getProfile).toHaveBeenCalledWith('originalUserFetchedUsername');
+    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/fetched_original_via_getprofile.jpg');
+    expect(result[0].metadata.authorUserName).toBe('originalUserFetchedUsername');
+  });
+
+
+  test('Scenario 7: Tweet without username (should not call getProfile)', async () => {
+    const tweet = {
+      id: 'tweet6',
+      text: 'Test tweet 6',
+      userId: 'user303',
+      username: null, // Username is null
+      timestamp: Date.now() / 1000,
+    };
+
+    const result = await callProcessTweets([tweet]);
+    expect(result[0].metadata.authorProfileImageUrl).toBeUndefined();
+    expect(result[0].metadata.authorUserName).toBeNull();
+    expect(mockScraperInstance.getProfile).not.toHaveBeenCalled();
+  });
+  
+  test('Scenario 7.1: Tweet with undefined username (should not call getProfile)', async () => {
+    const tweet = {
+      id: 'tweet6.1',
+      text: 'Test tweet 6.1',
+      userId: 'user3031',
+      username: undefined, // Username is undefined
+      timestamp: Date.now() / 1000,
+    };
+
+    const result = await callProcessTweets([tweet]);
+    expect(result[0].metadata.authorProfileImageUrl).toBeUndefined();
+    expect(result[0].metadata.authorUserName).toBeUndefined();
+    expect(mockScraperInstance.getProfile).not.toHaveBeenCalled();
+  });
+
+  test('Scenario 8: Quoted Tweet - Profile Image of Main Tweet Poster (via getProfile)', async () => {
     const tweet = {
       id: 'qt1',
       text: 'Quoting another tweet',
-      userId: 'quoterUser',
-      username: 'quoter',
-      user: { profile_image_url_https: 'http://example.com/quoter_image.jpg' },
+      userId: 'quoterUserId',
+      username: 'quoterUsername', // Main quoter's username
       isQuoted: true,
       quotedStatusId: 'qStatus1',
-      quotedStatus: { // Embedded quoted status
-        id: 'qStatus1',
-        text: 'Quoted text',
-        userId: 'quotedAuthor',
-        username: 'quotedauthor',
-        user: { profile_image_url_https: 'http://example.com/quoted_author_image.jpg' }, // Quoted author has an image too
+      quotedStatus: { 
+        id: 'qStatus1', text: 'Quoted text', userId: 'quotedAuthorId', username: 'quotedAuthorUsername', 
         timestamp: Date.now()/1000 - 100
       },
       timestamp: Date.now() / 1000,
     };
+    mockScraperInstance.getProfile.mockResolvedValue({ 
+      profile_image_url_https: 'http://example.com/quoter_image.jpg',
+      name: 'Quoter User'
+    });
 
     const result = await callProcessTweets([tweet]);
-    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/quoter_image.jpg'); // Main quoter's image
-    expect(result[0].metadata.authorUserName).toBe('quoter');
+    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/quoter_image.jpg');
+    expect(result[0].metadata.authorUserName).toBe('quoterUsername');
+    // Ensure getProfile was called for the main quoter, not the quoted author
+    expect(mockScraperInstance.getProfile).toHaveBeenCalledWith('quoterUsername'); 
     expect(result[0].metadata.quotedTweet).toBeDefined();
-    expect(result[0].metadata.quotedTweet.userName).toBe('quotedauthor');
-    // The logic does not add authorProfileImageUrl to quotedTweet metadata, which is fine per requirements.
-    expect(mockScraperInstance.getUserProfile).not.toHaveBeenCalled();
-  });
-
-  test('Test Case 6.1: Quoted Tweet - Profile Image of Main Tweet Poster (via getUserProfile)', async () => {
-    const tweet = {
-      id: 'qt2',
-      text: 'Quoting another tweet again',
-      userId: 'quoterUser2',
-      username: 'quoter2',
-      // No direct user.profile_image_url_https for quoterUser2
-      isQuoted: true,
-      quotedStatusId: 'qStatus2',
-      // Quoted status could be fetched or embedded, for this test, assume embedded is enough
-      quotedStatus: { 
-        id: 'qStatus2', text: 'Quoted text 2', userId: 'quotedAuthor2', username: 'quotedauthor2', 
-        timestamp: Date.now()/1000 - 50
-      },
-      timestamp: Date.now() / 1000,
-    };
-    mockScraperInstance.getUserProfile.mockResolvedValue({ profile_image_url_https: 'http://example.com/quoter2_fetched_image.jpg' });
-
-    const result = await callProcessTweets([tweet]);
-    
-    expect(mockScraperInstance.getUserProfile).toHaveBeenCalledWith('quoterUser2');
-    expect(result[0].metadata.authorProfileImageUrl).toBe('http://example.com/quoter2_fetched_image.jpg');
-    expect(result[0].metadata.authorUserName).toBe('quoter2');
-    expect(result[0].metadata.quotedTweet).toBeDefined();
-  });
-  
-   test('Test Case 7: Tweet with no user object and no userId (should not attempt getUserProfile)', async () => {
-    const tweet = {
-      id: 'tweetNoUser',
-      text: 'A tweet with missing user info',
-      username: 'ghostuser', // username might be present
-      // userId is missing
-      // user object is missing
-      timestamp: Date.now() / 1000,
-    };
-
-    const result = await callProcessTweets([tweet]);
-    expect(result[0].metadata.authorProfileImageUrl).toBeUndefined();
-    expect(result[0].metadata.authorUserName).toBe('ghostuser');
-    expect(mockScraperInstance.getUserProfile).not.toHaveBeenCalled();
+    expect(result[0].metadata.quotedTweet.userName).toBe('quotedAuthorUsername');
   });
 
 });
