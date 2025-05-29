@@ -6,6 +6,7 @@ import { ConfigService, Config } from './services/configService';
 import { AggregatorService } from './services/aggregatorService';
 import { PluginService } from './services/pluginService';
 import { WebSocketService } from './services/websocketService';
+import { CookieService } from './services/cookieService';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -20,6 +21,7 @@ app.use(bodyParser.json());
 // Initialize services
 const configService = new ConfigService();
 const aggregatorService = new AggregatorService();
+const cookiesService = new CookieService();
 const pluginService = new PluginService();
 
 // Initialize WebSocket service
@@ -161,6 +163,21 @@ app.delete('/aggregate/:configName', async (req, res) => {
 app.get('/status/:configName', (req, res) => {
   const status = aggregatorService.getAggregationStatus(req.params.configName);
   res.json(status);
+});
+
+// POST /extract-cookies - Get Cookies from URL for advanced anti botting
+app.post('/cookies/extract', async (req, res) => {
+  const url = req.body?.url || undefined;
+    
+  if ( url ) {
+    const cookies = await cookiesService.getCookies(url);
+
+    res.json(cookies);
+    return
+  }
+
+  res.status(404).json({ error: 'Job not found' });
+  return;
 });
 
 // GET /job/:jobId - Get status of a specific job

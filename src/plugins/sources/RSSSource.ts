@@ -5,12 +5,11 @@ import { ContentItem } from "../../types";
 import Parser from 'rss-parser';
 import { ContentParser } from "../parsers/ContentParser";
 import { StoragePlugin } from "../storage/StoragePlugin";
-import { getCookies,getKasadaProtectedCookies } from "../../helpers/cookieHelper";
-import { bypassRealtorProtection, debugRealtorAccess } from "../../helpers/realtorHelper";
+import { getCookies, cookiesToHeader, getCookieValue, getRSSXML } from "../../helpers/patchrightHelper";
 
 interface RSSSourceConfig {
   name: string;
-  feeds: string[];
+  feeds: any[];
   userAgent?: string;
   headers?: Record<string, string>;
   parser?: ContentParser | undefined;
@@ -20,7 +19,7 @@ interface RSSSourceConfig {
 export class RSSSource implements ContentSource {
   public name: string;
   private rssParser: Parser;
-  private feeds: string[];
+  private feeds: any[];
   private userAgent: string | undefined;
   private headers: Record<string, string> | undefined;
   private parser: ContentParser | undefined;
@@ -87,46 +86,50 @@ export class RSSSource implements ContentSource {
   }
 
   public async fetchItems(): Promise<ContentItem[]> {
-    for (const feedUrl of this.feeds) {
-      // let websiteData = await getKasadaProtectedCookies('https://realtor.com')
-      let websiteData = await debugRealtorAccess()
-      console.log( websiteData )
-      // console.log( websiteData.cookies, websiteData.headers, websiteData.rawCookieString )
+    for (const feed of this.feeds) {
+      let feedUrl = feed.url;
+      let cookieURL = feed.cookieURL;
 
-      // let _headers = {
-      //   "Cookie": websiteData.rawCookieString,
-      // }
+      let cookies : any[] = await getCookies( cookieURL );
+
+      let headers : any = {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-control": "no-cache",
+        "Cookie": cookiesToHeader(cookies),
+        "Pragma": "no-cache",
+        "Priority": "u=0, i",
+        "Sec-Ch-Ua": "\"Not(A:Brand\";v=\"99\", \"Google Chrome\";v=\"133\", \"Chromium\";v=\"133\"",
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": "Windows",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+      }
+
       let resultItems: ContentItem[] = [];
       let parsedItems: ContentItem[] = [];
 
       try {
-        let feed;
-        try {
-          feed = await this.rssParser.parseURL(feedUrl);
-        } catch (initialError) {
-          const headerObj: HeadersInit = {};
-          if (this.userAgent) {
-            headerObj['User-Agent'] = this.userAgent;
-          }
+        let feed = await getRSSXML(feedUrl);
+        // try {
+        //   feed = await this.rssParser.parseURL(feedUrl);
+        // } catch (initialError) {
+        //   console.log( initialError )
+        //   console.log(cookiesToHeader(cookies))
+        //   const response = await fetch(feedUrl, { headers: headers });
           
-          // Add any additional headers
-          if (this.headers) {
-              for (const [key, value] of Object.entries(this.headers)) {
-                headerObj[key] = value;
-              }
-          }
-          
-          const response = await fetch(feedUrl, {
-            headers: headerObj
-          });
-          
-          if (response.ok) {
-            const text = await response.text();
-            feed = await this.rssParser.parseString(text);
-          } else {
-            throw new Error(`Failed to fetch with status: ${response.status}`);
-          }
-        }
+        //   if (response.ok) {
+        //     const text = await response.text();
+        //     feed = await this.rssParser.parseString(text);
+        //   } else {
+        //     throw new Error(`Failed to fetch with status: ${response.status}`);
+        //   }
+        // }
         
         if (feed && feed.items && feed.items.length > 0) {
           const processedItems = await this.processItems(feed.items, feedUrl);

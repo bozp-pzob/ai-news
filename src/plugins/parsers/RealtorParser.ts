@@ -1,7 +1,7 @@
 import { AiProvider, ContentItem, ParserConfig } from "../../types";
 import { ContentParser } from "./ContentParser";
 import { cleanHTML } from "../../helpers/promptHelper";
-import * as puppeteer from "puppeteer";
+import { getPageHTML } from "../../helpers/patchrightHelper";
 
 interface PropertyDetails {
   listingDate: Date;
@@ -45,12 +45,7 @@ export class RealtorParser implements ContentParser {
 
   public async parseDetails(url: string, headers: any, title: string): Promise<ContentItem | undefined> {
     try {
-      const browser = await puppeteer.launch({ headless: true });
-      const page = await browser.newPage();
-      await page.setExtraHTTPHeaders(headers);
-      await page.goto(url, { waitUntil: 'domcontentloaded' });
-      await page.waitForSelector("[data-testid='ldp-page-container']", { timeout: 10000 });
-      const html = await page.evaluate(() => document.body.innerHTML);
+      const html = await getPageHTML(url);
       const cleanHtml = cleanHTML(html);
       const prompt = this.formatStructuredPrompt(cleanHtml);
       const summary = await this.provider?.summarize(prompt)
@@ -72,11 +67,8 @@ export class RealtorParser implements ContentParser {
             status: 'active',
           },
         }
-
-        await browser.close();
         return content;
       }
-      await browser.close();
     } catch (error) {
       console.error("Error parsing Realtor.com property:", error);
       throw error;
