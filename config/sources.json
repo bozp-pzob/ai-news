@@ -11,11 +11,14 @@
           "params": {
               "feeds": [
                 {
+                  "type": "realtor",
                   "url": "https://www.realtor.com/realestateandhomes-detail/sitemap-rss-new/rss-new-ut.xml",
-                  "cookieURL": "https://www.realtor.com"
+                  "cookieUrl": "https://www.realtor.com",
+                  "excludeTopics": "[mortgageBreakdown, mortgageDetails, mortgageEstimate]",
+                  "objectTypeString": "{\n  listingDate: Date;\n  squareFeet: number;\n  bedrooms: number;\n  bathrooms: number;\n  price: number;\n  pricePerSqft: number;\n  location: {\n    address: string;\n    city: string;\n    state: string;\n    zipCode: string;\n  };\n  priceHistory: Array<{ date: string; price: string; event: string; }>;\n  taxHistory: Array<{ year: string; taxAmount: string; assessedValue: string; }>;\n  schoolRatings: Array<{ name: string; rating: string; }>;\n  gps: Object<{ latitude: number, longitude: number }>;\n  propertyType: string;\n  yearBuilt: number;\n  lotSize: number;\n  description: string;\n  images: string[];\n  hoaFees: number;\n  environmentRisks: string;\n  localLogicData: string;\n  url?: string;\n  mlsId?: string;\n  mlsSource: string;\n  parcelNumber?: string;\n  misc: Object;\n}"
                 }
               ],
-              "parser": "RealtorParser",
+              "parser": "HTMLParser",
               "storage": "SQLiteStorage"
           }
         }
@@ -61,8 +64,8 @@
     ],
     "parsers": [
       {
-        "type": "RealtorParser",
-        "name": "RealtorParser",
+        "type": "HTMLParser",
+        "name": "HTMLParser",
         "params": {
           "provider": "summaryOpenAiProvider"
         }
