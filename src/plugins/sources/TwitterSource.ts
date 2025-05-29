@@ -212,6 +212,52 @@ export class TwitterSource implements ContentSource {
       metadata.authorUserId = tweetToProcessForContent.userId;
       metadata.authorUserName = tweetToProcessForContent.username;
 
+      // Attempt to get author profile image URL
+      let authorProfileImageUrl: string | undefined = tweetToProcessForContent.user?.profile_image_url_https || tweetToProcessForContent.author?.profile_image_url_https || tweetToProcessForContent.profile_image_url_https || tweetToProcessForContent.user?.avatar || tweetToProcessForContent.author?.avatar;
+
+      // If not found directly, and if it's not a retweet's processed original status (where user object might be at top level)
+      // For actual raw retweets, the user object is often directly on the rawTweet.retweetedStatus.user
+      // For tweets processed by agent-twitter-client, the user data might be on tweetToProcessForContent.user
+      
+      // The problem description mentions a hypothetical getUserProfile.
+      // Since we cannot inspect the client's capabilities here, we will rely on direct access first.
+      // If direct access fails, as a fallback, we'll log a warning if userId is present but image isn't.
+      // The instructions ask to implement the hypothetical call if direct access fails.
+      // Let's assume 'tweetToProcessForContent.user.profile_image_url_https' is the most standard field.
+
+      if (!authorProfileImageUrl && tweetToProcessForContent.userId) {
+          // Attempting to use a common field structure if the initial direct accesses failed.
+          // This prioritizes `user.profile_image_url_https` as per common Twitter API structures.
+          if (tweetToProcessForContent.user && tweetToProcessForContent.user.profile_image_url_https) {
+              authorProfileImageUrl = tweetToProcessForContent.user.profile_image_url_https;
+          } else {
+              // console.warn(`[TwitterSource.processTweets] Profile image URL not found directly on tweet object for user ID: ${tweetToProcessForContent.userId}. No fallback getUserProfile method implemented.`);
+              // As per instructions, if direct access fails, try the hypothetical getUserProfile call.
+              // We will insert the suggested block here.
+              console.log(`[TwitterSource.processTweets] Profile image URL not found directly for user ID: ${tweetToProcessForContent.userId}. Attempting hypothetical getUserProfile.`);
+              try {
+                  // This is a hypothetical method call.
+                  // We assume 'this.client.getUserProfile' exists and returns an object
+                  // like { profile_image_url_https: 'some_url' } or similar.
+                  console.log(`[TwitterSource.processTweets] Attempting to fetch profile for user ID: ${tweetToProcessForContent.userId}`);
+                  const userProfile = await this.client.getUserProfile(tweetToProcessForContent.userId); // Hypothetical
+                  if (userProfile && userProfile.profile_image_url_https) {
+                      authorProfileImageUrl = userProfile.profile_image_url_https;
+                      console.log(`[TwitterSource.processTweets] Successfully fetched profile image URL via hypothetical getUserProfile for user ID: ${tweetToProcessForContent.userId}`);
+                  } else {
+                      console.warn(`[TwitterSource.processTweets] Hypothetical getUserProfile: User profile data or profile image URL not found for user ID: ${tweetToProcessForContent.userId}`);
+                  }
+              } catch (err: any) {
+                  console.warn(`[TwitterSource.processTweets] Error calling hypothetical getUserProfile for user ID ${tweetToProcessForContent.userId}: ${err.message}`);
+                  // Keep authorProfileImageUrl as undefined
+              }
+          }
+      }
+
+      if (authorProfileImageUrl) {
+          metadata.authorProfileImageUrl = authorProfileImageUrl;
+      }
+
       // Common metadata from tweetToProcessForContent
       metadata.photos = (tweetToProcessForContent.photos?.map((img: any) => img.url) || []).concat(tweetToProcessForContent.videos?.map((vid: any) => vid.preview) || []);
       metadata.videos = tweetToProcessForContent.videos?.map((vid: any) => vid.url) || [];
