@@ -212,6 +212,47 @@ export class TwitterSource implements ContentSource {
       metadata.authorUserId = tweetToProcessForContent.userId;
       metadata.authorUserName = tweetToProcessForContent.username;
 
+      let authorProfileImageUrl: string | undefined;
+      if (tweetToProcessForContent.username) {
+          try {
+              console.log(`[TwitterSource.processTweets] Attempting to fetch profile for username: ${tweetToProcessForContent.username}`);
+              const userProfile: any = await this.client.getProfile(tweetToProcessForContent.username); 
+
+              if (userProfile) {
+                  // Prioritize 'profile_image_url_https', then check others.
+                  if (userProfile.profile_image_url_https) {
+                      authorProfileImageUrl = userProfile.profile_image_url_https;
+                  } else if (userProfile.profile_image_url) {
+                      authorProfileImageUrl = userProfile.profile_image_url;
+                  } else if (userProfile.avatar) {
+                      authorProfileImageUrl = userProfile.avatar;
+                  } else if (userProfile.profileImageUrl) {
+                      authorProfileImageUrl = userProfile.profileImageUrl;
+                  } else if (userProfile.legacy?.profile_image_url_https) { // Check legacy object
+                      authorProfileImageUrl = userProfile.legacy.profile_image_url_https;
+                  }
+                  // Add more potential fields here if necessary, e.g. userProfile.legacy?.profile_image_url_https
+
+                  if (authorProfileImageUrl) {
+                      console.log(`[TwitterSource.processTweets] Successfully fetched profile image URL for username: ${tweetToProcessForContent.username}`);
+                  } else {
+                      console.warn(`[TwitterSource.processTweets] Profile image URL not found in profile object for username: ${tweetToProcessForContent.username}. Profile object:`, JSON.stringify(userProfile, null, 2));
+                  }
+              } else {
+                  console.warn(`[TwitterSource.processTweets] User profile not found for username: ${tweetToProcessForContent.username}`);
+              }
+          } catch (err: any) {
+              console.warn(`[TwitterSource.processTweets] Error calling getProfile for username ${tweetToProcessForContent.username}: ${err.message}`);
+              // Keep authorProfileImageUrl as undefined
+          }
+      } else {
+          console.warn(`[TwitterSource.processTweets] Username is missing on tweetToProcessForContent, cannot fetch profile.`);
+      }
+
+      if (authorProfileImageUrl) {
+          metadata.authorProfileImageUrl = authorProfileImageUrl;
+      }
+
       // Common metadata from tweetToProcessForContent
       metadata.photos = (tweetToProcessForContent.photos?.map((img: any) => img.url) || []).concat(tweetToProcessForContent.videos?.map((vid: any) => vid.preview) || []);
       metadata.videos = tweetToProcessForContent.videos?.map((vid: any) => vid.url) || [];
@@ -267,6 +308,40 @@ export class TwitterSource implements ContentSource {
               date: quotedDetails.timestamp,
             };
             console.info(`[TwitterSource] Successfully processed quoted tweet ${quotedDetails.id} within ${quoteTweetLogPrefix}`);
+
+            // Fetch profile image for quoted tweet's author
+            if (metadata.quotedTweet.userName) {
+              try {
+                console.log(`[TwitterSource.processTweets] Attempting to fetch profile for quoted tweet author: ${metadata.quotedTweet.userName}`);
+                const quotedAuthorProfile: any = await this.client.getProfile(metadata.quotedTweet.userName);
+                if (quotedAuthorProfile) {
+                  let quotedAuthorProfileImageUrl: string | undefined;
+                  if (quotedAuthorProfile.profile_image_url_https) {
+                    quotedAuthorProfileImageUrl = quotedAuthorProfile.profile_image_url_https;
+                  } else if (quotedAuthorProfile.profile_image_url) {
+                    quotedAuthorProfileImageUrl = quotedAuthorProfile.profile_image_url;
+                  } else if (quotedAuthorProfile.avatar) {
+                    quotedAuthorProfileImageUrl = quotedAuthorProfile.avatar;
+                  } else if (quotedAuthorProfile.profileImageUrl) {
+                    quotedAuthorProfileImageUrl = quotedAuthorProfile.profileImageUrl;
+                  } else if (quotedAuthorProfile.legacy?.profile_image_url_https) {
+                    quotedAuthorProfileImageUrl = quotedAuthorProfile.legacy.profile_image_url_https;
+                  }
+
+                  if (quotedAuthorProfileImageUrl) {
+                    metadata.quotedTweet.authorProfileImageUrl = quotedAuthorProfileImageUrl;
+                    console.log(`[TwitterSource.processTweets] Successfully fetched profile image for quoted tweet author: ${metadata.quotedTweet.userName}`);
+                  } else {
+                    console.warn(`[TwitterSource.processTweets] Profile image URL not found for quoted tweet author: ${metadata.quotedTweet.userName}. Profile object:`, JSON.stringify(quotedAuthorProfile, null, 2));
+                  }
+                } else {
+                  console.warn(`[TwitterSource.processTweets] User profile not found for quoted tweet author: ${metadata.quotedTweet.userName}`);
+                }
+              } catch (qAuthError: any) {
+                console.warn(`[TwitterSource.processTweets] Error calling getProfile for quoted tweet author ${metadata.quotedTweet.userName}: ${qAuthError.message}`);
+              }
+            }
+
           } else {
             metadata.quotedTweetError = `Details not found/fetched for quoted status ${tweetToProcessForContent.quotedStatusId}`;
             console.warn(`[TwitterSource] Failed to get details for quoted tweet ${tweetToProcessForContent.quotedStatusId} for ${quoteTweetLogPrefix}`);
