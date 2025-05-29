@@ -8,6 +8,7 @@ import { SQLiteStorage } from "../storage/SQLiteStorage";
 import { ContentItem, SummaryItem } from "../../types";
 import { createJSONPromptForTopics, createMarkdownPromptForJSON } from "../../helpers/promptHelper";
 import { retryOperation } from "../../helpers/generalHelper";
+import { enrichAiSummaryContent } from "../../helpers/summaryHelper";
 import fs from "fs";
 import path from "path";
 
@@ -78,14 +79,13 @@ export class DailySummaryGenerator {
       const currentTime = new Date(dateStr).getTime() / 1000;
       const targetTime = currentTime + (60 * 60 * 24);
       
-      // Fetch items based on whether a specific source type was configured
       let contentItems: ContentItem[];
       if (this.source) {
         console.log(`Fetching content for type: ${this.source}`);
         contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime, this.source);
       } else {
         console.log(`Fetching all content types for summary generation.`);
-        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime); // Fetch all types
+        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime);
       }
 
       if (contentItems.length === 0) {
@@ -93,84 +93,185 @@ export class DailySummaryGenerator {
         return;
       }
 
-      const groupedContent = this.groupObjects(contentItems);
-
-      const allSummaries: any[] = [];
+      const groupedContent = this.groupObjects(contentItems); 
+      const allSummariesFromAI: any[] = []; 
       let groupsToSummarize = 0;
 
-      for (const grouped of groupedContent) {
+      for (const group of groupedContent) {
         try {
-          if (!grouped) continue;
-          const { topic, objects } = grouped;
+          if (!group) continue;
+          // itemsForThisTopic are the original ContentItems for the current group/topic
+          const { topic, objects: itemsForThisTopic } = group; 
           
-          if (!topic || !objects || objects.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) continue;
+          if (!topic || !itemsForThisTopic || itemsForThisTopic.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) continue;
 
           let promptCustomInstructions: { title?: string, aiPrompt?: string, repositoryName?: string, dataProviderName?: string } = {};
           let topicForPrompt = topic;
+          let isTwitterActivity = false;
+          
+          console.log(`[DailySummaryGenerator] Preparing to summarize topic: '${topicForPrompt}'. Number of items: ${itemsForThisTopic.length}`);
+          // Note: contextObjectsForAI is not directly used further down if promptHelper formats its own context, 
+          // but it was part of a previous logging strategy. We pass itemsForThisTopic to createJSONPromptForTopics.
+          // If createJSONPromptForTopics *doesn't* internally map itemsForThisTopic to a context like this,
+          // then itemsForThisTopic (original ContentItems) are sent directly.
+          // The important part is that promptHelper receives the raw items to extract all needed fields.
 
           if (topic === "twitter_activity") { 
+            isTwitterActivity = true;
             topicForPrompt = "Twitter Activity"; 
-            promptCustomInstructions.title = (this as any).config?.twitterSummaryTitle || "Thematic Twitter Activity Summary"; 
-            promptCustomInstructions.aiPrompt = (this as any).config?.twitterAdditionalInstructions;
+            promptCustomInstructions.title = (this as any).config?.twitterSummaryTitle || "Thematic Twitter Activity Summary";
+            itemsForThisTopic.sort((a: ContentItem, b: ContentItem) => { 
+              const userA = a.metadata?.authorUserName || a.metadata?.retweetedByUserName || '';
+              const userB = b.metadata?.authorUserName || b.metadata?.retweetedByUserName || '';
+              if (userA.localeCompare(userB) !== 0) return userA.localeCompare(userB);
+              const convoIdA = a.metadata?.thread?.conversationId || '';
+              const convoIdB = b.metadata?.thread?.conversationId || '';
+              if (convoIdA.localeCompare(convoIdB) !== 0) return convoIdA.localeCompare(convoIdB);
+              return (a.date || 0) - (b.date || 0);
+            });
+            const baseAiPrompt = (this as any).config?.twitterAdditionalInstructions || "";
+            promptCustomInstructions.aiPrompt = 
+              `Please respond ONLY with a valid JSON object. Do not include any additional text, markdown, or any characters before or after the JSON object.\n\n` +
+              `${baseAiPrompt}\n` +
+              `Based on the detailed "Input Tweet Sources for Analysis" provided by the system (which includes cid, tweet_url, author, author_pfp_url, tweet_text_snippet, media_images, media_videos, likes, retweets for each tweet context):\n` +
+              `1. Identify key themes or subjects from the tweets.\n` +
+              `2. For each theme, construct a JSON object. The top-level JSON response should be an object with a "title" (string, e.g., "${promptCustomInstructions.title}") and a "content" (array of these theme objects).\n` +
+              `3. Each theme object in the "content" array must include:\n` +
+              `   a. 'theme_title' (string): A concise title for the identified theme.\n` +
+              `   b. 'text' (string): Your summary of the theme, synthesizing information from the relevant tweets and attributing key statements or actions to specific authors (e.g., "@userX mentioned...").\n` +
+              `   c. 'contributing_tweets' (array of objects): An array of tweet objects that directly contributed to this theme. For each tweet in this array, extract the following details PRECISELY from the corresponding input tweet context provided by the system:\n` +
+              `      {\n` +
+              `        "cid": "string (the unique ID of the tweet, from cid)",\n` +
+              `        "author": "string (the @username of the tweet author)",\n` +
+              `        "author_pfp": "string (URL of the author's profile picture, from author_pfp_url)",\n` +
+              `        "tweet_url": "string (the direct URL to the tweet, from tweet_url)",\n` +
+              `        "tweet_text_snippet": "string (the provided text snippet of the tweet, from tweet_text_snippet)",\n` +
+              `        "media": {\n` +
+              `          "images": ["string (array of image URLs from media_images)"],\n` +
+              `          "videos": ["string (array of video URLs from media_videos)"]\n` +
+              `        },\n` +
+              `        "likes": "number (number of likes, from likes)",\n` +
+              `        "retweets": "number (number of retweets, from retweets)"\n` +
+              `      }\n` +
+              `Ensure you accurately map the data from the input context (cid, author, author_pfp_url, tweet_url, etc.) to these fields for each contributing tweet.`;
 
-            // Sort Twitter items to group threads by user and conversationId
-            if (objects && objects.length > 0) {
-              objects.sort((a: ContentItem, b: ContentItem) => {
-                const userA = a.metadata?.authorUserName || a.metadata?.retweetedByUserName || '';
-                const userB = b.metadata?.authorUserName || b.metadata?.retweetedByUserName || '';
-                
-                if (userA.localeCompare(userB) !== 0) {
-                  return userA.localeCompare(userB);
-                }
-                
-                const convoIdA = a.metadata?.thread?.conversationId || '';
-                const convoIdB = b.metadata?.thread?.conversationId || '';
-                
-                if (convoIdA.localeCompare(convoIdB) !== 0) {
-                  return convoIdA.localeCompare(convoIdB);
-                }
-                
-                return (a.date || 0) - (b.date || 0);
-              });
+          } else { // For non-Twitter topics (GitHub, Crypto, Misc, etc.)
+            if (topic === "issue" || topic === "pull_request") {
+              const repoCompany = itemsForThisTopic[0]?.metadata?.githubCompany;
+              const repoName = itemsForThisTopic[0]?.metadata?.githubRepo;
+              if (repoCompany && repoName) promptCustomInstructions.repositoryName = `${repoCompany}/${repoName}`;
+              else console.warn(`[DailySummaryGenerator] Repository details missing for GitHub topic: ${topic}`);
+            } else if (topic === "crypto market") {
+              promptCustomInstructions.dataProviderName = (this as any).config?.marketDataProviderName || "codexAnalytics";
             }
-            
-          } else if (topic === "issue" || topic === "pull_request") {
-            // Assuming objects[0]?.metadata contains githubCompany and githubRepo
-            const repoCompany = objects[0]?.metadata?.githubCompany;
-            const repoName = objects[0]?.metadata?.githubRepo;
-            if (repoCompany && repoName) {
-              promptCustomInstructions.repositoryName = `${repoCompany}/${repoName}`;
-            } else {
-              // Fallback or specific log if repo details are missing
-              console.warn(`[DailySummaryGenerator] Repository details missing for GitHub topic: ${topic}`);
-            }
-          } else if (topic === "crypto market") {
-            // Assuming dataProvider comes from config or is known for this topic
-            // For example, this.config.marketDataProviderName
-            promptCustomInstructions.dataProviderName = (this as any).config?.marketDataProviderName || "codexAnalytics";
+            promptCustomInstructions.aiPrompt = 
+              `Please respond ONLY with a valid JSON object. Do not include any additional text, markdown, or any characters before or after the JSON object.\n\n` +
+              `Based on the "Input Item Sources for Analysis" provided by the system (which includes cid, link, text_snippet for each item context):\n` +
+              `1. Summarize the key information from the provided items for the topic '${topicForPrompt}'.\n` +
+              `2. The JSON output should be an object with a "title" (string, e.g., "Summary for ${topicForPrompt}") and a "content" (array of summary entry objects).\n` +
+              `3. Each summary entry object in the "content" array must include:\n` +
+              `   a. 'text' (string): Your summary of one or more related input items.\n` +
+              `   b. 'contributing_item_cids' (array of strings): An array of 'cid' strings from the input items that this summary text pertains to.\n` +
+              `Example entry: { "text": "Summary of item Z...", "contributing_item_cids": ["cid_Z"] }\n` +
+              `Do NOT include detailed sources, images, or videos in YOUR response; only the CIDs.`;
           }
 
-          const prompt = createJSONPromptForTopics(topicForPrompt, objects, dateStr, promptCustomInstructions);
-          console.log(`[DailySummaryGenerator] Sending prompt for topic '${topicForPrompt}' to AI provider. (See logs/prompts/ for full prompt)`);
-          const summaryText = await retryOperation(() => this.provider.summarize(prompt));
-          const summaryJSONString = summaryText.replace(/```json\n|```/g, "");
-          let summaryJSON = JSON.parse(summaryJSONString);
-          summaryJSON["topic"] = topic;
+          // Pass original itemsForThisTopic to createJSONPromptForTopics, 
+          // as promptHelper.ts now handles formatting the input context for the AI.
+          const prompt = createJSONPromptForTopics(topicForPrompt, itemsForThisTopic, dateStr, promptCustomInstructions);
+          
+          let summaryTextFromAI = await retryOperation(() => this.provider.summarize(prompt));
+          console.log(`[DailySummaryGenerator] Raw AI Response for topic '${topicForPrompt}':\n${summaryTextFromAI}`);
+          
+          let parsedAIResponse: any;
+          try {
+            let sanitizedJsonString = summaryTextFromAI.replace(/```json\n|```/g, "").trim();
+            parsedAIResponse = JSON.parse(sanitizedJsonString);
+          } catch (parseError: any) {
+            console.warn(`[DailySummaryGenerator] Initial JSON.parse failed for topic '${topicForPrompt}'. Attempting extraction. Error: ${parseError.message}`);
+            const firstBrace = summaryTextFromAI.indexOf('{');
+            const lastBrace = summaryTextFromAI.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace > firstBrace) {
+              const extractedJson = summaryTextFromAI.substring(firstBrace, lastBrace + 1);
+              try {
+                parsedAIResponse = JSON.parse(extractedJson);
+                console.log(`[DailySummaryGenerator] Successfully parsed extracted JSON for topic '${topicForPrompt}'.`);
+              } catch (secondParseError: any) {
+                console.error(`[DailySummaryGenerator] Failed to parse extracted JSON for topic '${topicForPrompt}'. AI Response (substring attempt): ${extractedJson}. Error: ${secondParseError.message}`);
+                parsedAIResponse = { title: promptCustomInstructions.title || `Summary for ${topicForPrompt}`, content: [] }; 
+              }
+            } else {
+              console.error(`[DailySummaryGenerator] Could not find JSON in AI response for topic '${topicForPrompt}'. Raw AI Response: ${summaryTextFromAI}`);
+              parsedAIResponse = { title: promptCustomInstructions.title || `Summary for ${topicForPrompt}`, content: [] }; 
+            }
+          }
+          
+          console.log(`[DailySummaryGenerator] Parsed AI Response for topic '${topicForPrompt}':\n${JSON.stringify(parsedAIResponse, null, 2)}`);
+          if (parsedAIResponse.content && Array.isArray(parsedAIResponse.content)) {
+            parsedAIResponse.content.forEach((entry: any, index: number) => {
+              const cidsToLog = isTwitterActivity ? "(Full contributing_tweets structure expected)" : JSON.stringify(entry.contributing_item_cids);
+              console.log(`[DailySummaryGenerator] AI Response content entry ${index} for topic '${topicForPrompt}' - CIDs/Structure: ${cidsToLog}`);
+            });
+          }
+
+          let finalContentForTopic: any[];
+
+          if (isTwitterActivity) {
+            // For Twitter, AI is expected to return the fully structured contributing_tweets in parsedAIResponse.content (which are themes)
+            // Each theme object in parsedAIResponse.content should have a contributing_tweets array.
+            finalContentForTopic = parsedAIResponse.content || []; 
+            if (Array.isArray(finalContentForTopic)) {
+                finalContentForTopic.forEach(theme => {
+                    if (theme.contributing_tweets && Array.isArray(theme.contributing_tweets)) {
+                        // Data is already structured by AI as per prompt.
+                    } else {
+                        // If AI failed to provide contributing_tweets for a theme, ensure it's an empty array.
+                        // Also log if the AI provided contributing_item_cids instead, which would be a deviation.
+                        if(theme.contributing_item_cids) {
+                            console.warn(`[DailySummaryGenerator] Twitter theme '${theme.theme_title}' received 'contributing_item_cids' instead of 'contributing_tweets'. Discarding CIDs and setting empty tweets array.`);
+                        }
+                        theme.contributing_tweets = []; 
+                    }
+                    // Remove contributing_item_cids if AI mistakenly added it for Twitter themes
+                    delete theme.contributing_item_cids;
+                });
+            }
+          } else {
+            // For other topics, use enrichAiSummaryContent to build the sources array from CIDs
+            finalContentForTopic = enrichAiSummaryContent(
+              parsedAIResponse.content, // This content has {text, contributing_item_cids}
+              itemsForThisTopic,        // Original items for lookup
+              isTwitterActivity         // false for non-Twitter topics
+            );
+          }
+
+          const topicSummaryOutput: any = {
+            title: parsedAIResponse.title || promptCustomInstructions.title || `Summary for ${topicForPrompt}`,
+            topic: topic,
+            content: finalContentForTopic 
+          };
+
+          if (promptCustomInstructions.repositoryName) {
+            topicSummaryOutput.repository_name = promptCustomInstructions.repositoryName;
+          }
+          if (promptCustomInstructions.dataProviderName) {
+            topicSummaryOutput.data_provider = promptCustomInstructions.dataProviderName;
+          }
   
-          allSummaries.push(summaryJSON);
+          allSummariesFromAI.push(topicSummaryOutput);
           groupsToSummarize++;
         }
-        catch (e) {
-          console.log(e);
+        catch (e: any) {
+          console.error(`[DailySummaryGenerator] Error processing group for topic '${group?.topic}': ${e.message}`, e.stack);
         }
       }
 
-      if (allSummaries.length === 0 && contentItems.length > 0) {
+      if (allSummariesFromAI.length === 0 && contentItems.length > 0) {
         console.warn(`[DailySummaryGenerator] No summaries were successfully generated for ${dateStr} despite having content items. Check AI provider or prompt issues.`);
         return;
       }
 
-      const mdPrompt = createMarkdownPromptForJSON(allSummaries, dateStr);
+      const mdPrompt = createMarkdownPromptForJSON(allSummariesFromAI, dateStr);
       const markdownReport = await retryOperation(() => this.provider.summarize(mdPrompt));
       const markdownStringFromAI = markdownReport.replace(/```markdown\n|```/g, "");
 
@@ -179,13 +280,13 @@ export class DailySummaryGenerator {
       const summaryItem: SummaryItem = {
         type: this.summaryType,
         title: finalReportTitle,
-        categories: JSON.stringify(allSummaries, null, 2),
+        categories: JSON.stringify(allSummariesFromAI, null, 2),
         markdown: markdownStringFromAI,
         date: currentTime,
       };
 
       await this.storage.saveSummaryItem(summaryItem);
-      await this.writeSummaryToFile(dateStr, currentTime, allSummaries);
+      await this.writeSummaryToFile(dateStr, currentTime, allSummariesFromAI);
       
       // Construct the full markdown content for the file
       const finalMarkdownContentForFile = `# ${finalReportTitle}\n\n${markdownStringFromAI}`;
