@@ -67,10 +67,10 @@ DISCORD_GUILD_ID=         # The ID of the Discord server you are monitoring
 CODEX_API_KEY=            # Your Codex API key
 
 # Optional: Twitter (Requires careful cookie handling)
-# TWITTER_USERNAME=
-# TWITTER_PASSWORD=
-# TWITTER_EMAIL=
-# TWITTER_COOKIES='[]' # JSON string of cookies
+# TWITTER_USERNAME=         # Username for login fallback and cookie caching
+# TWITTER_PASSWORD=         # Password for login fallback
+# TWITTER_EMAIL=            # Email for login fallback
+# TWITTER_COOKIES='[]'     # Optional: JSON string of cookies, preferred if available
 ```
 
 ### GitHub Actions Secrets (`ENV_SECRETS`)
@@ -96,10 +96,10 @@ For running via GitHub Actions, create a single repository secret named `ENV_SEC
   "DISCORD_TOKEN": "YOUR_DISCORD_BOT_TOKEN",
   "DISCORD_GUILD_ID": "YOUR_DISCORD_SERVER_ID",
   "CODEX_API_KEY": "YOUR_CODEX_KEY",
-  "TWITTER_USERNAME": "",
-  "TWITTER_PASSWORD": "",
-  "TWITTER_EMAIL": "",
-  "TWITTER_COOKIES": "[]"
+  "TWITTER_USERNAME": "", # Username for login fallback and cookie caching
+  "TWITTER_PASSWORD": "", # Password for login fallback
+  "TWITTER_EMAIL": "",    # Email for login fallback
+  "TWITTER_COOKIES": "[]"  # Optional: JSON string of cookies, preferred if available
 }
 ```
 
