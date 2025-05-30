@@ -11,6 +11,7 @@
           "username": "process.env.TWITTER_USERNAME",
           "password": "process.env.TWITTER_PASSWORD",
           "email": "process.env.TWITTER_EMAIL",
+          "cookies": "process.env.TWITTER_COOKIES",
           "accounts": ["dankvr", "elizaos", "shawmakesmagic", "autodotfun"]
         }
       },
