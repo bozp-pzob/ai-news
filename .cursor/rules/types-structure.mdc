@@ -23,7 +23,16 @@ The `[src/types.ts](mdc:src/types.ts)` file defines the essential TypeScript int
 *   **`SummaryItem`**: Represents a generated summary, potentially combining multiple `ContentItem`s.
     *   `type: string`: Type of summary.
     *   `title?: string`: Summary title.
-    *   `categories?: string`: Categories associated with the summary.
+    *   `categories?: string`: A JSON string, which when parsed, is an array of topic objects. Each topic object typically contains:
+        *   `title: string`: The display title for this category/topic (e.g., "Thematic Twitter Activity Summary", "GitHub Pull Requests").
+        *   `topic: string`: The internal topic identifier (e.g., "twitter_activity", "pull_request").
+        *   `content: array`: An array of summarized themes or entries. Each entry within this array should include:
+            *   `text: string`: The AI-generated summary text for this theme/entry.
+            *   `theme_title?: string`: (Optional, primarily for Twitter) A more specific title for a sub-theme.
+            *   `sources: array`: An array of source objects that contributed to this summary text. Each source object includes:
+                *   `link?: string`: The direct URL to the original content item.
+                *   `metadata: Record<string, any>`: The full metadata object associated with the original content item (retrieved from the `ContentItem.metadata` field). This metadata object itself contains any media URLs (images, videos), author details, etc.
+                *   `cid: string`: The unique ID of the original content item.
     *   `markdown?: string`: The summary content in Markdown format.
     *   `date?: number`: Timestamp for the summary period.
 

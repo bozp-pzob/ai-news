@@ -10,17 +10,16 @@ This configuration file, `[config/discord-raw.json](mdc:config/discord-raw.json)
 ## Key Components:
 
 *   **Data Sources:**
-    *   `DiscordRawDataSource` (`discordRaw`): Fetches raw message data from specified Discord channels listed in `params.channelIds`. Configured with an interval. Bot token and Guild ID are sourced from environment variables.
-    *   `DiscordChannelSource` (`discordChannel`): Fetches processed channel information using the specified AI provider (`openAiProvider`). Also uses channel IDs and environment variables.
+    *   `DiscordRawDataSource` (`discordRaw`): Fetches raw message data from specified Discord channels listed in `params.channelIds`. Configured with an interval. Bot token and Guild ID are sourced from environment variables. It uses `SQLiteStorage` for its operations.
 *   **AI Provider:**
     *   `OpenAIProvider` (`openAiProvider`): Handles interactions with an AI model (specified as `anthropic/claude-3.7-sonnet` via OpenRouter). API key, site URL, and site name are sourced from environment variables (`process.env.OPENAI_API_KEY`, `process.env.SITE_URL`, `process.env.SITE_NAME`).
 *   **Enrichers:**
-    *   `AiTopicsEnricher` (`topicEnricher`): Uses the `openAiProvider` to enrich data (e.g., identify topics) for messages exceeding a `thresholdLength`.
+    *   The `enrichers` array is currently empty in the `[config/discord-raw.json](mdc:config/discord-raw.json)` configuration. If enrichers like `AiTopicsEnricher` were added, they would process data here.
 *   **Storage:**
     *   `SQLiteStorage` (`SQLiteStorage`): Stores data in a SQLite database defined by `params.dbPath` (`data/discord-raw.sqlite`).
 *   **Generators:**
-    *   `DailySummaryGenerator` (`RawDataGenerator`): Generates daily summaries of type `discord-raw` from the `discordRaw` source, using the AI provider and storing output in `params.outputPath` (`./output/discord/raw`). Runs at a defined interval.
-    *   `DiscordSummaryGenerator` (`DiscordSummaryGenerator`): Generates summaries of type `discordChannelSummary` from the `discordChannel` source, using the AI provider and storing output in `params.outputPath` (`./output/discord/summaries`). Also runs at a defined interval.
+    *   `RawDataExporter` (`DiscordRawExporter`): Exports raw data of type `discordRawData` obtained from the `discordRaw` source (implicitly, as it uses `SQLiteStorage` which `discordRaw` writes to). Output is stored in `params.outputPath` (`./output/discord/raw`). Runs at a defined interval.
+    *   `DiscordSummaryGenerator` (`DiscordSummaryGenerator`): Generates summaries of type `discordChannelSummary`. It uses the `openAiProvider` and `SQLiteStorage` (which contains data from `discordRawData` source). Output is stored in `params.outputPath` (`./output/discord/summaries`). Also runs at a defined interval.
 
 ## Settings:
 
