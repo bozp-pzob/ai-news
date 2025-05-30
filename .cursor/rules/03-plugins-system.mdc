@@ -36,8 +36,9 @@ Plugins are organized by type into subdirectories:
     *   (Interface likely defined within this directory or implied)
     *   Responsible for creating derived content, typically summaries, based on stored `ContentItem` data.
     *   Often interact with a `StoragePlugin` to retrieve data for a specific period (e.g., a day).
-    *   Usually use an `AiProvider` to generate summary text.
-    *   Output results (e.g., Markdown files) to a configured path (`outputPath`).
+    *   Usually use an `AiProvider` to generate summary text and identify contributing items.
+    *   The generator then enriches these contributions by fetching the full original `ContentItem` details (including `link` and the complete `metadata` object) from storage, creating a structured list of sources for each summarized piece of content.
+    *   Output results (e.g., Markdown files and JSON for `SummaryItem.categories`) to a configured path (`outputPath`) or save to storage.
     *   Key method likely involves `generateContent()` or `generateAndStoreSummary(dateStr)`.
     *   Examples: `DailySummaryGenerator`, `DiscordSummaryGenerator` (inferred from config).
 
