@@ -6,8 +6,7 @@
 import { ContentItem } from "../../types";
 import { ContentSource } from "./ContentSource";
 import fetch from "node-fetch";
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+import { delay } from "../../helpers/generalHelper";
 
 /**
  * Configuration interface for CodexAnalyticsSource
@@ -218,7 +217,7 @@ export class CodexAnalyticsSource implements ContentSource {
 
         if (timeSinceLastRequest < CodexAnalyticsSource.MIN_INTERVAL) {
             const timeToWait = CodexAnalyticsSource.MIN_INTERVAL - timeSinceLastRequest;
-            await sleep(timeToWait);
+            await delay(timeToWait);
         }
 
         CodexAnalyticsSource.lastRequestTime = Date.now();
