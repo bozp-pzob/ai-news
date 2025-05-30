@@ -4,22 +4,22 @@ A modular TypeScript-based news aggregator that collects, enriches, and analyzes
 
 ## Features
 
-- **Multiple Data Sources**
-  - Discord channel raw message data (including users, reactions)
-  - GitHub repository statistics
-  - Solana token analytics (Codex)
-  - CoinGecko market data
-  - (Twitter support may require maintenance due to API changes)
-
-- **Processing & Analysis**
-  - AI-powered structured summaries of Discord channel activity (using OpenAI/OpenRouter)
-  - Raw data export
-  - Topic extraction (optional, configurable)
-
-- **Storage & Deployment**
-  - SQLite database for persistent storage (with optional encryption via GitHub Actions)
-  - Daily summary generation (JSON & Markdown)
-  - Deployment to GitHub Pages
+- **Modular Plugin System:** Easily extendable with plugins for data sources, AI processing, content enrichment, summary generation, and storage.
+- **Diverse Data Sources:** Pre-built plugins for:
+  - Discord (raw messages, user details, AI-summarized conversations)
+  - GitHub (repository statistics, contributor activity)
+  - Cryptocurrency Analytics (Solana via DexScreener, general tokens via Codex API, market data via CoinGecko)
+  - Twitter (recent and historical tweets)
+  - Generic APIs (configurable for various REST endpoints)
+- **AI-Powered Processing:**
+  - Automated content summarization (e.g., daily reports, Discord channel activity) using configurable AI providers (OpenAI, OpenRouter).
+  - Optional content enrichment (e.g., topic extraction, image generation).
+- **Flexible Storage & Output:**
+  - SQLite for persistent storage of fetched content and generated summaries.
+  - Customizable data export (e.g., raw daily Discord data as JSON).
+  - Generation of summaries in JSON and Markdown formats.
+- **Historical Data Processing:** Dedicated script (`historical.ts`) for fetching and processing data from past dates or ranges.
+- **Configuration Driven:** Behavior controlled by JSON configuration files and environment variables.
 
 ## Prerequisites
 
@@ -44,34 +44,11 @@ cp example.env .env
 
 ## Configuration
 
-Local runs use an `.env` file. GitHub Actions workflows use repository secrets.
+Configuration is managed through JSON files in the `config/` directory (e.g., `sources.json`, `discord-raw.json`) and environment variables for sensitive data.
 
 ### Local `.env` File
 
-Create a `.env` file in the project root:
-
-```env
-# OpenAI / OpenRouter
-OPENAI_API_KEY=           # Your OpenRouter API key (or OpenAI if not using OpenRouter)
-# OPENAI_DIRECT_KEY=        # Optional: Direct OpenAI key if needed for specific features
-USE_OPENROUTER=true      # Set to true to use OpenRouter
-SITE_URL=your_site.com    # Your site URL for OpenRouter attribution
-SITE_NAME=YourAppName     # Your app name for OpenRouter attribution
-
-# Discord
-DISCORD_TOKEN=            # Your Discord Bot Token
-DISCORD_GUILD_ID=         # The ID of the Discord server you are monitoring
-# DISCORD_APP_ID=          # Likely not needed unless using slash commands
-
-# Crypto Analytics
-CODEX_API_KEY=            # Your Codex API key
-
-# Optional: Twitter (Requires careful cookie handling)
-# TWITTER_USERNAME=
-# TWITTER_PASSWORD=
-# TWITTER_EMAIL=
-# TWITTER_COOKIES='[]' # JSON string of cookies
-```
+Copy `example.env` to `.env` and fill in your API keys and tokens.
 
 ### GitHub Actions Secrets (`ENV_SECRETS`)
 
@@ -99,7 +76,7 @@ For running via GitHub Actions, create a single repository secret named `ENV_SEC
   "TWITTER_USERNAME": "",
   "TWITTER_PASSWORD": "",
   "TWITTER_EMAIL": "",
-  "TWITTER_COOKIES": "[]"
+  "TWITTER_COOKIES": "[{"key":"auth_token","value":"PLACEHOLDER_AUTH_TOKEN","domain":".twitter.com"},{"key":"ct0","value":"PLACEHOLDER_TOKEN","domain":".twitter.com"},{"key":"guest_id","value":"PLACEHOLDER_GUEST_ID","domain":".twitter.com"}]"
 }
 ```
 
@@ -141,24 +118,28 @@ npm run historical -- --source=elizaos.json --date=2025-04-26 --fetchMode=timeli
 
 ## Project Structure
 
+The project is organized as follows:
+
 ```
+.github/
+  workflows/          # GitHub Actions for automated tasks
 config/                 # JSON configuration files for different pipelines
-data/                   # SQLite databases (encrypted in repo, decrypted by Actions)
-output/                 # Generated raw data exports and summaries
-src/
-├── aggregator/         # Core aggregation logic (ContentAggregator, HistoricalAggregator)
-├── plugins/
-│   ├── ai/             # AI provider implementations (OpenAIProvider)
-│   ├── enrichers/      # Content enrichment plugins (e.g., AiTopicsEnricher - optional)
-│   ├── generators/     # Output generation (RawDataExporter, DiscordSummaryGenerator)
-│   ├── sources/        # Data source implementations (DiscordRawDataSource, etc.)
-│   └── storage/        # Database storage handlers (SQLiteStorage)
-├── helpers/            # Utility functions (config, date, files, etc.)
-├── types.ts            # TypeScript type definitions
-├── index.ts            # Main application entry point (continuous)
+data/                   # SQLite databases (encrypted in repo)
+docs/                   # Docusaurus documentation files
+src/                    # Core source code
+├── README.md           # Overview of the src directory (links to sub-READMEs)
+├── aggregator/         # Core aggregation engines (ContentAggregator, HistoricalAggregator)
+├── plugins/            # Modular plugins (AI, Enrichers, Generators, Sources, Storage)
+├── helpers/            # Utility functions (config loading, date handling, etc.)
+├── types.ts            # Core TypeScript type definitions and interfaces
+├── index.ts            # Main entry point for continuous operation
 └── historical.ts       # Entry point for historical data processing
-# ... other config and project files
+example.env             # Example environment variable file
+package.json            # Project dependencies and scripts
+README.md               # This file
+# ... other project files
 ```
+For more detailed information on the `src` subdirectories and their contents, please refer to the `README.md` files located within each respective subdirectory (e.g., `src/plugins/README.md`, `src/helpers/README.md`).
 
 ## Twitter Data Fetching Notes
 
@@ -180,11 +161,13 @@ For continuous operation (`npm start`), `TwitterSource` defaults to the `timelin
 
 ## Adding New Sources
 
-1.  Create a new class in `src/plugins/sources/` that implements `ContentSource` (and potentially `fetchHistorical`).
-2.  Define necessary parameters and logic within the class.
-3.  Add a configuration block for your new source in the relevant JSON config file(s) under the `sources` array.
+1.  Create a new class in `src/plugins/sources/` that implements the `ContentSource` interface (defined in `src/plugins/sources/ContentSource.ts`).
+2.  Implement the required `name: string` property and `fetchItems(): Promise<ContentItem[]>` method.
+3.  Optionally, implement `fetchHistorical?(date: string): Promise<ContentItem[]>` if the source supports fetching past data.
+4.  Define any necessary configuration parameters for your source and how they will be passed in (typically via the `params` object in the JSON configuration, which might reference environment variables).
+5.  Add a configuration block for your new source in the relevant JSON config file(s) (e.g., `config/sources.json`) under the `sources` array, specifying its `type` (matching the class name), a unique `name`, `interval` (for `index.ts`), and `params`.
 
-Example `ContentSource` Interface:
+Example `ContentSource` Interface (`src/plugins/sources/ContentSource.ts`):
 ```typescript
 import { ContentItem } from "../../types";
 
@@ -192,7 +175,6 @@ export interface ContentSource {
   name: string;
   fetchItems(): Promise<ContentItem[]>;
   fetchHistorical?(date: string): Promise<ContentItem[]>;
-  // Other methods like init() if needed
 }
 ```
 
@@ -210,96 +192,40 @@ MIT License
 
 ## Core Data Structures
 
-### ContentItem
-Represents a unit of data stored in the `items` table. The exact content varies by type.
-```typescript
-interface ContentItem {
-  id?: number;          // Assigned by storage
-  cid: string;          // Unique Content ID from source, or generated
-  type: string;         // e.g., "discordRawData", "codexAnalyticsData", etc.
-  source: string;       // Name of the source plugin instance (e.g., "hyperfyDiscordRaw")
-  title?: string;       // Optional title
-  text?: string;        // Main content (e.g., JSON string for discordRawData)
-  link?: string;        // URL to original content (if applicable)
-  topics?: string[];    // AI-generated topics (if enricher is used)
-  date?: number;        // Creation/publication timestamp (epoch seconds)
-  metadata?: Record<string, any>; // Additional source-specific data (e.g., channelId, guildName)
-}
-```
+Key data structures are defined in `src/types.ts`. Refer to `src/README.md` for more details on these.
 
-### DiscordRawData (Stored as JSON string in `ContentItem.text` for `type: 'discordRawData'`)
-```typescript
-interface DiscordRawData {
-  channel: {
-    id: string;
-    name: string;
-    topic: string | null;
-    category: string | null;
-  };
-  date: string; // ISO date string for the day fetched
-  users: { [userId: string]: { name: string; nickname: string | null; roles?: string[]; isBot?: boolean; } };
-  messages: { /* ... message details ... */ }[];
-}
-```
+### `ContentItem`
+The central data structure for fetched content. It standardizes data from various sources before storage and processing.
+Key fields:
+- `cid: string`: Unique ID from the original source.
+- `type: string`: Nature of the content (e.g., "tweet", "discordRawData").
+- `source: string`: Name of the source plugin instance.
+- `text?: string`: Main content body (can be JSON for raw data types).
+- `date?: number`: Timestamp of creation/publication (epoch seconds).
+- `metadata?: { [key: string]: any; }`: Source-specific additional data.
 
-### SummaryItem (Stored in `summary` table)
-Represents a generated summary.
-```typescript
-interface SummaryItem {
-  id?: number;          // Assigned by storage
-  type: string;         // e.g., "hyperfyDiscordSummary", "elizaosDevSummary"
-  title?: string;       // e.g., "Hyperfy Discord - 2024-01-15"
-  categories?: string;  // JSON string containing detailed stats and channel summaries
-  markdown?: string;    // Full Markdown content of the summary
-  date?: number;        // Timestamp for the summary period (epoch seconds)
-}
-```
+(Full interface in `src/types.ts`)
 
-### Example Summary JSON Output (`YYYY-MM-DD.json`)
-This structure is derived from the `SummaryItem.categories` field.
-```json
-{
-  "server": "Server Name",
-  "title": "Server Name Discord - YYYY-MM-DD",
-  "date": 1705363200, // Example epoch timestamp
-  "stats": {
-    "totalMessages": 150,
-    "totalUsers": 25
-  },
-  "categories": [
-    {
-      "channelId": "12345",
-      "channelName": "general",
-      "summary": "Brief AI summary of the general channel...",
-      "messageCount": 100,
-      "userCount": 20
-    },
-    {
-      "channelId": "67890",
-      "channelName": "development",
-      "summary": "Brief AI summary of the development channel...",
-      "messageCount": 50,
-      "userCount": 15
-    }
-    // ... more channels
-  ]
-}
-```
+### `SummaryItem`
+Represents a generated summary, potentially combining multiple `ContentItem`s.
+Key fields:
+- `type: string`: Type of summary (e.g., "dailyReport", "discordChannelSummary").
+- `title?: string`: Summary title.
+- `categories?: string`: JSON string for structured summary content (e.g., themed sections, lists of items).
+- `markdown?: string`: Full summary content in Markdown format.
+- `date?: number`: Timestamp for the summary period (epoch seconds).
+
+(Full interface in `src/types.ts`)
 
 ## Supported Source Types (Examples)
 
-### Discord (`DiscordRawDataSource`)
-- Fetches raw messages, user details, reactions, edits, replies for specified channels daily.
-- Data is stored as `discordRawData` items.
-- Subsequent generators (`DiscordSummaryGenerator`, `RawDataExporter`) process these items.
+This application supports a variety of source types through its plugin architecture. Refer to `src/plugins/sources/README.md` for a detailed list and functionality of each source plugin. Examples include:
 
-### GitHub Stats (`GitHubStatsSource`)
-- Fetches repository statistics (issues, PRs, commits, contributors).
-- Stores data as specific `ContentItem` types.
-
-### Cryptocurrency Analytics (`CodexAnalyticsSource`)
-- Fetches token data (price, volume, etc.) from Codex.so.
-- Stores data as `codexAnalyticsData` items.
+*   **Discord:** `DiscordRawDataSource`, `DiscordChannelSource`, `DiscordAnnouncementSource`
+*   **GitHub:** `GitHubStatsDataSource`, `GitHubDataSource`
+*   **Crypto Analytics:** `CodexAnalyticsSource`, `CoinGeckoAnalyticsSource`, `SolanaAnalyticsSource`
+*   **Twitter:** `TwitterSource`
+*   **Generic API:** `ApiSource`
 
 ## Scheduled Tasks (GitHub Actions)
 
@@ -311,44 +237,10 @@ The application uses GitHub Actions workflows (`.github/workflows/`) for schedul
 
 ## Storage
 
-The application uses SQLite. Databases are encrypted in the `data/` directory when stored in the repository / gh-pages branch and decrypted during workflow runs.
+The application uses SQLite for persistent storage, managed by the `SQLiteStorage` plugin. Key tables include:
 
-### `items` Table
-Stores fetched content from various sources.
-```sql
-CREATE TABLE IF NOT EXISTS items (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  cid TEXT UNIQUE,          -- Content ID (can be null initially)
-  type TEXT NOT NULL,     -- Type of content (e.g., discordRawData)
-  source TEXT NOT NULL,   -- Name of the source instance
-  title TEXT,
-  text TEXT,              -- Main content (often JSON for raw data)
-  link TEXT,
-  topics TEXT,            -- JSON array of strings
-  date INTEGER,           -- Epoch timestamp (seconds)
-  metadata TEXT           -- JSON object for extra info
-);
-```
+- **`items`**: Stores `ContentItem` data from all sources.
+- **`summary`**: Stores generated `SummaryItem` data.
+- **`cursor`**: Stores pagination cursors for sources to keep track of fetched data.
 
-### `summary` Table
-Stores generated summaries.
-```sql
-CREATE TABLE IF NOT EXISTS summary (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  type TEXT NOT NULL,     -- Type of summary (e.g., elizaosDevSummary)
-  title TEXT,
-  categories TEXT,        -- JSON object with detailed structure
-  markdown TEXT,          -- Full markdown content
-  date INTEGER            -- Epoch timestamp (seconds) for the summary period
-);
-```
-
-### `cursor` Table
-Stores the last processed message ID for certain sources.
-```sql
-CREATE TABLE IF NOT EXISTS cursor (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  cid TEXT NOT NULL UNIQUE, -- Key identifying the source/channel (e.g., "discordRaw-12345")
-  message_id TEXT NOT NULL  -- Last fetched Discord message snowflake ID
-);
-```
+Refer to `src/plugins/storage/README.md` for detailed schemas and implementation.
