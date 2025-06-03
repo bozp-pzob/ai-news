@@ -1,5 +1,6 @@
 // src/plugins/enrichers/WebSearchEnricher.ts
 
+import { extractFieldData } from "../../helpers/generalHelper";
 import { EnricherPlugin, ContentItem, AiProvider } from "../../types";
 
 /**
@@ -23,18 +24,44 @@ export interface WebSearchEnricherConfig {
  * and performs searches using the AI provider's search function.
  */
 export class WebSearchEnricher implements EnricherPlugin {
-  private config: WebSearchEnricherConfig;
   private provider: AiProvider;
   private searchProvider: AiProvider;
   private queryCount: number = 1;
+  private objectTypeString: string;
+  private saveToField: string;
+  private sourceFields: string[];
 
   static constructorInterface = {
     parameters: [
       {
-        name: 'config',
-        type: 'WebSearchEnricherConfig',
+        name: 'sourceFields',
+        type: 'string[]',
         required: true,
-        description: 'Configuration with sourceFields, saveToField, and aiProvider'
+        description: "Array of field paths to extract data from ContentItems (supports nested metadata fields like 'metadata.title')"
+      },
+      {
+        name: 'saveToField',
+        type: 'string',
+        required: true,
+        description: 'The metadata field name where search results will be saved'
+      },
+      {
+        name: 'provider',
+        type: 'AiProvider',
+        required: true,
+        description: 'AI provider for query generation'
+      },
+      {
+        name: 'searchProvider',
+        type: 'AiProvider',
+        required: true,
+        description: 'AI search provider for doing research'
+      },
+      {
+        name: 'objectTypeString',
+        type: 'string',
+        required: true,
+        description: 'Typescript for the AI Provider to generate as response'
       }
     ]
   };
@@ -42,14 +69,9 @@ export class WebSearchEnricher implements EnricherPlugin {
   constructor(config: WebSearchEnricherConfig) {
     this.provider = config.provider;
     this.searchProvider = config.searchProvider;
-
-    this.config = {
-      ...config
-    };
-
-    // if (!this.searchProvider?.search || !this.provider?.summarize) {
-    //   throw new Error('AI provider with search function is required');
-    // }
+    this.objectTypeString = config.objectTypeString;
+    this.saveToField = config.saveToField;
+    this.sourceFields = config.sourceFields;
   }
 
   /**
@@ -68,7 +90,7 @@ export class WebSearchEnricher implements EnricherPlugin {
   private async enrichItem(contentItem: ContentItem): Promise<ContentItem> {
     try {
       // Extract data from specified fields
-      const extractedData = this.extractFieldData(contentItem);
+      const extractedData = extractFieldData(contentItem, this.sourceFields);
       
       if (Object.keys(extractedData).length === 0) {
         return contentItem;
@@ -89,7 +111,7 @@ export class WebSearchEnricher implements EnricherPlugin {
         ...contentItem,
         metadata: {
           ...contentItem.metadata,
-          [this.config.saveToField]: {
+          [this.saveToField]: {
             sourceData: extractedData,
             queries,
             results: searchResults && searchResults.length > 0 ? searchResults[0] : undefined,
@@ -102,34 +124,6 @@ export class WebSearchEnricher implements EnricherPlugin {
       console.error(`Error enriching item: ${error}`);
       return contentItem;
     }
-  }
-
-  /**
-   * Extracts data from specified source fields (supports nested paths like 'metadata.title')
-   */
-  private extractFieldData(contentItem: ContentItem): Record<string, any> {
-    const data: Record<string, any> = {};
-
-    for (const fieldPath of this.config.sourceFields) {
-      const value = this.getNestedValue(contentItem, fieldPath);
-      if (value !== undefined && value !== null && value !== '') {
-        data[fieldPath] = value;
-      }
-      else {
-        data[fieldPath] = fieldPath;
-      }
-    }
-
-    return data;
-  }
-
-  /**
-   * Gets nested value using dot notation (e.g., 'metadata.title')
-   */
-  private getNestedValue(obj: any, path: string): any {
-    return path.split('.').reduce((current, key) => 
-      current?.[key], obj
-    );
   }
 
   /**
@@ -185,7 +179,7 @@ Return only the queries, one per line, without numbering or bullets.
       try {
         const queryPrompt = `Search for this query: ${query}
 
-        Typescript Object: ${this.config.objectTypeString}
+        Typescript Object: ${this.objectTypeString}
         
         Return the analysis in as ONLY a valid JSON format provided that follows the typescript object.`
 
