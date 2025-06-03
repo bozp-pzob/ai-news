@@ -12,10 +12,10 @@
               "feeds": [
                 {
                   "type": "realtor",
-                  "url": "https://www.realtor.com/realestateandhomes-detail/sitemap-rss-new/rss-new-ut.xml",
+                  "url": "https://www.realtor.com/realestateandhomes-detail/sitemap-rss-new/rss-new-ca.xml",
                   "cookieUrl": "https://www.realtor.com",
                   "excludeTopics": "[mortgageBreakdown, mortgageDetails, mortgageEstimate]",
-                  "objectTypeString": "{\n  listingDate: Date;\n  squareFeet: number;\n  bedrooms: number;\n  bathrooms: number;\n  price: number;\n  pricePerSqft: number;\n  location: {\n    address: string;\n    city: string;\n    state: string;\n    zipCode: string;\n  };\n  priceHistory: Array<{ date: string; price: string; event: string; }>;\n  taxHistory: Array<{ year: string; taxAmount: string; assessedValue: string; }>;\n  schoolRatings: Array<{ name: string; rating: string; }>;\n  gps: Object<{ latitude: number, longitude: number }>;\n  propertyType: string;\n  yearBuilt: number;\n  lotSize: number;\n  description: string;\n  images: string[];\n  hoaFees: number;\n  environmentRisks: string;\n  localLogicData: string;\n  url?: string;\n  mlsId?: string;\n  mlsSource: string;\n  parcelNumber?: string;\n  misc: Object;\n}"
+                  "objectTypeString": "{\n  listingDate: Date;\n  relatedPropierties: Array<{ url: string }>\n  squareFeet: number;\n  bedrooms: number;\n  bathrooms: number;\n  price: number;\n  pricePerSqft: number;\n  location: {\n    address: string;\n    city: string;\n    state: string;\n    zipCode: string;\n  };\n  priceHistory: Array<{ date: string; price: string; event: string; }>;\n  taxHistory: Array<{ year: string; taxAmount: string; assessedValue: string; }>;\n  gps: Object<{ latitude: number, longitude: number }>;\n  propertyType: string;\n  yearBuilt: number;\n  lotSize: number;\n  description: string;\n  images: string[];\n  hoaFees: number;\n  environmentRisks: string;\n  localLogicData: string;\n  url?: string;\n  mlsId?: string;\n  mlsSource: string;\n  parcelNumber?: string;\n  misc: Object;\n}"
                 }
               ],
               "parser": "HTMLParser",
@@ -41,15 +41,49 @@
           "name": "miniOpenAiProvider",
           "params": {
             "apiKey": "process.env.OPENAI_API_KEY",
-            "model": "openai/gpt-4o-mini",
-            "temperature": 0,
-            "useOpenRouter": true,
+            "model": "o4-mini",
+            "temperature": 1,
+            "useOpenRouter": false,
+            "siteUrl": "process.env.SITE_URL",
+            "siteName": "process.env.SITE_NAME"
+          }
+        },
+        {
+          "type": "OpenAIProvider",
+          "name": "searchProvider",
+          "params": {
+            "apiKey": "process.env.OPENAI_API_KEY",
+            "model": "gpt-4o-mini-search-preview",
+            "temperature": 1,
+            "useOpenRouter": false,
             "siteUrl": "process.env.SITE_URL",
             "siteName": "process.env.SITE_NAME"
           }
         }
     ],
     "enrichers": [
+      {
+        "type": "WebSearchEnricher",
+        "name": "schoolEnricher",
+        "params": {
+          "provider": "miniOpenAiProvider",
+          "searchProvider": "searchProvider",
+          "sourceFields": ["metadata.location.address", "metadata.location.state", "metadata.location.city", "ALL nearby schools", "class size", "ratings", "popularity score"],
+          "saveToField": "nearbySchools",
+          "objectTypeString": "Array<{\n  name: string,\n  schoolGrades: string,\n classSize: number,\n  schoolOverallRank: number\n  }>"
+        }
+      },
+      {
+        "type": "WebSearchEnricher",
+        "name": "crimeEnricher",
+        "params": {
+          "provider": "miniOpenAiProvider",
+          "searchProvider": "searchProvider",
+          "sourceFields": ["metadata.location.address", "metadata.location.state", "metadata.location.city", "crime", "ratings", "statistics"],
+          "saveToField": "crimeScore",
+          "objectTypeString": "{\n  score: number (0-100)\n, mostLikelyCrime: string\n, expectedPercentage: number (0-100)\n, yearToYearChange: number (0-100)\n  }>"
+        }
+      }
     ],
     "storage": [
         {
@@ -67,7 +101,7 @@
         "type": "HTMLParser",
         "name": "HTMLParser",
         "params": {
-          "provider": "summaryOpenAiProvider"
+          "provider": "miniOpenAiProvider"
         }
       }
     ]

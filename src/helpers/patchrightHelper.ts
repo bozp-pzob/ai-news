@@ -94,7 +94,7 @@ async function getPageHTML(url: string): Promise<any> {
   try {
       context = await chromium.launchPersistentContext(dataDir, {
           channel: "chrome",
-          headless: true,
+          headless: false,
           viewport: null,
           locale: 'en-US',
           args: [

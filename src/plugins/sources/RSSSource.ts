@@ -62,23 +62,25 @@ export class RSSSource implements ContentSource {
       if ( item.link ) {
           const storedItem = await this.storage?.getContentItemByLink(item.link);
     
-          if ( ! storedItem ) {
-              processedItems.push({
-                cid: item.guid || item.link || `${feedUrl}-${date}`,
-                type: "rss",
-                source: this.name,
-                text: item.content || item.summary || "",
-                title: item.title || "",
-                link: item.link || "",
-                date: date,
-                metadata: {
-                  feedUrl: feedUrl,
-                  author: item.creator || "",
-                  categories: item.categories || [],
-                  media: media
-                },
-              });
-          }
+          // if ( ! storedItem ) {
+            processedItems.push({
+              cid: item.guid || item.link || `${feedUrl}-${date}`,
+              type: "rss",
+              source: this.name,
+              text: item.content || item.summary || "",
+              title: item.title || "",
+              link: item.link || "",
+              date: date,
+              metadata: {
+                feedUrl: feedUrl,
+                author: item.creator || "",
+                categories: item.categories || [],
+                media: media
+              },
+            });
+
+            return processedItems 
+          // }
       }
     }
     
@@ -134,7 +136,7 @@ export class RSSSource implements ContentSource {
                 }
             }
         }
-
+        console.log(parsedItems)
         return parsedItems;
       } catch (error) {
         console.error(`ERROR: Fetching feed - ${feedUrl}`, error);

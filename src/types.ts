@@ -113,6 +113,7 @@ export interface AiProvider {
   summarize(text: string): Promise<string>;
   topics(text: string): Promise<string[]>;
   image(text: string): Promise<string[]>;
+  search(text:string): Promise<string>;
 }
 
 /**
@@ -155,17 +156,14 @@ export interface DateConfig {
   before?: string;
 }
 
-<<<<<<< HEAD
 export interface ParserConfig {
   provider?: AiProvider | undefined;
 }
 
-=======
 /**
  * Configuration for output paths.
  * Used to specify where generated content should be saved.
  */
->>>>>>> origin/main
 export interface OutputConfig {
   path: string;  // Directory path for output files
 }
