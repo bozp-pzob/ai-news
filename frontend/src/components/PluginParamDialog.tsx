@@ -1,8 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { PluginInfo, PluginConfig } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
 import { configStateManager } from '../services/ConfigStateManager';
+import { PluginInfo, PluginConfig, PluginType } from '../types';
+import { SecretInputField } from './SecretInputField';
+import { SecretInputSelectField } from './SecretInputSelectField';
 import { pluginRegistry } from '../services/PluginRegistry';
 import { useToast } from './ToastProvider';
+
+// Array of parameter name patterns that should be treated as sensitive
+const SENSITIVE_PARAM_PATTERNS = [
+  'api_key', 'apikey', 'key', 'token', 'secret', 'password', 'auth', 'credential',
+  'access_token', 'access_key', 'private_key', 'client_secret', 'security'
+];
+
+// Function to check if a parameter is sensitive based on its name
+const isSensitiveParameter = (paramName: string): boolean => {
+  const lowerName = paramName.toLowerCase();
+  return SENSITIVE_PARAM_PATTERNS.some(pattern => lowerName.includes(pattern));
+};
 
 interface PluginParamDialogProps {
   plugin: PluginInfo | PluginConfig;
@@ -21,6 +35,19 @@ const supportsProviderStorage = (pluginType: string): { provider: boolean, stora
   // Other types don't support provider/storage connections
   return { provider: false, storage: false };
 };
+
+// Add TypeScript interface to type param.secret property
+interface ConstructorInterfaceParameter {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'string[]';
+  required: boolean;
+  description: string;
+  secret?: boolean;
+}
+
+interface ConstructorInterface {
+  parameters: ConstructorInterfaceParameter[];
+}
 
 export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   plugin,
@@ -45,7 +72,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   
   // Store interval for source and generator plugins
   const [interval, setInterval] = useState<number | undefined>(
-    'interval' in plugin ? plugin.interval : 60000
+    'interval' in plugin && plugin.interval !== undefined ? plugin.interval : 60000
   );
 
   // Load available providers and storage
@@ -66,7 +93,8 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     let pluginType: string | undefined;
     
     if ('name' in plugin) {
-      pluginName = plugin.name;
+      // Prefer pluginName for lookups if available, fallback to name
+      pluginName = 'pluginName' in plugin ? (plugin as any).pluginName : plugin.name;
       pluginType = 'type' in plugin ? plugin.type : undefined;
       
       // Handle name mismatches between config names and actual plugin names
@@ -78,39 +106,23 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
       };
       
       // Check if we have a mapping for this plugin name
-      if (pluginNameMapping[pluginName]) {
-        console.log(`Mapping plugin name from "${pluginName}" to "${pluginNameMapping[pluginName]}"`);
+      if (pluginName && pluginNameMapping[pluginName]) {
         pluginName = pluginNameMapping[pluginName];
       }
     }
     
-    if (pluginName) {
-      console.log(`Looking for plugin schema for ${pluginName}, type: ${pluginType}`);
-      
+    if (pluginName) {      
       // Try to get schema from registry
       const pluginInfo = pluginRegistry.findPlugin(pluginName, pluginType);
       
       if (pluginInfo) {
-        console.log('Found plugin schema:', pluginInfo);
-        
-        // Log the constructor interface to debug
-        if (pluginInfo.constructorInterface) {
-          console.log('Constructor interface:', pluginInfo.constructorInterface);
-        } else {
-          console.log('No constructor interface found in plugin schema');
-        }
-        
         setPluginSchema(pluginInfo);
       } else {
-        console.log('Plugin schema not found, attempting to load plugins');
-        
         // If no exact match found, try getting all plugins and fuzzy matching
         const allPlugins = pluginRegistry.getPlugins();
         let foundPlugin = null;
         
         if (Object.keys(allPlugins).length > 0) {
-          console.log('Trying fuzzy matching with available plugins');
-          
           // Check each category of plugins
           for (const category in allPlugins) {
             // Only check the same category/type if specified
@@ -121,9 +133,9 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               // Try multiple ways to match:
               // 1. Check if plugin name includes our search term
               // 2. Check if our search term includes plugin name
-              if (p.name.toLowerCase().includes(pluginName.toLowerCase()) || 
-                  pluginName.toLowerCase().includes(p.name.toLowerCase())) {
-                console.log(`Found potential match: ${p.name}`);
+              if (p.pluginName && pluginName && (
+                  p.pluginName.toLowerCase().includes(pluginName.toLowerCase()) || 
+                  pluginName.toLowerCase().includes(p.pluginName.toLowerCase()))) {
                 foundPlugin = p;
                 break;
               }
@@ -133,15 +145,12 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
           }
           
           if (foundPlugin) {
-            console.log('Using fuzzy-matched plugin:', foundPlugin);
             setPluginSchema(foundPlugin);
           }
         }
         
         // Load plugins if not already loaded
         if (!pluginRegistry.isPluginsLoaded()) {
-          console.log('Loading plugins from registry');
-          
           // Subscribe to registry updates
           const unsubscribe = pluginRegistry.subscribe(() => {
             if (pluginName) {
@@ -160,9 +169,9 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                   // Check each plugin in this category
                   for (const p of allUpdatedPlugins[category]) {
                     // Try multiple ways to match
-                    if (p.name.toLowerCase().includes(pluginName.toLowerCase()) || 
-                        pluginName.toLowerCase().includes(p.name.toLowerCase())) {
-                      console.log(`Found potential match after loading: ${p.name}`);
+                    if (p.pluginName && pluginName && (
+                        p.pluginName.toLowerCase().includes(pluginName.toLowerCase()) || 
+                        pluginName.toLowerCase().includes(p.pluginName.toLowerCase()))) {
                       updatedPluginInfo = p;
                       break;
                     }
@@ -173,7 +182,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               }
               
               if (updatedPluginInfo) {
-                console.log('Found plugin after registry update:', updatedPluginInfo);
                 setPluginSchema(updatedPluginInfo);
               }
             }
@@ -195,13 +203,17 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     const pluginId = getPluginId();
     if (pluginId) {
       const node = configStateManager.findNodeById(pluginId);
+      
       if (node && node.params) {
-        console.log('Loaded params from node:', node.params);
-        
         // Initialize empty parameters for all constructorInterface parameters
         const initializedParams = { ...node.params };
         
         setParams(initializedParams);
+        
+        // Also update the interval if it's available in the node
+        if (node.interval !== undefined) {
+          setInterval(node.interval);
+        }
       }
     }
   }, [isOpen, plugin]);
@@ -229,8 +241,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   useEffect(() => {
     if (!pluginSchema || !pluginSchema.constructorInterface) return;
     
-    console.log('Initializing params from constructorInterface');
-    
     // Get constructor parameters from schema
     const constructorParams = pluginSchema.constructorInterface.parameters;
     
@@ -241,8 +251,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
       // Initialize any missing parameters with appropriate values
       constructorParams.forEach(param => {
         if (updatedParams[param.name] === undefined) {
-          console.log(`Initializing missing parameter: ${param.name}, required: ${param.required}`);
-          
           // Set appropriate default value based on type
           if (param.type === 'boolean') {
             updatedParams[param.name] = false;
@@ -262,7 +270,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
             updatedParams[param.name] === null || 
             (Array.isArray(updatedParams[param.name]) && updatedParams[param.name].length === 0)
           ) {
-            console.log(`Ensuring non-empty value for required parameter: ${param.name}`);
             if (param.type === 'boolean') {
               updatedParams[param.name] = false;
             } else if (param.type === 'number') {
@@ -281,6 +288,55 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
       return updatedParams;
     });
   }, [pluginSchema]);
+
+  // Handle adding a new item to an array
+  const handleAddArrayItem = (key: string) => {    
+    setParams(prev => {
+      // Create a deep copy of the current array or initialize a new one
+      const currentArray = Array.isArray(prev[key]) ? [...prev[key]] : [];
+      // Add the new empty item
+      currentArray.push('');
+      
+      // Return the new params object with the updated array
+      return {
+        ...prev,
+        [key]: currentArray
+      };
+    });
+  };
+
+  // Handle removing an item from an array
+  const handleRemoveArrayItem = (key: string, index: number) => {    
+    setParams(prev => {
+      // Create a deep copy of the current array
+      const currentArray = Array.isArray(prev[key]) ? [...prev[key]] : [];
+      // Remove the item at the specified index
+      const newArray = currentArray.filter((_, i) => i !== index);
+      
+      // Return the new params object with the updated array
+      return {
+        ...prev,
+        [key]: newArray
+      };
+    });
+  };
+
+  // Handle updating a single array item
+  const handleUpdateArrayItem = (key: string, index: number, value: string) => {    
+    setParams(prev => {
+      // Create a deep copy of the current array
+      const currentArray = Array.isArray(prev[key]) ? [...prev[key]] : [];
+      // Update the value at the specified index
+      const newArray = [...currentArray];
+      newArray[index] = value;
+      
+      // Return the new params object with the updated array
+      return {
+        ...prev,
+        [key]: newArray
+      };
+    });
+  };
 
   // Handle form submission
   const handleSubmit = (e: React.FormEvent) => {
@@ -303,11 +359,36 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
       }
     }
     
+    // Deep copy all params to avoid reference issues, with special handling for arrays
+    const deepCopy = (obj: any): any => {
+      if (obj === null || obj === undefined) {
+        return obj;
+      }
+      
+      if (Array.isArray(obj)) {
+        return obj.map(item => deepCopy(item));
+      }
+      
+      if (typeof obj === 'object') {
+        const copy: any = {};
+        for (const key in obj) {
+          copy[key] = deepCopy(obj[key]);
+        }
+        return copy;
+      }
+      
+      return obj;
+    };
+    
+    // Create a true deep copy of all parameters
+    const paramsCopy = deepCopy(params);
+  
+    
     // Create updated plugin with new params and custom name
     const updatedPlugin = {
       ...plugin,
       name: customName,
-      params: { ...params },
+      params: paramsCopy,
       interval
     };
     
@@ -323,9 +404,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         (updatedPlugin as any).description = pluginSchema.description;
       }
     }
-    
-    console.log('Saving plugin with params:', updatedPlugin);
-    
     // Call onAdd callback
     onAdd(updatedPlugin);
     
@@ -340,10 +418,17 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
 
   // Handle string array change (comma-separated values)
   const handleArrayChange = (key: string, value: string) => {
-    const arrayValue = value
-      .split(',')
-      .map(item => item.trim())
-      .filter(Boolean);
+    // Split by commas, but preserve commas within quotes
+    const arrayValue = value.split(',').map(item => {
+      const trimmed = item.trim();
+      // Remove quotes if the item is quoted
+      if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || 
+          (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+        return trimmed.substring(1, trimmed.length - 1);
+      }
+      return trimmed;
+    }).filter(Boolean);
+      
     handleParamChange(key, arrayValue);
   };
 
@@ -363,28 +448,21 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     
     // Get constructor interface from plugin or schema
     const constructorInterface = pluginSchema?.constructorInterface || 
-                               ('constructorInterface' in plugin ? plugin.constructorInterface : null);
+                               ('constructorInterface' in plugin ? (plugin as any).constructorInterface : null);
     
     // CSS classes for inputs
     const inputClasses = "p-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500";
     
-    // Debug logging to see the constructor interface and params
-    console.log('Current params:', params);
-    if (constructorInterface) {
-      console.log('Rendering fields from constructor interface:', constructorInterface.parameters);
-    } else {
-      console.log('No constructor interface available to render fields from');
-    }
     
     // Check if plugin has provider/storage parameters in constructor interface
-    const hasProviderParameter = constructorInterface?.parameters.some(param => param.name === 'provider') ?? false;
+    const hasProviderParameter = constructorInterface?.parameters.some((param: { name: string }) => param.name === 'provider') ?? false;
     const isProviderRequired = constructorInterface?.parameters.some(
-      param => param.name === 'provider' && param.required
+      (param: { name: string; required: boolean }) => param.name === 'provider' && param.required
     ) ?? false;
     
-    const hasStorageParameter = constructorInterface?.parameters.some(param => param.name === 'storage') ?? false;
+    const hasStorageParameter = constructorInterface?.parameters.some((param: { name: string }) => param.name === 'storage') ?? false;
     const isStorageRequired = constructorInterface?.parameters.some(
-      param => param.name === 'storage' && param.required
+      (param: { name: string; required: boolean }) => param.name === 'storage' && param.required
     ) ?? false;
     
     return (
@@ -427,7 +505,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               value={params.storage || ''}
               name="storage"
               onChange={(e) => handleParamChange('storage', e.target.value)}
-              className="w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+              className="py-2 px-1 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
               required={isStorageRequired}
             >
               <option value="">No storage selected</option>
@@ -444,7 +522,13 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         )}
         
         {/* Render constructor interface parameters */}
-        {constructorInterface && constructorInterface.parameters.map(param => {
+        {constructorInterface && (constructorInterface.parameters as Array<{
+          name: string;
+          type: 'string' | 'number' | 'boolean' | 'string[]';
+          required: boolean;
+          description: string;
+          secret?: boolean;
+        }>).map(param => {
           const key = param.name;
           
           // Skip provider and storage fields (handled separately)
@@ -452,9 +536,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               (key === 'storage' && hasStorageParameter)) {
             return null;
           }
-          
-          console.log(`Rendering parameter: ${key}, type: ${param.type}, current value: ${params[key]}`);
-          
           // Render different input types based on parameter type
           if (param.type === 'boolean') {
             return (
@@ -499,38 +580,85 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                   {key}
                   {param.required && <span className="text-red-500 ml-1">*</span>}
                 </label>
-                <input
-                  type="text"
-                  value={Array.isArray(params[key]) ? params[key].join(', ') : ''}
-                  onChange={(e) => handleArrayChange(key, e.target.value)}
-                  className={inputClasses}
-                  required={param.required}
-                  placeholder="Comma-separated values"
-                />
+                <div className="space-y-2">
+                  {(params[key] || []).map((item: string, index: number) => (
+                    <div key={index} className="relative">
+                      <input
+                        type="text"
+                        value={item}
+                        onChange={(e) => handleUpdateArrayItem(key, index, e.target.value)}
+                        className={`${inputClasses} pr-8`}
+                        placeholder={`Item ${index + 1}`}
+                        data-index={index}
+                        data-array-key={key}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveArrayItem(key, index)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-red-400 hover:text-red-300 focus:outline-none"
+                        title="Remove item"
+                        data-index={index}
+                        data-array-key={key}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => handleAddArrayItem(key)}
+                    className="mt-2 px-3 py-1 text-sm text-amber-400 hover:text-amber-300 border border-amber-400 hover:border-amber-300 rounded-md focus:outline-none"
+                    data-array-key={key}
+                  >
+                    + Add Item
+                  </button>
+                </div>
                 <p className="mt-1 text-xs text-gray-400">
-                  {param.description}
+                  {param.description || "Add items to the list"}
                 </p>
               </div>
             );
           } else {
-            return (
-              <div key={key} className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  {key}
-                  {param.required && <span className="text-red-500 ml-1">*</span>}
-                </label>
-                <input
-                  type="text"
-                  value={params[key] !== undefined ? params[key] : ''}
-                  onChange={(e) => handleParamChange(key, e.target.value)}
-                  className={inputClasses}
-                  required={param.required}
-                />
-                <p className="mt-1 text-xs text-gray-400">
-                  {param.description}
-                </p>
-              </div>
-            );
+            // Check if this is a sensitive parameter that should use SecretInputSelectField
+            // @ts-ignore: param.secret is added to the constructorInterface.parameters type in index.ts
+            if (param.secret === true || isSensitiveParameter(key)) {
+              return (
+                <div key={key} className="mb-4">
+                  <SecretInputSelectField
+                    id={`param-${key}`}
+                    label={key}
+                    value={params[key] !== undefined ? params[key] : ''}
+                    onChange={(value) => handleParamChange(key, value)}
+                    placeholder={`Enter value for ${key}`}
+                    required={param.required}
+                    description={param.description}
+                    secretType={key}
+                  />
+                </div>
+              );
+            } else {
+              // Standard input for non-sensitive string parameters
+              return (
+                <div key={key} className="mb-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    {key}
+                    {param.required && <span className="text-red-500 ml-1">*</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={params[key] !== undefined ? params[key] : ''}
+                    onChange={(e) => handleParamChange(key, e.target.value)}
+                    className={inputClasses}
+                    required={param.required}
+                  />
+                  <p className="mt-1 text-xs text-gray-400">
+                    {param.description}
+                  </p>
+                </div>
+              );
+            }
           }
         })}
         
@@ -627,7 +755,8 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                     const removed = configStateManager.removeNode(nodeId);
                     
                     if (removed) {
-                      console.log(`Successfully removed node: ${customName} (${nodeId})`);
+                      // Force a sync to ensure everything is updated properly
+                      configStateManager.forceSync();
                       // Close the dialog after successful deletion
                       onClose();
                     } else {
@@ -656,7 +785,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               <button
                 type="submit"
                 onClick={handleSubmit}
-                className="px-4 py-2 text-sm font-medium text-gray-300 bg-amber-700 rounded-md hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-amber-500"
+                className="px-4 py-2 text-sm font-medium text-black bg-amber-300 rounded-md hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-amber-500"
               >
                 Update
               </button>

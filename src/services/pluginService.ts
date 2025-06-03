@@ -3,6 +3,7 @@ import path from 'path';
 
 export interface PluginInfo {
   name: string;
+  pluginName: string;
   type: 'source' | 'ai' | 'enricher' | 'generator' | 'storage';
   description?: string;
   configSchema?: any;
@@ -49,6 +50,7 @@ export class PluginService {
               
               return {
                 name: file.replace('.ts', ''),
+                pluginName: file.replace('.ts', ''),
                 type: type as PluginInfo['type'],
                 description: pluginClass?.description || '',
                 configSchema: pluginClass?.configSchema || {},

@@ -41,16 +41,13 @@ export class WebSocketService {
       wsUrl += `config=${encodeURIComponent(configName)}`;
     }
     
-    console.log(`Creating WebSocket connection to: ${wsUrl}`);
     const socket = new WebSocket(wsUrl);
     
     socket.onopen = () => {
-      console.log(`WebSocket connected for ${jobId ? `job: ${jobId}` : `config: ${configName}`}`);
       this.isConnecting = false;
       
       // For jobs, request status immediately to avoid missing updates
       if (jobId) {
-        console.log(`Requesting initial status for job: ${jobId}`);
         // Use setTimeout to ensure the request is sent after the connection is fully established
         setTimeout(() => {
           this.sendAction({ action: 'getStatus' });
@@ -71,17 +68,20 @@ export class WebSocketService {
       }
     };
     
-    socket.onclose = () => {
-      console.log('WebSocket connection closed');
+    socket.onclose = () => {      
+      // Store the current jobId before nulling the socket
+      const currentJobId = this.jobId;
+      
       this.socket = null;
+      this.jobId = null;
       
       // Attempt to reconnect after a delay
-      if (!this.isConnecting && (this.configName || this.jobId)) {
+      if (!this.isConnecting && (this.configName || currentJobId)) {
         this.isConnecting = true;
         this.reconnectTimeout = window.setTimeout(() => {
-          if (this.jobId) {
-            console.log(`Attempting to reconnect WebSocket for job: ${this.jobId}`);
-            this.connectToJob(this.jobId);
+          if (currentJobId) {
+            this.isConnecting = false; // Reset isConnecting before attempting reconnection
+            this.connectToJob(currentJobId);
           }
         }, 3000);
       }
@@ -99,22 +99,17 @@ export class WebSocketService {
     return;
   }
   
-  public connectToJob(jobId: string): void {
-    console.log(`Attempting to connect to job: ${jobId}. Current job: ${this.jobId}`);
-    
+  public connectToJob(jobId: string): void {    
     // If already connected to this job ID, don't reconnect
-    if (this.socket?.readyState === WebSocket.OPEN && this.jobId === jobId) {
-      console.log(`Already connected to job ${jobId}, reusing connection`);
+    if (this.socket?.readyState === WebSocket.OPEN && this.jobId === jobId && !this.isConnecting) {
       return;
     }
     
     // If connected to a different job, disconnect first
     if (this.socket?.readyState === WebSocket.OPEN) {
-      console.log(`Disconnecting from current job ${this.jobId} to connect to job ${jobId}`);
       this.disconnect();
     }
     
-    console.log(`Creating new WebSocket connection for job ${jobId}`);
     this.isConnecting = true;
     this.socket = this.createWebSocket('', jobId);
   }
@@ -150,7 +145,6 @@ export class WebSocketService {
   }
   
   private handleMessage(message: WebSocketMessage): void {
-    console.log("WebSocket received message:", message);
     
     switch (message.type) {
       case 'status':
@@ -166,12 +160,10 @@ export class WebSocketService {
         break;
         
       case 'jobStatus':
-        console.log("WebSocket received job status message:", message);
         this.handleJobStatusMessage(message as WebSocketJobStatusMessage);
         break;
         
       case 'jobStarted':
-        console.log("WebSocket received job started message:", message);
         this.handleJobStartedMessage(message as WebSocketJobStartedMessage);
         break;
         
@@ -193,17 +185,14 @@ export class WebSocketService {
   }
   
   private handleJobStatusMessage(message: WebSocketJobStatusMessage): void {
-    console.log("Processing job status update:", message.jobStatus);
     this.handleJobStatusUpdate(message.jobStatus);
   }
   
   private handleJobStartedMessage(message: WebSocketJobStartedMessage): void {
-    console.log("Processing job started:", message.jobId);
     this.notifyJobStartedListeners(message.jobId);
   }
   
   private handleJobStatusUpdate(jobStatus: JobStatus): void {
-    console.log("Processing job status update:", jobStatus);
     
     // Special handling for continuous operations
     // If the job is a continuous job (indicated by certain phases),
@@ -218,10 +207,7 @@ export class WebSocketService {
       // Only disconnect if this is NOT a continuous operation
       // For continuous operations, we want to keep the connection alive
       if (!isContinuousOperation) {
-        console.log(`Job ${jobStatus.jobId} ${jobStatus.status}. Will disconnect WebSocket.`);
         shouldDisconnect = true;
-      } else {
-        console.log(`Job ${jobStatus.jobId} reported as ${jobStatus.status}, but is a continuous operation. Keeping connection active.`);
       }
     }
     
@@ -277,26 +263,14 @@ export class WebSocketService {
   }
   
   // Job status listeners
-  public addJobStatusListener(listener: (jobStatus: JobStatus) => void, specificJobId?: string): void {
-    console.log(`Adding job status listener ${specificJobId ? `for job ${specificJobId}` : 'globally'}`);
-    
+  public addJobStatusListener(listener: (jobStatus: JobStatus) => void, specificJobId?: string): void {    
     if (specificJobId) {
       if (!this.jobStatusListeners.has(specificJobId)) {
         this.jobStatusListeners.set(specificJobId, []);
-        console.log(`Created new listener array for job ${specificJobId}`);
       }
       this.jobStatusListeners.get(specificJobId)!.push(listener);
-      
-      // Log the count after adding
-      const count = this.jobStatusListeners.get(specificJobId)?.length || 0;
-      console.log(`After registration: ${count} listeners for job ${specificJobId}`);
-      
-      // Log all registered job IDs
-      console.log("Currently tracking listeners for job IDs:", 
-        Array.from(this.jobStatusListeners.keys()));
     } else {
       this.globalJobStatusListeners.push(listener);
-      console.log(`After registration: ${this.globalJobStatusListeners.length} global listeners`);
     }
   }
   
@@ -321,12 +295,9 @@ export class WebSocketService {
   }
   
   private notifyJobStatusListeners(jobStatus: JobStatus): void {
-    console.log(`Notifying job status listeners for job: ${jobStatus.jobId}`);
     
     // Debug log registered job IDs
     const registeredJobIds = Array.from(this.jobStatusListeners.keys());
-    console.log("All registered job IDs:", registeredJobIds);
-    console.log("Looking for listeners specifically for:", jobStatus.jobId);
     
     // Check if the job ID is in the right format
     if (typeof jobStatus.jobId !== 'string') {
@@ -335,7 +306,6 @@ export class WebSocketService {
     
     // Notify job-specific listeners
     const specificListeners = this.jobStatusListeners.get(jobStatus.jobId) || [];
-    console.log(`Found ${specificListeners.length} specific listeners for job ${jobStatus.jobId}`);
     
     // If no listeners found, check if there's any issue with case sensitivity or formatting
     if (specificListeners.length === 0) {
@@ -348,7 +318,6 @@ export class WebSocketService {
     
     // Execute the listeners
     specificListeners.forEach((listener, index) => {
-      console.log(`Calling specific listener #${index} for job ${jobStatus.jobId}`);
       try {
         listener(jobStatus);
       } catch (error) {
@@ -357,9 +326,7 @@ export class WebSocketService {
     });
     
     // Notify global listeners
-    console.log(`Notifying ${this.globalJobStatusListeners.length} global job status listeners`);
     this.globalJobStatusListeners.forEach((listener, index) => {
-      console.log(`Calling global listener #${index}`);
       try {
         listener(jobStatus);
       } catch (error) {

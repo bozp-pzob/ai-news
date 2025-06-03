@@ -22,6 +22,29 @@ export class RawDataExporter {
   private source: string;
   private outputPath: string;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'storage',
+        type: 'StoragePlugin',
+        required: true,
+        description: 'Storage Plugin to store the generated Daily Summary.'
+      },
+      {
+        name: 'source',
+        type: 'string',
+        required: false,
+        description: 'Specific source to generate the summary off.'
+      },
+      {
+        name: 'outputPath',
+        type: 'string',
+        required: false,
+        description: 'Location to store summary for md and json generation'
+      }
+    ]
+  };
+
   constructor(config: RawDataExporterConfig) {
     this.storage = config.storage;
     this.source = config.source;

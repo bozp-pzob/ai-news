@@ -232,32 +232,32 @@ export const ConfigBuilder: React.FC<ConfigBuilderProps> = ({
         <div className="flex space-x-4">
           <button
             onClick={() => handleAddPlugin('sources')}
-            className="px-4 py-2 bg-amber-500 text-gray-900 rounded hover:bg-amber-400"
+            className="px-4 py-2 bg-amber-300 text-black rounded hover:bg-amber-400"
           >
             Add Source
           </button>
           <button
             onClick={() => handleAddPlugin('ai')}
-            className="px-4 py-2 bg-amber-500 text-gray-900 rounded hover:bg-amber-400"
+            className="px-4 py-2 bg-amber-300 text-black rounded hover:bg-amber-400"
           >
             Add AI
           </button>
           <button
             onClick={() => handleAddPlugin('enrichers')}
-            className="px-4 py-2 bg-amber-500 text-gray-900 rounded hover:bg-amber-400"
+            className="px-4 py-2 bg-amber-300 text-black rounded hover:bg-amber-400"
           >
             Add Enricher
           </button>
           <button
             onClick={() => handleAddPlugin('generators')}
-            className="px-4 py-2 bg-amber-500 text-gray-900 rounded hover:bg-amber-400"
+            className="px-4 py-2 bg-amber-300 text-black rounded hover:bg-amber-400"
           >
             Add Generator
           </button>
         </div>
         <button
           onClick={onSave}
-          className="px-4 py-2 bg-amber-500 text-gray-900 rounded hover:bg-amber-400"
+          className="px-4 py-2 bg-amber-300 text-black rounded hover:bg-amber-400"
         >
           Save Configuration
         </button>

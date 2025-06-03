@@ -148,8 +148,6 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
   const currentStatus = wsConnected ? status || { status: 'stopped' } : polledStatus;
 
   const handleAddPlugin = (plugin: PluginInfo, pluginConfig: Record<string, any>, interval?: number) => {
-    console.log('handleAddPlugin called with:', { plugin, pluginConfig, interval });
-    
     if (plugin) {
       const newPlugin = {
         type: plugin.type,
@@ -158,17 +156,11 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
         interval
       };
       
-      console.log('Creating new plugin:', newPlugin);
-      console.log('Current config:', config);
-      
       setConfig(prevConfig => {
         const pluginType = plugin.type as PluginType;
-        console.log('Plugin type:', pluginType);
         
         // Map plugin type to config property
         const configProperty = mapPluginTypeToConfigProperty(pluginType);
-        console.log('Config property:', configProperty);
-        console.log('Previous config for property:', prevConfig[configProperty]);
         
         // Check if this is an array property
         if (configProperty === 'sources' || 
@@ -186,7 +178,6 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
             [arrayProp]: [...(prevConfig[arrayProp] || []), newPlugin]
           };
           
-          console.log('Updated config:', updatedConfig);
           return updatedConfig;
         }
         
@@ -406,6 +397,20 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
                 <span className="ml-2 text-sm text-gray-700">Only Fetch</span>
               </label>
             </div>
+            <div>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={config.settings?.onlyGenerate || false}
+                  onChange={(e) => onConfigUpdate({
+                    ...config,
+                    settings: { ...config.settings, onlyGenerate: e.target.checked }
+                  })}
+                  className="rounded border-gray-300 text-amber-500 shadow-sm focus:border-amber-400 focus:ring-amber-400"
+                />
+                <span className="ml-2 text-sm text-gray-700">Only Generate</span>
+              </label>
+            </div>
           </div>
         </div>
       );
@@ -424,7 +429,7 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
                 setSelectedPlugin(plugin);
                 setIsPluginDialogOpen(true);
               }}
-              className="px-3 py-1 text-sm text-amber-500 hover:text-amber-700"
+              className="px-3 py-1 text-sm text-amber-300 hover:text-amber-400"
             >
               Edit
             </button>
@@ -555,7 +560,7 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
         <div className="flex space-x-4">
           <button
             onClick={handleSave}
-            className="px-4 py-2 bg-amber-500 text-gray-900 rounded-md hover:bg-amber-400"
+            className="px-4 py-2 bg-amber-300 text-black rounded-md hover:bg-amber-400"
           >
             Update
           </button>
@@ -563,7 +568,7 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = ({
             <>
               <button
                 onClick={handleStartAggregation}
-                className="px-4 py-2 bg-amber-500 text-gray-900 rounded-md hover:bg-amber-400"
+                className="px-4 py-2 bg-amber-300 text-black rounded-md hover:bg-amber-400"
               >
                 Start Aggregation
               </button>

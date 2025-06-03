@@ -26,34 +26,34 @@ export const Toast: React.FC<ToastProps> = ({
   const getTypeStyles = (): string => {
     switch (type) {
       case 'success':
-        return 'border-green-500 bg-stone-800 text-green-400';
+        return 'border-green-500 bg-green-900 text-green-100';
       case 'error':
-        return 'border-red-500 bg-stone-800 text-red-400';
+        return 'border-red-500 bg-red-900 text-red-100';
       case 'warning':
-        return 'border-yellow-500 bg-stone-800 text-yellow-400';
+        return 'border-yellow-500 bg-yellow-900 text-yellow-100';
       case 'info':
       default:
-        return 'border-amber-500 bg-stone-800 text-amber-400';
+        return 'border-amber-500 bg-amber-900 text-amber-100';
     }
   };
 
   const getIconColor = (): string => {
     switch (type) {
       case 'success':
-        return 'text-green-500';
+        return 'text-green-300';
       case 'error':
-        return 'text-red-500';
+        return 'text-red-300';
       case 'warning':
-        return 'text-yellow-500';
+        return 'text-yellow-300';
       case 'info':
       default:
-        return 'text-amber-500';
+        return 'text-amber-300';
     }
   };
 
   return (
     <div 
-      className={`flex items-center px-4 py-3 rounded-md shadow-lg border-l-4 ${getTypeStyles()} transition-opacity duration-300 min-w-[300px]`}
+      className={`flex items-center px-4 py-3 rounded-md shadow-xl border-l-4 ${getTypeStyles()} transition-opacity duration-300 min-w-[300px]`}
       role="alert"
     >
       <div className={`mr-3 ${getIconColor()}`}>
@@ -78,9 +78,9 @@ export const Toast: React.FC<ToastProps> = ({
           </svg>
         )}
       </div>
-      <div className="text-gray-300">{message}</div>
+      <div className="font-medium">{message}</div>
       <button
-        className="ml-auto pl-3 text-gray-400 hover:text-gray-200 focus:outline-none"
+        className="ml-auto pl-3 text-gray-300 hover:text-white focus:outline-none"
         onClick={onClose}
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

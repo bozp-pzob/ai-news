@@ -1,11 +1,16 @@
+/**
+ * Node Renderer
+ * 
+ * Provides utilities for rendering graph nodes, connections, and related UI elements
+ * in the canvas-based graph editor. Implements visual styling for different node types,
+ * port connectivity, status indicators, and interactive elements.
+ */
+
 import { Node, Connection, PortInfo } from '../types/nodeTypes';
 import { shouldShowPort } from './nodeHandlers';
 
 // Draw a connection between two nodes
 export const drawConnection = (ctx: CanvasRenderingContext2D, fromNode: Node, toNode: Node, connection: Connection) => {
-  console.log("CRITICAL RENDER: Drawing connection:", JSON.stringify(connection));
-  console.log(`CRITICAL RENDER: From node ID: ${fromNode.id}, To node ID: ${toNode.id}`);
-  
   // Find the actual target node if it's a child node
   let actualToNode = toNode;
   let parentOffset = { x: 0, y: 0 };
@@ -14,7 +19,6 @@ export const drawConnection = (ctx: CanvasRenderingContext2D, fromNode: Node, to
     // Look for the target node in children
     const childNode = toNode.children.find(child => child.id === connection.to.nodeId);
     if (childNode) {
-      console.log(`CRITICAL RENDER: Found actual child node ${connection.to.nodeId} inside parent ${toNode.id}`);
       actualToNode = childNode;
       
       // For child nodes, we need to add the parent's position as an offset
@@ -33,7 +37,6 @@ export const drawConnection = (ctx: CanvasRenderingContext2D, fromNode: Node, to
     // Look for the source node in children
     const childNode = fromNode.children.find(child => child.id === connection.from.nodeId);
     if (childNode) {
-      console.log(`CRITICAL RENDER: Found actual child node ${connection.from.nodeId} inside parent ${fromNode.id}`);
       actualFromNode = childNode;
       
       // For child nodes, we need to add the parent's position as an offset
@@ -47,15 +50,10 @@ export const drawConnection = (ctx: CanvasRenderingContext2D, fromNode: Node, to
   // Find the output port on the from node
   let fromPort = actualFromNode.outputs.find(output => output.name === connection.from.output);
   if (!fromPort) {
-    console.warn(`CRITICAL RENDER: Could not find output port ${connection.from.output} on node ${actualFromNode.id}`);
-    console.log(`CRITICAL RENDER: Available output ports: ${JSON.stringify(actualFromNode.outputs.map(o => o.name))}`);
-    
     // Try to recover by using the first available output port
     if (actualFromNode.outputs.length > 0) {
-      console.log(`CRITICAL RENDER: Using first available output port instead: ${actualFromNode.outputs[0].name}`);
       fromPort = actualFromNode.outputs[0];
     } else {
-      console.error(`CRITICAL RENDER: Node ${actualFromNode.id} has no output ports, cannot draw connection`);
       return; // Exit without drawing
     }
   }
@@ -63,15 +61,10 @@ export const drawConnection = (ctx: CanvasRenderingContext2D, fromNode: Node, to
   // Find the input port on the to node
   let toPort = actualToNode.inputs.find(input => input.name === connection.to.input);
   if (!toPort) {
-    console.warn(`CRITICAL RENDER: Could not find input port ${connection.to.input} on node ${actualToNode.id}`);
-    console.log(`CRITICAL RENDER: Available input ports: ${JSON.stringify(actualToNode.inputs.map(i => i.name))}`);
-    
     // Try to recover by using the first available input port
     if (actualToNode.inputs.length > 0) {
-      console.log(`CRITICAL RENDER: Using first available input port instead: ${actualToNode.inputs[0].name}`);
       toPort = actualToNode.inputs[0];
     } else {
-      console.error(`CRITICAL RENDER: Node ${actualToNode.id} has no input ports, cannot draw connection`);
       return; // Exit without drawing
     }
   }
@@ -82,22 +75,15 @@ export const drawConnection = (ctx: CanvasRenderingContext2D, fromNode: Node, to
   
   // If either port index is -1, it means we didn't find the port
   if (fromPortIndex === -1 || toPortIndex === -1) {
-    console.error(`CRITICAL RENDER: Invalid port index, from: ${fromPortIndex}, to: ${toPortIndex} - from node: ${actualFromNode.id}, to node: ${actualToNode.id}`);
     return; // Exit without drawing
   }
 
-  // Log port details for debugging
-  console.log('CRITICAL RENDER: From port:', fromPort.name, 'index:', fromPortIndex);
-  console.log('CRITICAL RENDER: To port:', toPort.name, 'index:', toPortIndex);
-
-  // CRITICAL FIX: Validate that both ports should be shown on their respective nodes
+  // Validate that both ports should be shown on their respective nodes
   if (!shouldShowPort(actualFromNode, fromPort.name, false)) {
-    console.log(`CRITICAL RENDER: Output port ${fromPort.name} should not be shown on node ${actualFromNode.id}, skipping connection`);
     return; // Skip drawing this connection
   }
   
   if (!shouldShowPort(actualToNode, toPort.name, true)) {
-    console.log(`CRITICAL RENDER: Input port ${toPort.name} should not be shown on node ${actualToNode.id}, skipping connection`);
     return; // Skip drawing this connection
   }
 
@@ -112,13 +98,9 @@ export const drawConnection = (ctx: CanvasRenderingContext2D, fromNode: Node, to
   const endX = (actualToNode.position.x + parentOffset.x); // left side of to node
   const endY = (actualToNode.position.y + parentOffset.y) + portOffsetY + (toPortIndex * portSpacing);
   
-  console.log(`CRITICAL RENDER: Drawing connection from ${actualFromNode.id} at (${startX},${startY}) to ${actualToNode.id} at (${endX},${endY})`);
-  
   // Use the port type to determine the connection color
   const portType = fromPort.type || 'default';
   drawConnectionLine(ctx, startX, startY, endX, endY, portType);
-  
-  console.log(`CRITICAL RENDER: Successfully drew connection from ${actualFromNode.id}.${fromPort.name} to ${actualToNode.id}.${toPort.name}`);
 };
 
 // Draw a temporary connection line
@@ -130,14 +112,8 @@ export const drawConnectionLine = (
   endY: number,
   portType: string
 ) => {
-  // Set color based on port type with a more yellow amber palette
-  if (portType === 'provider') {
-    ctx.strokeStyle = '#d97706'; // Darker yellow for provider connections
-  } else if (portType === 'storage') {
-    ctx.strokeStyle = '#fcd34d'; // Lighter amber for storage connections
-  } else {
-    ctx.strokeStyle = '#fcd34d'; // Pale amber for other connections
-  }
+  // Set color based on port type
+  ctx.strokeStyle = getPortColorByType(portType, true);
   
   // Use thicker lines
   ctx.lineWidth = 3;
@@ -178,29 +154,25 @@ export const drawConnectionLine = (
 
 // Helper function to check if node has missing required connections
 const hasMissingRequiredConnections = (node: Node): boolean => {
-  // Skip parent nodes as they're just containers
   if (node.isParent) return false;
   
-  // Check for required provider connections
-  if (node.params && 'provider' in node.params && node.params.provider) {
-    const providerInput = node.inputs.find(input => input.name === 'provider');
-    if (providerInput && !providerInput.connectedTo) {
-      return true;
+  // Check for required provider and storage connections
+  if (node.params) {
+    if ('provider' in node.params && node.params.provider) {
+      const providerInput = node.inputs.find(input => input.name === 'provider');
+      if (providerInput && !providerInput.connectedTo) return true;
     }
-  }
-  
-  // Check for required storage connections
-  if (node.params && 'storage' in node.params && node.params.storage) {
-    const storageInput = node.inputs.find(input => input.name === 'storage');
-    if (storageInput && !storageInput.connectedTo) {
-      return true;
+    
+    if ('storage' in node.params && node.params.storage) {
+      const storageInput = node.inputs.find(input => input.name === 'storage');
+      if (storageInput && !storageInput.connectedTo) return true;
     }
   }
   
   return false;
 };
 
-// Add a helper function to draw status popups at the highest z-index
+// Draw status popup when hovering over status indicators
 const drawStatusPopup = (
   ctx: CanvasRenderingContext2D,
   node: Node,
@@ -211,87 +183,71 @@ const drawStatusPopup = (
   nodeHeight: number,
   mousePosition: { x: number; y: number } | null
 ) => {
-  if (!mousePosition) return;
-  
-  // Only show status popups for source nodes
-  if (!node.id?.startsWith('source')) return;
+  if (!mousePosition || !node.id?.startsWith('source')) return;
   
   const distToIcon = Math.sqrt(
     Math.pow(mousePosition.x - iconX, 2) + 
     Math.pow(mousePosition.y - iconY, 2)
   );
   
-  // If mouse is hovering over icon or very near it, show popup with full status information
-  if (distToIcon <= iconRadius * 1.8) { // Increased detection area
+  // Only show popup if hovering near the icon
+  if (distToIcon <= iconRadius * 1.8) {
     let iconColor = '#57534e'; // Default gray
     
     switch (node.status) {
-      case 'running':
-        iconColor = '#f59e0b'; // Bright amber for running
-        break;
-      case 'success':
-        iconColor = '#22c55e'; // Bright green for success
-        break;
-      case 'failed':
-        iconColor = '#ef4444'; // Bright red for failed
-        break;
+      case 'running': iconColor = '#f59e0b'; break; // Amber
+      case 'success': iconColor = '#22c55e'; break; // Green
+      case 'failed': iconColor = '#ef4444'; break; // Red
     }
     
-    const popupWidth = 240; // Slightly wider
-    const popupHeight = node.statusMessage ? 100 : 70; // Slightly taller
+    const popupWidth = 240;
+    const popupHeight = node.statusMessage ? 100 : 70;
     
-    // Position popup at the top-left of the node by default
+    // Position popup, adjusting if near screen edge
     let popupX = node.position.x;
-    let popupY = node.position.y - popupHeight - 15; // Position well above the node
+    let popupY = node.position.y - popupHeight - 15;
     
-    // Ensure popup stays on screen
     if (popupY < 10) {
-      popupY = node.position.y + nodeHeight + 15; // If not enough room above, show below
+      popupY = node.position.y + nodeHeight + 15;
     }
     
-    // Save context to ensure popup is drawn with full opacity
+    // Draw popup
     ctx.save();
     
-    // Draw popup background with a more opaque, contrasting color
+    // Background
     ctx.beginPath();
     ctx.roundRect(popupX, popupY, popupWidth, popupHeight, 10);
-    ctx.fillStyle = 'rgba(15, 15, 15, 0.97)'; // Nearly black, very opaque
+    ctx.fillStyle = 'rgba(15, 15, 15, 0.97)';
     ctx.fill();
     
-    // Draw a more distinct border around the popup
+    // Border
     ctx.strokeStyle = iconColor;
     ctx.lineWidth = 3;
     ctx.stroke();
     
-    // Add title to popup
+    // Title
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     
-    // Title based on node status
+    // Title text
     let title = 'Status: Unknown';
     switch (node.status) {
-      case 'running':
-        title = 'Status: Running';
-        break;
-      case 'success':
-        title = 'Status: Success';
-        break;
-      case 'failed':
-        title = 'Status: Failed';
-        break;
+      case 'running': title = 'Status: Running'; break;
+      case 'success': title = 'Status: Success'; break;
+      case 'failed': title = 'Status: Failed'; break;
     }
     
     ctx.fillText(title, popupX + popupWidth / 2, popupY + 10);
     
-    // Add status message if available
+    // Status message if available
     if (node.statusMessage) {
       ctx.fillStyle = '#d1d5db';
       ctx.font = '11px sans-serif';
       ctx.textAlign = 'center';
       
-      // Wrap text for long messages
+      // Wrap text
       const maxWidth = popupWidth - 20;
       const words = node.statusMessage.split(' ');
       let line = '';
@@ -313,8 +269,8 @@ const drawStatusPopup = (
       ctx.fillText(line, popupX + popupWidth / 2, y);
     }
     
-    // Add status data info for sources with successful fetches
-    if (node.status === 'success' && node.id?.startsWith('source') && node.statusData) {
+    // Status data for successful sources
+    if (node.status === 'success' && node.statusData) {
       ctx.fillStyle = '#86efac'; // Light green
       ctx.font = '11px sans-serif';
       ctx.textAlign = 'center';
@@ -331,6 +287,72 @@ const drawStatusPopup = (
   }
 };
 
+// Helper function to determine port color based on type and connection status
+const getPortColorByType = (type: string, isConnected: boolean | string | undefined): string => {
+  // Ensure isConnected is treated as a boolean
+  const connected = !!isConnected;
+  
+  if (type === 'provider') {
+    return connected ? '#d97706' : '#f59e0b'; // Darker yellow for provider connections
+  } else if (type === 'storage') {
+    return connected ? '#fbbf24' : '#fcd34d'; // Lighter amber for storage connections
+  } else if (type === 'data') {
+    return connected ? '#f59e0b' : '#fcd34d'; // Yellow amber for data connections
+  }
+  return '#666'; // Default gray color
+};
+
+// Helper function to draw a port
+const drawPort = (
+  ctx: CanvasRenderingContext2D,
+  x: number, 
+  y: number, 
+  portType: string,
+  isConnected: boolean | string | undefined,
+  isHovered: boolean,
+  isParent: boolean,
+  label: string,
+  isOutput: boolean
+) => {
+  // Draw hover effect if needed
+  if (isHovered) {
+    // Draw outer glow effect
+    ctx.beginPath();
+    ctx.arc(x, y, 12, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(251, 191, 36, 0.15)'; // Yellow amber glow
+    ctx.fill();
+    
+    // Draw inner glow effect
+    ctx.beginPath();
+    ctx.arc(x, y, 8, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(251, 191, 36, 0.3)'; // Darker yellow amber glow
+    ctx.fill();
+  }
+  
+  // Get port color based on type and connection
+  const portColor = getPortColorByType(portType, isConnected);
+  
+  // Port background size (slightly larger for parent nodes)
+  const radius = isParent ? 7 : 6;
+  
+  // Draw port background
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fillStyle = '#292524'; // Dark background
+  ctx.fill();
+  
+  // Draw port border with correct style
+  ctx.strokeStyle = isHovered ? '#fbbf24' : portColor;
+  ctx.lineWidth = isHovered ? 3 : (isParent ? 2.5 : 2);
+  ctx.stroke();
+  
+  // Draw port label
+  ctx.fillStyle = isHovered ? '#fbbf24' : (isParent ? '#d1d5db' : '#9ca3af');
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = isOutput ? 'left' : 'right';
+  ctx.fillText(label, x + (isOutput ? 8 : -8), y + 4);
+};
+
 // Draw a node
 export const drawNode = (
   ctx: CanvasRenderingContext2D,
@@ -339,25 +361,9 @@ export const drawNode = (
   hoveredPort: PortInfo | null,
   selectedNode: string | null,
   mousePosition: { x: number; y: number } | null = null,
-  skipStatusPopups: boolean = false // Changed to false to show status popups by default
+  skipStatusPopups: boolean = false
 ) => {
   const nodeWidth = 200;
-  
-  // Debug logging for node status
-  if (node.status) {
-    console.log(`Drawing node ${node.name} (${node.type}) with status: ${node.status}`, node);
-  }
-  
-  // Create an array to track status popups that need to be drawn at the end
-  // Only used if skipStatusPopups is false (for compatibility with existing code)
-  const statusPopups: { 
-    node: Node; 
-    iconX: number; 
-    iconY: number; 
-    iconRadius: number;
-    nodeWidth: number;
-    nodeHeight: number;
-  }[] = [];
   
   // Save canvas state
   ctx.save();
@@ -375,14 +381,6 @@ export const drawNode = (
     nodeWidth,
     nodeHeight,
     8
-  );
-  
-  // Create gradient background
-  const gradient = ctx.createLinearGradient(
-    node.position.x,
-    node.position.y,
-    node.position.x,
-    node.position.y + nodeHeight
   );
   
   // Set node background color based on its status if it's not a parent node
@@ -558,14 +556,10 @@ export const drawNode = (
       const distance = Math.sqrt(dx * dx + dy * dy);
       
       if (distance <= iconRadius) {
-        statusPopups.push({
-          node,
-          iconX,
-          iconY,
-          iconRadius,
-          nodeWidth,
-          nodeHeight
-        });
+        // Direct call to draw status popup if hovering over status icon
+        if (!skipStatusPopups) {
+          drawStatusPopup(ctx, node, iconX, iconY, iconRadius, nodeWidth, nodeHeight, mousePosition);
+        }
       }
     }
   }
@@ -621,27 +615,8 @@ export const drawNode = (
     ctx.fillText('!', node.position.x + 15, node.position.y + 15);
   }
 
-  // Show a small indicator if the node has params
-  if (node.params && Object.keys(node.params).length > 0) {
-    ctx.beginPath();
-    ctx.arc(node.position.x + nodeWidth - 15, node.position.y + 15, 5, 0, Math.PI * 2);
-    ctx.fillStyle = '#fbbf24'; // Yellow amber indicator
-    ctx.fill();
-    
-    // Show the number of parameters
-    const paramCount = Object.keys(node.params).length;
-    ctx.fillStyle = '#1c1917'; // Dark text on light amber
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(paramCount.toString(), node.position.x + nodeWidth - 15, node.position.y + 15);
-  }
-
-  // CRITICAL FIX: Handle parent nodes with special attention for their input ports
-  // This ensures that input ports on parent nodes are always visible
+  // Handle parent nodes with special attention for their input ports
   if (node.isParent) {
-    console.log(`Drawing parent node ${node.id} with ${node.inputs.length} inputs`);
-    
     // Draw parent node input ports at the top
     node.inputs.forEach((input, index) => {
       // Only draw if this port should be shown for this node type
@@ -652,49 +627,7 @@ export const drawNode = (
       // Port border and hover effect
       const isHovered = hoveredPort?.nodeId === node.id && hoveredPort?.port === input.name && !hoveredPort?.isOutput;
       
-      if (isHovered) {
-        // Draw outer glow effect
-        ctx.beginPath();
-        ctx.arc(node.position.x, portY, 12, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(251, 191, 36, 0.15)'; // Yellow amber glow
-        ctx.fill();
-        
-        // Draw inner glow effect
-        ctx.beginPath();
-        ctx.arc(node.position.x, portY, 8, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(251, 191, 36, 0.3)'; // Darker yellow amber glow
-        ctx.fill();
-      }
-      
-      // CRITICAL FIX: Always draw the port with a special color based on type
-      // This ensures all ports are visible even after disconnection
-      let portColor = '#666'; // Default gray color
-      
-      // Use strong colors for parent node ports to ensure they're always visible
-      if (input.type === 'provider') {
-        portColor = input.connectedTo ? '#d97706' : '#f59e0b'; // Darker yellow for provider connections
-      } else if (input.type === 'storage') {
-        portColor = input.connectedTo ? '#fbbf24' : '#fcd34d'; // Lighter amber for storage connections
-      } else if (input.type === 'data') {
-        portColor = input.connectedTo ? '#f59e0b' : '#fcd34d'; // Yellow amber for data connections
-      }
-      
-      // Port background with a larger size for parent nodes
-      ctx.beginPath();
-      ctx.arc(node.position.x, portY, 7, 0, Math.PI * 2); // Slightly larger for parent nodes
-      ctx.fillStyle = '#292524'; // Dark background
-      ctx.fill();
-      
-      // Port border with improved visibility for parent nodes
-      ctx.strokeStyle = isHovered ? '#fbbf24' : portColor; // Amber highlight when hovered
-      ctx.lineWidth = isHovered ? 3 : 2.5; // Thicker lines for parent nodes
-      ctx.stroke();
-      
-      // Port label
-      ctx.fillStyle = isHovered ? '#fbbf24' : '#d1d5db'; // Amber text when hovered
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(input.name, node.position.x - 8, portY + 4);
+      drawPort(ctx, node.position.x, portY, input.type, input.connectedTo, isHovered, true, input.name, false);
     });
     
     // Also draw parent output ports
@@ -707,49 +640,7 @@ export const drawNode = (
       // Port border and hover effect
       const isHovered = hoveredPort?.nodeId === node.id && hoveredPort?.port === output.name && hoveredPort?.isOutput;
       
-      if (isHovered) {
-        // Draw outer glow effect
-        ctx.beginPath();
-        ctx.arc(node.position.x + nodeWidth, portY, 12, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(251, 191, 36, 0.15)'; // Yellow amber glow
-        ctx.fill();
-        
-        // Draw inner glow effect
-        ctx.beginPath();
-        ctx.arc(node.position.x + nodeWidth, portY, 8, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(251, 191, 36, 0.3)'; // Darker yellow amber glow
-        ctx.fill();
-      }
-      
-      // CRITICAL FIX: Always draw the port with a special color based on type
-      // This ensures all ports are visible even after disconnection
-      let portColor = '#666'; // Default gray color
-      
-      // Use strong colors for parent node ports to ensure they're always visible
-      if (output.type === 'provider') {
-        portColor = output.connectedTo ? '#d97706' : '#f59e0b'; // Darker yellow for provider connections
-      } else if (output.type === 'storage') {
-        portColor = output.connectedTo ? '#fbbf24' : '#fcd34d'; // Lighter amber for storage connections
-      } else if (output.type === 'data') {
-        portColor = output.connectedTo ? '#f59e0b' : '#fcd34d'; // Yellow amber for data connections
-      }
-      
-      // Port background with a larger size for parent nodes
-      ctx.beginPath();
-      ctx.arc(node.position.x + nodeWidth, portY, 7, 0, Math.PI * 2); // Slightly larger for parent nodes
-      ctx.fillStyle = '#292524'; // Dark background
-      ctx.fill();
-      
-      // Port border with improved visibility for parent nodes
-      ctx.strokeStyle = isHovered ? '#fbbf24' : portColor; // Amber highlight when hovered
-      ctx.lineWidth = isHovered ? 3 : 2.5; // Thicker lines for parent nodes
-      ctx.stroke();
-      
-      // Port label
-      ctx.fillStyle = isHovered ? '#fbbf24' : '#d1d5db'; // Amber text when hovered
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillText(output.name, node.position.x + nodeWidth + 8, portY + 4);
+      drawPort(ctx, node.position.x + nodeWidth, portY, output.type, output.connectedTo, isHovered, true, output.name, true);
     });
   }
   else if (node.type === 'provider' && node.isProvider) {
@@ -760,40 +651,7 @@ export const drawNode = (
     // Port border and hover effect
     const isHovered = hoveredPort?.nodeId === node.id && hoveredPort?.port === output.name && hoveredPort?.isOutput;
     
-    if (isHovered) {
-      // Draw outer glow effect
-      ctx.beginPath();
-      ctx.arc(node.position.x + nodeWidth, portY, 12, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(251, 191, 36, 0.15)'; // Yellow amber glow
-      ctx.fill();
-      
-      // Draw inner glow effect
-      ctx.beginPath();
-      ctx.arc(node.position.x + nodeWidth, portY, 8, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(251, 191, 36, 0.3)'; // Darker yellow amber glow
-      ctx.fill();
-    }
-    
-    // CRITICAL FIX: Always use a distinct color for provider ports
-    // This ensures the port is always visible with a consistent color
-    const portColor = output.connectedTo ? '#d97706' : '#f59e0b'; // Darker yellow colors for consistency
-    
-    // Port background
-    ctx.beginPath();
-    ctx.arc(node.position.x + nodeWidth, portY, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#292524'; // Dark background
-    ctx.fill();
-    
-    // Port border with improved visibility
-    ctx.strokeStyle = isHovered ? '#fbbf24' : portColor;
-    ctx.lineWidth = isHovered ? 3 : 2;
-    ctx.stroke();
-    
-    // Port label with improved visibility
-    ctx.fillStyle = isHovered ? '#fbbf24' : '#9ca3af';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(output.name, node.position.x + nodeWidth + 8, portY + 4);
+    drawPort(ctx, node.position.x + nodeWidth, portY, 'provider', output.connectedTo, isHovered, false, output.name, true);
   } else if (!node.isParent) {
     // For all other non-parent nodes, draw their input and output ports
     node.inputs.forEach((input, index) => {
@@ -805,112 +663,24 @@ export const drawNode = (
       // Port border and hover effect
       const isHovered = hoveredPort?.nodeId === node.id && hoveredPort?.port === input.name && !hoveredPort?.isOutput;
       
-      if (isHovered) {
-        // Draw outer glow effect
-        ctx.beginPath();
-        ctx.arc(node.position.x, portY, 12, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(251, 191, 36, 0.15)'; // Yellow amber glow
-        ctx.fill();
-        
-        // Draw inner glow effect
-        ctx.beginPath();
-        ctx.arc(node.position.x, portY, 8, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(251, 191, 36, 0.3)'; // Darker yellow amber glow
-        ctx.fill();
-      }
-      
-      // CRITICAL FIX: Always draw the port with a special color based on type
-      // This ensures all ports are visible even after disconnection
-      let portColor = '#666'; // Default gray color
-      
-      // Use distinct colors for different port types to make them more visible
-      if (input.type === 'provider') {
-        portColor = input.connectedTo ? '#d97706' : '#f59e0b'; // Darker yellow for provider connections
-      } else if (input.type === 'storage') {
-        portColor = input.connectedTo ? '#fbbf24' : '#fcd34d'; // Lighter amber for storage connections
-      } else if (input.type === 'data') {
-        portColor = input.connectedTo ? '#f59e0b' : '#fcd34d'; // Yellow amber for data connections
-      }
-      
-      // Port background
-      ctx.beginPath();
-      ctx.arc(node.position.x, portY, 6, 0, Math.PI * 2);
-      ctx.fillStyle = '#292524'; // Dark background
-      ctx.fill();
-      
-      // Port border - always visible with distinct color
-      ctx.strokeStyle = isHovered ? '#fbbf24' : portColor; // Amber highlight when hovered
-      ctx.lineWidth = isHovered ? 3 : 2;
-      ctx.stroke();
-      
-      // Port label
-      ctx.fillStyle = isHovered ? '#fbbf24' : '#9ca3af';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(input.name, node.position.x - 8, portY + 4);
+      drawPort(ctx, node.position.x, portY, input.type, input.connectedTo, isHovered, false, input.name, false);
     });
 
     // Check if this is a child node of a parent - child nodes shouldn't have output ports
-    const isChildNodeOfParent = node.id && (
-      (node.id.includes('source-') && node.id !== 'sources-group') ||
-      (node.id.includes('enricher-') && node.id !== 'enrichers-group') ||
-      (node.id.includes('generator-') && node.id !== 'generators-group')
-    );
+    const shouldDrawOutputs = node.type === 'storage' || node.type === 'ai' || node.isProvider ||
+                           !(node.id && (node.id.includes('source-') || node.id.includes('enricher-') || 
+                             node.id.includes('generator-')));
 
-    // Only draw output ports if this is not a child node or if it's a provider/storage node
-    if (!isChildNodeOfParent || node.type === 'storage' || node.type === 'ai' || node.isProvider) {
+    // Only draw output ports if needed
+    if (shouldDrawOutputs) {
       node.outputs.forEach((output, index) => {
         // Only draw if this port should be shown for this node type
         if (!shouldShowPort(node, output.name, false)) return;
         
         const portY = node.position.y + 25 + index * 20;
-        
-        // Port border and hover effect
         const isHovered = hoveredPort?.nodeId === node.id && hoveredPort?.port === output.name && hoveredPort?.isOutput;
         
-        if (isHovered) {
-          // Draw outer glow effect
-          ctx.beginPath();
-          ctx.arc(node.position.x + nodeWidth, portY, 12, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(251, 191, 36, 0.15)'; // Yellow amber glow
-          ctx.fill();
-          
-          // Draw inner glow effect
-          ctx.beginPath();
-          ctx.arc(node.position.x + nodeWidth, portY, 8, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(251, 191, 36, 0.3)'; // Darker yellow amber glow
-          ctx.fill();
-        }
-        
-        // CRITICAL FIX: Always draw the port with a special color based on type
-        // This ensures all ports are visible even after disconnection
-        let portColor = '#666'; // Default gray color
-        
-        // Use distinct colors for different port types to make them more visible
-        if (output.type === 'provider') {
-          portColor = output.connectedTo ? '#d97706' : '#f59e0b'; // Darker yellow for provider connections
-        } else if (output.type === 'storage') {
-          portColor = output.connectedTo ? '#fbbf24' : '#fcd34d'; // Lighter amber for storage connections
-        } else if (output.type === 'data') {
-          portColor = output.connectedTo ? '#f59e0b' : '#fcd34d'; // Yellow amber for data connections
-        }
-        
-        // Port background
-        ctx.beginPath();
-        ctx.arc(node.position.x + nodeWidth, portY, 6, 0, Math.PI * 2);
-        ctx.fillStyle = '#292524'; // Dark background
-        ctx.fill();
-        
-        // Port border - always visible with distinct color
-        ctx.strokeStyle = isHovered ? '#fbbf24' : portColor; // Amber highlight when hovered
-        ctx.lineWidth = isHovered ? 3 : 2;
-        ctx.stroke();
-        
-        // Port label
-        ctx.fillStyle = isHovered ? '#fbbf24' : '#9ca3af';
-        ctx.font = '12px sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(output.name, node.position.x + nodeWidth + 8, portY + 4);
+        drawPort(ctx, node.position.x + nodeWidth, portY, output.type, output.connectedTo, isHovered, false, output.name, true);
       });
     }
   }
@@ -925,23 +695,6 @@ export const drawNode = (
 
   // Restore canvas state
   ctx.restore();
-  
-  // No longer drawing popups here - handled at the component level
-  // This is intentionally commented out to document the change
-  /*
-  statusPopups.forEach(popup => {
-    drawStatusPopup(
-      ctx, 
-      popup.node, 
-      popup.iconX, 
-      popup.iconY, 
-      popup.iconRadius,
-      popup.nodeWidth,
-      popup.nodeHeight,
-      mousePosition
-    );
-  });
-  */
 };
 
 // Draw the grid

@@ -56,33 +56,29 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
   // Track the previous job ID to detect new jobs
   const prevJobIdRef = useRef<string | null>(null);
   
-  // Debug logging for received props
-  console.log("JobStatusDisplay received props:", { 
-    hasJobStatus: !!jobStatus, 
-    jobId: jobStatus?.jobId,
-    status: jobStatus?.status,
-    progress: jobStatus?.progress,
-    currentPhase: jobStatus?.aggregationStatus?.currentPhase,
-    currentSource: jobStatus?.aggregationStatus?.currentSource,
-    runMode,
-    wasContinuousRef: wasContinuousRef.current
-  });
-  
   // Once a job is flagged as continuous, it should ALWAYS stay continuous
   // This ensures that even if backend sends progress values later, we still treat it as continuous
   const isContinuousJob = wasContinuousRef.current || stableJobStatus?.progress === undefined || runMode === "continuous";
   
-  console.log("Job determined to be continuous:", isContinuousJob, {
-    status: stableJobStatus?.status,
-    phase: stableJobStatus?.aggregationStatus?.currentPhase,
-    progress: stableJobStatus?.progress,
-    runMode
-  });
+  // Check if we're in historical mode
+  const isHistoricalMode = stableJobStatus?.aggregationStatus?.mode === 'historical';
+  
+  // Get historical date information if available
+  const getHistoricalDateInfo = () => {
+    if (!isHistoricalMode || !stableJobStatus?.aggregationStatus?.config) return null;
+    
+    const { mode, startDate, endDate } = stableJobStatus.aggregationStatus.config;
+    
+    if (mode === 'range') {
+      return `${startDate} to ${endDate}`;
+    } else {
+      return startDate;
+    }
+  };
   
   // Detect job ID changes to reset display state
   useEffect(() => {
     if (jobStatus && prevJobIdRef.current !== jobStatus.jobId) {
-      console.log(`New job detected (${prevJobIdRef.current} → ${jobStatus.jobId}) - resetting display state`);
       // Reset display state for a new job
       setIsMinimized(false);
       setStableJobStatus(null); // Explicitly clear the stable job status to force a clean state
@@ -107,11 +103,9 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
 
     // IMPORTANT: First check if this is a new job
     if (stableJobStatus?.jobId !== jobStatus.jobId) {
-      console.log("New job detected:", jobStatus.jobId);
       
       // New job detection: if progress is undefined or runMode is continuous, it's a continuous job
       const isContinuous = jobStatus.progress === undefined || runMode === "continuous";
-      console.log("Job is continuous:", isContinuous);
       
       // Set the continuous flag permanently for this job
       wasContinuousRef.current = isContinuous;
@@ -137,8 +131,6 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
     // For continuous jobs, ALWAYS override any status updates
     // This is the key fix - we never allow a continuous job to be marked as anything other than running
     if (wasContinuousRef.current) {
-      console.log("Continuous job update received with status:", jobStatus.status);
-      console.log("FORCING status to remain 'running' regardless of backend status");
       
       setStableJobStatus(prev => ({
         ...jobStatus,
@@ -154,7 +146,6 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
     }
     
     // For NON-continuous jobs, follow normal status transition rules
-    console.log("Regular job status update:", jobStatus.status);
     setStableJobStatus(jobStatus);
     prevStatusRef.current = jobStatus.status;
   }, [jobStatus, runMode]);
@@ -164,7 +155,6 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
     // This runs any time stableJobStatus changes
     // Double-check that continuous jobs remain forced to 'running' status
     if (stableJobStatus && wasContinuousRef.current && stableJobStatus.status !== 'running') {
-      console.log("CORRECTING job status from", stableJobStatus.status, "to 'running'");
       setStableJobStatus(prev => ({
         ...prev!,
         status: 'running',
@@ -229,7 +219,6 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
       const currentSource = stableJobStatus.aggregationStatus.currentSource;
       // Only update the active source ref if it's a different source
       if (activeSourceRef.current?.source !== currentSource) {
-        console.log("New active source detected:", currentSource);
         activeSourceRef.current = {
           source: currentSource,
           timestamp: Date.now()
@@ -282,7 +271,6 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
         throw new Error('Failed to stop job');
       }
       
-      console.log(`Job ${stableJobStatus.jobId} stop request sent successfully`);
       // The WebSocket will receive the status update and update the UI with the actual server state
     } catch (error) {
       console.error('Error stopping job:', error);
@@ -374,7 +362,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
                 cy="25" 
                 r={progressRadius} 
                 fill="transparent" 
-                stroke="url(#amber-gradient)" 
+                stroke={isHistoricalMode ? "url(#purple-gradient)" : "url(#amber-gradient)"} 
                 strokeWidth="4"
                 strokeDasharray={`${progressCircumference * 0.3} ${progressCircumference * 0.7}`}
                 transform="rotate(-90 25 25)"
@@ -388,7 +376,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
                 cy="25" 
                 r={progressRadius} 
                 fill="transparent" 
-                stroke="url(#amber-gradient)" 
+                stroke={isHistoricalMode ? "url(#purple-gradient)" : "url(#amber-gradient)"}
                 strokeWidth="4"
                 strokeDasharray={progressCircumference}
                 strokeDashoffset={strokeDashoffset}
@@ -402,6 +390,10 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
                 <stop offset="0%" stopColor="#f59e0b" />
                 <stop offset="100%" stopColor="#f59e0b" />
               </linearGradient>
+              <linearGradient id="purple-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#a855f7" />
+                <stop offset="100%" stopColor="#a855f7" />
+              </linearGradient>
             </defs>
             
             {/* Text in the center */}
@@ -410,7 +402,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
               y="25" 
               textAnchor="middle" 
               dominantBaseline="middle" 
-              fill={isContinuousJob ? "#f59e0b" : "white"}
+              fill={isContinuousJob ? (isHistoricalMode ? "#a855f7" : "#f59e0b") : "white"}
               style={{ fontSize: '10px', fontWeight: 500 }}
             >
               {isContinuousJob ? (
@@ -421,9 +413,10 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
             </text>
           </svg>
           <div className={`absolute top-0 right-0 h-3 w-3 rounded-full ${
-            displayStatus === 'RUNNING' ? 'bg-amber-400' : 
-            displayStatus === 'COMPLETED' ? 'bg-green-400' : 
-            displayStatus === 'FAILED' ? 'bg-destructive' : 'bg-red-400'
+            displayStatus === 'RUNNING' 
+              ? isHistoricalMode ? 'bg-purple-400' : 'bg-amber-400' 
+              : displayStatus === 'COMPLETED' ? 'bg-green-400' 
+              : displayStatus === 'FAILED' ? 'bg-destructive' : 'bg-red-400'
           }`} />
         </div>
         
@@ -446,7 +439,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
         <div className="flex items-center space-x-1">
           <button 
             onClick={() => setIsMinimized(false)}
-            className="text-amber-300 hover:text-amber-200 p-1"
+            className="text-amber-300 hover:text-amber-400 p-1"
             aria-label="Expand"
           >
             <svg
@@ -469,7 +462,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
           {onClose && ! isContinuousJob && (
             <button 
               onClick={onClose}
-              className="text-amber-300 hover:text-amber-200 p-1"
+              className="text-amber-300 hover:text-amber-400 p-1"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -502,7 +495,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
           
           <button 
             onClick={() => setIsMinimized(!isMinimized)}
-            className="text-amber-300 hover:text-amber-200 p-1"
+            className="text-amber-300 hover:text-amber-400 p-1"
           >
             {isMinimized ? (
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -517,7 +510,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
           {onClose && ! isContinuousJob && (
             <button 
               onClick={onClose}
-              className="text-amber-300 hover:text-amber-200 p-1"
+              className="text-amber-300 hover:text-amber-400 p-1"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -529,6 +522,20 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
       
       {/* Rest of content is only visible when not minimized */}
       <div className={`mt-2 ${isMinimized ? 'invisible h-0' : 'visible'}`}>
+        {/* Historical Mode Info - shown when in historical mode */}
+        {isHistoricalMode && (
+          <div className="mb-3 bg-purple-900/20 px-3 py-2 rounded text-xs border border-purple-500/30">
+            <div className="flex justify-between items-center">
+              <span className="text-stone-300">Mode:</span>
+              <span className="text-purple-300 font-medium">Historical Data</span>
+            </div>
+            <div className="flex justify-between items-center mt-1">
+              <span className="text-stone-300">Date{stableJobStatus?.aggregationStatus?.config?.mode === 'range' ? ' Range' : ''}:</span>
+              <span className="text-white font-medium">{getHistoricalDateInfo()}</span>
+            </div>
+          </div>
+        )}
+        
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2">
           <div className="flex justify-between items-center">
             <span className="text-muted-foreground">Status:</span>
@@ -593,7 +600,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
             {isContinuousJob && (
               <div className="w-full h-2.5 bg-stone-800 rounded-full overflow-hidden relative">
                 <div 
-                  className="h-full absolute bg-amber-500/40 rounded-full"
+                  className="h-full absolute bg-amber-300/40 rounded-full"
                   style={{ width: '100%' }}
                 />
                 <div 

@@ -18,7 +18,8 @@ export class Config {
       providers: [],
       settings: {
         runOnce: false,
-        onlyFetch: false
+        onlyFetch: false,
+        onlyGenerate: false
       }
     };
   }
@@ -66,12 +67,12 @@ export class Config {
     // Ensure settings object exists
     configCopy.settings = configCopy.settings || {
       runOnce: false,
-      onlyFetch: false
+      onlyFetch: false,
+      onlyGenerate: false
     };
     
     // For backward compatibility, ensure providers matches ai content
     if (configCopy.ai && configCopy.ai.length > 0 && configCopy.providers.length === 0) {
-      console.log('Setting providers to match AI array');
       configCopy.providers = [...configCopy.ai];
     }
     
@@ -91,8 +92,6 @@ export class Config {
    */
   updatePlugin(plugin: PluginConfig): boolean {
     try {
-      console.log('Updating plugin:', JSON.stringify(plugin));
-      
       // Ensure params is an object
       if (!plugin.params || typeof plugin.params !== 'object') {
         console.error('Invalid plugin params:', plugin.params);
@@ -154,6 +153,28 @@ export class Config {
     isChild: boolean,
     index: number
   ): void {
+    // Helper for proper deep copy with array handling
+    const deepCopy = (obj: any): any => {
+      if (obj === null || obj === undefined) {
+        return obj;
+      }
+      
+      if (Array.isArray(obj)) {
+        // Special handling for arrays to ensure each element is properly copied
+        return obj.map(item => deepCopy(item));
+      }
+      
+      if (typeof obj === 'object') {
+        const copy: any = {};
+        for (const key in obj) {
+          copy[key] = deepCopy(obj[key]);
+        }
+        return copy;
+      }
+      
+      return obj;
+    };
+    
     if (isChild && plugin.parentId) {
       // Handle child node of a parent
       const parentIdParts = plugin.parentId.split('-');
@@ -181,10 +202,10 @@ export class Config {
             parent.params.children.push({});
           }
           
-          // Update the child
+          // Update the child with deep copy
           parent.params.children[childIndex] = {
             ...parent.params.children[childIndex],
-            ...plugin.params
+            ...deepCopy(plugin.params)
           };
         } else {
           // We don't know the exact index, we need to search or append
@@ -193,7 +214,7 @@ export class Config {
             if (parent.params.children[i].id === childId) {
               parent.params.children[i] = {
                 ...parent.params.children[i],
-                ...plugin.params
+                ...deepCopy(plugin.params)
               };
               found = true;
               break;
@@ -204,7 +225,7 @@ export class Config {
             // Append as new child
             parent.params.children.push({
               id: childId,
-              ...plugin.params
+              ...deepCopy(plugin.params)
             });
           }
         }
@@ -212,13 +233,23 @@ export class Config {
     } else {
       // Handle regular node
       if (this.data[arrayName] && this.data[arrayName][index]) {
-        // Update the plugin
-        this.data[arrayName][index].params = plugin.params;
+        // Make a deep copy of the plugin params to preserve array values
+        const deepCopiedParams = deepCopy(plugin.params);
+        
+        
+        // Update the plugin params with the deep copy
+        this.data[arrayName][index].params = deepCopiedParams;
         
         // Update name if it's changed
         if (this.data[arrayName][index].name !== plugin.name) {
           this.data[arrayName][index].name = plugin.name;
         }
+        
+        // Update interval if it's provided and applicable for this plugin type
+        if ((arrayName === 'sources' || arrayName === 'generators') && plugin.interval !== undefined) {
+          this.data[arrayName][index].interval = plugin.interval;
+        }
+        
       }
     }
   }
@@ -228,8 +259,6 @@ export class Config {
    */
   removeNode(nodeId: string): boolean {
     try {
-      console.log(`Removing node: ${nodeId}`);
-
       // Parse the node ID to determine its type and index
       const idParts = nodeId.split('-');
       const nodeType = idParts[0];
@@ -265,7 +294,6 @@ export class Config {
             
             // Remove the child from the children array
             parent.params.children.splice(childIndex, 1);
-            console.log(`Removed child node at index ${childIndex} from parent ${parentType}-${parentIndex}`);
             return true;
           }
         }

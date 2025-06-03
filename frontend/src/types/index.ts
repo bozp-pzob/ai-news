@@ -1,5 +1,6 @@
 export interface PluginInfo {
   name: string;
+  pluginName: string;
   type: PluginType;
   description: string;
   configSchema: {
@@ -15,6 +16,12 @@ export interface PluginInfo {
       type: 'string' | 'number' | 'boolean' | 'string[]';
       required: boolean;
       description: string;
+      /**
+       * When true, this parameter will be treated as sensitive data and will
+       * use the SecretInputSelectField component, allowing users to select
+       * from predefined secrets or enter environment variable references.
+       */
+      secret?: boolean;
     }>;
   };
 }
@@ -22,6 +29,7 @@ export interface PluginInfo {
 export interface PluginConfig {
   type: PluginType;
   name: string;
+  pluginName?: string;
   params: Record<string, any>;
   interval?: number;
   id?: string;
@@ -41,6 +49,13 @@ export interface Config {
   settings: {
     runOnce: boolean;
     onlyFetch: boolean;
+    onlyGenerate?: boolean;
+    historicalDate?: {
+      enabled: boolean;
+      mode?: "single" | "range";
+      startDate?: string;
+      endDate?: string;
+    };
   };
   activePlugin?: PluginConfig | { type: 'settings'; name: 'Settings' };
   runOnce?: boolean;
@@ -79,6 +94,9 @@ export interface JobStatus {
   aggregationStatus?: {
     currentSource?: string;
     currentPhase?: 'fetching' | 'enriching' | 'generating' | 'idle' | 'connecting' | 'waiting';
+    mode?: 'standard' | 'historical';
+    config?: any;
+    filter?: any;
     errors?: Array<{
       message: string;
       source?: string;

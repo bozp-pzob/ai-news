@@ -504,8 +504,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
 
   // Updated rebuildAllConnections to ensure proper connection synchronization
   const rebuildAllConnections = useCallback(() => {
-    console.log("🔄 Rebuilding all connections from scratch");
-    
     // Create a new array for the connections
     const newConnections: Connection[] = [];
     
@@ -525,8 +523,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
       // Handle provider parameter
       if (node.params.provider) {
         const providerName = node.params.provider;
-        console.log(`Node ${node.id} has provider: ${providerName}`);
-        
         // Find provider node by name
         let providerId = '';
         for (let i = 0; i < config.ai.length; i++) {
@@ -537,7 +533,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
         }
         
         if (providerId) {
-          console.log(`Found provider ${providerId} for node ${node.id}`);
           // Create connection ID
           const connectionId = getConnectionId(providerId, 'provider', node.id, 'provider');
           
@@ -551,7 +546,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
             newConnections.push(connection);
             processedConnections.add(connectionId);
             
-            console.log(`Added parameter connection: ${providerId}.provider -> ${node.id}.provider`);
           }
         }
       }
@@ -559,8 +553,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
       // Handle storage parameter
       if (node.params.storage) {
         const storageName = node.params.storage;
-        console.log(`Node ${node.id} has storage: ${storageName}`);
-        
         // Find storage node by name
         let storageId = '';
         for (let i = 0; i < config.storage.length; i++) {
@@ -571,7 +563,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
         }
         
         if (storageId) {
-          console.log(`Found storage ${storageId} for node ${node.id}`);
           // Create connection ID
           const connectionId = getConnectionId(storageId, 'storage', node.id, 'storage');
           
@@ -585,7 +576,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
             newConnections.push(connection);
             processedConnections.add(connectionId);
             
-            console.log(`Added parameter connection: ${storageId}.storage -> ${node.id}.storage`);
           }
         }
       }
@@ -631,7 +621,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
             newConnections.push(connection);
             processedConnections.add(connectionId);
             
-            console.log(`Added explicit connection: ${sourceNode.id}.${outputName} -> ${node.id}.${input.name}`);
           }
         }
       });
@@ -716,24 +705,12 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
     // Update port connections
     updateNodePorts();
     
-    console.log(`✅ Rebuilt ${newConnections.length} connections:`, newConnections);
     return newConnections;
   }, [nodes, config]);
   
   // Modified version of handlePluginSave that works reliably
   const handlePluginSave = useCallback((plugin: any) => {
-    console.log('🔄 ==========================================================');
-    console.log('🔄 SAVING PLUGIN:', JSON.stringify(plugin));
-    console.log('🔄 ==========================================================');
-    
     try {
-      console.log('Plugin ID:', plugin.id);
-      console.log('Plugin Type:', plugin.type);
-      console.log('Plugin Params:', JSON.stringify(plugin.params));
-      
-      // Debug log the config.ai
-      console.log('Available AI providers in config:', JSON.stringify(config.ai));
-      
       // Ensure params is an object
       if (!plugin.params || typeof plugin.params !== 'object') {
         console.error('Invalid plugin params:', plugin.params);
@@ -764,8 +741,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
         return false;
       }
       
-      console.log('Found node to update:', nodeToUpdate);
-      
       // Track connections to add and remove
       let connectionsToRemove: Connection[] = [];
       let connectionsToAdd: Connection[] = [];
@@ -776,8 +751,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
       
       // Handle provider connections
       if ('provider' in plugin.params) {
-        console.log('🔌 Processing PROVIDER parameter:', plugin.params.provider);
-        
         // Find the current provider connection if any
         const currentProviderConn = connections.find((conn: Connection) => 
           conn.to.nodeId === plugin.id && conn.to.input === 'provider'
@@ -785,18 +758,12 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
         
         // Remove current provider connection if it exists
         if (currentProviderConn) {
-          console.log('🔌 Current provider connection:', currentProviderConn);
-          
           // Get the current connected provider node
           const currentProviderNode = findNodeRecursive(nodes, currentProviderConn.from.nodeId);
           
           if (currentProviderNode) {
-            console.log('🔌 Current provider node:', currentProviderNode.name);
-            
             // Check if the provider has changed
             if (currentProviderNode.name !== plugin.params.provider) {
-              console.log(`🔌 Provider changed from ${currentProviderNode.name} to ${plugin.params.provider}`);
-              
               // Add the connection to our removal list
               connectionsToRemove.push(currentProviderConn);
               
@@ -811,7 +778,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
               // Clear the connectedTo property on the input port
               const providerInput = nodeToUpdate.inputs.find((input: NodePort) => input.name === 'provider');
               if (providerInput) {
-                console.log('🔌 Clearing provider input connection');
                 providerInput.connectedTo = undefined;
               }
               
@@ -820,15 +786,10 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
                 output.name === 'provider' && output.connectedTo === plugin.id
               );
               if (providerOutput) {
-                console.log('🔌 Clearing provider output connection');
                 providerOutput.connectedTo = undefined;
               }
-            } else {
-              console.log('🔌 Provider unchanged, keeping existing connection');
             }
           }
-        } else {
-          console.log('🔌 No existing provider connection found');
         }
         
         // Find the new provider node if provider has changed or there was no connection
@@ -840,8 +801,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
           );
           
           if (newProviderNode) {
-            console.log('🔌 Found new provider node:', newProviderNode.name);
-            
             // Check if we don't already have this connection
             const existingConnection = updatedConnections.find((conn: Connection) => 
               conn.from.nodeId === newProviderNode.id && 
@@ -850,8 +809,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
             );
             
             if (!existingConnection) {
-              console.log('🔌 Adding new provider connection');
-              
               // Create the new connection
               const newConnection: Connection = {
                 from: { nodeId: newProviderNode.id, output: 'provider' },
@@ -864,10 +821,8 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
               // Update the input port on the node
               const providerInput = nodeToUpdate.inputs.find((input: NodePort) => input.name === 'provider');
               if (providerInput) {
-                console.log('🔌 Updating existing provider input port');
                 providerInput.connectedTo = newProviderNode.id;
               } else {
-                console.log('🔌 Creating new provider input port');
                 // If the input doesn't exist yet, create it
                 nodeToUpdate.inputs.push({
                   name: 'provider',
@@ -879,11 +834,8 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
               // Update the output port on the provider
               const providerOutput = newProviderNode.outputs.find((output: NodePort) => output.name === 'provider');
               if (providerOutput) {
-                console.log('🔌 Updating provider output port');
                 providerOutput.connectedTo = plugin.id;
               }
-            } else {
-              console.log('🔌 Connection already exists, no need to add');
             }
           } else {
             console.error('🔌 Could not find provider node with name:', plugin.params.provider);
@@ -893,24 +845,18 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
       
       // Handle storage connections (similar to provider)
       if ('storage' in plugin.params) {
-        console.log('🔌 Processing STORAGE parameter:', plugin.params.storage);
-        
         // Find the current storage connection if any
         const currentStorageConn = connections.find((conn: Connection) => 
           conn.to.nodeId === plugin.id && conn.to.input === 'storage'
         );
         
         if (currentStorageConn) {
-          console.log('Current storage connection:', currentStorageConn);
-          
           // Get the current connected storage node
           const currentStorageNode = findNodeRecursive(nodes, currentStorageConn.from.nodeId);
           
           if (currentStorageNode) {
             // Check if the storage has changed
             if (currentStorageNode.name !== plugin.params.storage) {
-              console.log(`Storage changed from ${currentStorageNode.name} to ${plugin.params.storage}`);
-              
               // Add the connection to our removal list
               connectionsToRemove.push(currentStorageConn);
               
@@ -948,8 +894,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
           );
           
           if (newStorageNode) {
-            console.log('Found new storage node:', newStorageNode);
-            
             // Check if we don't already have this connection
             const existingConnection = updatedConnections.find((conn: Connection) => 
               conn.from.nodeId === newStorageNode.id && 
@@ -958,8 +902,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
             );
             
             if (!existingConnection) {
-              console.log('🔌 Adding new storage connection');
-              
               // Create the new connection
               const newConnection: Connection = {
                 from: { nodeId: newStorageNode.id, output: 'storage' },
@@ -972,10 +914,8 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
               // Update the input port on the node
               const storageInput = nodeToUpdate.inputs.find((input: NodePort) => input.name === 'storage');
               if (storageInput) {
-                console.log('🔌 Updating existing storage input port');
                 storageInput.connectedTo = newStorageNode.id;
               } else {
-                console.log('🔌 Creating new storage input port');
                 // If the input doesn't exist yet, create it
                 nodeToUpdate.inputs.push({
                   name: 'storage',
@@ -987,11 +927,8 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
               // Update the output port on the storage
               const storageOutput = newStorageNode.outputs.find((output: NodePort) => output.name === 'storage');
               if (storageOutput) {
-                console.log('🔌 Updating storage output port');
                 storageOutput.connectedTo = plugin.id;
               }
-            } else {
-              console.log('🔌 Connection already exists, no need to add');
             }
           } else {
             console.error('🔌 Could not find storage node with name:', plugin.params.storage);
@@ -1131,7 +1068,6 @@ export const useNodeGraph = ({ config, onConfigUpdate }: UseNodeGraphProps): Use
       setNodes(updatedNodes);
       setConnections(updatedConnections);
       
-      console.log("Plugin updates applied. Nodes:", updatedNodes.length, "Connections:", updatedConnections.length);
       return true;
     } catch (error) {
       console.error("Error in handlePluginSave:", error);

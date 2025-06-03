@@ -8,6 +8,7 @@ export interface Node {
   id: string;
   type: string;
   name: string;
+  pluginName?: string;
   position: { x: number; y: number };
   inputs: NodePort[];
   outputs: NodePort[];
@@ -19,6 +20,7 @@ export interface Node {
   status?: 'running' | 'success' | 'failed' | null;
   statusMessage?: string;
   statusData?: number | { count: number } | any;
+  interval?: number;
 }
 
 export interface Connection {
