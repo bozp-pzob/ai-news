@@ -1,16 +1,25 @@
 {
     "settings": {
-        "runOnce": true,
+        "runOnce": false,
         "onlyFetch": false
     },
     "sources": [
         {
-          "type": "CodexAnalyticsSource",
-          "name": "codexAnalytics",
-          "interval": 43200000,
+          "type": "RSSSource",
+          "name": "rssSource",
+          "interval": 900000,
           "params": {
-              "apiKey": "process.env.CODEX_API_KEY",
-              "tokenAddresses": ["0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2","0x2260fac5e5542a773aa44fbcfedf7c193bc2c599","HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC","So11111111111111111111111111111111111111112"]
+              "feeds": [
+                {
+                  "type": "realtor",
+                  "url": "https://www.realtor.com/realestateandhomes-detail/sitemap-rss-new/rss-new-ca.xml",
+                  "cookieUrl": "https://www.realtor.com",
+                  "excludeTopics": "[mortgageBreakdown, mortgageDetails, mortgageEstimate]",
+                  "objectTypeString": "{\n  listingDate: Date;\n  relatedPropierties: Array<{ url: string }>\n  squareFeet: number;\n  bedrooms: number;\n  bathrooms: number;\n  price: number;\n  pricePerSqft: number;\n  location: {\n    address: string;\n    city: string;\n    state: string;\n    zipCode: string;\n  };\n  priceHistory: Array<{ date: string; price: string; event: string; }>;\n  taxHistory: Array<{ year: string; taxAmount: string; assessedValue: string; }>;\n  gps: Object<{ latitude: number, longitude: number }>;\n  propertyType: string;\n  yearBuilt: number;\n  lotSize: number;\n  description: string;\n  images: string[];\n  hoaFees: number;\n  environmentRisks: string;\n  localLogicData: string;\n  url?: string;\n  mlsId?: string;\n  mlsSource: string;\n  parcelNumber?: string;\n  misc: Object;\n}"
+                }
+              ],
+              "parser": "HTMLParser",
+              "storage": "SQLiteStorage"
           }
         }
     ],
@@ -32,44 +41,68 @@
           "name": "miniOpenAiProvider",
           "params": {
             "apiKey": "process.env.OPENAI_API_KEY",
-            "model": "openai/gpt-4o-mini",
-            "temperature": 0,
-            "useOpenRouter": true,
+            "model": "o4-mini",
+            "temperature": 1,
+            "useOpenRouter": false,
+            "siteUrl": "process.env.SITE_URL",
+            "siteName": "process.env.SITE_NAME"
+          }
+        },
+        {
+          "type": "OpenAIProvider",
+          "name": "searchProvider",
+          "params": {
+            "apiKey": "process.env.OPENAI_API_KEY",
+            "model": "gpt-4o-mini-search-preview",
+            "temperature": 1,
+            "useOpenRouter": false,
             "siteUrl": "process.env.SITE_URL",
             "siteName": "process.env.SITE_NAME"
           }
         }
     ],
     "enrichers": [
-        {
-          "type": "AiTopicsEnricher",
-          "name": "topicEnricher",
-          "params": {
-            "provider": "miniOpenAiProvider",
-            "thresholdLength": 30
-          }
+      {
+        "type": "WebSearchEnricher",
+        "name": "schoolEnricher",
+        "params": {
+          "provider": "miniOpenAiProvider",
+          "searchProvider": "searchProvider",
+          "sourceFields": ["metadata.location.address", "metadata.location.state", "metadata.location.city", "ALL nearby schools", "class size", "ratings", "popularity score"],
+          "saveToField": "nearbySchools",
+          "objectTypeString": "Array<{\n  name: string,\n  schoolGrades: string,\n classSize: number,\n  schoolOverallRank: number\n  }>"
         }
+      },
+      {
+        "type": "WebSearchEnricher",
+        "name": "crimeEnricher",
+        "params": {
+          "provider": "miniOpenAiProvider",
+          "searchProvider": "searchProvider",
+          "sourceFields": ["metadata.location.address", "metadata.location.state", "metadata.location.city", "crime", "ratings", "statistics"],
+          "saveToField": "crimeScore",
+          "objectTypeString": "{\n  score: number (0-100)\n, mostLikelyCrime: string\n, expectedPercentage: number (0-100)\n, yearToYearChange: number (0-100)\n  }>"
+        }
+      }
     ],
     "storage": [
         {
             "type": "SQLiteStorage",
             "name": "SQLiteStorage",
             "params": {
-                "dbPath": "data/db.sqlite"
+              "dbPath": "data/db.sqlite"
             }
         }
     ],
     "generators": [
-        {
-          "type": "DailySummaryGenerator",
-          "name": "DailySummaryGenerator",
-          "interval": 3600000,
-          "params": {
-            "provider": "summaryOpenAiProvider",
-            "storage": "SQLiteStorage",
-            "summaryType": "dailySummary",
-            "source": "aiSummary"
-          }
+    ],
+    "parsers": [
+      {
+        "type": "HTMLParser",
+        "name": "HTMLParser",
+        "params": {
+          "provider": "miniOpenAiProvider"
         }
+      }
     ]
 }

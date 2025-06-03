@@ -116,6 +116,7 @@ export interface AiProvider {
   summarize(text: string): Promise<string>;
   topics(text: string): Promise<string[]>;
   image(text: string): Promise<string[]>;
+  search(text:string): Promise<string>;
 }
 
 /**
@@ -156,6 +157,10 @@ export interface DateConfig {
   date?: string;
   after?: string;
   before?: string;
+}
+
+export interface ParserConfig {
+  provider?: AiProvider | undefined;
 }
 
 /**
