@@ -629,9 +629,7 @@ Do NOT include detailed sources (beyond what's in your narrative text), images, 
         }
       });
 
-      if (associatedObjects && associatedObjects.length <= 1 && 
-          topic !== 'twitter_activity' && topic !== 'crypto market') {
-      } else {
+      if (!(associatedObjects && associatedObjects.length > 1 && topic !== 'twitter_activity' && topic !== 'crypto market')) {
         alreadyAdded[topic] = true;
         groupedTopics.push({ topic, objects: associatedObjects, allTopics: Array.from(mergedTopics) });
       }

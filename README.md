@@ -48,9 +48,6 @@ Configuration is managed through JSON files in the `config/` directory (e.g., `s
 
 ### Local `.env` File
 
-<<<<<<< HEAD
-Copy `example.env` to `.env` and fill in your API keys and tokens.
-=======
 Create a `.env` file in the project root:
 
 ```env
@@ -75,7 +72,6 @@ CODEX_API_KEY=            # Your Codex API key
 # TWITTER_EMAIL=            # Email for login fallback
 # TWITTER_COOKIES='[]'     # Optional: JSON string of cookies, preferred if available
 ```
->>>>>>> 9d8a2f4ecaeb7d83f28852f94adf257a34f60d66
 
 ### GitHub Actions Secrets (`ENV_SECRETS`)
 
@@ -100,17 +96,10 @@ For running via GitHub Actions, create a single repository secret named `ENV_SEC
   "DISCORD_TOKEN": "YOUR_DISCORD_BOT_TOKEN",
   "DISCORD_GUILD_ID": "YOUR_DISCORD_SERVER_ID",
   "CODEX_API_KEY": "YOUR_CODEX_KEY",
-<<<<<<< HEAD
-  "TWITTER_USERNAME": "",
-  "TWITTER_PASSWORD": "",
-  "TWITTER_EMAIL": "",
-  "TWITTER_COOKIES": "[{"key":"auth_token","value":"PLACEHOLDER_AUTH_TOKEN","domain":".twitter.com"},{"key":"ct0","value":"PLACEHOLDER_TOKEN","domain":".twitter.com"},{"key":"guest_id","value":"PLACEHOLDER_GUEST_ID","domain":".twitter.com"}]"
-=======
   "TWITTER_USERNAME": "", # Username for login fallback and cookie caching
   "TWITTER_PASSWORD": "", # Password for login fallback
   "TWITTER_EMAIL": "",    # Email for login fallback
   "TWITTER_COOKIES": "[]"  # Optional: JSON string of cookies, preferred if available
->>>>>>> 9d8a2f4ecaeb7d83f28852f94adf257a34f60d66
 }
 ```
 

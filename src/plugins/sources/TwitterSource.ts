@@ -149,8 +149,11 @@ export class TwitterSource implements ContentSource {
       const currentClientCookies = await this.client.getCookies(); 
       if (isLoggedInStatus && currentClientCookies && currentClientCookies.length > 0) {
         console.info("[TwitterSource.init] Successfully logged in (or session valid via cookies).");
-        if (this.username) { 
-            await this.cacheCookies(this.username, currentClientCookies);
+        const me = await this.client.me();
+
+        if (me && me.username) { 
+            this.username = me.username;
+            await this.cacheCookies(me.username, currentClientCookies);
             console.info("[TwitterSource.init] Cookies successfully cached after login/validation.");
         }
         break;
