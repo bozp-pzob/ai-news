@@ -6,6 +6,7 @@
 import { ContentItem } from "../../types";
 import { ContentSource } from "./ContentSource";
 import fetch from "node-fetch";
+import { delay } from "../../helpers/generalHelper";
 
 /**
  * Configuration interface for CodexAnalyticsSource
@@ -32,6 +33,9 @@ export class CodexAnalyticsSource implements ContentSource {
   private apiKey: string;
   /** List of token addresses to track */
   private tokenAddresses: string[];
+
+  private static lastRequestTime: number = 0;
+  private static readonly MIN_INTERVAL: number = 1000 / 4; // 4 requests per second
 
   /**
    * Creates a new CodexAnalyticsSource instance
@@ -208,6 +212,16 @@ export class CodexAnalyticsSource implements ContentSource {
    */
   private async makeGraphQLQuery(query:string): Promise<any> {
     try {
+        const now = Date.now();
+        const timeSinceLastRequest = now - CodexAnalyticsSource.lastRequestTime;
+
+        if (timeSinceLastRequest < CodexAnalyticsSource.MIN_INTERVAL) {
+            const timeToWait = CodexAnalyticsSource.MIN_INTERVAL - timeSinceLastRequest;
+            await delay(timeToWait);
+        }
+
+        CodexAnalyticsSource.lastRequestTime = Date.now();
+
         const response = await fetch("https://graph.codex.io/graphql", {
             method: "POST",
             headers: {

@@ -72,9 +72,8 @@ export class TwitterSource implements ContentSource {
     this.cookies = config.cookies;
     this.email = config.email;
     this.cache = new TwitterCache();
-    // Log exactly what is received before defaulting
     console.log(`[TwitterSource Constructor] Received config.fetchMode: ${config.fetchMode} (type: ${typeof config.fetchMode})`);
-    this.fetchMode = config.fetchMode || 'timeline'; // Default to timeline if not specified or falsy
+    this.fetchMode = config.fetchMode || 'timeline';
     console.log(`[TwitterSource] Initialized with final fetchMode: ${this.fetchMode}`);
   }
 
@@ -86,47 +85,137 @@ export class TwitterSource implements ContentSource {
    */
   private async init() {
     let retries = 5;
+    console.log("[TwitterSource.init] Starting initialization.");
+    console.log(`[TwitterSource.init] Value of this.cookies at start of init: ${this.cookies ? ('Present, length: ' + this.cookies.length) : 'Not Present or Empty'}`);
+    if (this.cookies && this.cookies.length < 200) {
+        console.log(`[TwitterSource.init] this.cookies (short string sample): ${this.cookies}`);
+    } else if (this.cookies) {
+        console.log(`[TwitterSource.init] this.cookies (sample start): ${this.cookies.substring(0,100)}...`);
+    }
 
     if (!this.username) {
-      throw new Error("Twitter username not configured");
+      console.error("[TwitterSource.init] Twitter username not configured in this.username. This is needed for caching cookies or as part of credential login.");
+      // Decide if this is a fatal error. For now, it might proceed if cookies are directly configured and don't need user-specific caching, 
+      // or if credential login isn't strictly required because cookies work.
+      // However, it's best practice to have it for robust operation.
     }
+    
+    let cookiesSetAttempted = false;
     if (this.cookies) {
-      const cookiesArray = JSON.parse(this.cookies);
-      await this.setCookiesFromArray(cookiesArray);
-    } else {
-      const cachedCookies = await this.getCachedCookies(this.username);
-      if (cachedCookies) {
-          await this.setCookiesFromArray(cachedCookies);
+      console.log("[TwitterSource.init] Attempting to load cookies from configuration (this.cookies).");
+      try {
+        const cookiesArray = JSON.parse(this.cookies);
+        console.log(`[TwitterSource.init] Successfully parsed configured cookies. Number of cookies: ${cookiesArray.length}`);
+        if (cookiesArray.length > 0) console.log(`[TwitterSource.init] First configured cookie (sample): ${JSON.stringify(cookiesArray[0])}`);
+        await this.setCookiesFromArray(cookiesArray);
+        cookiesSetAttempted = true;
+        console.log("[TwitterSource.init] Cookies from configuration have been passed to setCookiesFromArray.");
+      } catch (e: any) {
+        console.error(`[TwitterSource.init] Error parsing configured cookies (this.cookies): ${e.message}. Cookie string was: ${this.cookies}`);
+        // Log error and allow fallback to cached cookies or username/password.
       }
+    } else if (this.username) { // Only try cached cookies if direct config cookies are not provided AND username is available for cache key
+      console.log("[TwitterSource.init] No cookies found in direct configuration (this.cookies). Checking cache for username: ", this.username);
+      const cachedCookies = await this.getCachedCookies(this.username);
+      if (cachedCookies && cachedCookies.length > 0) {
+          console.log(`[TwitterSource.init] Found ${cachedCookies.length} cookies in cache for username '${this.username}'. Attempting to set them.`);
+          await this.setCookiesFromArray(cachedCookies);
+          cookiesSetAttempted = true;
+          console.log("[TwitterSource.init] Cached cookies have been passed to setCookiesFromArray.");
+      } else {
+          console.log(`[TwitterSource.init] No cached cookies found for username '${this.username}'.`);
+      }
+    } else {
+        console.log("[TwitterSource.init] No cookies in config and no username for cache lookup. Will rely on credential login if configured.");
+    }
+
+    if (cookiesSetAttempted) {
+        console.log("[TwitterSource.init] Cookies were attempted to be set (from config or cache). Will now check isLoggedIn status.");
+    } else {
+        console.log("[TwitterSource.init] No cookies were provided via config or cache. Will rely on username/password login if configured.");
     }
 
     while (retries > 0) {
-      const cookies = await this.client.getCookies();
-      if ((await this.client.isLoggedIn()) && !!cookies) {
-        console.info("Already logged in.");
-        await this.cacheCookies(this.username, cookies);
-        console.info("Successfully logged in and cookies cached.");
+      console.log(`[TwitterSource.init] Login attempt #${6 - retries}/5`);
+      let isLoggedInStatus = false;
+      try {
+        isLoggedInStatus = await this.client.isLoggedIn();
+        console.log(`[TwitterSource.init] this.client.isLoggedIn() returned: ${isLoggedInStatus}`);
+      } catch (e: any) {
+        console.error(`[TwitterSource.init] Error calling this.client.isLoggedIn(): ${e.message}`);
+        // Continue to credential login if isLoggedIn check itself fails or cookies didn't grant session
+      }
+
+      const currentClientCookies = await this.client.getCookies(); 
+      if (isLoggedInStatus && currentClientCookies && currentClientCookies.length > 0) {
+        console.info("[TwitterSource.init] Successfully logged in (or session valid via cookies).");
+        const me = await this.client.me();
+
+        if (me && me.username) { 
+            this.username = me.username;
+            await this.cacheCookies(me.username, currentClientCookies);
+            console.info("[TwitterSource.init] Cookies successfully cached after login/validation.");
+        }
         break;
+      } else {
+        console.warn(`[TwitterSource.init] Not logged in (isLoggedIn: ${isLoggedInStatus}, client has cookies: ${!!currentClientCookies && currentClientCookies.length > 0}).`);
       }
       
-      try {
-        await this.client.login(
-          this.username,
-          this.password || '',
-          this.email
-        );
-      } catch (error:any) {
-        console.error(`Login attempt failed: ${error?.message || ''}`);
+      // If not logged in after cookie checks, attempt credential login
+      if (!isLoggedInStatus) {
+        console.log("[TwitterSource.init] Attempting credential login as a fallback.")
+        const credentialLoginSuccess = await this.attemptCredentialLogin();
+        if (credentialLoginSuccess) {
+          console.info("[TwitterSource.init] Credential login successful. Exiting login loop.");
+          break; // Exit loop on successful credential login
+        }
+      } else {
+        // This case should ideally not be hit if break happened above, 
+        // but implies cookies worked and no credential attempt needed this iteration.
       }
 
       retries--;
-
+      console.log(`[TwitterSource.init] Retries left: ${retries}`);
       if (retries === 0) {
-        throw new Error("Twitter login failed after maximum retries.");
+        throw new Error("Twitter login failed after maximum retries. Check cookies and credentials.");
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait before retrying
     }
+  }
+
+  /**
+   * Attempts to log in using credentials (username, password, email).
+   * Caches cookies on successful login.
+   * @private
+   * @returns {Promise<boolean>} True if login was successful, false otherwise.
+   */
+  private async attemptCredentialLogin(): Promise<boolean> {
+    if (!this.username || !this.password) {
+      console.error("[TwitterSource.attemptCredentialLogin] Username or password not configured. Cannot attempt credential login.");
+      return false;
+    }
+    try {
+      console.log(`[TwitterSource.attemptCredentialLogin] Attempting this.client.login() with username: ${this.username}`);
+      await this.client.login(
+          this.username,
+          this.password || '', // Ensure password is not undefined
+          this.email
+      );
+      const isLoggedInStatus = await this.client.isLoggedIn();
+      console.log(`[TwitterSource.attemptCredentialLogin] Status after this.client.login() attempt, isLoggedIn: ${isLoggedInStatus}`);
+      if (isLoggedInStatus) {
+          const postLoginCookies = await this.client.getCookies();
+          if (this.username && postLoginCookies && postLoginCookies.length > 0) { // Ensure username is defined for caching key
+              await this.cacheCookies(this.username, postLoginCookies);
+              console.info("[TwitterSource.attemptCredentialLogin] Successfully logged in with credentials and cookies cached.");
+          }
+          return true; // Successful login
+      }
+    } catch (error:any) {
+        console.error(`[TwitterSource.attemptCredentialLogin] this.client.login() attempt failed: ${error?.message || 'Unknown error'}`);
+    }
+    return false; // Login failed
   }
 
   /**
@@ -212,6 +301,59 @@ export class TwitterSource implements ContentSource {
       metadata.authorUserId = tweetToProcessForContent.userId;
       metadata.authorUserName = tweetToProcessForContent.username;
 
+      let authorProfileImageUrl: string | undefined;
+      if (tweetToProcessForContent.username) {
+          try {
+              console.log(`[TwitterSource.processTweets] Checking cache for profile: ${tweetToProcessForContent.username}`);
+              let userProfile: any = this.cache.getProfile(tweetToProcessForContent.username);
+              if (userProfile) {
+                  console.log(`[TwitterSource.processTweets] Profile for ${tweetToProcessForContent.username} found in cache.`);
+              } else {
+                  console.log(`[TwitterSource.processTweets] Profile for ${tweetToProcessForContent.username} not in cache. Fetching from client.`);
+                  userProfile = await this.client.getProfile(tweetToProcessForContent.username); 
+                  if (userProfile) {
+                      this.cache.setProfile(tweetToProcessForContent.username, userProfile);
+                      console.log(`[TwitterSource.processTweets] Fetched and cached profile for ${tweetToProcessForContent.username}`);
+                  } else {
+                      console.warn(`[TwitterSource.processTweets] User profile not found via client for username: ${tweetToProcessForContent.username}`);
+                  }
+              }
+
+              if (userProfile) {
+                  // Prioritize 'profile_image_url_https', then check others.
+                  if (userProfile.profile_image_url_https) {
+                      authorProfileImageUrl = userProfile.profile_image_url_https;
+                  } else if (userProfile.profile_image_url) {
+                      authorProfileImageUrl = userProfile.profile_image_url;
+                  } else if (userProfile.avatar) {
+                      authorProfileImageUrl = userProfile.avatar;
+                  } else if (userProfile.profileImageUrl) {
+                      authorProfileImageUrl = userProfile.profileImageUrl;
+                  } else if (userProfile.legacy?.profile_image_url_https) { // Check legacy object
+                      authorProfileImageUrl = userProfile.legacy.profile_image_url_https;
+                  }
+                  // Add more potential fields here if necessary, e.g. userProfile.legacy?.profile_image_url_https
+
+                  if (authorProfileImageUrl) {
+                      console.log(`[TwitterSource.processTweets] Successfully fetched profile image URL for username: ${tweetToProcessForContent.username}`);
+                  } else {
+                      console.warn(`[TwitterSource.processTweets] Profile image URL not found in profile object for username: ${tweetToProcessForContent.username}. Profile object:`, JSON.stringify(userProfile, null, 2));
+                  }
+              } else {
+                  console.warn(`[TwitterSource.processTweets] User profile not found for username: ${tweetToProcessForContent.username}`);
+              }
+          } catch (err: any) {
+              console.warn(`[TwitterSource.processTweets] Error calling getProfile for username ${tweetToProcessForContent.username}: ${err.message}`);
+              // Keep authorProfileImageUrl as undefined
+          }
+      } else {
+          console.warn(`[TwitterSource.processTweets] Username is missing on tweetToProcessForContent, cannot fetch profile.`);
+      }
+
+      if (authorProfileImageUrl) {
+          metadata.authorProfileImageUrl = authorProfileImageUrl;
+      }
+
       // Common metadata from tweetToProcessForContent
       metadata.photos = (tweetToProcessForContent.photos?.map((img: any) => img.url) || []).concat(tweetToProcessForContent.videos?.map((vid: any) => vid.preview) || []);
       metadata.videos = tweetToProcessForContent.videos?.map((vid: any) => vid.url) || [];
@@ -267,6 +409,53 @@ export class TwitterSource implements ContentSource {
               date: quotedDetails.timestamp,
             };
             console.info(`[TwitterSource] Successfully processed quoted tweet ${quotedDetails.id} within ${quoteTweetLogPrefix}`);
+
+            // Fetch profile image for quoted tweet's author
+            if (metadata.quotedTweet.userName) {
+              try {
+                console.log(`[TwitterSource.processTweets] Checking cache for quoted tweet author profile: ${metadata.quotedTweet.userName}`);
+                let quotedAuthorProfile: any = this.cache.getProfile(metadata.quotedTweet.userName);
+                if (quotedAuthorProfile) {
+                    console.log(`[TwitterSource.processTweets] Profile for quoted author ${metadata.quotedTweet.userName} found in cache.`);
+                } else {
+                    console.log(`[TwitterSource.processTweets] Profile for quoted author ${metadata.quotedTweet.userName} not in cache. Fetching from client.`);
+                    quotedAuthorProfile = await this.client.getProfile(metadata.quotedTweet.userName);
+                    if (quotedAuthorProfile) {
+                        this.cache.setProfile(metadata.quotedTweet.userName, quotedAuthorProfile);
+                        console.log(`[TwitterSource.processTweets] Fetched and cached profile for quoted author ${metadata.quotedTweet.userName}`);
+                    } else {
+                        console.warn(`[TwitterSource.processTweets] User profile not found via client for quoted author: ${metadata.quotedTweet.userName}`);
+                    }
+                }
+
+                if (quotedAuthorProfile) {
+                  let quotedAuthorProfileImageUrl: string | undefined;
+                  if (quotedAuthorProfile.profile_image_url_https) {
+                    quotedAuthorProfileImageUrl = quotedAuthorProfile.profile_image_url_https;
+                  } else if (quotedAuthorProfile.profile_image_url) {
+                    quotedAuthorProfileImageUrl = quotedAuthorProfile.profile_image_url;
+                  } else if (quotedAuthorProfile.avatar) {
+                    quotedAuthorProfileImageUrl = quotedAuthorProfile.avatar;
+                  } else if (quotedAuthorProfile.profileImageUrl) {
+                    quotedAuthorProfileImageUrl = quotedAuthorProfile.profileImageUrl;
+                  } else if (quotedAuthorProfile.legacy?.profile_image_url_https) {
+                    quotedAuthorProfileImageUrl = quotedAuthorProfile.legacy.profile_image_url_https;
+                  }
+
+                  if (quotedAuthorProfileImageUrl) {
+                    metadata.quotedTweet.authorProfileImageUrl = quotedAuthorProfileImageUrl;
+                    console.log(`[TwitterSource.processTweets] Successfully fetched profile image for quoted tweet author: ${metadata.quotedTweet.userName}`);
+                  } else {
+                    console.warn(`[TwitterSource.processTweets] Profile image URL not found for quoted tweet author: ${metadata.quotedTweet.userName}. Profile object:`, JSON.stringify(quotedAuthorProfile, null, 2));
+                  }
+                } else {
+                  console.warn(`[TwitterSource.processTweets] User profile not found for quoted tweet author: ${metadata.quotedTweet.userName}`);
+                }
+              } catch (qAuthError: any) {
+                console.warn(`[TwitterSource.processTweets] Error calling getProfile for quoted tweet author ${metadata.quotedTweet.userName}: ${qAuthError.message}`);
+              }
+            }
+
           } else {
             metadata.quotedTweetError = `Details not found/fetched for quoted status ${tweetToProcessForContent.quotedStatusId}`;
             console.warn(`[TwitterSource] Failed to get details for quoted tweet ${tweetToProcessForContent.quotedStatusId} for ${quoteTweetLogPrefix}`);

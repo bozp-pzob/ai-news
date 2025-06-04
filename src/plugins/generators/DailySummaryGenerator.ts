@@ -78,14 +78,13 @@ export class DailySummaryGenerator {
       const currentTime = new Date(dateStr).getTime() / 1000;
       const targetTime = currentTime + (60 * 60 * 24);
       
-      // Fetch items based on whether a specific source type was configured
       let contentItems: ContentItem[];
       if (this.source) {
         console.log(`Fetching content for type: ${this.source}`);
         contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime, this.source);
       } else {
         console.log(`Fetching all content types for summary generation.`);
-        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime); // Fetch all types
+        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime);
       }
 
       if (contentItems.length === 0) {
@@ -93,84 +92,271 @@ export class DailySummaryGenerator {
         return;
       }
 
-      const groupedContent = this.groupObjects(contentItems);
-
-      const allSummaries: any[] = [];
+      const groupedContent = this.groupObjects(contentItems); 
+      const allSummariesFromAI: any[] = []; 
       let groupsToSummarize = 0;
+      let overallGitHubSummaryText: string | null = null;
+      const GITHUB_SUMMARY_TOPIC_ID = 'github_summary';
+      const PULL_REQUEST_TOPIC_ID = 'pull_request';
 
-      for (const grouped of groupedContent) {
+      for (const group of groupedContent) {
         try {
-          if (!grouped) continue;
-          const { topic, objects } = grouped;
+          if (!group) continue;
+          const { topic, objects: itemsForThisTopic } = group; 
           
-          if (!topic || !objects || objects.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) continue;
+          if (!topic || !itemsForThisTopic || itemsForThisTopic.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) {
+            if (topic !== GITHUB_SUMMARY_TOPIC_ID) {
+                continue;
+            }
+            if (!topic || !itemsForThisTopic || itemsForThisTopic.length <= 0 ) continue;
+          }
 
           let promptCustomInstructions: { title?: string, aiPrompt?: string, repositoryName?: string, dataProviderName?: string } = {};
           let topicForPrompt = topic;
+          let isTwitterActivity = false;
+          
+          console.log(`[DailySummaryGenerator] Preparing to summarize topic: '${topicForPrompt}'. Number of items: ${itemsForThisTopic.length}`);
 
           if (topic === "twitter_activity") { 
+            isTwitterActivity = true;
             topicForPrompt = "Twitter Activity"; 
-            promptCustomInstructions.title = (this as any).config?.twitterSummaryTitle || "Thematic Twitter Activity Summary"; 
-            promptCustomInstructions.aiPrompt = (this as any).config?.twitterAdditionalInstructions;
+            promptCustomInstructions.title = (this as any).config?.twitterSummaryTitle || "Thematic Twitter Activity Summary";
+            itemsForThisTopic.sort((a: ContentItem, b: ContentItem) => { 
+              const userA = a.metadata?.authorUserName || a.metadata?.retweetedByUserName || '';
+              const userB = b.metadata?.authorUserName || b.metadata?.retweetedByUserName || '';
+              if (userA.localeCompare(userB) !== 0) return userA.localeCompare(userB);
+              const convoIdA = a.metadata?.thread?.conversationId || '';
+              const convoIdB = b.metadata?.thread?.conversationId || '';
+              if (convoIdA.localeCompare(convoIdB) !== 0) return convoIdA.localeCompare(convoIdB);
+              return (a.date || 0) - (b.date || 0);
+            });
+            const baseAiPrompt = (this as any).config?.twitterAdditionalInstructions || "";
+            promptCustomInstructions.aiPrompt = 
+              `Please respond ONLY with a valid JSON object. Do not include any additional text, markdown, or any characters before or after the JSON object.\n\n` +
+              `${baseAiPrompt}\n` +
+              `Based on the detailed "Input Item Sources for Analysis" provided by the system (which includes [INDEX], cid, link, author, author_pfp_url, tweet_text_snippet, media_images, media_videos, likes, retweets, is_retweet, original_tweet_author for each item context):\n` +
+              `1. Identify key themes or subjects from the items.\n` +
+              `2. For each theme, construct a JSON object. The top-level JSON response should be an object with a "title" (string, e.g., "${promptCustomInstructions.title}") and a "content" (array of these theme objects).\n` +
+              `3. Each theme object in the "content" array must include:\n` +
+              `   a. 'theme_title' (string): A concise title for the identified theme.\n` +
+              `   b. 'text' (string): Your summary of the theme. When an item is a retweet (is_retweet: true), clearly state "[item.author] retweeted [item.original_tweet_author]: [original tweet content snippet]". Synthesize information from relevant items. The [item.author] is the user who performed the retweet action.\n` +
+              `   c. 'contributing_item_indices' (array of numbers): An array of 0-based [INDEX] numbers from the input items that contribute to this theme.\n` +
+              `Example theme: { "theme_title": "Example Theme", "text": "Summary... User A retweeted User B...", "contributing_item_indices": [0, 1, 5] }\n` +
+              `Do NOT include detailed tweet structures (like contributing_tweets with all fields), 'sources', 'images', or 'videos' in YOUR response for Twitter themes; only provide the contributing_item_indices. The system will build the detailed tweet structures.`;
 
-            // Sort Twitter items to group threads by user and conversationId
-            if (objects && objects.length > 0) {
-              objects.sort((a: ContentItem, b: ContentItem) => {
-                const userA = a.metadata?.authorUserName || a.metadata?.retweetedByUserName || '';
-                const userB = b.metadata?.authorUserName || b.metadata?.retweetedByUserName || '';
-                
-                if (userA.localeCompare(userB) !== 0) {
-                  return userA.localeCompare(userB);
-                }
-                
-                const convoIdA = a.metadata?.thread?.conversationId || '';
-                const convoIdB = b.metadata?.thread?.conversationId || '';
-                
-                if (convoIdA.localeCompare(convoIdB) !== 0) {
-                  return convoIdA.localeCompare(convoIdB);
-                }
-                
-                return (a.date || 0) - (b.date || 0);
-              });
-            }
+          } else if (topic === PULL_REQUEST_TOPIC_ID || topic === "issue") {
+            isTwitterActivity = false;
+            const repoCompany = itemsForThisTopic[0]?.metadata?.githubCompany;
+            const repoName = itemsForThisTopic[0]?.metadata?.githubRepo;
+            if (repoCompany && repoName) promptCustomInstructions.repositoryName = `${repoCompany}/${repoName}`;
+            else console.warn(`[DailySummaryGenerator] Repository details missing for GitHub topic: ${topic}`);
             
-          } else if (topic === "issue" || topic === "pull_request") {
-            // Assuming objects[0]?.metadata contains githubCompany and githubRepo
-            const repoCompany = objects[0]?.metadata?.githubCompany;
-            const repoName = objects[0]?.metadata?.githubRepo;
-            if (repoCompany && repoName) {
-              promptCustomInstructions.repositoryName = `${repoCompany}/${repoName}`;
-            } else {
-              // Fallback or specific log if repo details are missing
-              console.warn(`[DailySummaryGenerator] Repository details missing for GitHub topic: ${topic}`);
+            let itemType = topic === "issue" ? "issue" : "pull request";
+            promptCustomInstructions.aiPrompt = 
+              String.raw`
+"""
+Please respond ONLY with a valid JSON object. Do not include any additional text, markdown, or any characters before or after the JSON object.
+
+Based on the "Input Item Sources for Analysis" provided by the system (which includes:
+  [INDEX], cid, link, title, item_author, item_number, item_state, item_createdAt,
+  item_closedAt, item_commentCount, and text_snippet for each item context):
+
+1. For each ${itemType} or group of related ${itemType}s, create a single, information-dense sentence.
+   - This summary must include the ${itemType} number, title, author (@item_author), and its current state (item_state, e.g., open, closed, merged).
+   - Mention key activities or findings very briefly if possible within the single sentence.
+
+   Example for an issue:
+     "Issue #${itemsForThisTopic[0]?.metadata?.number || 'X'} titled '${itemsForThisTopic[0]?.title || 'a topic'}' by @${itemsForThisTopic[0]?.metadata?.author || 'user'} is ${itemsForThisTopic[0]?.metadata?.state || 'open'}"
+
+   Example for a pull request:
+     "PR #${itemsForThisTopic[0]?.metadata?.number || 'Y'} by @${itemsForThisTopic[0]?.metadata?.author || 'contributor'} titled '${itemsForThisTopic[0]?.title || 'a feature'}' is ${itemsForThisTopic[0]?.metadata?.state || 'merged'}"
+
+2. The JSON output should be an object with:
+   - "title" (string, e.g., "Summary for ${topicForPrompt}")
+   - "content" (array of summary entry objects)
+
+3. Each summary entry object in the "content" array must include:
+   a. 'text' (string): Your narrative summary of one or more related input ${itemType}s.
+   b. 'contributing_item_indices' (array of numbers): An array of 0-based [INDEX] numbers from the input items that this summary text pertains to.
+
+Do NOT include detailed sources (beyond what's in your narrative text), images, or videos in YOUR response; only the contributing_item_indices.
+"""
+`
+
+          } else if (topic === GITHUB_SUMMARY_TOPIC_ID) {
+            isTwitterActivity = false; 
+            const repoCompany = itemsForThisTopic[0]?.metadata?.githubCompany;
+            const repoName = itemsForThisTopic[0]?.metadata?.githubRepo;
+            if (repoCompany && repoName) promptCustomInstructions.repositoryName = `${repoCompany}/${repoName}`;
+            promptCustomInstructions.aiPrompt = 
+              `Please respond ONLY with a valid JSON object. Do not include any additional text, markdown, or any characters before or after the JSON object.\n\n` +
+              `Based on the "Input Item Sources for Analysis" provided by the system (which includes [INDEX], cid, link, and text_snippet for each item context):\n` +
+              `1. Summarize the key information from the provided items for the topic '${topicForPrompt}'. This summary should cover overall repository activity like PRs opened/merged, issues, and contributor counts if available in the items.\n` +
+              `2. The JSON output should be an object with a "title" (string, e.g., "Overall GitHub Activity for ${promptCustomInstructions.repositoryName}") and a "content" (array of summary entry objects, typically one entry for this overall summary).\n` +
+              `3. Each summary entry object in the "content" array must include:
+` +
+              `   a. 'text' (string): Your overall summary of repository activity.
+` +
+              `   b. 'contributing_item_indices' (array of numbers): An array of 0-based [INDEX] numbers from the input items that this summary text pertains to.\n` +
+              `Do NOT include detailed sources, images, or videos in YOUR response; only the contributing_item_indices.`;
+          } else {
+            isTwitterActivity = false; 
+            if (topic === "crypto market") {
+              promptCustomInstructions.dataProviderName = (this as any).config?.marketDataProviderName || "codexAnalytics";
             }
-          } else if (topic === "crypto market") {
-            // Assuming dataProvider comes from config or is known for this topic
-            // For example, this.config.marketDataProviderName
-            promptCustomInstructions.dataProviderName = (this as any).config?.marketDataProviderName || "codexAnalytics";
+            promptCustomInstructions.aiPrompt = 
+              `Please respond ONLY with a valid JSON object. Do not include any additional text, markdown, or any characters before or after the JSON object.\n\n` +
+              `Based on the "Input Item Sources for Analysis" provided by the system (which includes [INDEX], cid, link, and text_snippet for each item context):\n` +
+              `1. Summarize the key information from the provided items for the topic '${topicForPrompt}'.\n` +
+              `2. The JSON output should be an object with a "title" (string, e.g., "Summary for ${topicForPrompt}") and a "content" (array of summary entry objects).\n` +
+              `3. Each summary entry object in the "content" array must include:\n` +
+              `   a. 'text' (string): Your summary of one or more related input items.\n` +
+              `   b. 'contributing_item_indices' (array of numbers): An array of 0-based [INDEX] numbers from the input items that this summary text pertains to.\n` +
+              `Example entry: { "text": "Summary of item Z...", "contributing_item_indices": [2] }\n` +
+              `Do NOT include detailed sources, images, or videos in YOUR response; only the contributing_item_indices.`;
           }
 
-          const prompt = createJSONPromptForTopics(topicForPrompt, objects, dateStr, promptCustomInstructions);
-          console.log(`[DailySummaryGenerator] Sending prompt for topic '${topicForPrompt}' to AI provider. (See logs/prompts/ for full prompt)`);
-          const summaryText = await retryOperation(() => this.provider.summarize(prompt));
-          const summaryJSONString = summaryText.replace(/```json\n|```/g, "");
-          let summaryJSON = JSON.parse(summaryJSONString);
-          summaryJSON["topic"] = topic;
+          const prompt = createJSONPromptForTopics(topicForPrompt, itemsForThisTopic, dateStr, promptCustomInstructions);
+          let summaryTextFromAI = await retryOperation(() => this.provider.summarize(prompt));
+          console.log(`[DailySummaryGenerator] Raw AI Response for topic '${topicForPrompt}':\n${summaryTextFromAI}`);
+          let parsedAIResponse: any = {};
+          try {
+            let sanitizedJsonString = summaryTextFromAI.replace(/```json\n|```/g, "").trim();
+            parsedAIResponse = JSON.parse(sanitizedJsonString);
+          } catch (parseError: any) {
+            console.warn(`[DailySummaryGenerator] Initial JSON.parse failed for topic '${topicForPrompt}'. Attempting extraction. Error: ${parseError.message}`);
+            const firstBrace = summaryTextFromAI.indexOf('{');
+            const lastBrace = summaryTextFromAI.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace > firstBrace) {
+              const extractedJson = summaryTextFromAI.substring(firstBrace, lastBrace + 1);
+              try {
+                parsedAIResponse = JSON.parse(extractedJson);
+                console.log(`[DailySummaryGenerator] Successfully parsed extracted JSON for topic '${topicForPrompt}'.`);
+              } catch (secondParseError: any) {
+                console.error(`[DailySummaryGenerator] Failed to parse extracted JSON for topic '${topicForPrompt}'. AI Response (substring attempt): ${extractedJson}. Error: ${secondParseError.message}`);
+                parsedAIResponse = { title: promptCustomInstructions.title || `Summary for ${topicForPrompt}`, content: [] }; 
+              }
+            } else {
+              console.error(`[DailySummaryGenerator] Could not find JSON in AI response for topic '${topicForPrompt}'. Raw AI Response: ${summaryTextFromAI}`);
+              parsedAIResponse = { title: promptCustomInstructions.title || `Summary for ${topicForPrompt}`, content: [] }; 
+            }
+          }
+          
+          let finalContentForTopic: any[] = [];
+          if (parsedAIResponse.content && Array.isArray(parsedAIResponse.content)) {
+            if (topic === PULL_REQUEST_TOPIC_ID && overallGitHubSummaryText) {
+              finalContentForTopic.push({ text: overallGitHubSummaryText });
+              overallGitHubSummaryText = null;
+            }
+            parsedAIResponse.content.forEach((aiEntry: any) => {
+              if (isTwitterActivity) {
+                const contributing_tweets = [];
+                if (aiEntry.contributing_item_indices && Array.isArray(aiEntry.contributing_item_indices)) {
+                  for (const index of aiEntry.contributing_item_indices) {
+                    if (index >= 0 && index < itemsForThisTopic.length) {
+                      const originalItem = itemsForThisTopic[index];
+                      const textSnippet = (originalItem.type === 'retweet' ? (originalItem.metadata?.originalTweetText || originalItem.text || "") : (originalItem.text || "")).substring(0, 280) + '...';
+                      const tweetObject: any = {
+                        author: originalItem.metadata?.authorUserName || (originalItem.type === 'retweet' ? originalItem.metadata?.retweetedByUserName : 'Unknown'),
+                        author_pfp: originalItem.metadata?.authorProfileImageUrl,
+                        tweet_url: originalItem.link,
+                        tweet_text_snippet: textSnippet,
+                        ...(originalItem.type === 'retweet' && { is_retweet: true }),
+                        likes: originalItem.metadata?.likes,
+                        retweets: originalItem.metadata?.retweets
+                      };
+                      const images = originalItem.metadata?.photos || [];
+                      const videos = originalItem.metadata?.videos || [];
+                      if (images.length > 0 || videos.length > 0) {
+                        tweetObject.media = { images, videos };
+                      }
+                      contributing_tweets.push(tweetObject);
+                    } else {
+                      console.warn(`[DailySummaryGenerator] Twitter: AI returned out-of-bounds index ${index} for topic ${topicForPrompt}`);
+                    }
+                  }
+                }
+                finalContentForTopic.push({
+                  theme_title: aiEntry.theme_title || "Untitled Theme",
+                  text: aiEntry.text || "",
+                  contributing_tweets: contributing_tweets
+                });
+              } else {
+                if (topic === "crypto market") {
+                  if (aiEntry.text) {
+                    finalContentForTopic.push(aiEntry.text);
+                  }
+                } else {
+                  const contentEntry: any = {
+                    text: aiEntry.text || ""
+                  };
+                  if (aiEntry.contributing_item_indices && 
+                      Array.isArray(aiEntry.contributing_item_indices) && 
+                      aiEntry.contributing_item_indices.length === 1) {
+                    const index = aiEntry.contributing_item_indices[0];
+                    if (index >= 0 && index < itemsForThisTopic.length) {
+                      const originalItem = itemsForThisTopic[index];
+                      if (originalItem.link) {
+                        contentEntry.link = originalItem.link;
+                      }
+                    }
+                  } 
+                  finalContentForTopic.push(contentEntry);
+                }
+              }
+            });
+          }
+
+          const getHumanReadableTitle = (topic: string, baseTitle: string, repoName?: string, dataProvider?: string) => {
+            switch (topic) {
+              case 'pull_request':
+                return repoName ? `Pull Requests for ${repoName}` : 'Pull Requests';
+              case 'issue':
+                return repoName ? `Issues for ${repoName}` : 'Issues';
+              case 'github_summary':
+                return repoName ? `GitHub Summary for ${repoName}` : 'GitHub Activity Summary';
+              case 'crypto market':
+                return dataProvider ? `Crypto Market Data from ${dataProvider}` : 'Crypto Market Update';
+              case 'twitter_activity':
+                return baseTitle;
+              default:
+                return baseTitle;
+            }
+          };
+
+          const humanReadableTitle = getHumanReadableTitle(topic, parsedAIResponse.title || promptCustomInstructions.title || `Summary for ${topicForPrompt}`, promptCustomInstructions.repositoryName, promptCustomInstructions.dataProviderName);
+
+          const topicSummaryOutput: any = {
+            title: humanReadableTitle,
+            topic: topic,
+            content: finalContentForTopic 
+          };
+
+          if (promptCustomInstructions.repositoryName && !topicSummaryOutput.title.includes(promptCustomInstructions.repositoryName)) {
+            topicSummaryOutput.repository_name = promptCustomInstructions.repositoryName;
+          }
+          if (promptCustomInstructions.dataProviderName && !topicSummaryOutput.title.includes(promptCustomInstructions.dataProviderName)) {
+            topicSummaryOutput.data_provider = promptCustomInstructions.dataProviderName;
+          }
   
-          allSummaries.push(summaryJSON);
-          groupsToSummarize++;
+          allSummariesFromAI.push(topicSummaryOutput);
+          if (topic !== GITHUB_SUMMARY_TOPIC_ID) {
+             groupsToSummarize++;
+          }
         }
-        catch (e) {
-          console.log(e);
+        catch (e: any) {
+          console.error(`[DailySummaryGenerator] Error processing group for topic '${group?.topic}': ${e.message}`, e.stack);
         }
       }
 
-      if (allSummaries.length === 0 && contentItems.length > 0) {
+      if (allSummariesFromAI.length === 0 && contentItems.length > 0) {
         console.warn(`[DailySummaryGenerator] No summaries were successfully generated for ${dateStr} despite having content items. Check AI provider or prompt issues.`);
         return;
       }
 
-      const mdPrompt = createMarkdownPromptForJSON(allSummaries, dateStr);
+      const summariesToOutput = allSummariesFromAI.map(({ topic, ...rest }) => rest);
+
+      const mdPrompt = createMarkdownPromptForJSON(summariesToOutput, dateStr);
       const markdownReport = await retryOperation(() => this.provider.summarize(mdPrompt));
       const markdownStringFromAI = markdownReport.replace(/```markdown\n|```/g, "");
 
@@ -179,15 +365,14 @@ export class DailySummaryGenerator {
       const summaryItem: SummaryItem = {
         type: this.summaryType,
         title: finalReportTitle,
-        categories: JSON.stringify(allSummaries, null, 2),
+        categories: JSON.stringify(summariesToOutput, null, 2),
         markdown: markdownStringFromAI,
         date: currentTime,
       };
 
       await this.storage.saveSummaryItem(summaryItem);
-      await this.writeSummaryToFile(dateStr, currentTime, allSummaries);
+      await this.writeSummaryToFile(dateStr, currentTime, summariesToOutput);
       
-      // Construct the full markdown content for the file
       const finalMarkdownContentForFile = `# ${finalReportTitle}\n\n${markdownStringFromAI}`;
       await this.writeMDToFile(dateStr, finalMarkdownContentForFile);
 
@@ -197,12 +382,6 @@ export class DailySummaryGenerator {
     }
   }
 
-  /**
-   * Checks if a file's content matches the database record and updates if needed
-   * @param {string} dateStr - ISO date string to check
-   * @param {SummaryItem} summary - Summary item from database
-   * @returns {Promise<void>}
-   */
   public async checkIfFileMatchesDB(dateStr: string, summary: SummaryItem) {
     try {
       let jsonParsed = await this.readSummaryFromFile(dateStr);
@@ -224,10 +403,6 @@ export class DailySummaryGenerator {
     }
   }
 
-  /**
-   * Generates content for the current day if not already generated
-   * @returns {Promise<void>}
-   */
   public async generateContent() {
     try {
       const today = new Date();
@@ -259,24 +434,11 @@ export class DailySummaryGenerator {
     }
   }
 
-  /**
-   * Deep equality comparison of two objects
-   * @private
-   * @param {any} obj1 - First object to compare
-   * @param {any} obj2 - Second object to compare
-   * @returns {boolean} True if objects are deeply equal
-   */
-  private deepEqual(obj1: any, obj2: any) {
+  private deepEqual(obj1: any, obj2: any): boolean {
     return JSON.stringify(obj1) === JSON.stringify(obj2);
   }
 
-  /**
-   * Reads a summary from a JSON file
-   * @private
-   * @param {string} dateStr - ISO date string for the summary
-   * @returns {Promise<any>} Parsed summary data
-   */
-  private async readSummaryFromFile(dateStr: string) {
+  private async readSummaryFromFile(dateStr: string): Promise<any> {
     try {
       const jsonDir = path.join(this.outputPath, 'json');
       this.ensureDirectoryExists(jsonDir);
@@ -288,18 +450,11 @@ export class DailySummaryGenerator {
     }
     catch (error) {
       console.error(`Error reading the file ${dateStr}:`, error);
+      return undefined;
     }
   }
 
-  /**
-   * Writes a summary to a JSON file
-   * @private
-   * @param {string} dateStr - ISO date string for the summary
-   * @param {number} currentTime - Current timestamp
-   * @param {any[]} allSummaries - Array of summaries to write
-   * @returns {Promise<void>}
-   */
-  private async writeSummaryToFile(dateStr: string, currentTime: number, allSummaries: any[]) {
+  private async writeSummaryToFile(dateStr: string, currentTime: number, allSummaries: any[]): Promise<void> {
     try {
       const jsonDir = path.join(this.outputPath, 'json');
       this.ensureDirectoryExists(jsonDir);
@@ -317,14 +472,7 @@ export class DailySummaryGenerator {
     }
   }
 
-  /**
-   * Writes a summary to a Markdown file
-   * @private
-   * @param {string} dateStr - ISO date string for the summary
-   * @param {string} content - Markdown content to write
-   * @returns {Promise<void>}
-   */
-  private async writeMDToFile(dateStr: string, content: string) {
+  private async writeMDToFile(dateStr: string, content: string): Promise<void> {
     try {
       const mdDir = path.join(this.outputPath, 'md');
       this.ensureDirectoryExists(mdDir);
@@ -336,31 +484,19 @@ export class DailySummaryGenerator {
     }
   }
 
-  /**
-   * Ensures a directory exists, creating it if necessary
-   * @private
-   * @param {string} dirPath - Path to the directory
-   */
-  private ensureDirectoryExists(dirPath: string) {
+  private ensureDirectoryExists(dirPath: string): void {
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
     }
   }
 
-  /**
-   * Groups content items, handling special cases for GitHub and crypto content
-   * @private
-   * @param {any[]} objects - Array of content items to group
-   * @returns {any[]} Array of grouped content
-   */
   private groupObjects(objects: any[]): any[] {
     const topicMap = new Map();
 
     objects.forEach(obj => {
-      // Handle GitHub content
       if (obj.source.indexOf('github') >= 0) {
         let github_topic;
-        if (obj.type === 'githubPullRequestContributor' || obj.type === 'githubPullRequest') {
+        if (obj.type === 'githubPullRequestContributor' || obj.type === 'githubPullRequest' || obj.type === 'githubCompletedItem') {
           github_topic = 'pull_request';
         } else if (obj.type === 'githubIssueContributor' || obj.type === 'githubIssue') {
           github_topic = 'issue';
@@ -368,8 +504,6 @@ export class DailySummaryGenerator {
           github_topic = 'commit';
         } else if (obj.type === 'githubStatsSummary') {
           github_topic = 'github_summary';
-        } else if (obj.type === 'githubCompletedItem') {
-          github_topic = 'completed_items';
         } else {
           github_topic = 'github_other';
         }
@@ -387,7 +521,6 @@ export class DailySummaryGenerator {
         }
         topicMap.get(github_topic).push(obj);
       }
-      // Handle crypto analytics content
       else if (obj.cid.indexOf('analytics') >= 0) {
         let token_topic = 'crypto market';
         if (!obj.topics) {
@@ -399,10 +532,8 @@ export class DailySummaryGenerator {
         }
         topicMap.get(token_topic).push(obj);
       }
-      // Handle general content with topics
       else {
         if (obj.source && (obj.source.toLowerCase().includes('twitter') || obj.source.toLowerCase().includes('tweet'))) {
-          // Group all Twitter items (tweets and retweets) under a single topic
           const twitterActivityTopic = "twitter_activity"; 
           if (!this.blockedTopics.includes(twitterActivityTopic)) {
             if (!topicMap.has(twitterActivityTopic)) {
@@ -433,70 +564,77 @@ export class DailySummaryGenerator {
       }
     });
 
-    // Sort topics by number of items and handle miscellaneous content
     const sortedTopics = Array.from(topicMap.entries()).sort((a, b) => b[1].length - a[1].length);
     const alreadyAdded: any = {};
-
-    const miscTopics: any = {
-      topic: 'Misceleanous',
-      objects: [],
-      allTopics: []
-    };
-
     let groupedTopics: any[] = [];
+    let twitterActivityGroup: any = null;
+    let githubSummaryGroup: any = null;
 
-    sortedTopics.forEach(([topic, associatedObjects]) => {
-      const mergedTopics = new Set();
-      let topicAlreadyAdded = false;
+    const githubTopicNames = ['pull_request', 'issue', 'commit', 'contributors'];
+
+    const otherSortedTopics: any[] = []; 
+    for (const [topic, associatedObjects] of sortedTopics) {
+      const mergedTopics = new Set<string>();
       associatedObjects.forEach((obj: any) => {
         if (obj.topics) {
-          obj.topics.forEach((t: any) => {
-            let lower = t.toLowerCase();
-
-            if (alreadyAdded[lower]) {
-              topicAlreadyAdded = true;
-            }
-            else {
-              mergedTopics.add(lower);
-            }
-          });
+          obj.topics.forEach((t: any) => mergedTopics.add(t.toLowerCase()));
         }
       });
-      
-      // Handle GitHub topics separately
-      if (topic === 'pull_request' || topic === 'issue' || topic === 'commit' || 
-          topic === 'github_summary' || topic === 'contributors' || topic === 'completed_items') {
-        if (!topicAlreadyAdded) {
-          alreadyAdded[topic] = true;
-          groupedTopics.push({
-            topic,
-            objects: associatedObjects,
-            allTopics: Array.from(mergedTopics)
+
+      if (topic === 'twitter_activity') {
+        twitterActivityGroup = { topic, objects: associatedObjects, allTopics: Array.from(mergedTopics) };
+      } else if (topic === 'github_summary') {
+        githubSummaryGroup = { topic, objects: associatedObjects, allTopics: Array.from(mergedTopics) };
+      } else {
+        otherSortedTopics.push([topic, associatedObjects]);
+      }
+    }
+
+    if (twitterActivityGroup) {
+      if (!alreadyAdded[twitterActivityGroup.topic]) {
+        alreadyAdded[twitterActivityGroup.topic] = true;
+        groupedTopics.push(twitterActivityGroup);
+      }
+    }
+
+    if (githubSummaryGroup) {
+      if (!alreadyAdded[githubSummaryGroup.topic]) {
+        alreadyAdded[githubSummaryGroup.topic] = true;
+        groupedTopics.push(githubSummaryGroup);
+      }
+    }
+
+    otherSortedTopics.forEach(([topic, associatedObjects]) => {
+      if (githubTopicNames.includes(topic)) {
+        if (!alreadyAdded[topic]) {
+          const mergedTopics = new Set<string>();
+          associatedObjects.forEach((obj: any) => {
+            if (obj.topics) {
+              obj.topics.forEach((t: any) => mergedTopics.add(t.toLowerCase()));
+            }
           });
+          alreadyAdded[topic] = true;
+          groupedTopics.push({ topic, objects: associatedObjects, allTopics: Array.from(mergedTopics) });
         }
       }
-      // Group small topics into miscellaneous
-      else if (associatedObjects && associatedObjects.length <= 1) {
-        let objectIds = associatedObjects.map((object: any) => object.id);
-        let alreadyAddedToMisc = miscTopics["objects"].find((object: any) => objectIds.indexOf(object.id) >= 0);
-        if (!alreadyAddedToMisc) {
-          miscTopics["objects"] = miscTopics["objects"].concat(associatedObjects);
-          miscTopics["allTopics"] = miscTopics["allTopics"].concat(Array.from(mergedTopics));
+    });
+
+    otherSortedTopics.forEach(([topic, associatedObjects]) => {
+      if (alreadyAdded[topic]) return;
+
+      const mergedTopics = new Set<string>();
+      associatedObjects.forEach((obj: any) => {
+        if (obj.topics) {
+          obj.topics.forEach((t: any) => mergedTopics.add(t.toLowerCase()));
         }
-      } 
-      // Add other topics normally
-      else if (!topicAlreadyAdded) {
+      });
+
+      if (!(associatedObjects && associatedObjects.length > 1 && topic !== 'twitter_activity' && topic !== 'crypto market')) {
         alreadyAdded[topic] = true;
-        groupedTopics.push({
-          topic,
-          objects: associatedObjects,
-          allTopics: Array.from(mergedTopics)
-        });
+        groupedTopics.push({ topic, objects: associatedObjects, allTopics: Array.from(mergedTopics) });
       }
     });
     
-    groupedTopics.push(miscTopics);
-
     return groupedTopics;
   }
 }

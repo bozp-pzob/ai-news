@@ -169,6 +169,39 @@ export class TwitterCache {
   }
 
   /**
+   * Generates a cache key for Twitter user profiles.
+   * 
+   * @param username - The Twitter username
+   * @returns A formatted cache key
+   */
+  private getProfileCacheKey(username: string): string {
+    return `twitter:profile:${username.toLowerCase()}`;
+  }
+
+  /**
+   * Sets Twitter user profile data in the cache.
+   * 
+   * @param username - The Twitter username
+   * @param profileData - The profile data to cache
+   * @param ttlSeconds - Optional time-to-live in seconds (defaults to 1 hour)
+   */
+  public setProfile(username: string, profileData: any, ttlSeconds: number = 3600): void {
+    const key = this.getProfileCacheKey(username);
+    this.cache.set(key, profileData, ttlSeconds);
+  }
+
+  /**
+   * Gets Twitter user profile data from the cache.
+   * 
+   * @param username - The Twitter username
+   * @returns The cached profile data or undefined if not found or expired
+   */
+  public getProfile(username: string): any | undefined {
+    const key = this.getProfileCacheKey(username);
+    return this.cache.get(key);
+  }
+
+  /**
    * Clears the entire Twitter cache.
    */
   public clear(): void {
