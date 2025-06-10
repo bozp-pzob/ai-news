@@ -4,18 +4,6 @@
     },
     "sources": [
       {
-        "type": "TwitterSource",
-        "name": "twitter",
-        "interval": 1800000,
-        "params": {
-          "username": "process.env.TWITTER_USERNAME",
-          "password": "process.env.TWITTER_PASSWORD",
-          "email": "process.env.TWITTER_EMAIL",
-          "cookies": "process.env.TWITTER_COOKIES",
-          "accounts": ["dankvr", "elizaos", "shawmakesmagic", "autodotfun"]
-        }
-      },
-      {
         "type": "GitHubStatsDataSource",
         "name": "elizaGithubStats",
         "interval": 21600000,
