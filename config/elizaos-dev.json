@@ -1,0 +1,84 @@
+{
+    "settings": {
+        "runOnce": true
+    },
+    "sources": [
+      {
+        "type": "DiscordRawDataSource",
+        "name": "elizaosDevRaw",
+        "interval": 360000,
+        "params": {
+          "botToken": "process.env.DISCORD_TOKEN",
+          "guildId": "process.env.DISCORD_GUILD_ID",
+          "channelIds": [
+	    "1320246527268098048",
+	    "1327493511406293016",
+	    "1324098367416172665",
+	    "1324089429727514674",
+	    "1323745969115893780"
+	  ],
+          "storage": "SQLiteStorage"
+        }
+      }
+    ],
+    "ai": [
+        {
+          "type": "OpenAIProvider",
+          "name": "summaryOpenAiProvider",
+          "params": {
+            "apiKey": "process.env.OPENAI_API_KEY",
+            "model": "anthropic/claude-3.7-sonnet",
+            "temperature": 0,
+            "useOpenRouter": true,
+            "siteUrl": "process.env.SITE_URL",
+            "siteName": "process.env.SITE_NAME"
+          }
+        },
+        {
+          "type": "OpenAIProvider",
+          "name": "miniOpenAiProvider",
+          "params": {
+            "apiKey": "process.env.OPENAI_API_KEY",
+            "model": "openai/gpt-4o-mini",
+            "temperature": 0,
+            "useOpenRouter": true,
+            "siteUrl": "process.env.SITE_URL",
+            "siteName": "process.env.SITE_NAME"
+          }
+        }
+    ],
+    "enrichers": [],
+    "storage": [
+        {
+            "type": "SQLiteStorage",
+            "name": "SQLiteStorage",
+            "params": {
+                "dbPath": "data/elizaos-dev.sqlite"
+            }
+        }
+    ],
+    "generators": [
+        {
+          "type": "RawDataExporter",
+          "name": "ElizaOSDevRawExporter",
+          "interval": 3600000,
+          "params": {
+            "storage": "SQLiteStorage",
+            "source": "discordRawData",
+            "outputPath": "./output/elizaos-dev/raw"
+          }
+        },
+        {
+          "type": "DiscordSummaryGenerator",
+          "name": "ElizaOSDevSummaryGenerator",
+          "interval": 3600000,
+          "params": {
+            "provider": "summaryOpenAiProvider",
+            "storage": "SQLiteStorage",
+            "summaryType": "elizaosDevSummary",
+            "source": "discordRawData",
+            "outputPath": "./output/elizaos-dev/summaries"
+          }
+        }
+    ]
+}

@@ -1,0 +1,46 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Helper Functions
+
+The `[src/helpers/](mdc:src/helpers)` directory provides utility functions used across the application, particularly for configuration loading, data manipulation, and common tasks.
+
+## Key Helper Files:
+
+*   **`[configHelper.ts](mdc:src/helpers/configHelper.ts)`:**
+    *   Crucial for the plugin system.
+    *   `loadDirectoryModules(type)`: Dynamically imports all `.ts` files from a specified subdirectory within `src/plugins/` (e.g., `sources`, `ai`).
+    *   `loadItems(configArray, classes, type)`: Takes the plugin configuration array from the main JSON config, the loaded classes, and the plugin type. It instantiates each plugin class based on the `type` field in the config, passing `params` to the constructor.
+    *   `loadProviders(items, providers)`: Injects the first available `AiProvider` instance into the `provider` property of other plugin instances (like enrichers, generators, or sources) if they are configured to use one (e.g., `params.provider: "providerName"`).
+    *   `loadStorage(items, storage)`: Injects the first available `StoragePlugin` instance into the `storage` property of other plugin instances if configured.
+
+*   **`[dateHelper.ts](mdc:src/helpers/dateHelper.ts)`:**
+    *   Provides functions for date parsing, formatting, and manipulation.
+    *   Used heavily by `[src/historical.ts](mdc:src/historical.ts)` and potentially by plugins dealing with time-sensitive data.
+    *   `parseDate(dateStr)`: Converts string dates.
+    *   `formatDate(date)`: Formats dates into strings.
+    *   `addOneDay(date)`: Simple date arithmetic.
+    *   `callbackDateRangeLogic(filter, callback)`: Iterates through a date range defined by a `DateConfig` filter and executes a callback for each date. Used in `historical.ts` for generating summaries over a range.
+
+*   **`[fileHelper.ts](mdc:src/helpers/fileHelper.ts)`:**
+    *   Utilities for file system operations (reading, writing, checking existence).
+    *   Likely used by storage plugins or generators that output files.
+
+*   **`[promptHelper.ts](mdc:src/helpers/promptHelper.ts)`:**
+    *   Functions to construct prompts for AI providers.
+    *   Helps maintain consistency in how AI models are prompted for tasks like summarization or topic extraction.
+
+*   **`[cliHelper.ts](mdc:src/helpers/cliHelper.ts)`:**
+    *   Functions related to command-line interface interactions (e.g., parsing arguments, logging). Used in `index.ts` and `historical.ts`.
+
+*   **`[generalHelper.ts](mdc:src/helpers/generalHelper.ts)`:**
+    *   Contains miscellaneous utility functions that don't fit into other specific categories.
+
+*   **`[cache.ts](mdc:src/helpers/cache.ts)`:**
+    *   Implements a caching mechanism.
+    *   Potentially used by plugins to avoid redundant computations or API calls (e.g., caching AI results or fetched data temporarily).
+
+## Usage
+Helper functions can be imported and used across the application to maintain consistency and reduce code duplication.

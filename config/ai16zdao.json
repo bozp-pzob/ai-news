@@ -1,0 +1,106 @@
+{
+    "settings": {
+        "runOnce": true
+    },
+    "sources": [
+      {
+        "type": "DiscordChannelSource",
+        "name": "discordChannel",
+        "interval": 360000,
+        "params": {
+          "botToken": "process.env.DISCORD_TOKEN",
+          "channelIds": ["1326603270893867064"],
+          "provider": "summaryOpenAiProvider"
+        }
+      },
+      {
+        "type": "DiscordAnnouncementSource",
+        "name": "discordAnnouncement",
+        "interval": 3600000,
+        "params": {
+          "botToken": "process.env.DISCORD_TOKEN",
+          "channelIds": ["1299473809166045357"]
+        }
+      },
+      {
+        "type": "GitHubDataSource",
+        "name": "elizaGithub",
+        "interval": 21600000,
+        "params": {
+            "contributorsUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/contributors.json",
+            "summaryUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/summary.json",
+            "historicalContributorUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/history/contributors_<year>_<month>_<day>.json",
+            "historicalSummaryUrl": "https://raw.githubusercontent.com/elizaOS/elizaos.github.io/refs/heads/main/data/daily/history/summary_<year>_<month>_<day>.json",
+            "githubCompany": "elizaOS",
+            "githubRepo": "eliza"
+        }
+      },
+      {
+        "type": "CodexAnalyticsSource",
+        "name": "codexAnalytics",
+        "interval": 43200000,
+        "params": {
+            "apiKey": "process.env.CODEX_API_KEY",
+            "tokenAddresses": ["0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2","0x2260fac5e5542a773aa44fbcfedf7c193bc2c599","HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC","So11111111111111111111111111111111111111112"]
+        }
+      }
+    ],
+    "ai": [
+        {
+          "type": "OpenAIProvider",
+          "name": "summaryOpenAiProvider",
+          "params": {
+            "apiKey": "process.env.OPENAI_API_KEY",
+            "model": "openai/chatgpt-4o-latest",
+            "temperature": 0,
+            "useOpenRouter": true,
+            "siteUrl": "process.env.SITE_URL",
+            "siteName": "process.env.SITE_NAME"
+          }
+        },
+        {
+          "type": "OpenAIProvider",
+          "name": "miniOpenAiProvider",
+          "params": {
+            "apiKey": "process.env.OPENAI_API_KEY",
+            "model": "openai/gpt-4o-mini",
+            "temperature": 0,
+            "useOpenRouter": true,
+            "siteUrl": "process.env.SITE_URL",
+            "siteName": "process.env.SITE_NAME"
+          }
+        }
+    ],
+    "enrichers": [
+        {
+          "type": "AiTopicsEnricher",
+          "name": "topicEnricher",
+          "params": {
+            "provider": "miniOpenAiProvider",
+            "thresholdLength": 30
+          }
+        }
+    ],
+    "storage": [
+        {
+            "type": "SQLiteStorage",
+            "name": "SQLiteStorage",
+            "params": {
+                "dbPath": "data/db.sqlite"
+            }
+        }
+    ],
+    "generators": [
+        {
+          "type": "DailySummaryGenerator",
+          "name": "DailySummaryGenerator",
+          "interval": 3600000,
+          "params": {
+            "provider": "summaryOpenAiProvider",
+            "storage": "SQLiteStorage",
+            "summaryType": "dailySummary",
+            "source": "aiSummary"
+          }
+        }
+    ]
+}

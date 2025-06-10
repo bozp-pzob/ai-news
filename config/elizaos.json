@@ -1,0 +1,77 @@
+{
+    "settings": {
+        "runOnce": true
+    },
+    "sources": [
+      {
+        "type": "GitHubStatsDataSource",
+        "name": "elizaGithubStats",
+        "interval": 21600000,
+        "params": {
+            "statsUrl": "https://elizaos.github.io/data/elizaos_eliza/stats/day/stats.json",
+            "historicalStatsUrl": "https://elizaos.github.io/data/elizaos_eliza/stats/day/stats_<year>-<month>-<day>.json",
+            "githubCompany": "elizaOS",
+            "githubRepo": "eliza"
+        }
+      },
+      {
+        "type": "CodexAnalyticsSource",
+        "name": "codexAnalytics",
+        "interval": 43200000,
+        "params": {
+            "apiKey": "process.env.CODEX_API_KEY",
+            "tokenAddresses": ["0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2","0x2260fac5e5542a773aa44fbcfedf7c193bc2c599","HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC","So11111111111111111111111111111111111111112"]
+        }
+      }
+    ],
+    "ai": [
+        {
+          "type": "OpenAIProvider",
+          "name": "summaryOpenAiProvider",
+          "params": {
+            "apiKey": "process.env.OPENAI_API_KEY",
+            "model": "anthropic/claude-3.7-sonnet",
+            "temperature": 0,
+            "useOpenRouter": true,
+            "siteUrl": "process.env.SITE_URL",
+            "siteName": "process.env.SITE_NAME"
+          }
+        },
+        {
+          "type": "OpenAIProvider",
+          "name": "miniOpenAiProvider",
+          "params": {
+            "apiKey": "process.env.OPENAI_API_KEY",
+            "model": "anthropic/claude-3.7-sonnet",
+            "temperature": 0,
+            "useOpenRouter": true,
+            "siteUrl": "process.env.SITE_URL",
+            "siteName": "process.env.SITE_NAME"
+          }
+        }
+    ],
+    "enrichers": [],
+    "storage": [
+        {
+            "type": "SQLiteStorage",
+            "name": "SQLiteStorage",
+            "params": {
+                "dbPath": "data/db.sqlite"
+            }
+        }
+    ],
+    "generators": [
+        {
+          "type": "DailySummaryGenerator",
+          "name": "ElizaOSDailySummary",
+          "interval": 3600000,
+          "params": {
+            "provider": "summaryOpenAiProvider",
+            "storage": "SQLiteStorage",
+            "summaryType": "elizaosDailySummary",
+            "outputPath": "./output/elizaos",
+            "groupBySourceType": true
+          }
+        }
+    ]
+}
