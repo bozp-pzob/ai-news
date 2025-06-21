@@ -1,0 +1,798 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { configStateManager } from '../services/ConfigStateManager';
+import { PluginInfo, PluginConfig, PluginType } from '../types';
+import { SecretInputField } from './SecretInputField';
+import { SecretInputSelectField } from './SecretInputSelectField';
+import { pluginRegistry } from '../services/PluginRegistry';
+import { useToast } from './ToastProvider';
+
+// Array of parameter name patterns that should be treated as sensitive
+const SENSITIVE_PARAM_PATTERNS = [
+  'api_key', 'apikey', 'key', 'token', 'secret', 'password', 'auth', 'credential',
+  'access_token', 'access_key', 'private_key', 'client_secret', 'security'
+];
+
+// Function to check if a parameter is sensitive based on its name
+const isSensitiveParameter = (paramName: string): boolean => {
+  const lowerName = paramName.toLowerCase();
+  return SENSITIVE_PARAM_PATTERNS.some(pattern => lowerName.includes(pattern));
+};
+
+interface PluginParamDialogProps {
+  plugin: PluginInfo | PluginConfig;
+  isOpen: boolean;
+  onClose: () => void;
+  onAdd: (plugin: any) => void;
+}
+
+// Determine if a plugin type supports provider or storage connections
+const supportsProviderStorage = (pluginType: string): { provider: boolean, storage: boolean } => {
+  // Source, enricher, and generator nodes can have provider and storage inputs
+  if (pluginType === 'source' || pluginType === 'enricher' || pluginType === 'generator') {
+    return { provider: true, storage: true };
+  }
+  
+  // Other types don't support provider/storage connections
+  return { provider: false, storage: false };
+};
+
+// Add TypeScript interface to type param.secret property
+interface ConstructorInterfaceParameter {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'string[]';
+  required: boolean;
+  description: string;
+  secret?: boolean;
+}
+
+interface ConstructorInterface {
+  parameters: ConstructorInterfaceParameter[];
+}
+
+export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
+  plugin,
+  isOpen,
+  onClose,
+  onAdd,
+}) => {
+  const { showToast } = useToast();
+  
+  // Store plugin schema from registry
+  const [pluginSchema, setPluginSchema] = useState<PluginInfo | null>(null);
+  
+  // Store editable params
+  const [params, setParams] = useState<Record<string, any>>(
+    'params' in plugin ? { ...plugin.params } : {}
+  );
+  
+  // Store custom name for the plugin
+  const [customName, setCustomName] = useState<string>(
+    'name' in plugin ? plugin.name : ''
+  );
+  
+  // Store interval for source and generator plugins
+  const [interval, setInterval] = useState<number | undefined>(
+    'interval' in plugin && plugin.interval !== undefined ? plugin.interval : 60000
+  );
+
+  // Load available providers and storage
+  const [availableProviders, setAvailableProviders] = useState<{id: string, name: string}[]>([]);
+  const [availableStorage, setAvailableStorage] = useState<{id: string, name: string}[]>([]);
+
+  // Get plugin ID helper
+  const getPluginId = (): string | undefined => {
+    return 'id' in plugin ? plugin.id : undefined;
+  };
+
+  // Load plugin schema from registry when dialog opens
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    // Get plugin name and type
+    let pluginName: string | undefined;
+    let pluginType: string | undefined;
+    
+    if ('name' in plugin) {
+      // Prefer pluginName for lookups if available, fallback to name
+      pluginName = 'pluginName' in plugin ? (plugin as any).pluginName : plugin.name;
+      pluginType = 'type' in plugin ? plugin.type : undefined;
+      
+      // Handle name mismatches between config names and actual plugin names
+      // This mapping helps correct common mismatches
+      const pluginNameMapping: Record<string, string> = {
+        'topicEnricher': 'AiTopicsEnricher',
+        'imageEnricher': 'AiImageEnricher',
+        // Add more mappings as needed
+      };
+      
+      // Check if we have a mapping for this plugin name
+      if (pluginName && pluginNameMapping[pluginName]) {
+        pluginName = pluginNameMapping[pluginName];
+      }
+    }
+    
+    if (pluginName) {      
+      // Try to get schema from registry
+      const pluginInfo = pluginRegistry.findPlugin(pluginName, pluginType);
+      
+      if (pluginInfo) {
+        setPluginSchema(pluginInfo);
+      } else {
+        // If no exact match found, try getting all plugins and fuzzy matching
+        const allPlugins = pluginRegistry.getPlugins();
+        let foundPlugin = null;
+        
+        if (Object.keys(allPlugins).length > 0) {
+          // Check each category of plugins
+          for (const category in allPlugins) {
+            // Only check the same category/type if specified
+            if (pluginType && category !== pluginType) continue;
+            
+            // Check each plugin in this category
+            for (const p of allPlugins[category]) {
+              // Try multiple ways to match:
+              // 1. Check if plugin name includes our search term
+              // 2. Check if our search term includes plugin name
+              if (p.pluginName && pluginName && (
+                  p.pluginName.toLowerCase().includes(pluginName.toLowerCase()) || 
+                  pluginName.toLowerCase().includes(p.pluginName.toLowerCase()))) {
+                foundPlugin = p;
+                break;
+              }
+            }
+            
+            if (foundPlugin) break;
+          }
+          
+          if (foundPlugin) {
+            setPluginSchema(foundPlugin);
+          }
+        }
+        
+        // Load plugins if not already loaded
+        if (!pluginRegistry.isPluginsLoaded()) {
+          // Subscribe to registry updates
+          const unsubscribe = pluginRegistry.subscribe(() => {
+            if (pluginName) {
+              // Try exact match first
+              let updatedPluginInfo = pluginRegistry.findPlugin(pluginName, pluginType);
+              
+              // If no exact match, try fuzzy matching
+              if (!updatedPluginInfo) {
+                const allUpdatedPlugins = pluginRegistry.getPlugins();
+                
+                // Check each category of plugins
+                for (const category in allUpdatedPlugins) {
+                  // Only check the same category/type if specified
+                  if (pluginType && category !== pluginType) continue;
+                  
+                  // Check each plugin in this category
+                  for (const p of allUpdatedPlugins[category]) {
+                    // Try multiple ways to match
+                    if (p.pluginName && pluginName && (
+                        p.pluginName.toLowerCase().includes(pluginName.toLowerCase()) || 
+                        pluginName.toLowerCase().includes(p.pluginName.toLowerCase()))) {
+                      updatedPluginInfo = p;
+                      break;
+                    }
+                  }
+                  
+                  if (updatedPluginInfo) break;
+                }
+              }
+              
+              if (updatedPluginInfo) {
+                setPluginSchema(updatedPluginInfo);
+              }
+            }
+          });
+          
+          // Trigger plugin loading
+          pluginRegistry.loadPlugins();
+          
+          return () => unsubscribe();
+        }
+      }
+    }
+  }, [isOpen, plugin]);
+
+  // Load params from ConfigStateManager if plugin has an ID, but preserve constructorInterface parameters
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const pluginId = getPluginId();
+    if (pluginId) {
+      const node = configStateManager.findNodeById(pluginId);
+      
+      if (node && node.params) {
+        // Initialize empty parameters for all constructorInterface parameters
+        const initializedParams = { ...node.params };
+        
+        setParams(initializedParams);
+        
+        // Also update the interval if it's available in the node
+        if (node.interval !== undefined) {
+          setInterval(node.interval);
+        }
+      }
+    }
+  }, [isOpen, plugin]);
+
+  // Load available providers and storage from ConfigStateManager
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const config = configStateManager.getConfig();
+    
+    // Load providers
+    if (config.ai) {
+      const providers = config.ai.map(ai => ({ id: ai.name, name: ai.name }));
+      setAvailableProviders(providers);
+    }
+    
+    // Load storage
+    if (config.storage) {
+      const storage = config.storage.map(s => ({ id: s.name, name: s.name }));
+      setAvailableStorage(storage);
+    }
+  }, [isOpen]);
+
+  // Initialize defaults when plugin schema changes
+  useEffect(() => {
+    if (!pluginSchema || !pluginSchema.constructorInterface) return;
+    
+    // Get constructor parameters from schema
+    const constructorParams = pluginSchema.constructorInterface.parameters;
+    
+    // Create a new parameters object with default values for missing fields
+    setParams(currentParams => {
+      const updatedParams = { ...currentParams };
+      
+      // Initialize any missing parameters with appropriate values
+      constructorParams.forEach(param => {
+        if (updatedParams[param.name] === undefined) {
+          // Set appropriate default value based on type
+          if (param.type === 'boolean') {
+            updatedParams[param.name] = false;
+          } else if (param.type === 'number') {
+            // For required number fields, use 0 as default instead of empty string
+            updatedParams[param.name] = param.required ? 0 : '';
+          } else if (param.type === 'string[]') {
+            updatedParams[param.name] = [];
+          } else {
+            // For required fields, use a placeholder to indicate it's required
+            updatedParams[param.name] = param.required ? '' : '';
+          }
+        } else if (param.required) {
+          // Ensure required fields don't have empty values
+          if (
+            updatedParams[param.name] === '' || 
+            updatedParams[param.name] === null || 
+            (Array.isArray(updatedParams[param.name]) && updatedParams[param.name].length === 0)
+          ) {
+            if (param.type === 'boolean') {
+              updatedParams[param.name] = false;
+            } else if (param.type === 'number') {
+              updatedParams[param.name] = 0;
+            } else if (param.type === 'string[]') {
+              // Keep empty for UI indication that it needs to be filled
+              updatedParams[param.name] = [];
+            } else {
+              // Keep empty string for UI indication that it needs to be filled
+              updatedParams[param.name] = '';
+            }
+          }
+        }
+      });
+      
+      return updatedParams;
+    });
+  }, [pluginSchema]);
+
+  // Handle adding a new item to an array
+  const handleAddArrayItem = (key: string) => {    
+    setParams(prev => {
+      // Create a deep copy of the current array or initialize a new one
+      const currentArray = Array.isArray(prev[key]) ? [...prev[key]] : [];
+      // Add the new empty item
+      currentArray.push('');
+      
+      // Return the new params object with the updated array
+      return {
+        ...prev,
+        [key]: currentArray
+      };
+    });
+  };
+
+  // Handle removing an item from an array
+  const handleRemoveArrayItem = (key: string, index: number) => {    
+    setParams(prev => {
+      // Create a deep copy of the current array
+      const currentArray = Array.isArray(prev[key]) ? [...prev[key]] : [];
+      // Remove the item at the specified index
+      const newArray = currentArray.filter((_, i) => i !== index);
+      
+      // Return the new params object with the updated array
+      return {
+        ...prev,
+        [key]: newArray
+      };
+    });
+  };
+
+  // Handle updating a single array item
+  const handleUpdateArrayItem = (key: string, index: number, value: string) => {    
+    setParams(prev => {
+      // Create a deep copy of the current array
+      const currentArray = Array.isArray(prev[key]) ? [...prev[key]] : [];
+      // Update the value at the specified index
+      const newArray = [...currentArray];
+      newArray[index] = value;
+      
+      // Return the new params object with the updated array
+      return {
+        ...prev,
+        [key]: newArray
+      };
+    });
+  };
+
+  // Handle form submission
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Basic validation of required fields
+    if (pluginSchema?.constructorInterface?.parameters) {
+      const requiredMissing = pluginSchema.constructorInterface.parameters
+        .filter(param => param.required)
+        .some(param => {
+          const key = param.name;
+          const value = params[key];
+          return value === undefined || value === null || value === '' || 
+                 (Array.isArray(value) && value.length === 0);
+        });
+      
+      if (requiredMissing) {
+        showToast("Please fill in all required fields marked with *", 'warning');
+        return;
+      }
+    }
+    
+    // Deep copy all params to avoid reference issues, with special handling for arrays
+    const deepCopy = (obj: any): any => {
+      if (obj === null || obj === undefined) {
+        return obj;
+      }
+      
+      if (Array.isArray(obj)) {
+        return obj.map(item => deepCopy(item));
+      }
+      
+      if (typeof obj === 'object') {
+        const copy: any = {};
+        for (const key in obj) {
+          copy[key] = deepCopy(obj[key]);
+        }
+        return copy;
+      }
+      
+      return obj;
+    };
+    
+    // Create a true deep copy of all parameters
+    const paramsCopy = deepCopy(params);
+  
+    
+    // Create updated plugin with new params and custom name
+    const updatedPlugin = {
+      ...plugin,
+      name: customName,
+      params: paramsCopy,
+      interval
+    };
+    
+    // Keep schema info in the plugin if available
+    if (pluginSchema) {
+      if (pluginSchema.configSchema) {
+        (updatedPlugin as any).configSchema = pluginSchema.configSchema;
+      }
+      if (pluginSchema.constructorInterface) {
+        (updatedPlugin as any).constructorInterface = pluginSchema.constructorInterface;
+      }
+      if (pluginSchema.description) {
+        (updatedPlugin as any).description = pluginSchema.description;
+      }
+    }
+    // Call onAdd callback
+    onAdd(updatedPlugin);
+    
+    // Close dialog
+    onClose();
+  };
+
+  // Handle param change
+  const handleParamChange = (key: string, value: any) => {
+    setParams(prev => ({ ...prev, [key]: value }));
+  };
+
+  // Handle string array change (comma-separated values)
+  const handleArrayChange = (key: string, value: string) => {
+    // Split by commas, but preserve commas within quotes
+    const arrayValue = value.split(',').map(item => {
+      const trimmed = item.trim();
+      // Remove quotes if the item is quoted
+      if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || 
+          (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+        return trimmed.substring(1, trimmed.length - 1);
+      }
+      return trimmed;
+    }).filter(Boolean);
+      
+    handleParamChange(key, arrayValue);
+  };
+
+  // Render form fields based on plugin schema
+  const renderConfigFields = () => {
+    // Determine plugin type
+    let pluginType = '';
+    if ('type' in plugin) {
+      pluginType = plugin.type;
+    } else {
+      const pluginId = getPluginId();
+      if (pluginId) {
+        const idParts = pluginId.split('-');
+        pluginType = idParts[0] || '';
+      }
+    }
+    
+    // Get constructor interface from plugin or schema
+    const constructorInterface = pluginSchema?.constructorInterface || 
+                               ('constructorInterface' in plugin ? (plugin as any).constructorInterface : null);
+    
+    // CSS classes for inputs
+    const inputClasses = "p-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500";
+    
+    
+    // Check if plugin has provider/storage parameters in constructor interface
+    const hasProviderParameter = constructorInterface?.parameters.some((param: { name: string }) => param.name === 'provider') ?? false;
+    const isProviderRequired = constructorInterface?.parameters.some(
+      (param: { name: string; required: boolean }) => param.name === 'provider' && param.required
+    ) ?? false;
+    
+    const hasStorageParameter = constructorInterface?.parameters.some((param: { name: string }) => param.name === 'storage') ?? false;
+    const isStorageRequired = constructorInterface?.parameters.some(
+      (param: { name: string; required: boolean }) => param.name === 'storage' && param.required
+    ) ?? false;
+    
+    return (
+      <div className="space-y-4">
+        {/* Only render provider field if it's explicitly in the constructor interface */}
+        {hasProviderParameter && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Provider
+              {isProviderRequired && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            <select
+              value={params.provider || ''}
+              name="provider"
+              onChange={(e) => handleParamChange('provider', e.target.value)}
+              className="py-2 px-1 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+              required={isProviderRequired}
+            >
+              <option value="">No provider selected</option>
+              {availableProviders.map(provider => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-400">
+              Select an AI provider for this plugin
+            </p>
+          </div>
+        )}
+        
+        {/* Only render storage field if it's explicitly in the constructor interface */}
+        {hasStorageParameter && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Storage
+              {isStorageRequired && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            <select
+              value={params.storage || ''}
+              name="storage"
+              onChange={(e) => handleParamChange('storage', e.target.value)}
+              className="py-2 px-1 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+              required={isStorageRequired}
+            >
+              <option value="">No storage selected</option>
+              {availableStorage.map(storage => (
+                <option key={storage.id} value={storage.id}>
+                  {storage.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-400">
+              Select a storage option for this plugin
+            </p>
+          </div>
+        )}
+        
+        {/* Render constructor interface parameters */}
+        {constructorInterface && (constructorInterface.parameters as Array<{
+          name: string;
+          type: 'string' | 'number' | 'boolean' | 'string[]';
+          required: boolean;
+          description: string;
+          secret?: boolean;
+        }>).map(param => {
+          const key = param.name;
+          
+          // Skip provider and storage fields (handled separately)
+          if ((key === 'provider' && hasProviderParameter) || 
+              (key === 'storage' && hasStorageParameter)) {
+            return null;
+          }
+          // Render different input types based on parameter type
+          if (param.type === 'boolean') {
+            return (
+              <div key={key} className="mb-4 flex items-center">
+                <input
+                  type="checkbox"
+                  checked={!!params[key]}
+                  onChange={(e) => handleParamChange(key, e.target.checked)}
+                  className="p-2 h-4 w-4 rounded border-gray-600 bg-stone-700 text-amber-600 focus:ring-amber-500"
+                />
+                <label className="ml-2 text-sm text-gray-300">
+                  {key}
+                </label>
+              </div>
+            );
+          } else if (param.type === 'number') {
+            return (
+              <div key={key} className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  {key}
+                  {param.required && <span className="text-red-500 ml-1">*</span>}
+                </label>
+                <input
+                  type="number"
+                  value={params[key] !== undefined ? params[key] : ''}
+                  onChange={(e) => {
+                    const numValue = e.target.value ? Number(e.target.value) : '';
+                    handleParamChange(key, numValue);
+                  }}
+                  className={inputClasses}
+                  required={param.required}
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  {param.description}
+                </p>
+              </div>
+            );
+          } else if (param.type === 'string[]') {
+            return (
+              <div key={key} className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  {key}
+                  {param.required && <span className="text-red-500 ml-1">*</span>}
+                </label>
+                <div className="space-y-2">
+                  {(params[key] || []).map((item: string, index: number) => (
+                    <div key={index} className="relative">
+                      <input
+                        type="text"
+                        value={item}
+                        onChange={(e) => handleUpdateArrayItem(key, index, e.target.value)}
+                        className={`${inputClasses} pr-8`}
+                        placeholder={`Item ${index + 1}`}
+                        data-index={index}
+                        data-array-key={key}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveArrayItem(key, index)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-red-400 hover:text-red-300 focus:outline-none"
+                        title="Remove item"
+                        data-index={index}
+                        data-array-key={key}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => handleAddArrayItem(key)}
+                    className="mt-2 px-3 py-1 text-sm text-amber-400 hover:text-amber-300 border border-amber-400 hover:border-amber-300 rounded-md focus:outline-none"
+                    data-array-key={key}
+                  >
+                    + Add Item
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-400">
+                  {param.description || "Add items to the list"}
+                </p>
+              </div>
+            );
+          } else {
+            // Check if this is a sensitive parameter that should use SecretInputSelectField
+            // @ts-ignore: param.secret is added to the constructorInterface.parameters type in index.ts
+            if (param.secret === true || isSensitiveParameter(key)) {
+              return (
+                <div key={key} className="mb-4">
+                  <SecretInputSelectField
+                    id={`param-${key}`}
+                    label={key}
+                    value={params[key] !== undefined ? params[key] : ''}
+                    onChange={(value) => handleParamChange(key, value)}
+                    placeholder={`Enter value for ${key}`}
+                    required={param.required}
+                    description={param.description}
+                    secretType={key}
+                  />
+                </div>
+              );
+            } else {
+              // Standard input for non-sensitive string parameters
+              return (
+                <div key={key} className="mb-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    {key}
+                    {param.required && <span className="text-red-500 ml-1">*</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={params[key] !== undefined ? params[key] : ''}
+                    onChange={(e) => handleParamChange(key, e.target.value)}
+                    className={inputClasses}
+                    required={param.required}
+                  />
+                  <p className="mt-1 text-xs text-gray-400">
+                    {param.description}
+                  </p>
+                </div>
+              );
+            }
+          }
+        })}
+        
+        {/* If no constructor interface found, show message */}
+        {!constructorInterface && (
+          <div className="text-sm text-gray-400 p-2 bg-stone-700 rounded-md">
+            No configuration parameters defined for this plugin.
+          </div>
+        )}
+        
+        {/* Show interval field for source and generator plugins */}
+        {(('type' in plugin && (plugin.type === 'source' || plugin.type === 'generator')) || 
+           (!('type' in plugin) && (getPluginId()?.startsWith('source') || getPluginId()?.startsWith('generator')))) && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Interval (milliseconds)<span className="text-red-500 ml-1">*</span>
+            </label>
+            <input
+              type="number"
+              value={interval || 60000}
+              onChange={(e) => setInterval(Math.max(60000, Number(e.target.value) || 60000))}
+              className={inputClasses}
+              placeholder="Minimum 60000 (1 minute)"
+              required
+              min={60000}
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              Minimum interval is 1 minute (60000 ms)
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-stone-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 text-gray-200 flex flex-col max-h-[90vh]">
+        <div className="px-6 py-4 border-b border-gray-700">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-medium text-gray-100">{customName} Configuration</h3>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-200"
+            >
+              <span className="sr-only">Close</span>
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <p className="mt-1 text-sm text-gray-400">
+            {'description' in plugin ? plugin.description : 'Configure plugin parameters'}
+          </p>
+        </div>
+
+        <div className="overflow-y-auto">
+          <form onSubmit={handleSubmit} className="px-6 py-4">
+            {/* Name Field */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-1">
+                Name<span className="text-red-500 ml-1">*</span>
+              </label>
+              <input
+                type="text"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                className="p-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                required
+                placeholder="Enter a name for this plugin"
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                A descriptive name to identify this plugin in the workflow
+              </p>
+            </div>
+            
+            {renderConfigFields()}
+          </form>
+        </div>
+
+        <div className="mt-auto px-6 py-4 border-t border-gray-700">
+          <div className="flex justify-between">
+            {/* Delete button - only show for existing plugins with an ID */}
+            {getPluginId() ? (
+              <button
+                type="button"
+                onClick={() => {
+                  // Confirm before deleting
+                  if (window.confirm(`Are you sure you want to delete the plugin "${customName}"?`)) {
+                    // Call removeNode on the ConfigStateManager
+                    const nodeId = getPluginId() as string;
+                    const removed = configStateManager.removeNode(nodeId);
+                    
+                    if (removed) {
+                      // Force a sync to ensure everything is updated properly
+                      configStateManager.forceSync();
+                      // Close the dialog after successful deletion
+                      onClose();
+                    } else {
+                      console.error(`Failed to remove node: ${customName} (${nodeId})`);
+                      showToast("Failed to delete the plugin. Please try again.", 'error');
+                    }
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500"
+              >
+                Delete
+              </button>
+            ) : (
+              // Empty div to maintain layout when no delete button
+              <div></div>
+            )}
+            
+            <div className="flex space-x-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-gray-300 bg-stone-700 border border-gray-600 rounded-md hover:bg-stone-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-amber-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                onClick={handleSubmit}
+                className="px-4 py-2 text-sm font-medium text-black bg-amber-300 rounded-md hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-amber-500"
+              >
+                Update
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}; 

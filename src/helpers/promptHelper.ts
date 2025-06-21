@@ -1,8 +1,3 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { ensureDirectoryExists, writeFile } from './fileHelper';
-import { ContentItem } from '../types'; // Ensure ContentItem is imported if not already
-
 /**
  * Prompt generation utilities for the AI News Aggregator.
  * This module provides functions for creating prompts for AI models.
@@ -14,74 +9,36 @@ import { ContentItem } from '../types'; // Ensure ContentItem is imported if not
  * Creates a prompt for converting JSON summary data into markdown format.
  * 
  * This function:
- * 1. Takes JSON summary data (an array of categories/topics) and a date string
+ * 1. Takes JSON summary data and a date string
  * 2. Formats a prompt that instructs an AI model to convert the JSON into markdown
- * 3. Includes specific guidelines for the markdown format.
+ * 3. Includes specific guidelines for the markdown format
  * 
- * @param categories - The array of category/topic objects, where each object contains a `topic` identifier (though not strictly used by this prompt anymore for H2), a `title`, and `content` to be converted to markdown.
- * @param dateStr - The date string associated with the summary data.
- * @returns A formatted prompt string for the AI model.
+ * @param summaryData - The JSON data to be converted to markdown
+ * @param dateStr - The date string associated with the summary data
+ * @returns A formatted prompt string for the AI model
  */
-export const createMarkdownPromptForJSON = (categories: any[], dateStr: string): string => {
-  const jsonStr = JSON.stringify(categories, null, 2); // Stringify the whole categories array
-
-  // Attempt to find a repository_name from any of the categories if present (for general use in prompt)
-  let repoNameFromData = "the repository"; // Default
-  const ghCategoryWithRepo = categories.find(cat => cat.repository_name);
-  if (ghCategoryWithRepo) {
-    repoNameFromData = ghCategoryWithRepo.repository_name;
-  }
-
+export const createMarkdownPromptForJSON = (summaryData: any, dateStr: string): string => {
+  const jsonStr = JSON.stringify(summaryData, null, 2);
   return `You are an expert at converting structured JSON data into a concise markdown report for language model processing.
-  The overall report WILL HAVE A MAIN H1 TITLE (e.g., "# Daily Report - ${dateStr}") PREPENDED TO YOUR OUTPUT SEPARATELY.
-  YOUR TASK IS TO GENERATE THE MARKDOWN FOR THE SUBSEQUENT CONTENT SECTIONS based on the JSON array of categories provided below.
   
-For each category object in the JSON array:
-- Use H2 (##) for the main heading of EACH section, using the 'title' field from the category object. For example, if a category title is "Pull Requests or Issues for ${repoNameFromData}", the heading should be "### Pull Requests for ${repoNameFromData}".
-- Under each H2, iterate through the 'content' array of that category.
-- For each item/theme in the 'content' array:
-    - If the category's 'topic' is 'crypto market', each item in its 'content' array is a string. Display each string as a direct bullet point.
-      - Example for a crypto market item:
-        - WETH is currently trading at $2,663.02.
-    - For all other topics (e.g., 'issue', 'pull_request', 'github_summary', 'github_other'):
-      - Each item in the 'content' array is an object which will have a 'text' property and may have an optional 'link' property.
-      - Display the 'text' as a bullet point or paragraph.
-      - If a 'link' property exists for an item, display it after its text, perhaps as " (Source: [link])" or on a new sub-bullet for clarity.
-      - Example for an issue/PR item with a link:
-        - Issue #123 by @user titled 'Fix bug' is open. (Source: https://github.com/issue/123)
-      - Example for a summary item (e.g., from github_other) with a link:
-        - A bug fix was implemented for TEE Tests. (Source: https://github.com/elizaOS/eliza/pull/4807)
-      - Example for an item with no link:
-        - This is a summary point from the AI with no direct source link provided for this entry.
+The markdown should:
+- Use clear, hierarchical headings
+- Include bullet lists for key points
+- Be concise and easy to parse
+- Exclude any raw JSON output
+- Maintain hierarchical structure
+- Focus on key information
+- ONLY report on what has been done or accomplished
+- DO NOT include statements about what is missing, not done, or needs improvement
+- DO NOT include recommendations or suggestions
+- DO NOT include phrases like "no technical discussions" or "limited content"
 
-General Markdown Guidelines:
-- Be concise and easy to parse.
-- Avoid unnecessary newlines, especially between items in a bulleted list. Ensure list items flow directly one after another.
-- Exclude any raw JSON output.
-- Maintain hierarchical structure where appropriate.
-- Focus on key information and accomplishments.
-- DO NOT include statements about what is missing, not done, or needs improvement.
-- DO NOT include recommendations or suggestions.
-- DO NOT include phrases like "no technical discussions" or "limited content" unless that IS the summary from the AI.
-- When summarizing content that originates from user posts (especially if the AI includes attributions in its 'text' summary), ensure these attributions are preserved in the markdown.
-
-Given the following JSON array of categories for ${dateStr}, generate a markdown report accordingly:
+Given the following JSON summary for ${dateStr}, generate a markdown report accordingly:
 
 ${jsonStr}
 
-Only return the markdown text for the content sections. The H1 title will be added separately.`;
+Only return the final markdown text.`;
 }
-
-
-// Helper function to write prompt to a file
-const logPromptToFile = (topic: string, dateStr: string, prompt: string) => {
-  const logsDir = path.join(__dirname, '../../logs/prompts'); // Define a logs directory
-  ensureDirectoryExists(logsDir);
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `${dateStr}_${topic.replace(/\s+/g, '_')}_${timestamp}`;
-  console.log(`Prompt for topic '${topic}' logged to: ${filename}`);
-  writeFile(logsDir, filename, prompt, 'log');
-};
 
 /**
  * Creates a prompt for generating a JSON summary of topics from content items.
@@ -95,45 +52,22 @@ const logPromptToFile = (topic: string, dateStr: string, prompt: string) => {
  * @param topic - The topic to summarize
  * @param objects - Array of content items related to the topic
  * @param dateStr - The date string associated with the content
- * @param customInstructions - Optional custom instructions for the AI, including a title for the output.
  * @returns A formatted prompt string for the AI model
  */
-export const createJSONPromptForTopics = (topic: string, objects: ContentItem[], dateStr: string, customInstructions?: { title?: string, aiPrompt?: string, repositoryName?: string, dataProviderName?: string }): string => {
-  let prompt = ``;
-  prompt += customInstructions?.aiPrompt || `Generate a summary for the topic: '${topic}'.\n`;
-  prompt += `\n--- Input Item Sources for Analysis (Details for each item are provided below, identified by its 0-based [INDEX]) ---\n`;
-
-  objects.forEach((item, index) => {
-    prompt += `\n***Item Context [${index}]***\n`;
-    prompt += `cid: ${item.cid}\n`;
-    prompt += `link: ${item.link || 'N/A'}\n`;
-    prompt += `type: ${item.type}\n`;
-    prompt += `source_plugin: ${item.source}\n`;
-
-    if (item.source.toLowerCase().includes('github') && (item.type.toLowerCase().includes('issue') || item.type.toLowerCase().includes('pull_request'))) {
-      // GitHub Issue or Pull Request specific context
-      prompt += `title: ${item.title || 'N/A'}\n`;
-      prompt += `item_author: ${item.metadata?.author || 'unknown'}\n`;
-      prompt += `item_number: ${item.metadata?.number || 'N/A'}\n`;
-      prompt += `item_state: ${item.metadata?.state || 'unknown'}\n`;
-      prompt += `item_createdAt: ${item.metadata?.createdAt || 'N/A'}\n`;
-      if (item.metadata?.closedAt) {
-        prompt += `item_closedAt: ${item.metadata.closedAt}\n`;
-      }
-      if (typeof item.metadata?.commentCount === 'number') {
-        prompt += `item_commentCount: ${item.metadata.commentCount}\n`;
-      }
-      prompt += `text_snippet: ${(item.text || item.title || '').substring(0, 500)}\n`; // Use body or title for snippet
-    } else { // For other general items
-      prompt += `title: ${item.title || 'N/A'}\n`;
-      prompt += `text_snippet: ${(item.text || '').substring(0, 500)}\n`; 
-    }
-    prompt += `***End Item Context [${index}]***\n`;
+export const createJSONPromptForTopics = (topic: string, objects: any[], dateStr: string): string => {
+  let prompt = `Generate a summary for the topic. Focus on the following details:\n\n`;
+  objects.forEach((item) => {
+    prompt += `\n***source***\n`;
+    if (item.text) prompt += `text: ${item.text}\n`;
+    if (item.link) prompt += `sources: ${item.link}\n`;
+    if (item.metadata?.photos) prompt += `photos: ${item.metadata?.photos}\n`;
+    if (item.metadata?.videos) prompt += `videos: ${item.metadata?.videos}\n`;
+    prompt += `\n***source_end***\n\n`;
   });
-  prompt += `\n--- End of Input Item Sources ---\n\n`;
 
-  if (process.env.DEBUG || process.env.LOG_PROMPT) {
-    logPromptToFile(topic, dateStr, prompt);
-  }
+  prompt += `Provide a clear and concise summary based on the ***sources*** above for the topic. DO NOT PULL DATA FROM OUTSIDE SOURCES'${topic}'. Combine similar sources into a longer summary if it makes sense.\n\n`;
+
+  prompt += `Response MUST be a valid JSON object containing:\n- 'title': The title of the topic.\n- 'content': A list of messages with keys 'text', 'sources', 'images', and 'videos'.\n\n`;
+
   return prompt;
 }
