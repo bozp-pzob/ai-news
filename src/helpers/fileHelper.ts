@@ -25,21 +25,21 @@ export const isMediaFile = (url: string, contentType?: string | null): boolean =
 /**
    * Writes summary content to a file in the specified format.
    * @param outputPath - File string to write the file to
-   * @param filename - Date string for the file name
+   * @param dateStr - Date string for the file name
    * @param content - Content to write
    * @param format - File format ('json' or 'md')
    * @returns Promise<void>
    */
-export const writeFile = async (outputPath: string, filename: string, content: any, format: 'json' | 'md' | 'txt' | 'log'): Promise<void> => {
+export const writeFile = async (outputPath: string, dateStr: string, content: any, format: 'json' | 'md'): Promise<void> => {
     try {
       const dir = path.join(outputPath, format);
       ensureDirectoryExists(dir);
       
-      const filePath = path.join(dir, `${filename}.${format}`);
+      const filePath = path.join(dir, `${dateStr}.${format}`);
       
       fs.writeFileSync(filePath, content);
     } catch (error) {
-      console.error(`Failed to write content to ${format} file ${filename}:`, error);
+      console.error(`Error saving Discord summary to ${format} file ${dateStr}:`, error);
     }
 }
 
@@ -50,6 +50,5 @@ export const writeFile = async (outputPath: string, filename: string, content: a
 export const ensureDirectoryExists = (dirPath: string) => {
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
-      console.log(`Created log directory: ${dirPath}`);
     }
 }

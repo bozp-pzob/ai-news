@@ -12,6 +12,29 @@ export class AiTopicsEnricher implements EnricherPlugin {
   private maxTokens?: number;
   private thresholdLength?: number;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'provider',
+        type: 'AiProvider',
+        required: true,
+        description: 'AI provider to use for topic extraction'
+      },
+      {
+        name: 'maxTokens',
+        type: 'number',
+        required: false,
+        description: 'Maximum number of tokens to use for topic extraction'
+      },
+      {
+        name: 'thresholdLength',
+        type: 'number',
+        required: false,
+        description: 'Minimum text length required for topic extraction (default: 300)'
+      }
+    ]
+  };
+
   /**
    * Creates a new instance of AiTopicsEnricher.
    * @param config - Configuration object containing the AI provider and optional parameters

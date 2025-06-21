@@ -7,13 +7,7 @@
  */
 
 import { ContentAggregator } from "./aggregator/ContentAggregator";
-import {
-  loadDirectoryModules,
-  loadItems,
-  loadProviders,
-  loadStorage,
-  validateConfiguration
-} from "./helpers/configHelper";
+import { loadDirectoryModules, loadItems, loadProviders, loadStorage, loadParsers, validateConfiguration } from "./helpers/configHelper";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -59,6 +53,7 @@ dotenv.config();
     const enricherClasses = await loadDirectoryModules("enrichers");
     const generatorClasses = await loadDirectoryModules("generators");
     const storageClasses = await loadDirectoryModules("storage");
+    const parserClasses = await loadDirectoryModules("parsers");
     
     /**
      * Load and parse the JSON configuration file
@@ -67,7 +62,6 @@ dotenv.config();
     const configPath = path.join(__dirname, "../config", sourceFile);
     const configFile = fs.readFileSync(configPath, "utf8");
     const configJSON = JSON.parse(configFile);
-    
     
     /**
      * Apply configuration overrides from the JSON file
@@ -88,6 +82,7 @@ dotenv.config();
      * This creates instances of each plugin with their respective parameters
      */
     let aiConfigs = await loadItems(configJSON.ai, aiClasses, "ai");
+    let parserConfigs = await loadItems(configJSON.parsers, parserClasses, "parsers");
     let sourceConfigs = await loadItems(configJSON.sources, sourceClasses, "source");
     let enricherConfigs = await loadItems(configJSON.enrichers, enricherClasses, "enrichers");
     let generatorConfigs = await loadItems(configJSON.generators, generatorClasses, "generators");
@@ -102,7 +97,14 @@ dotenv.config();
     sourceConfigs = await loadStorage(sourceConfigs, storageConfigs);
     enricherConfigs = await loadProviders(enricherConfigs, aiConfigs);
     generatorConfigs = await loadProviders(generatorConfigs, aiConfigs);
+    parserConfigs = await loadProviders(parserConfigs, aiConfigs);
+
+    // If any configs depends on the storage, set it here
+    sourceConfigs = await loadStorage(sourceConfigs, storageConfigs);
     generatorConfigs = await loadStorage(generatorConfigs, storageConfigs);
+
+    // If any configs depends on a parser, set it here
+    sourceConfigs = await loadParsers(sourceConfigs, parserConfigs);
     
     /**
      * Call the validation function

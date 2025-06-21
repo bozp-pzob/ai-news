@@ -35,6 +35,14 @@ export interface StoragePlugin {
    * @returns Promise<ContentItem | null> Retrieved content item or null if not found
    */
   getContentItem(cid: string): Promise<ContentItem | null>;
+  
+  
+  /**
+   * Retrieves a single content item by its link.
+   * @param link - String for the link of the item to retrieve
+   * @returns Promise<ContentItem | null> Retrieved content item or null if not found
+   */
+  getContentItemByLink(link: string): Promise<ContentItem | null>;
 
   /**
    * Saves or updates a summary item in the storage.

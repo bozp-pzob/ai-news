@@ -10,7 +10,7 @@ import { ContentItem } from "../../types";
  * @interface ContentSource
  */
 export interface ContentSource {
-  /** Unique identifier for the content source (e.g., "BBC RSS", "Discord", "GitHub") */
+  /** Unique identifier for the content source (e.g., "BBC RSS", "Discord") */
   name: string;
 
   /**
