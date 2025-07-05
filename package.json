@@ -7,7 +7,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "historical": "ts-node src/historical.ts"
+    "historical": "ts-node src/historical.ts",
+    "discover-channels": "node scripts/discover-channels.js",
+    "update-configs": "node scripts/update-configs-from-checklist.js"
   },
   "keywords": [
     "news",

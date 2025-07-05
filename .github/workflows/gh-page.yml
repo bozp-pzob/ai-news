@@ -6,9 +6,9 @@ on:
       - gh-pages
   # Allow manual triggering
   workflow_dispatch:
-  # Run after the main workflow completes
+  # Run after data collection workflows complete
   workflow_run:
-    workflows: ["ElizaOS Daily Summary"]
+    workflows: ["ElizaOS Daily Data Collection", "Hyperfy Daily Data Collection"]
     branches: [main]
     types:
       - completed
@@ -16,13 +16,13 @@ on:
 jobs:
   pages-directory-listing:
     runs-on: ubuntu-latest
-    name: Generate Directory Listing and Deploy
+    name: Deploy GitHub Pages
     permissions:
       contents: read
       pages: write
       id-token: write
     environment:
-      name: github-pages
+      name: gh-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout gh-pages branch
