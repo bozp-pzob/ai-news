@@ -88,18 +88,62 @@ Create two repository secrets in GitHub:
 ```bash
 npm run build
 npm start
-npm start -- --source=discord-raw.json
+npm start -- --source=elizaos2.json
 ```
 
 ## Historical Data Fetching
 
 ```bash
-npm run historical -- --source=discord-raw.json --output=./output/discord
-npm run historical -- --source=elizaos-dev.json --date=2024-01-15 --output=./output/elizaos-dev
+npm run historical -- --source=elizaos2.json --output=./output
 npm run historical -- --source=hyperfy-discord.json --after=2024-01-10 --before=2024-01-16 --output=./output/hyperfy
-npm run historical -- --source=discord-raw.json --after=2024-01-15 --output=./output/discord
-npm run historical -- --source=discord-raw.json --before=2024-01-10 --output=./output/discord
+npm run historical -- --source=elizaos2.json --after=2024-01-15 --output=./output
+npm run historical -- --source=elizaos2.json --before=2024-01-10 --output=./output
 ```
+
+## Channel Management
+
+### Channel Discovery
+Automatically discover and track Discord channels across all configured servers:
+
+```bash
+# Generate channel checklist (runs daily via GitHub Action)
+npm run discover-channels
+
+# Test mode (validate configs without Discord API)
+npm run discover-channels -- --test-configs
+```
+
+📋 **Channel Checklist**: View and edit tracked channels at [scripts/CHANNELS.md](scripts/CHANNELS.md)
+
+### Configuration Updates
+Update configs based on checked channels in the checklist:
+
+```bash
+# Apply changes from checklist to config files
+npm run update-configs
+
+# Preview changes without applying
+npm run update-configs -- --dry-run
+```
+
+### Workflow Options
+
+**Option A: GitHub Web Interface (Automated)**
+1. Open [scripts/CHANNELS.md](scripts/CHANNELS.md) on GitHub
+2. Edit file and check/uncheck channel boxes
+3. Commit changes
+4. GitHub Action automatically runs `update-configs` and commits any config changes
+
+**Option B: Local Development**
+1. Run `npm run discover-channels` to update checklist
+2. Edit `scripts/CHANNELS.md` locally to check/uncheck channels
+3. Run `npm run update-configs` to update config files
+4. Commit and push changes
+
+**Option C: Manual GitHub Workflow**
+1. Open [scripts/CHANNELS.md](scripts/CHANNELS.md) on GitHub and edit
+2. Commit changes → Pull locally: `git pull`
+3. Apply updates: `npm run update-configs`
 
 ## Project Structure
 
