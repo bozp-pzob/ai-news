@@ -88,16 +88,16 @@ Create two repository secrets in GitHub:
 ```bash
 npm run build
 npm start
-npm start -- --source=elizaos2.json
+npm start -- --source=elizaos.json
 ```
 
 ## Historical Data Fetching
 
 ```bash
-npm run historical -- --source=elizaos2.json --output=./output
+npm run historical -- --source=elizaos.json --output=./output
 npm run historical -- --source=hyperfy-discord.json --after=2024-01-10 --before=2024-01-16 --output=./output/hyperfy
-npm run historical -- --source=elizaos2.json --after=2024-01-15 --output=./output
-npm run historical -- --source=elizaos2.json --before=2024-01-10 --output=./output
+npm run historical -- --source=elizaos.json --after=2024-01-15 --output=./output
+npm run historical -- --source=elizaos.json --before=2024-01-10 --output=./output
 ```
 
 ## Channel Management

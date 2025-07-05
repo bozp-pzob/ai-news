@@ -1,4 +1,4 @@
-name: Hyperfy Daily Summary
+name: Hyperfy Daily Data Collection
 
 on:
   schedule:
@@ -28,7 +28,7 @@ jobs:
       pages: write      # Needed for gh-pages deployment
       id-token: write   # Needed for gh-pages deployment
     environment:
-      name: github-pages
+      name: gh-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout code
