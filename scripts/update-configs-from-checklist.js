@@ -147,7 +147,7 @@ async function updateConfigs(dryRun = false) {
     let totalUpdates = 0;
     const updates = [];
     
-    // Check each guild for newly checked channels
+    // Check each guild for channel changes (additions and removals)
     for (const [guildId, guild] of Object.entries(guilds)) {
         const checkedChannelIds = guild.checkedChannels.map(ch => ch.id);
         
@@ -155,24 +155,42 @@ async function updateConfigs(dryRun = false) {
         for (const [key, sourceConfig] of sourceMap) {
             if (sourceConfig.guildId === guildId) {
                 const currentChannelIds = sourceConfig.source.params?.channelIds || [];
-                const newChannelIds = checkedChannelIds.filter(id => !currentChannelIds.includes(id));
                 
-                if (newChannelIds.length > 0) {
-                    const newChannelNames = newChannelIds.map(id => 
+                // Find channels to add (checked but not in config)
+                const channelsToAdd = checkedChannelIds.filter(id => !currentChannelIds.includes(id));
+                
+                // Find channels to remove (in config but not checked)
+                const channelsToRemove = currentChannelIds.filter(id => !checkedChannelIds.includes(id));
+                
+                if (channelsToAdd.length > 0 || channelsToRemove.length > 0) {
+                    const channelsToAddNames = channelsToAdd.map(id => 
                         guild.checkedChannels.find(ch => ch.id === id)?.name
                     ).filter(Boolean);
+                    
+                    const channelsToRemoveNames = channelsToRemove.map(id => {
+                        // Try to find name from unchecked channels, or fall back to ID
+                        const unchecked = guild.uncheckedChannels.find(ch => ch.id === id);
+                        return unchecked?.name || id;
+                    });
+                    
+                    const finalChannelIds = currentChannelIds
+                        .filter(id => !channelsToRemove.includes(id))  // Remove unchecked
+                        .concat(channelsToAdd);  // Add checked
                     
                     updates.push({
                         configFile: sourceConfig.configFile,
                         sourceName: sourceConfig.sourceName,
                         guildName: guild.name,
-                        newChannelIds,
-                        newChannelNames,
+                        channelsToAdd,
+                        channelsToAddNames,
+                        channelsToRemove,
+                        channelsToRemoveNames,
                         currentCount: currentChannelIds.length,
-                        newCount: currentChannelIds.length + newChannelIds.length
+                        newCount: finalChannelIds.length,
+                        finalChannelIds
                     });
                     
-                    totalUpdates += newChannelIds.length;
+                    totalUpdates += channelsToAdd.length + channelsToRemove.length;
                 }
             }
         }
@@ -183,12 +201,20 @@ async function updateConfigs(dryRun = false) {
         return;
     }
     
-    console.log(`\n📝 Found ${totalUpdates} channel(s) to add across ${updates.length} configuration(s):`);
+    console.log(`\n📝 Found ${totalUpdates} channel change(s) across ${updates.length} configuration(s):`);
     
     for (const update of updates) {
         console.log(`\n  📁 ${update.configFile} (${update.sourceName})`);
         console.log(`     Guild: ${update.guildName}`);
-        console.log(`     Adding ${update.newChannelIds.length} channel(s): ${update.newChannelNames.join(', ')}`);
+        
+        if (update.channelsToAdd.length > 0) {
+            console.log(`     ➕ Adding ${update.channelsToAdd.length} channel(s): ${update.channelsToAddNames.join(', ')}`);
+        }
+        
+        if (update.channelsToRemove.length > 0) {
+            console.log(`     ➖ Removing ${update.channelsToRemove.length} channel(s): ${update.channelsToRemoveNames.join(', ')}`);
+        }
+        
         console.log(`     Channels: ${update.currentCount} → ${update.newCount}`);
     }
     
@@ -208,10 +234,10 @@ async function updateConfigs(dryRun = false) {
             // Find the matching source and update its channelIds
             for (const source of config.sources) {
                 if (source.name === update.sourceName) {
-                    if (!source.params.channelIds) {
-                        source.params.channelIds = [];
+                    if (!source.params) {
+                        source.params = {};
                     }
-                    source.params.channelIds.push(...update.newChannelIds);
+                    source.params.channelIds = update.finalChannelIds;
                     break;
                 }
             }
@@ -221,7 +247,7 @@ async function updateConfigs(dryRun = false) {
         }
     }
     
-    console.log(`\n🎉 Successfully added ${totalUpdates} channel(s) to configurations!`);
+    console.log(`\n🎉 Successfully updated ${totalUpdates} channel(s) across configurations!`);
     console.log('💡 Tip: Run the aggregator to start collecting data from new channels');
     
     // Reset analytics timer when configs are updated (implies user reviewed analytics)
