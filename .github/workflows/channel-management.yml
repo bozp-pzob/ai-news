@@ -159,7 +159,7 @@ jobs:
             fi
             
             if [ "${{ steps.checklist_changes.outputs.checklist_changed }}" = "true" ]; then
-              echo "📊 Dashboard files deployed to gh-pages"
+              echo "📊 Dashboard updated"
             fi
           else
             echo "❌ Channel discovery failed - no checklist generated"
