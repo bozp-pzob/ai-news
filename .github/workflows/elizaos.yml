@@ -90,144 +90,45 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Decrypt database (if exists)
-        env:
-          SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
-        run: |
-          if [ -f "data/elizaos.sqlite.enc" ]; then
-            if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
-              echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."
-              exit 1
-            fi
-            echo "Decrypting data/elizaos.sqlite.enc..."
-            openssl enc -d -aes-256-cbc -pbkdf2 -in data/elizaos.sqlite.enc -out data/elizaos.sqlite -k "$SQLITE_ENCRYPTION_KEY"
-            if [ $? -ne 0 ]; then
-              echo "Error: Decryption failed. Check the encryption key or file integrity."
-              rm -f data/elizaos.sqlite 
-              exit 1
-            fi
-            echo "Decryption successful."
-
-            # Check database integrity
-            echo "Checking database integrity..."
-            if command -v sqlite3 &> /dev/null; then
-              sqlite3 data/elizaos.sqlite "PRAGMA integrity_check;"
-              if [ $? -ne 0 ]; then
-                echo "Error: Database integrity check failed! The decrypted file might be corrupted."
-                rm -f data/elizaos.sqlite 
-                exit 1 # Exit if integrity check fails
-              else
-                 echo "Database integrity check passed."
-              fi
-            else
-              echo "Warning: sqlite3 command not found. Skipping integrity check."
-            fi
-            rm data/elizaos.sqlite.enc 
-          else
-            echo "No encrypted database found to decrypt."
-          fi
 
       - name: Get yesterday's date
         id: date
         run: echo "YESTERDAY=$(date -d "yesterday" +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
-      - name: Run historical generation
+      - name: Run data collection
         run: |
+          # Determine collection parameters based on trigger
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ -n "${{ inputs.after_date }}" ] && [ -n "${{ inputs.before_date }}" ]; then
-              npm run historical -- --source=elizaos.json --after=${{ inputs.after_date }} --before=${{ inputs.before_date }} --output=./output
-            elif [ -n "${{ inputs.after_date }}" ]; then
-              npm run historical -- --source=elizaos.json --after=${{ inputs.after_date }} --output=./output
-            elif [ -n "${{ inputs.before_date }}" ]; then
-              npm run historical -- --source=elizaos.json --before=${{ inputs.before_date }} --output=./output
-            else
-              # Default to yesterday if no date inputs provided for manual run
-              npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output
+            # Manual workflow_dispatch run
+            ARGS="--config=elizaos.json --mode=manual"
+            if [ -n "${{ inputs.after_date }}" ]; then
+              ARGS="$ARGS --after=${{ inputs.after_date }}"
+            fi
+            if [ -n "${{ inputs.before_date }}" ]; then
+              ARGS="$ARGS --before=${{ inputs.before_date }}"
+            fi
+            if [ -z "${{ inputs.after_date }}" ] && [ -z "${{ inputs.before_date }}" ]; then
+              ARGS="$ARGS --date=${{ steps.date.outputs.YESTERDAY }}"
             fi
           else
-            # Scheduled run uses yesterday's date
-            npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output
+            # Scheduled run uses daily mode
+            ARGS="--config=elizaos.json --mode=daily --date=${{ steps.date.outputs.YESTERDAY }}"
           fi
+          
+          if [ "${{ inputs.force_overwrite || 'false' }}" = "true" ]; then
+            ARGS="$ARGS --force-overwrite"
+          fi
+          
+          echo "Executing: ./scripts/run-collection.js $ARGS"
+          ./scripts/run-collection.js $ARGS
         env:
           RUN_ONCE: true
           NODE_ENV: production
-          FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }}
 
-      - name: Encrypt database
-        env:
-          SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
-        run: |
-          if [ -f "data/elizaos.sqlite" ]; then
-            if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
-              echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."
-              exit 1
-            fi
-            echo "Encrypting data/elizaos.sqlite..."
-            openssl enc -aes-256-cbc -salt -pbkdf2 -in data/elizaos.sqlite -out data/elizaos.sqlite.enc -k "$SQLITE_ENCRYPTION_KEY"
-            if [ $? -ne 0 ]; then
-              echo "Error: Encryption failed."
-              exit 1
-            fi
-            echo "Encryption successful."
-            # Remove the original unencrypted file after successful encryption
-            rm data/elizaos.sqlite
-          else
-            echo "No elizaos.sqlite found to encrypt."
-          fi
 
-      - name: Prepare files for deployment
-        run: |
-          YESTERDAY=${{ steps.date.outputs.YESTERDAY }}
-          
-          # Create the target directory structure within ./public
-          mkdir -p ./public/data
-          mkdir -p ./public/elizaos/discord
-
-          # Copy the encrypted database
-          if [ -f "data/elizaos.sqlite.enc" ]; then
-            echo "Copying encrypted elizaos.sqlite.enc to ./public/data/"
-            cp data/elizaos.sqlite.enc ./public/data/
-          else
-             echo "No encrypted elizaos.sqlite.enc found locally to copy."
-          fi
-
-          # Copy Discord summaries
-          echo "Copying Discord summaries to ./public/elizaos/discord"
-          cp -r output/discord/summaries/* ./public/elizaos/discord/ 2>/dev/null || echo "No Discord summary files to copy."
-
-          # Copy ElizaOS daily summaries  
-          echo "Copying ElizaOS daily summaries to ./public/elizaos/daily"
-          cp -r output/elizaos/* ./public/elizaos/ 2>/dev/null || echo "No ElizaOS daily summary files to copy."
-
-          # Create daily.json for Discord summaries
-          JSON_FILE="output/discord/summaries/${YESTERDAY}.json"
-          if [ -f "$JSON_FILE" ]; then
-            echo "Copying $JSON_FILE to ./public/elizaos/discord/daily.json"
-            cp "$JSON_FILE" ./public/elizaos/discord/daily.json
-          else
-            echo "Warning: Yesterday's Discord JSON summary ($JSON_FILE) not found."
-          fi
-          
-          # Create daily.md for Discord summaries
-          MD_FILE="output/discord/summaries/${YESTERDAY}.md"
-          if [ -f "$MD_FILE" ]; then
-            echo "Copying $MD_FILE to ./public/elizaos/discord/daily.md"
-            cp "$MD_FILE" ./public/elizaos/discord/daily.md
-          else
-            echo "Warning: Yesterday's Discord MD summary ($MD_FILE) not found."
-          fi
-
-          # Create daily.json for ElizaOS daily summaries
-          ELIZAOS_JSON="output/elizaos/${YESTERDAY}.json"
-          if [ -f "$ELIZAOS_JSON" ]; then
-            echo "Copying $ELIZAOS_JSON to ./public/elizaos/json/daily.json"
-            cp "$ELIZAOS_JSON" ./public/elizaos/json/daily.json
-          else
-            echo "Warning: Yesterday's ElizaOS daily JSON ($ELIZAOS_JSON) not found."
-          fi
-
-      - name: Validate JSON files
-        run: find ./public/elizaos -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
+      - name: Generate pipeline dashboard
+        run: node scripts/generate-dashboard.js
+        continue-on-error: true
 
       - name: Get current timestamp for commit message
         id: commit_time

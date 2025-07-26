@@ -49,6 +49,77 @@ cp example.env .env
 
 Use JSON files in the `config/` directory and a `.env` file for secrets.
 
+## Pipeline Commands
+
+The system includes portable scripts that work locally, on servers, and in CI/CD:
+
+### Data Collection & Processing
+```bash
+# Daily data collection (typical usage)
+npm run collect -- --config=elizaos.json --mode=daily
+
+# Historical data collection for specific dates
+npm run collect -- --config=elizaos.json --mode=historical --date=2025-01-15
+npm run collect -- --config=elizaos.json --mode=historical --after=2025-01-01 --before=2025-01-31
+
+# Advanced: Two-phase collection for complex processing
+npm run historical -- --source=elizaos.json --date=2025-01-15 --onlyFetch=true
+npm run historical -- --source=elizaos.json --date=2025-01-15 --onlyGenerate=true
+```
+
+### Channel Management
+```bash
+# Discover new Discord channels
+npm run discover-channels
+
+# Update configurations from channel checklist
+npm run update-configs
+```
+
+### Observability
+```bash
+# View pipeline status (terminal-friendly)
+npm run status
+
+# Generate comprehensive dashboard
+npm run dashboard
+
+# Check pipeline health remotely
+curl https://your-org.github.io/ai-news/status.txt
+```
+
+## Data Refresh Order
+
+For complete data processing, follow this order:
+
+1. **Discover Channels** (if Discord config changed)
+   ```bash
+   npm run discover-channels
+   npm run update-configs  # If new channels found
+   ```
+
+2. **Collect Raw Data**
+   ```bash
+   npm run historical -- --source=elizaos.json --date=2025-01-15 --onlyFetch=true
+   ```
+
+3. **Generate Summaries**
+   ```bash
+   npm run historical -- --source=elizaos.json --date=2025-01-15 --onlyGenerate=true
+   ```
+
+4. **Deploy Files** (integrated in collection script)
+   ```bash
+   npm run collect -- --config=elizaos.json --mode=daily --date=2025-01-15
+   ```
+
+5. **Monitor Status**
+   ```bash
+   npm run status
+   ```
+
+## Configuration
+
 ### Example `.env` File
 
 ```env

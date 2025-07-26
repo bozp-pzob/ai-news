@@ -132,27 +132,35 @@ jobs:
         id: date
         run: echo "YESTERDAY=$(date -d "yesterday" +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
-      - name: Run historical generation
+      - name: Run data collection
         run: |
+          # Determine collection parameters based on trigger
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ -n "${{ inputs.after_date }}" ] && [ -n "${{ inputs.before_date }}" ]; then
-              npm run historical -- --source=discord-raw.json --after=${{ inputs.after_date }} --before=${{ inputs.before_date }} --output=./output/discord
-            elif [ -n "${{ inputs.after_date }}" ]; then
-              npm run historical -- --source=discord-raw.json --after=${{ inputs.after_date }} --output=./output/discord
-            elif [ -n "${{ inputs.before_date }}" ]; then
-              npm run historical -- --source=discord-raw.json --before=${{ inputs.before_date }} --output=./output/discord
-            else
-              # Default to yesterday if no date inputs provided for manual run
-              npm run historical -- --source=discord-raw.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/discord
+            # Manual workflow_dispatch run
+            ARGS="--config=discord-raw.json --mode=manual --output=./output/discord"
+            if [ -n "${{ inputs.after_date }}" ]; then
+              ARGS="$ARGS --after=${{ inputs.after_date }}"
+            fi
+            if [ -n "${{ inputs.before_date }}" ]; then
+              ARGS="$ARGS --before=${{ inputs.before_date }}"
+            fi
+            if [ -z "${{ inputs.after_date }}" ] && [ -z "${{ inputs.before_date }}" ]; then
+              ARGS="$ARGS --date=${{ steps.date.outputs.YESTERDAY }}"
             fi
           else
-            # Scheduled run uses yesterday's date
-            npm run historical -- --source=discord-raw.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/discord
+            # Scheduled run uses daily mode
+            ARGS="--config=discord-raw.json --mode=daily --date=${{ steps.date.outputs.YESTERDAY }} --output=./output/discord"
           fi
+          
+          if [ "${{ inputs.force_overwrite || 'false' }}" = "true" ]; then
+            ARGS="$ARGS --force-overwrite"
+          fi
+          
+          echo "Executing: ./scripts/run-collection.js $ARGS"
+          ./scripts/run-collection.js $ARGS
         env:
           RUN_ONCE: true
           NODE_ENV: production
-          FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }}
 
       - name: Encrypt database
         env:
