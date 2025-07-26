@@ -37,20 +37,6 @@
         "githubCompany": "elizaOS",
         "githubRepo": "eliza"
       }
-    },
-    {
-      "type": "CodexAnalyticsSource",
-      "name": "codexAnalytics",
-      "interval": 43200000,
-      "params": {
-        "apiKey": "process.env.CODEX_API_KEY",
-        "tokenAddresses": [
-          "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
-          "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
-          "HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC",
-          "So11111111111111111111111111111111111111112"
-        ]
-      }
     }
   ],
   "ai": [

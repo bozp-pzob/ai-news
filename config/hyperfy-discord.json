@@ -21,15 +21,6 @@
           ],
           "storage": "SQLiteStorage"
         }
-      },
-      {
-        "type": "CodexAnalyticsSource",
-        "name": "codexAnalytics",
-        "interval": 43200000,
-        "params": {
-            "apiKey": "process.env.CODEX_API_KEY",
-            "tokenAddresses": ["8vBMibwpn8wpfYKbQ9xqzodymg3LjmYec2tSNGRy23K8","So11111111111111111111111111111111111111112"]
-        }
       }
     ],
     "ai": [
