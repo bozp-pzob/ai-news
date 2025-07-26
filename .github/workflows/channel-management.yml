@@ -93,7 +93,7 @@ jobs:
         env:
           NODE_ENV: production
 
-      - name: Commit and push all changes
+      - name: Commit and push changes
         if: steps.checklist_changes.outputs.checklist_changed == 'true'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
@@ -106,9 +106,6 @@ jobs:
           if [ "${{ steps.config_changes.outputs.configs_changed }}" = "true" ]; then
             git add config/
           fi
-          
-          # Add dashboard files
-          git add public/status.txt public/dashboard.html
           
           # Get summary for commit message
           TIMESTAMP=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
