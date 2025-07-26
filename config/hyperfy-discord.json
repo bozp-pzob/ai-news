@@ -88,7 +88,7 @@
             "storage": "SQLiteStorage",
             "summaryType": "hyperfyDiscordSummary",
             "source": "discordRawData",
-            "outputPath": "./output/hyperfy"
+            "outputPath": "./output/hyperfy/summaries"
           }
         }
     ]
