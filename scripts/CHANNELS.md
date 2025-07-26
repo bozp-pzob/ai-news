@@ -25,7 +25,7 @@
 - [x] #💻-coders (1300025221834739744)
 - [ ] #research-and-dev (1392374405606150245) **NEW**
 - [ ] #agent-dev (1395058973509554186) **NEW**
-- [x] #contributor-dev (1379775100915810314)
+- [ ] #contributor-dev (1379775100915810314)
 - [x] #core-devs (1377726087789940836)
 - [ ] #elizaos-github (1377733240449925150) **NEW**
 - [ ] #plugins-github (1377733306594099371) **NEW**
@@ -46,7 +46,7 @@
 **SPARTAN:**
 - [ ] #spartan-dev (1341224194687500402) **NEW**
 - [ ] #spartan-garage (1391840678467862719) **NEW**
-- [x] #spartan-holders (1308149076893630555)
+- [ ] #spartan-holders (1308149076893630555)
 - [ ] #spartan (1353787967340281976) **NEW**
 
 **INTERNATIONAL:**
