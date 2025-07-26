@@ -29,7 +29,7 @@
   "output": {
     "directory": "./public",
     "statusFile": "status.txt",
-    "dashboardFile": "dashboard.html"
+    "dashboardFile": "index.html"
   },
   "monitoring": {
     "workflows": [

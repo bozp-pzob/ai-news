@@ -333,7 +333,7 @@ function generateStatusText(config, channelStats, workflowStatus, fileStatus, ov
     output += `└─ Discord analytics: ${config.monitoring.links.analytics}\n\n`;
     
     // Footer
-    output += `💡 curl ${config.project.homepage}/status.txt\n`;
+    output += `💡 curl ${config.project.homepage}/status.txt  # ai-news\n`;
     
     return output;
 }
@@ -412,7 +412,7 @@ function generateHTMLDashboard(config, textContent) {
         
         <div class="links">
             <strong>Quick Access:</strong><br>
-            <a href="/status.txt" target="_blank">📄 Plain Text Status</a>
+            <a href="${config.project.homepage}/status.txt" target="_blank">📄 Plain Text Status</a>
             <a href="${config.monitoring.links.repository}" target="_blank">🔧 Repository</a>
             <a href="${config.monitoring.links.actions}" target="_blank">⚙️ Workflow Logs</a>
             <a href="${config.monitoring.links.analytics}" target="_blank">📈 Discord Analytics</a>
@@ -420,7 +420,7 @@ function generateHTMLDashboard(config, textContent) {
         
         <div class="footer">
             Auto-refreshes every 5 minutes | Generated: ${now}<br>
-            Terminal access: <code>curl ${config.project.homepage}/status.txt</code>
+            Terminal access: <code>curl ${config.project.homepage}/status.txt  # ai-news</code>
         </div>
     </div>
 </body>
@@ -495,8 +495,8 @@ async function generateDashboard(options = {}) {
         console.log(`   File status: ${fileStatus.length - missingFiles}/${fileStatus.length} files available`);
         
         console.log(`\n💡 Access dashboard:`);
-        console.log(`   curl ${config.project.homepage}/status.txt`);
-        console.log(`   ${config.project.homepage}/dashboard.html`);
+        console.log(`   curl ${config.project.homepage}/status.txt  # ai-news`);
+        console.log(`   ${config.project.homepage}/`);
         
     } catch (error) {
         console.error('❌ Dashboard generation failed:', error.message);
