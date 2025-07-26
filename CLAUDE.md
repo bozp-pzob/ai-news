@@ -30,20 +30,6 @@ npm run discover-channels
 
 # Update configs from checklist
 npm run update-configs
-
-# Generate pipeline dashboard
-npm run dashboard
-
-# View pipeline status (terminal output)
-npm run status
-
-# Run data collection (new portable script)
-npm run collect -- --config=elizaos.json --mode=daily
-npm run collect -- --config=elizaos.json --mode=historical --date=2024-01-15
-
-# Workflow Status
-# Updated workflows: elizaos.yml, discord-raw.yml, channel-discovery.yml
-# Remaining to update: elizaos-dev.yml, hyperfy.yml (same pattern as above)
 ```
 
 ### HTML Frontend (in html/ directory)

@@ -80,18 +80,6 @@
           }
         },
         {
-          "type": "DailySummaryGenerator",
-          "name": "HyperfyDailySummary",
-          "interval": 3600000,
-          "params": {
-            "provider": "summaryOpenAiProvider",
-            "storage": "SQLiteStorage",
-            "summaryType": "hyperfyDailySummary",
-            "outputPath": "./output/hyperfy",
-            "groupBySourceType": true
-          }
-        },
-        {
           "type": "DiscordSummaryGenerator",
           "name": "HyperfyDiscordSummaryGenerator",
           "interval": 3600000,
@@ -100,7 +88,7 @@
             "storage": "SQLiteStorage",
             "summaryType": "hyperfyDiscordSummary",
             "source": "discordRawData",
-            "outputPath": "./output/hyperfy/summaries"
+            "outputPath": "./output/hyperfy"
           }
         }
     ]

@@ -11,8 +11,7 @@
     "discover-channels": "node scripts/discover-channels.js",
     "update-configs": "node scripts/update-configs-from-checklist.js",
     "dashboard": "node scripts/generate-dashboard.js",
-    "status": "node scripts/generate-dashboard.js --dry-run",
-    "collect": "node scripts/run-collection.js"
+    "status": "node scripts/generate-dashboard.js --dry-run"
   },
   "keywords": [
     "news",
