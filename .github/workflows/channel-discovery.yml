@@ -91,6 +91,24 @@ jobs:
           git commit -m "$COMMIT_MSG"
           git push
 
+      - name: Generate pipeline dashboard
+        run: |
+          mkdir -p ./public
+          node scripts/generate-dashboard.js
+        continue-on-error: true
+
+      - name: Deploy dashboard update
+        if: steps.changes.outputs.changes == 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          keep_files: true
+          destination_dir: ./
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: "Update pipeline dashboard after channel discovery"
+
       - name: Summary
         run: |
           if [ -f "scripts/CHANNELS.md" ]; then

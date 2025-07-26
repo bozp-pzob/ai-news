@@ -9,7 +9,9 @@
     "dev": "ts-node src/index.ts",
     "historical": "ts-node src/historical.ts",
     "discover-channels": "node scripts/discover-channels.js",
-    "update-configs": "node scripts/update-configs-from-checklist.js"
+    "update-configs": "node scripts/update-configs-from-checklist.js",
+    "dashboard": "node scripts/generate-dashboard.js",
+    "status": "node scripts/generate-dashboard.js --dry-run"
   },
   "keywords": [
     "news",
