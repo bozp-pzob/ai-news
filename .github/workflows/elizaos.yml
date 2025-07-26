@@ -179,7 +179,7 @@ jobs:
         run: |
           YESTERDAY=${{ steps.date.outputs.YESTERDAY }}
           
-          # Create the target directory structure within ./public
+          # Create target directories
           mkdir -p ./public/data
           mkdir -p ./public/elizaos/discord
 
