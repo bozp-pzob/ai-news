@@ -1,4 +1,4 @@
-name: Hyperfy Daily Data Collection
+name: Hyperfy Discord
 
 on:
   schedule:
