@@ -218,6 +218,11 @@ jobs:
         id: commit_time
         run: echo "COMMIT_DATETIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
 
+      - name: Generate directory listings
+        uses: jayanta525/github-pages-directory-listing@v4.0.0
+        with:
+          FOLDER: ./public
+
       - name: Deploy to gh-pages branch
         id: deployment
         uses: peaceiris/actions-gh-pages@v4
