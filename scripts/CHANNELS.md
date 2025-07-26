@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-07-26 21:19:29 UTC*
+*Updated: 2025-07-26 21:26:01 UTC*
 
 ## 📊 Analytics Reminder
 ⏰ Next analytics review in **28 days** (2025-08-23)
@@ -211,4 +211,4 @@
 
 ## Configuration Summary
 - **elizaos.json**: discordRaw (8 channels)
-- **hyperfy-discord.json**: hyperfyDiscordRaw (7 channels)
+- **hyperfy-discord.json**: hyperfyDiscordRaw (5 channels)
