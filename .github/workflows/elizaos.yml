@@ -208,19 +208,33 @@ jobs:
         id: commit_time
         run: echo "COMMIT_DATETIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
 
-      - name: Generate directory listings
-        uses: jayanta525/github-pages-directory-listing@v4.0.0
-        with:
-          FOLDER: ./public
-
-      - name: Deploy to gh-pages branch
-        id: deployment
+      - name: Deploy to gh-pages branch (data only)
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
           keep_files: true
-          # publish_branch: gh-pages # Default is gh-pages
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
           commit_message: "Update ElizaOS unified data ${{ env.COMMIT_DATETIME }}"
+
+      - name: Checkout gh-pages branch for directory listing
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          clean: false
+
+      - name: Generate directory listings
+        uses: jayanta525/github-pages-directory-listing@v4.0.0
+        with:
+          FOLDER: .
+
+      - name: Deploy final site with directory listings
+        id: deployment
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: "Add directory listings ${{ env.COMMIT_DATETIME }}"
