@@ -138,12 +138,11 @@ jobs:
           user_email: 'github-actions[bot]@users.noreply.github.com'
           commit_message: "Update dashboard files from channel management"
 
-      - name: Checkout gh-pages branch for directory listing
+      - name: Checkout gh-pages branch
         if: steps.checklist_changes.outputs.checklist_changed == 'true'
         uses: actions/checkout@v4
         with:
           ref: gh-pages
-          clean: false
 
       - name: Generate directory listings
         if: steps.checklist_changes.outputs.checklist_changed == 'true'
