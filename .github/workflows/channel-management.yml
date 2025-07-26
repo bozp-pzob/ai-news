@@ -87,6 +87,11 @@ jobs:
             echo "Changes detected in config files"
           fi
 
+      - name: Generate dashboard
+        run: node scripts/generate-dashboard.js
+        env:
+          NODE_ENV: production
+
       - name: Commit and push all changes
         if: steps.checklist_changes.outputs.checklist_changed == 'true'
         run: |
@@ -100,6 +105,9 @@ jobs:
           if [ "${{ steps.config_changes.outputs.configs_changed }}" = "true" ]; then
             git add config/
           fi
+          
+          # Add dashboard files
+          git add public/status.txt public/dashboard.html
           
           # Get summary for commit message
           TIMESTAMP=$(date -u +'%Y-%m-%d %H:%M:%S UTC')

@@ -34,11 +34,8 @@
   "monitoring": {
     "workflows": [
       "elizaos.yml",
-      "channel-discovery.yml", 
-      "elizaos-dev.yml",
-      "discord-raw.yml",
-      "hyperfy.yml",
-      "ai16zdao.yml"
+      "channel-management.yml",
+      "hyperfy.yml"
     ],
     "criticalFiles": [
       "/elizaos/discord/daily.json",

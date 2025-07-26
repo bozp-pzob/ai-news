@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-07-26 20:03:25 UTC*
+*Updated: 2025-07-26 20:10:12 UTC*
 
 ## 📊 Analytics Reminder
 ⏰ Next analytics review in **28 days** (2025-08-23)
@@ -25,7 +25,7 @@
 - [x] #💻-coders (1300025221834739744)
 - [ ] #research-and-dev (1392374405606150245) **NEW**
 - [ ] #agent-dev (1395058973509554186) **NEW**
-- [ ] #contributor-dev (1379775100915810314) **NEW**
+- [x] #contributor-dev (1379775100915810314) **NEW**
 - [x] #core-devs (1377726087789940836)
 - [ ] #elizaos-github (1377733240449925150) **NEW**
 - [ ] #plugins-github (1377733306594099371) **NEW**
@@ -79,9 +79,9 @@
 **ARCHIVES:**
 - [ ] #2x-yaps (1389507912191184998) **NEW**
 - [ ] #dev (1379823781769646150) **NEW**
-- [x] #fun-support (1362864274862768450)
-- [x] #3d-ai-tv (1313222089271939102)
-- [x] #ideas-feedback-rants (1300756641406521416)
+- [ ] #fun-support (1362864274862768450)
+- [ ] #3d-ai-tv (1313222089271939102)
+- [ ] #ideas-feedback-rants (1300756641406521416)
 - [ ] #whitepaper-workgroup (1322726527569367060) **NEW**
 - [ ] #ai16zpartners-nft (1309997512563626106) **NEW**
 - [ ] #swarms-workgroup (1317335245401362513) **NEW**
@@ -126,7 +126,7 @@
 - [ ] #core-devs-archived (1318117081215930459) **NEW**
 
 **ARCHIVES-2:**
-- [x] #twitter-ai-news (1326603270893867064)
+- [ ] #twitter-ai-news (1326603270893867064)
 - [ ] #verification (1307886303794298880) **NEW**
 - [ ] #pmairca (1308606967089991720) **NEW**
 - [ ] #elizacon (1321693385635139647) **NEW**
@@ -210,8 +210,5 @@
 - [ ] #🎮│sneak-peek (978565225143996436) **NEW**
 
 ## Configuration Summary
-- **ai16zdao.json**: discordChannel (1 channels)
-- **ai16zdao.json**: discordAnnouncement (1 channels)
-- **discord-raw.json**: discordRaw (12 channels)
 - **elizaos.json**: discordRaw (12 channels)
 - **hyperfy-discord.json**: hyperfyDiscordRaw (7 channels)
