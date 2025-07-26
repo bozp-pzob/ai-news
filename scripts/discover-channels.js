@@ -68,7 +68,16 @@ async function getDiscordConfigs() {
         for (const source of discordSources) {
             const guildId = resolveEnvVar(source.params?.guildId) || process.env.DISCORD_GUILD_ID;
             const botToken = resolveEnvVar(source.params?.botToken) || process.env.DISCORD_TOKEN;
+            
+            console.log(`🔍 Checking Discord source in ${file}:`);
+            console.log(`   Source: ${source.name} (${source.type})`);
+            console.log(`   Guild ID env var: ${source.params?.guildId}`);
+            console.log(`   Guild ID resolved: ${guildId ? 'YES' : 'NO'}`);
+            console.log(`   Bot Token env var: ${source.params?.botToken}`);
+            console.log(`   Bot Token resolved: ${botToken ? 'YES' : 'NO'}`);
+            
             if (guildId && botToken) {
+                console.log(`✅ Adding Discord config: ${source.name}`);
                 discordConfigs.push({
                     configFile: file,
                     sourceName: source.name,
@@ -77,6 +86,8 @@ async function getDiscordConfigs() {
                     channelIds: source.params?.channelIds || [],
                     type: source.type
                 });
+            } else {
+                console.log(`❌ Skipping Discord config: ${source.name} (missing ${!guildId ? 'guildId' : 'botToken'})`);
             }
         }
     }
