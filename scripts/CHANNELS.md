@@ -1,10 +1,15 @@
 # Discord Channel Tracking Status
-*Updated: 2025-07-05 06:23:39 UTC*
+*Updated: 2025-07-26 19:54:22 UTC*
 
 ## 📊 Analytics Reminder
-⏰ Next analytics review in **7 days** (2025-07-12)
+🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
 
-📈 [Discord Analytics](https://discord.com/developers/servers/1253563208833433701/analytics/engagement) | Review channel activity every 28 days
+📈 **Action Required**: Review channel activity and consider removing inactive channels:
+- [Discord Server Analytics](https://discord.com/developers/servers/1253563208833433701/analytics/engagement)
+- Look for channels with 0-5 messages in the last 28 days
+- Consider unchecking low-activity channels to reduce noise
+
+Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
 **Total Channels**: 102 | **Currently Tracking**: 10 | **New Channels**: 92
@@ -22,43 +27,32 @@
 - [ ] #waiting-room (1361911608841994402) **NEW**
 
 **DEV:**
-- [ ] #core-devs (1377726087789940836) **NEW**
-- [ ] #v3-yaps (1389507912191184998) **NEW**
+- [x] #💻-coders (1300025221834739744)
+- [ ] #research-and-dev (1392374405606150245) **NEW**
+- [ ] #agent-dev (1395058973509554186) **NEW**
 - [ ] #contributor-dev (1379775100915810314) **NEW**
-- [ ] #agent-dev (1379823781769646150) **NEW**
-- [x] #💻-tech-support (1300025221834739744)
-- [ ] #spartan-dev (1341224194687500402) **NEW**
+- [ ] #core-devs (1377726087789940836) **NEW**
 - [ ] #elizaos-github (1377733240449925150) **NEW**
 - [ ] #plugins-github (1377733306594099371) **NEW**
 
 **THE ARENA:**
 - [x] #discussion (1253563209462448241)
+- [ ] #watchtower (1300480482466861147) **NEW**
 - [ ] #🤖-the-arena (1285105813349859421) **NEW**
-- [ ] #memes-and-marketing (1299956148253884416) **NEW**
+- [ ] #content-and-memes (1299956148253884416) **NEW**
 - [ ] #・☣-price-talk-trenches (1299989396874854440) **NEW**
 - [ ] #scarletts-office (1329595287727247422) **NEW**
-- [ ] #twitter (1300480482466861147) **NEW**
-- [x] #ideas-feedback-rants (1300756641406521416)
-- [x] #twitter-ai-news (1326603270893867064)
 - [ ] #⭐-starboard (1303039409494429696) **NEW**
-- [x] #spartan_holders (1308149076893630555)
-- [ ] #spartan (1353787967340281976) **NEW**
 
 **AUTO.FUN:**
 - [x] #fun (1361442528813121556)
 - [ ] #tweets (1361523520676560997) **NEW**
 
-**DAO Zone:**
-- [x] #associates (1328592959444095038)
-- [x] #🥇-partners (1301363808421543988)
-- [ ] #alphai16z (1310042950507430019) **NEW**
-- [ ] #what-i-did (1309395998870605844) **NEW**
-
-**PARTNER WORKGROUPS:**
-- [ ] #ops (1308770075389460602) **NEW**
-- [x] #3d-ai-tv (1313222089271939102)
-- [ ] #vanguard (1318770424632311930) **NEW**
-- [ ] #dao-organization (1351627860351258685) **NEW**
+**SPARTAN:**
+- [ ] #spartan-dev (1341224194687500402) **NEW**
+- [ ] #spartan-garage (1391840678467862719) **NEW**
+- [x] #spartan-holders (1308149076893630555)
+- [ ] #spartan (1353787967340281976) **NEW**
 
 **INTERNATIONAL:**
 - [ ] #中文频道 (1303194468949950504) **NEW**
@@ -67,20 +61,32 @@
 - [ ] #olá (1311068861860282460) **NEW**
 - [ ] #french (1323124707452784761) **NEW**
 
+**DAO Zone:**
+- [x] #🥇-partners (1301363808421543988)
+- [ ] #alphai16z (1310042950507430019) **NEW**
+- [x] #associates (1328592959444095038)
+- [ ] #what-i-did (1309395998870605844) **NEW**
+
+**PARTNER WORKGROUPS:**
+- [ ] #ops (1308770075389460602) **NEW**
+- [ ] #vanguard (1318770424632311930) **NEW**
+- [ ] #dao-organization (1351627860351258685) **NEW**
+
 **COMMUNITY WORKGROUPS:**
 - [ ] #workgroups-general (1310291767341486101) **NEW**
 - [ ] #merch (1310750968606101575) **NEW**
 - [ ] #partner-portal-workgroup (1327141924183998555) **NEW**
 - [ ] #platform (1312134919325220947) **NEW**
 - [ ] #elizaos-testers (1372559034384646144) **NEW**
-- [ ] #the-intern-testers (1377927328533053500) **NEW**
-- [ ] #aiquant-partners (1377688244430569556) **NEW**
-- [ ] #spartan-testers (1389296981482143945) **NEW**
+- [ ] #kudo-testers (1393225591540416693) **NEW**
 - [ ] #country-leads (1389897960736690338) **NEW**
-- [ ] #optics-comms (1390352286839996516) **NEW**
 
 **ARCHIVES:**
+- [ ] #2x-yaps (1389507912191184998) **NEW**
+- [ ] #dev (1379823781769646150) **NEW**
 - [x] #fun-support (1362864274862768450)
+- [x] #3d-ai-tv (1313222089271939102)
+- [x] #ideas-feedback-rants (1300756641406521416)
 - [ ] #whitepaper-workgroup (1322726527569367060) **NEW**
 - [ ] #ai16zpartners-nft (1309997512563626106) **NEW**
 - [ ] #swarms-workgroup (1317335245401362513) **NEW**
@@ -125,6 +131,7 @@
 - [ ] #core-devs-archived (1318117081215930459) **NEW**
 
 **ARCHIVES-2:**
+- [x] #twitter-ai-news (1326603270893867064)
 - [ ] #verification (1307886303794298880) **NEW**
 - [ ] #pmairca (1308606967089991720) **NEW**
 - [ ] #elizacon (1321693385635139647) **NEW**
@@ -208,5 +215,9 @@
 - [ ] #🎮│sneak-peek (978565225143996436) **NEW**
 
 ## Configuration Summary
+- **ai16zdao.json**: discordChannel (1 channels)
+- **ai16zdao.json**: discordAnnouncement (1 channels)
+- **discord-raw.json**: discordRaw (10 channels)
+- **elizaos-dev.json**: elizaosDevRaw (5 channels)
 - **elizaos.json**: discordRaw (11 channels)
 - **hyperfy-discord.json**: hyperfyDiscordRaw (7 channels)

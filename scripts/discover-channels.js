@@ -52,12 +52,18 @@ async function getDiscordConfigs() {
         const config = await loadConfig(path.join(CONFIG_DIR, file));
         if (!config) continue;
 
+        // Skip non-pipeline config files
+        if (!Array.isArray(config.sources)) {
+            console.log(`⏭️  Skipping ${file} (not a pipeline config)`);
+            continue;
+        }
+
         // Find Discord sources in this config
-        const discordSources = config.sources?.filter(source => 
+        const discordSources = config.sources.filter(source => 
             source.type === 'DiscordRawDataSource' || 
             source.type === 'DiscordChannelSource' ||
             source.type === 'DiscordAnnouncementSource'
-        ) || [];
+        );
 
         for (const source of discordSources) {
             const guildId = resolveEnvVar(source.params?.guildId) || process.env.DISCORD_GUILD_ID;
