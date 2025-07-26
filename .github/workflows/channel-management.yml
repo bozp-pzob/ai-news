@@ -127,6 +127,40 @@ jobs:
           git commit -m "$COMMIT_MSG"
           git push
 
+      - name: Deploy dashboard to gh-pages (data only)
+        if: steps.checklist_changes.outputs.checklist_changed == 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          keep_files: true
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: "Update dashboard files from channel management"
+
+      - name: Checkout gh-pages branch for directory listing
+        if: steps.checklist_changes.outputs.checklist_changed == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          clean: false
+
+      - name: Generate directory listings
+        if: steps.checklist_changes.outputs.checklist_changed == 'true'
+        uses: jayanta525/github-pages-directory-listing@v4.0.0
+        with:
+          FOLDER: .
+
+      - name: Deploy final site with directory listings
+        if: steps.checklist_changes.outputs.checklist_changed == 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: "Add directory listings from channel management"
+
       - name: Summary
         run: |
           if [ -f "scripts/CHANNELS.md" ]; then
@@ -146,6 +180,10 @@ jobs:
             
             if [ "$NEW" != "0" ] && [ "$NEW" != "unknown" ]; then
               echo "⚠️  Action required: ${NEW} new channels found that are not being tracked"
+            fi
+            
+            if [ "${{ steps.checklist_changes.outputs.checklist_changed }}" = "true" ]; then
+              echo "📊 Dashboard files deployed to gh-pages"
             fi
           else
             echo "❌ Channel discovery failed - no checklist generated"
