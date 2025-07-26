@@ -8,6 +8,7 @@ on:
 
 jobs:
   manage-channels:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:
       contents: write # Needed to commit the updated checklist and configs
@@ -47,7 +48,7 @@ jobs:
           rm env_secrets.json env_vars.txt
 
       - name: Install dependencies
-        run: npm install discord.js dotenv
+        run: npm install
 
       - name: Run channel discovery
         run: node scripts/discover-channels.js
@@ -127,7 +128,7 @@ jobs:
           git commit -m "$COMMIT_MSG"
           git push
 
-      - name: Deploy dashboard to gh-pages (data only)
+      - name: Deploy dashboard to gh-pages
         if: steps.checklist_changes.outputs.checklist_changed == 'true'
         uses: peaceiris/actions-gh-pages@v4
         with:
@@ -138,27 +139,6 @@ jobs:
           user_email: 'github-actions[bot]@users.noreply.github.com'
           commit_message: "Update dashboard files from channel management"
 
-      - name: Checkout gh-pages branch
-        if: steps.checklist_changes.outputs.checklist_changed == 'true'
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-
-      - name: Generate directory listings
-        if: steps.checklist_changes.outputs.checklist_changed == 'true'
-        uses: jayanta525/github-pages-directory-listing@v4.0.0
-        with:
-          FOLDER: .
-
-      - name: Deploy final site with directory listings
-        if: steps.checklist_changes.outputs.checklist_changed == 'true'
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: .
-          user_name: 'github-actions[bot]'
-          user_email: 'github-actions[bot]@users.noreply.github.com'
-          commit_message: "Add directory listings from channel management"
 
       - name: Summary
         run: |
