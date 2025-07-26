@@ -28,7 +28,7 @@ jobs:
       pages: write      # Needed for gh-pages deployment
       id-token: write   # Needed for gh-pages deployment
     environment:
-      name: gh-pages
+      name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
@@ -232,6 +232,11 @@ jobs:
       - name: Get current timestamp for commit message
         id: commit_time
         run: echo "COMMIT_DATETIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
+
+      - name: Generate directory listings
+        uses: jayanta525/github-pages-directory-listing@v4.0.0
+        with:
+          FOLDER: ./public
 
       - name: Deploy to gh-pages branch
         id: deployment
