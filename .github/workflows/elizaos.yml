@@ -133,21 +133,20 @@ jobs:
 
       - name: Run historical generation
         run: |
+          # Build command dynamically
+          CMD="npm run historical -- --source=elizaos.json --output=./output"
+          
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ -n "${{ inputs.after_date }}" ] && [ -n "${{ inputs.before_date }}" ]; then
-              npm run historical -- --source=elizaos.json --after=${{ inputs.after_date }} --before=${{ inputs.before_date }} --output=./output
-            elif [ -n "${{ inputs.after_date }}" ]; then
-              npm run historical -- --source=elizaos.json --after=${{ inputs.after_date }} --output=./output
-            elif [ -n "${{ inputs.before_date }}" ]; then
-              npm run historical -- --source=elizaos.json --before=${{ inputs.before_date }} --output=./output
-            else
-              # Default to yesterday if no date inputs provided for manual run
-              npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output
-            fi
+            [ -n "${{ inputs.after_date }}" ] && CMD="$CMD --after=${{ inputs.after_date }}"
+            [ -n "${{ inputs.before_date }}" ] && CMD="$CMD --before=${{ inputs.before_date }}"
+            # Use yesterday if no dates provided
+            [ -z "${{ inputs.after_date }}" ] && [ -z "${{ inputs.before_date }}" ] && CMD="$CMD --date=${{ steps.date.outputs.YESTERDAY }}"
           else
-            # Scheduled run uses yesterday's date
-            npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --output=./output
+            CMD="$CMD --date=${{ steps.date.outputs.YESTERDAY }}"
           fi
+          
+          echo "Running: $CMD"
+          eval $CMD
         env:
           RUN_ONCE: true
           NODE_ENV: production
@@ -157,74 +156,50 @@ jobs:
         env:
           SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
         run: |
-          if [ -f "data/elizaos.sqlite" ]; then
-            if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
-              echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."
-              exit 1
-            fi
-            echo "Encrypting data/elizaos.sqlite..."
-            openssl enc -aes-256-cbc -salt -pbkdf2 -in data/elizaos.sqlite -out data/elizaos.sqlite.enc -k "$SQLITE_ENCRYPTION_KEY"
-            if [ $? -ne 0 ]; then
-              echo "Error: Encryption failed."
-              exit 1
-            fi
-            echo "Encryption successful."
-            # Remove the original unencrypted file after successful encryption
-            rm data/elizaos.sqlite
-          else
-            echo "No elizaos.sqlite found to encrypt."
-          fi
+          DB_FILE="data/elizaos.sqlite"
+          
+          [ ! -f "$DB_FILE" ] && { echo "No $DB_FILE found to encrypt."; exit 0; }
+          [ -z "$SQLITE_ENCRYPTION_KEY" ] && { echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."; exit 1; }
+          
+          echo "Encrypting $DB_FILE..."
+          openssl enc -aes-256-cbc -salt -pbkdf2 -in "$DB_FILE" -out "${DB_FILE}.enc" -k "$SQLITE_ENCRYPTION_KEY" || {
+            echo "Error: Encryption failed."
+            exit 1
+          }
+          
+          echo "Encryption successful."
+          rm "$DB_FILE"
 
       - name: Prepare files for deployment
         run: |
           YESTERDAY=${{ steps.date.outputs.YESTERDAY }}
           
-          # Create the target directory structure within ./public
-          mkdir -p ./public/data
-          mkdir -p ./public/elizaos/discord
-
-          # Copy the encrypted database
-          if [ -f "data/elizaos.sqlite.enc" ]; then
-            echo "Copying encrypted elizaos.sqlite.enc to ./public/data/"
-            cp data/elizaos.sqlite.enc ./public/data/
-          else
-             echo "No encrypted elizaos.sqlite.enc found locally to copy."
-          fi
-
-          # Copy Discord summaries
-          echo "Copying Discord summaries to ./public/elizaos/discord"
-          cp -r output/discord/summaries/* ./public/elizaos/discord/ 2>/dev/null || echo "No Discord summary files to copy."
-
-          # Copy ElizaOS daily summaries  
-          echo "Copying ElizaOS daily summaries to ./public/elizaos/daily"
-          cp -r output/elizaos/* ./public/elizaos/ 2>/dev/null || echo "No ElizaOS daily summary files to copy."
-
-          # Create daily.json for Discord summaries
-          JSON_FILE="output/discord/summaries/${YESTERDAY}.json"
-          if [ -f "$JSON_FILE" ]; then
-            echo "Copying $JSON_FILE to ./public/elizaos/discord/daily.json"
-            cp "$JSON_FILE" ./public/elizaos/discord/daily.json
-          else
-            echo "Warning: Yesterday's Discord JSON summary ($JSON_FILE) not found."
-          fi
+          # Helper function for conditional file copying
+          copy_if_exists() {
+            local src="$1" dest="$2" desc="$3"
+            if [ -f "$src" ]; then
+              echo "Copying $desc: $src -> $dest"
+              mkdir -p "$(dirname "$dest")"
+              cp "$src" "$dest"
+            else
+              echo "Warning: $desc not found: $src"
+            fi
+          }
           
-          # Create daily.md for Discord summaries
-          MD_FILE="output/discord/summaries/${YESTERDAY}.md"
-          if [ -f "$MD_FILE" ]; then
-            echo "Copying $MD_FILE to ./public/elizaos/discord/daily.md"
-            cp "$MD_FILE" ./public/elizaos/discord/daily.md
-          else
-            echo "Warning: Yesterday's Discord MD summary ($MD_FILE) not found."
-          fi
-
-          # Create daily.json for ElizaOS daily summaries
-          ELIZAOS_JSON="output/elizaos/${YESTERDAY}.json"
-          if [ -f "$ELIZAOS_JSON" ]; then
-            echo "Copying $ELIZAOS_JSON to ./public/elizaos/json/daily.json"
-            cp "$ELIZAOS_JSON" ./public/elizaos/json/daily.json
-          else
-            echo "Warning: Yesterday's ElizaOS daily JSON ($ELIZAOS_JSON) not found."
-          fi
+          # Setup directories and copy files
+          mkdir -p ./public/data ./public/elizaos/discord
+          copy_if_exists "data/elizaos.sqlite.enc" "./public/data/elizaos.sqlite.enc" "encrypted database"
+          
+          # Copy summary directories
+          echo "Copying Discord summaries"
+          cp -r output/discord/summaries/* ./public/elizaos/discord/ 2>/dev/null || echo "No Discord summary files to copy."
+          echo "Copying ElizaOS daily summaries"
+          cp -r output/elizaos/* ./public/elizaos/ 2>/dev/null || echo "No ElizaOS daily summary files to copy."
+          
+          # Create daily files
+          copy_if_exists "output/discord/summaries/${YESTERDAY}.json" "./public/elizaos/discord/daily.json" "Discord daily JSON"
+          copy_if_exists "output/discord/summaries/${YESTERDAY}.md" "./public/elizaos/discord/daily.md" "Discord daily MD"
+          copy_if_exists "output/elizaos/${YESTERDAY}.json" "./public/elizaos/json/daily.json" "ElizaOS daily JSON"
 
       - name: Validate JSON files
         run: find ./public/elizaos -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
