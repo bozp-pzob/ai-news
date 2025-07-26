@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-07-26 21:26:01 UTC*
+*Updated: 2025-07-26 22:34:30 UTC*
 
 ## 📊 Analytics Reminder
 ⏰ Next analytics review in **28 days** (2025-08-23)
@@ -7,7 +7,7 @@
 📈 [Discord Analytics](https://discord.com/developers/servers/1253563208833433701/analytics/engagement) | Review channel activity every 28 days
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 102 | **Currently Tracking**: 8 | **New Channels**: 94
+**Total Channels**: 102 | **Currently Tracking**: 6 | **New Channels**: 96
 
 ### Channels
 - [ ] #rules-and-faq (1285103549944168450) **NEW**
@@ -25,7 +25,7 @@
 - [x] #💻-coders (1300025221834739744)
 - [ ] #research-and-dev (1392374405606150245) **NEW**
 - [ ] #agent-dev (1395058973509554186) **NEW**
-- [ ] #contributor-dev (1379775100915810314)
+- [ ] #contributor-dev (1379775100915810314) **NEW**
 - [x] #core-devs (1377726087789940836)
 - [ ] #elizaos-github (1377733240449925150) **NEW**
 - [ ] #plugins-github (1377733306594099371) **NEW**
@@ -46,7 +46,7 @@
 **SPARTAN:**
 - [ ] #spartan-dev (1341224194687500402) **NEW**
 - [ ] #spartan-garage (1391840678467862719) **NEW**
-- [ ] #spartan-holders (1308149076893630555)
+- [ ] #spartan-holders (1308149076893630555) **NEW**
 - [ ] #spartan (1353787967340281976) **NEW**
 
 **INTERNATIONAL:**
@@ -210,5 +210,5 @@
 - [ ] #🎮│sneak-peek (978565225143996436) **NEW**
 
 ## Configuration Summary
-- **elizaos.json**: discordRaw (8 channels)
+- **elizaos.json**: discordRaw (6 channels)
 - **hyperfy-discord.json**: hyperfyDiscordRaw (5 channels)
