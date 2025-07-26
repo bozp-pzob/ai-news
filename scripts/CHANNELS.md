@@ -1,18 +1,13 @@
 # Discord Channel Tracking Status
-*Updated: 2025-07-26 19:54:22 UTC*
+*Updated: 2025-07-26 20:03:25 UTC*
 
 ## 📊 Analytics Reminder
-🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
+⏰ Next analytics review in **28 days** (2025-08-23)
 
-📈 **Action Required**: Review channel activity and consider removing inactive channels:
-- [Discord Server Analytics](https://discord.com/developers/servers/1253563208833433701/analytics/engagement)
-- Look for channels with 0-5 messages in the last 28 days
-- Consider unchecking low-activity channels to reduce noise
-
-Analytics timer will reset when you update configs (run `npm run update-configs`).
+📈 [Discord Analytics](https://discord.com/developers/servers/1253563208833433701/analytics/engagement) | Review channel activity every 28 days
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 102 | **Currently Tracking**: 10 | **New Channels**: 92
+**Total Channels**: 102 | **Currently Tracking**: 11 | **New Channels**: 91
 
 ### Channels
 - [ ] #rules-and-faq (1285103549944168450) **NEW**
@@ -31,7 +26,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #research-and-dev (1392374405606150245) **NEW**
 - [ ] #agent-dev (1395058973509554186) **NEW**
 - [ ] #contributor-dev (1379775100915810314) **NEW**
-- [ ] #core-devs (1377726087789940836) **NEW**
+- [x] #core-devs (1377726087789940836)
 - [ ] #elizaos-github (1377733240449925150) **NEW**
 - [ ] #plugins-github (1377733306594099371) **NEW**
 
@@ -217,7 +212,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 ## Configuration Summary
 - **ai16zdao.json**: discordChannel (1 channels)
 - **ai16zdao.json**: discordAnnouncement (1 channels)
-- **discord-raw.json**: discordRaw (10 channels)
-- **elizaos-dev.json**: elizaosDevRaw (5 channels)
-- **elizaos.json**: discordRaw (11 channels)
+- **discord-raw.json**: discordRaw (12 channels)
+- **elizaos.json**: discordRaw (12 channels)
 - **hyperfy-discord.json**: hyperfyDiscordRaw (7 channels)

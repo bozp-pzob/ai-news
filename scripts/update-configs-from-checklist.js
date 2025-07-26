@@ -93,7 +93,7 @@ async function getDiscordSourceMap() {
         if (!file.endsWith('.json')) continue;
         
         const config = await loadConfig(path.join(CONFIG_DIR, file));
-        if (!config || !config.sources) continue;
+        if (!config || !Array.isArray(config.sources)) continue;
         
         for (const source of config.sources) {
             if (source.type === 'DiscordRawDataSource' || 
