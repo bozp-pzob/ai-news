@@ -22,7 +22,7 @@ jobs:
       pages: write
       id-token: write
     environment:
-      name: gh-pages
+      name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout gh-pages branch

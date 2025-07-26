@@ -28,7 +28,7 @@ jobs:
       pages: write      # Needed for gh-pages deployment
       id-token: write   # Needed for gh-pages deployment
     environment:
-      name: gh-pages
+      name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout code
