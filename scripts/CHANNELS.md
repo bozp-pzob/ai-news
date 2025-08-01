@@ -1,13 +1,13 @@
 # Discord Channel Tracking Status
-*Updated: 2025-07-31 06:37:46 UTC*
+*Updated: 2025-08-01 06:39:06 UTC*
 
 ## 📊 Analytics Reminder
-⏰ Next analytics review in **24 days** (2025-08-23)
+⏰ Next analytics review in **23 days** (2025-08-23)
 
 📈 [Discord Analytics](https://discord.com/developers/servers/1253563208833433701/analytics/engagement) | Review channel activity every 28 days
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 102 | **Currently Tracking**: 6 | **New Channels**: 96
+**Total Channels**: 104 | **Currently Tracking**: 6 | **New Channels**: 98
 
 ### Channels
 - [ ] #rules-and-faq (1285103549944168450) **NEW**
@@ -55,6 +55,8 @@
 - [ ] #안녕하세요 (1311068612970152026) **NEW**
 - [ ] #olá (1311068861860282460) **NEW**
 - [ ] #french (1323124707452784761) **NEW**
+- [ ] #italiano (1400432884711428197) **NEW**
+- [ ] #भारत (1400485325372919900) **NEW**
 
 **DAO Zone:**
 - [x] #🥇-partners (1301363808421543988)
@@ -64,14 +66,11 @@
 
 **PARTNER WORKGROUPS:**
 - [ ] #ops (1308770075389460602) **NEW**
-- [ ] #vanguard (1318770424632311930) **NEW**
 - [ ] #dao-organization (1351627860351258685) **NEW**
 
 **COMMUNITY WORKGROUPS:**
-- [ ] #workgroups-general (1310291767341486101) **NEW**
-- [ ] #merch (1310750968606101575) **NEW**
 - [ ] #partner-portal-workgroup (1327141924183998555) **NEW**
-- [ ] #platform (1312134919325220947) **NEW**
+- [ ] #workgroups-general (1310291767341486101) **NEW**
 - [ ] #elizaos-testers (1372559034384646144) **NEW**
 - [ ] #kudo-testers (1393225591540416693) **NEW**
 - [ ] #country-leads (1389897960736690338) **NEW**
@@ -126,7 +125,10 @@
 - [ ] #core-devs-archived (1318117081215930459) **NEW**
 
 **ARCHIVES-2:**
+- [ ] #platform (1312134919325220947) **NEW**
+- [ ] #merch (1310750968606101575) **NEW**
 - [ ] #twitter-ai-news (1326603270893867064) **NEW**
+- [ ] #vanguard (1318770424632311930) **NEW**
 - [ ] #verification (1307886303794298880) **NEW**
 - [ ] #pmairca (1308606967089991720) **NEW**
 - [ ] #elizacon (1321693385635139647) **NEW**
