@@ -1,8 +1,8 @@
 # Discord Channel Tracking Status
-*Updated: 2025-08-06 06:39:33 UTC*
+*Updated: 2025-08-07 06:39:26 UTC*
 
 ## 📊 Analytics Reminder
-⏰ Next analytics review in **18 days** (2025-08-23)
+⏰ Next analytics review in **17 days** (2025-08-23)
 
 📈 [Discord Analytics](https://discord.com/developers/servers/1253563208833433701/analytics/engagement) | Review channel activity every 28 days
 
@@ -145,24 +145,29 @@
 - [ ] #🎟│roles (1328543983776825385) **NEW**
 - [ ] #❓│faq (1336620320748212224) **NEW**
 
+**Platform:**
+- [x] #⚡│general (958209074045026327)
+- [x] #🪙│hyper (1326789867312775290)
+- [ ] #🌆│share (999870741069692958) **NEW**
+- [ ] #🐞│issues (1022421054582423562) **NEW**
+- [ ] #🐋│hyperflyers (1329878804847657112) **NEW**
+- [ ] #mod-chat (1326253137119412285) **NEW**
+
 **Creators:**
 - [x] #💻│developers (994775534733115412)
 - [x] #🧊│3d-design (1031058655581323324)
 - [x] #🤖│agents (1330373197203505185)
 - [ ] #🏗│infra (1332108186676891649) **NEW**
 
-**Platform:**
-- [x] #⚡│general (958209074045026327)
-- [x] #🪙│hyper (1326789867312775290)
-- [ ] #🌆│share (999870741069692958) **NEW**
-- [ ] #🐞│issues (1022421054582423562) **NEW**
-
 **Worlds:**
 - [ ] #play-world (1350288455686684807) **NEW**
 - [ ] #fallen (1359000060632760350) **NEW**
 - [ ] #roustan-xyz (1372371596777619538) **NEW**
 
-**workgroups:**
+**Legacy:**
+- [ ] #🌎│world-holders (1012527849024004167) **NEW**
+
+**Workgroups:**
 - [ ] #ai-docs (1347640847268839577) **NEW**
 - [ ] #webxr (1335092220092747866) **NEW**
 - [ ] #hypkg (1341570403071561794) **NEW**
@@ -172,16 +177,7 @@
 - [ ] #marketing-content (1326972552442023936) **NEW**
 - [ ] #hypercity-race (1353070357354909786) **NEW**
 
-**Hyperflyers:**
-- [ ] #🐋│size-chat (1329878804847657112) **NEW**
-
-**Guild:**
-- [ ] #🌎│world-holders (1012527849024004167) **NEW**
-
-**mods:**
-- [ ] #mod-chat (1326253137119412285) **NEW**
-
-**guardians:**
+**Guardians:**
 - [ ] #new-world-events (1119599520381153400) **NEW**
 - [ ] #admin (958212042274250763) **NEW**
 - [ ] #important (1016487103531601931) **NEW**
@@ -193,7 +189,7 @@
 - [ ] #missed-airdrop (1328355364646813706) **NEW**
 - [ ] #automod (1244795824395915327) **NEW**
 
-**archived:**
+**Archived:**
 - [ ] #homebuild (1339961989111480362) **NEW**
 - [ ] #🎨│designers (1041682911348404284) **NEW**
 - [ ] #rules (958212042274250762) **NEW**
