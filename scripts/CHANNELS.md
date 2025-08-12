@@ -1,8 +1,8 @@
 # Discord Channel Tracking Status
-*Updated: 2025-08-11 06:39:03 UTC*
+*Updated: 2025-08-12 06:35:56 UTC*
 
 ## 📊 Analytics Reminder
-⏰ Next analytics review in **13 days** (2025-08-23)
+⏰ Next analytics review in **12 days** (2025-08-23)
 
 📈 [Discord Analytics](https://discord.com/developers/servers/1253563208833433701/analytics/engagement) | Review channel activity every 28 days
 
@@ -37,11 +37,9 @@
 - [ ] #content-and-memes (1299956148253884416) **NEW**
 - [ ] #price-talk-trenches (1299989396874854440) **NEW**
 - [ ] #scarletts-office (1329595287727247422) **NEW**
-- [ ] #⭐-starboard (1303039409494429696) **NEW**
 
 **AUTO.FUN:**
 - [x] #fun (1361442528813121556)
-- [ ] #tweets (1361523520676560997) **NEW**
 
 **SPARTAN:**
 - [ ] #spartan-dev (1341224194687500402) **NEW**
@@ -125,6 +123,8 @@
 - [ ] #core-devs-archived (1318117081215930459) **NEW**
 
 **ARCHIVES-2:**
+- [ ] #tweets (1361523520676560997) **NEW**
+- [ ] #⭐-starboard (1303039409494429696) **NEW**
 - [ ] #platform (1312134919325220947) **NEW**
 - [ ] #merch (1310750968606101575) **NEW**
 - [ ] #twitter-ai-news (1326603270893867064) **NEW**
