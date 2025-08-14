@@ -1,13 +1,13 @@
 # Discord Channel Tracking Status
-*Updated: 2025-08-13 06:36:11 UTC*
+*Updated: 2025-08-14 06:36:27 UTC*
 
 ## 📊 Analytics Reminder
-⏰ Next analytics review in **11 days** (2025-08-23)
+⏰ Next analytics review in **10 days** (2025-08-23)
 
 📈 [Discord Analytics](https://discord.com/developers/servers/1253563208833433701/analytics/engagement) | Review channel activity every 28 days
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 104 | **Currently Tracking**: 6 | **New Channels**: 98
+**Total Channels**: 105 | **Currently Tracking**: 6 | **New Channels**: 99
 
 ### Channels
 - [ ] #rules-and-faq (1285103549944168450) **NEW**
@@ -27,6 +27,7 @@
 - [ ] #agent-dev (1395058973509554186) **NEW**
 - [ ] #contributor-dev (1379775100915810314) **NEW**
 - [x] #core-devs (1377726087789940836)
+- [ ] #2x-yaps (1389507912191184998) **NEW**
 - [ ] #elizaos-github (1377733240449925150) **NEW**
 - [ ] #plugins-github (1377733306594099371) **NEW**
 
@@ -46,6 +47,9 @@
 - [ ] #spartan-garage (1391840678467862719) **NEW**
 - [ ] #spartan-holders (1308149076893630555) **NEW**
 - [ ] #spartan (1353787967340281976) **NEW**
+
+**Agents:**
+- [ ] #base-agent (1405275024360996904) **NEW**
 
 **INTERNATIONAL:**
 - [ ] #中文频道 (1303194468949950504) **NEW**
@@ -74,7 +78,6 @@
 - [ ] #country-leads (1389897960736690338) **NEW**
 
 **ARCHIVES:**
-- [ ] #2x-yaps (1389507912191184998) **NEW**
 - [ ] #dev (1379823781769646150) **NEW**
 - [ ] #fun-support (1362864274862768450) **NEW**
 - [ ] #3d-ai-tv (1313222089271939102) **NEW**
