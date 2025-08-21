@@ -1,12 +1,12 @@
 # Discord Channel Tracking Status
-*Updated: 2025-08-20 06:34:44 UTC*
+*Updated: 2025-08-21 06:42:53 UTC*
 
 ## 📊 Analytics Reminder
-⏰ Next analytics review in **4 days** (2025-08-23)
+⏰ Next analytics review in **3 days** (2025-08-23)
 
 📈 [Discord Analytics](https://discord.com/developers/servers/1253563208833433701/analytics/engagement) | Review channel activity every 28 days
 
-## elizaOS (1253563208833433701)
+## undefined (1253563208833433701)
 **Total Channels**: 105 | **Currently Tracking**: 6 | **New Channels**: 99
 
 ### Channels
@@ -62,7 +62,7 @@
 
 **DAO Zone:**
 - [x] #🥇-partners (1301363808421543988)
-- [ ] #vanguard (1407454986090184795) **NEW**
+- [ ] #vanguard (1407710505258319955) **NEW**
 - [ ] #alphai16z (1310042950507430019) **NEW**
 - [x] #associates (1328592959444095038)
 - [ ] #what-i-did (1309395998870605844) **NEW**
@@ -76,7 +76,7 @@
 - [ ] #workgroups-general (1310291767341486101) **NEW**
 - [ ] #elizaos-testers (1372559034384646144) **NEW**
 - [ ] #country-leads (1389897960736690338) **NEW**
-- [ ] #eliza-vanguard (1406925412780740708) **NEW**
+- [ ] #eliza-cabal (1406925412780740708) **NEW**
 
 **ARCHIVES:**
 - [ ] #dev (1379823781769646150) **NEW**
@@ -139,7 +139,7 @@
 - [ ] #events (1310472593588883466) **NEW**
 
 ## Hyperfy (958209073277456457)
-**Total Channels**: 53 | **Currently Tracking**: 5 | **New Channels**: 48
+**Total Channels**: 54 | **Currently Tracking**: 5 | **New Channels**: 49
 
 ### Channels
 - [ ] #🤝│welcome (958210210554576896) **NEW**
@@ -163,6 +163,7 @@
 - [ ] #🏗│infra (1332108186676891649) **NEW**
 
 **Worlds:**
+- [ ] #vibe (1407912856250351666) **NEW**
 - [ ] #play-world (1350288455686684807) **NEW**
 - [ ] #fallen (1359000060632760350) **NEW**
 - [ ] #roustan-xyz (1372371596777619538) **NEW**
