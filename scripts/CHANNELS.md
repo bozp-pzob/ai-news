@@ -1,13 +1,13 @@
 # Discord Channel Tracking Status
-*Updated: 2025-08-21 06:42:53 UTC*
+*Updated: 2025-08-22 06:34:20 UTC*
 
 ## 📊 Analytics Reminder
-⏰ Next analytics review in **3 days** (2025-08-23)
+⏰ Next analytics review in **2 days** (2025-08-23)
 
 📈 [Discord Analytics](https://discord.com/developers/servers/1253563208833433701/analytics/engagement) | Review channel activity every 28 days
 
-## undefined (1253563208833433701)
-**Total Channels**: 105 | **Currently Tracking**: 6 | **New Channels**: 99
+## elizaOS (1253563208833433701)
+**Total Channels**: 106 | **Currently Tracking**: 6 | **New Channels**: 100
 
 ### Channels
 - [ ] #rules-and-faq (1285103549944168450) **NEW**
@@ -30,6 +30,7 @@
 - [ ] #2x-yaps (1389507912191184998) **NEW**
 - [ ] #elizaos-github (1377733240449925150) **NEW**
 - [ ] #plugins-github (1377733306594099371) **NEW**
+- [ ] #offsite-sept (1408212848513122549) **NEW**
 
 **THE ARENA:**
 - [x] #discussion (1253563209462448241)
