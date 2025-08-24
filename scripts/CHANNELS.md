@@ -1,10 +1,15 @@
 # Discord Channel Tracking Status
-*Updated: 2025-08-23 06:30:34 UTC*
+*Updated: 2025-08-24 06:31:55 UTC*
 
 ## 📊 Analytics Reminder
-⏰ Next analytics review in **1 days** (2025-08-23)
+🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
 
-📈 [Discord Analytics](https://discord.com/developers/servers/1253563208833433701/analytics/engagement) | Review channel activity every 28 days
+📈 **Action Required**: Review channel activity and consider removing inactive channels:
+- [Discord Server Analytics](https://discord.com/developers/servers/1253563208833433701/analytics/engagement)
+- Look for channels with 0-5 messages in the last 28 days
+- Consider unchecking low-activity channels to reduce noise
+
+Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
 **Total Channels**: 107 | **Currently Tracking**: 6 | **New Channels**: 101
