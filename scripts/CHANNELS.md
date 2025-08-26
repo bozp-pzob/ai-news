@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-08-25 06:36:14 UTC*
+*Updated: 2025-08-26 06:34:49 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -65,7 +65,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #french (1323124707452784761) **NEW**
 - [ ] #italiano (1400432884711428197) **NEW**
 - [ ] #भारत (1400485325372919900) **NEW**
-- [ ] #vanguard (1407710505258319955) **NEW**
 
 **DAO Zone:**
 - [x] #🥇-partners (1301363808421543988)
@@ -84,6 +83,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #country-leads (1389897960736690338) **NEW**
 - [ ] #contributor (1408523591842267158) **NEW**
 - [ ] #eliza-cabal (1406925412780740708) **NEW**
+- [ ] #eliza-cabal-posts (1409460517231267911) **NEW**
 
 **ARCHIVES:**
 - [ ] #dev (1379823781769646150) **NEW**
