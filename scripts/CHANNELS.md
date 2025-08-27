@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-08-26 06:34:49 UTC*
+*Updated: 2025-08-27 06:32:33 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -28,11 +28,9 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 
 **DEV:**
 - [x] #💻-coders (1300025221834739744)
-- [ ] #research-and-dev (1392374405606150245) **NEW**
-- [ ] #agent-dev (1395058973509554186) **NEW**
+- [ ] #tech-support (1392374405606150245) **NEW**
 - [ ] #contributor-dev (1379775100915810314) **NEW**
 - [x] #core-devs (1377726087789940836)
-- [ ] #2x-yaps (1389507912191184998) **NEW**
 - [ ] #elizaos-github (1377733240449925150) **NEW**
 - [ ] #plugins-github (1377733306594099371) **NEW**
 - [ ] #offsite-sept (1408212848513122549) **NEW**
@@ -55,7 +53,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #spartan (1353787967340281976) **NEW**
 
 **Agents:**
-- [ ] #base-agent (1405275024360996904) **NEW**
+- [ ] #agent-dev (1395058973509554186) **NEW**
 
 **INTERNATIONAL:**
 - [ ] #中文频道 (1303194468949950504) **NEW**
@@ -86,6 +84,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #eliza-cabal-posts (1409460517231267911) **NEW**
 
 **ARCHIVES:**
+- [ ] #base-agent (1405275024360996904) **NEW**
 - [ ] #dev (1379823781769646150) **NEW**
 - [ ] #fun-support (1362864274862768450) **NEW**
 - [ ] #3d-ai-tv (1313222089271939102) **NEW**
@@ -134,6 +133,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #core-devs-archived (1318117081215930459) **NEW**
 
 **ARCHIVES-2:**
+- [ ] #2x-yaps (1389507912191184998) **NEW**
 - [ ] #tweets (1361523520676560997) **NEW**
 - [ ] #⭐-starboard (1303039409494429696) **NEW**
 - [ ] #platform (1312134919325220947) **NEW**
