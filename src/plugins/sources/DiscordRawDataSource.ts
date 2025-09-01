@@ -5,7 +5,7 @@
 
 import { Client, TextChannel, Message, GuildMember, User, MessageType, MessageReaction, Collection, GatewayIntentBits, ChannelType, GuildBasedChannel, Guild } from 'discord.js';
 import { ContentSource } from './ContentSource';
-import { ContentItem, DiscordRawData, DiscordRawDataSourceConfig, TimeBlock, DiscordAttachment, DiscordEmbed, DiscordSticker } from '../../types';
+import { ContentItem, DiscordRawData, DiscordRawDataSourceConfig, TimeBlock, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig } from '../../types';
 import { logger, createProgressBar } from '../../helpers/cliHelper';
 import { delay, retryOperation } from '../../helpers/generalHelper';
 import { isMediaFile } from '../../helpers/fileHelper';
@@ -57,6 +57,8 @@ export class DiscordRawDataSource implements ContentSource {
   private guildId: string;
   /** Store to cursors for recently pulled discord channels*/
   private storage: StoragePlugin;
+  /** Media download configuration */
+  public mediaDownload?: MediaDownloadConfig;
 
   /**
    * Creates a new DiscordRawDataSource instance
@@ -68,6 +70,7 @@ export class DiscordRawDataSource implements ContentSource {
     this.channelIds = config.channelIds;
     this.guildId = config.guildId;
     this.storage = config.storage;
+    this.mediaDownload = config.mediaDownload;
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,

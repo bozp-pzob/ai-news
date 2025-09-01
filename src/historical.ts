@@ -231,10 +231,14 @@ Options:
      */
     if (downloadMedia && !onlyGenerate) {
       console.log("Starting media downloads...");
+      console.log(`Found ${sourceConfigs.length} source configs to check`);
       
       for (const config of sourceConfigs) {
+        console.log(`Checking source: ${config.instance.name}`);
         if (config.instance.name.includes('discord') || config.instance.name.includes('Discord')) {
+          console.log(`✓ Source ${config.instance.name} matches Discord filter`);
           const mediaConfig = (config.instance as any).mediaDownload;
+          console.log(`Media config:`, mediaConfig);
           if (mediaConfig?.enabled) {
             console.log(`Downloading media for ${config.instance.name}...`);
             
@@ -242,7 +246,7 @@ Options:
             const dbPath = storage.dbPath || './data/db.sqlite';
             const outputPath = mediaConfig.outputPath || './media';
             
-            const downloader = new MediaDownloader(dbPath, outputPath);
+            const downloader = new MediaDownloader(dbPath, outputPath, mediaConfig);
             await downloader.init();
             
             let stats;

@@ -19,7 +19,7 @@
         ],
         "storage": "SQLiteStorage",
         "mediaDownload": {
-          "enabled": false,
+          "enabled": true,
           "outputPath": "./media",
           "maxFileSize": 52428800,
           "rateLimit": 100,

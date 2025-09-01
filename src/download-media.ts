@@ -1,13 +1,14 @@
 /**
  * Media download script for Discord data
  * Downloads media files from Discord messages stored in the database
- * Organizes files by date in media/YYYY-MM-DD/ folders
+ * Organizes files by type (images/, videos/, audio/, documents/) with content-hash deduplication
+ * Includes filtering, rate limiting, and analytics capabilities
  * 
  * @module download-media
  */
 
 import { SQLiteStorage } from "./plugins/storage/SQLiteStorage";
-import { ContentItem, DiscordRawData, DiscordAttachment, DiscordEmbed, DiscordSticker } from "./types";
+import { ContentItem, DiscordRawData, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig } from "./types";
 import { logger } from "./helpers/cliHelper";
 import dotenv from "dotenv";
 import fs from "fs";
@@ -19,6 +20,8 @@ import { createHash } from "crypto";
 const DOWNLOAD_TIMEOUT_MS = 30000; // 30 seconds
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_BASE_MS = 1000; // Base delay for exponential backoff
+const DEFAULT_RATE_LIMIT_MS = 100; // Default rate limit between downloads
+const USER_AGENT = 'DiscordBot (AI-News-Aggregator, 1.0) Node.js/Discord.js'; // Discord API compliant User-Agent
 
 dotenv.config();
 
@@ -77,7 +80,16 @@ interface DownloadStats {
   downloaded: number;
   skipped: number;
   failed: number;
+  filtered: number;
   errors: string[];
+  analytics?: MediaAnalytics;
+}
+
+interface MediaAnalytics {
+  totalFilesByType: Record<string, number>;
+  averageFileSizeByType: Record<string, number>;
+  totalSizeByType: Record<string, number>;
+  largestFilesByType: Record<string, Array<{ filename: string; size: number; url: string; }>>;
 }
 
 class MediaDownloader {
@@ -86,15 +98,30 @@ class MediaDownloader {
   private stats: DownloadStats;
   private mediaIndex: Map<string, MediaIndexEntry> = new Map();
   private dailyReferences: MediaReference[] = [];
+  private config: MediaDownloadConfig;
+  private analytics: MediaAnalytics = {
+    totalFilesByType: {},
+    averageFileSizeByType: {},
+    totalSizeByType: {},
+    largestFilesByType: {}
+  };
 
-  constructor(dbPath: string, baseDir: string = './media') {
+  constructor(dbPath: string, baseDir: string = './media', config?: MediaDownloadConfig) {
     this.storage = new SQLiteStorage({ name: 'media-downloader', dbPath });
     this.baseDir = baseDir;
+    this.config = {
+      enabled: true,
+      maxFileSize: 52428800, // 50MB default
+      rateLimit: 100,
+      retryAttempts: 3,
+      ...config
+    };
     this.stats = {
       total: 0,
       downloaded: 0,
       skipped: 0,
       failed: 0,
+      filtered: 0,
       errors: []
     };
   }
@@ -222,7 +249,86 @@ class MediaDownloader {
   }
 
   /**
-   * Extract all media items from Discord raw data
+   * Update analytics with media information
+   */
+  private updateAnalytics(mediaItem: MediaDownloadItem, fileSize?: number): void {
+    const attachment = mediaItem.originalData as DiscordAttachment;
+    const contentType = attachment.content_type || 'unknown';
+    const type = this.getFileTypeDir(contentType, mediaItem.filename);
+    const size = fileSize || attachment.size || 0;
+    
+    // Update counts
+    this.analytics.totalFilesByType[type] = (this.analytics.totalFilesByType[type] || 0) + 1;
+    
+    // Update sizes
+    this.analytics.totalSizeByType[type] = (this.analytics.totalSizeByType[type] || 0) + size;
+    this.analytics.averageFileSizeByType[type] = this.analytics.totalSizeByType[type] / this.analytics.totalFilesByType[type];
+    
+    // Track largest files (top 5 per type)
+    if (!this.analytics.largestFilesByType[type]) {
+      this.analytics.largestFilesByType[type] = [];
+    }
+    
+    this.analytics.largestFilesByType[type].push({
+      filename: mediaItem.filename,
+      size,
+      url: mediaItem.url
+    });
+    
+    // Keep only top 5 largest files per type
+    this.analytics.largestFilesByType[type].sort((a, b) => b.size - a.size);
+    if (this.analytics.largestFilesByType[type].length > 5) {
+      this.analytics.largestFilesByType[type] = this.analytics.largestFilesByType[type].slice(0, 5);
+    }
+  }
+
+  /**
+   * Check if media item should be downloaded based on config filters
+   */
+  private shouldDownloadMedia(mediaItem: MediaDownloadItem): { allowed: boolean; reason?: string } {
+    const attachment = mediaItem.originalData as DiscordAttachment;
+    
+    // Check file size if available
+    if (attachment.size && this.config.maxFileSize && attachment.size > this.config.maxFileSize) {
+      const sizeMB = Math.round(attachment.size / 1024 / 1024);
+      const limitMB = Math.round(this.config.maxFileSize / 1024 / 1024);
+      return { 
+        allowed: false, 
+        reason: `File size ${sizeMB}MB exceeds limit of ${limitMB}MB` 
+      };
+    }
+    
+    // Check content type filtering
+    if (attachment.content_type) {
+      if (this.config.excludedTypes?.some(type => 
+        attachment.content_type?.includes(type) || 
+        mediaItem.filename.toLowerCase().includes(type.toLowerCase())
+      )) {
+        return { 
+          allowed: false, 
+          reason: `Content type ${attachment.content_type} is excluded` 
+        };
+      }
+      
+      if (this.config.allowedTypes && this.config.allowedTypes.length > 0) {
+        const isAllowed = this.config.allowedTypes.some(type => 
+          attachment.content_type?.includes(type) || 
+          mediaItem.filename.toLowerCase().includes(type.toLowerCase())
+        );
+        if (!isAllowed) {
+          return { 
+            allowed: false, 
+            reason: `Content type ${attachment.content_type} not in allowed types` 
+          };
+        }
+      }
+    }
+    
+    return { allowed: true };
+  }
+
+  /**
+   * Extract all media items from Discord raw data with filtering
    */
   private extractMediaFromDiscordData(item: ContentItem): MediaDownloadItem[] {
     const mediaItems: MediaDownloadItem[] = [];
@@ -285,16 +391,25 @@ class MediaDownloader {
             
             if (embed.video?.url) {
               const filename = `embed-video-${message.id}.${embed.video.url.split('.').pop() || 'mp4'}`;
-              mediaItems.push({
+              const mediaItem = {
                 url: embed.video.url,
                 filename,
                 messageId: message.id,
                 messageDate,
                 channelName: discordData.channel.name,
                 guildName: item.metadata?.guildName || 'unknown',
-                mediaType: 'embed_video',
-                originalData: embed
-              });
+                mediaType: 'embed_video' as const,
+                originalData: { content_type: 'video/mp4', size: undefined, ...embed }
+              };
+              
+              // Apply filtering
+              const filterResult = this.shouldDownloadMedia(mediaItem);
+              if (filterResult.allowed) {
+                mediaItems.push(mediaItem);
+              } else {
+                logger.debug(`Filtering out ${mediaItem.filename}: ${filterResult.reason}`);
+                this.stats.filtered++;
+              }
             }
           }
         }
@@ -306,16 +421,29 @@ class MediaDownloader {
             const filename = `${sticker.name}.${extension}`;
             const stickerUrl = `https://media.discordapp.net/stickers/${sticker.id}.${extension}`;
             
-            mediaItems.push({
+            const mediaItem = {
               url: stickerUrl,
               filename,
               messageId: message.id,
               messageDate,
               channelName: discordData.channel.name,
               guildName: item.metadata?.guildName || 'unknown',
-              mediaType: 'sticker',
-              originalData: sticker
-            });
+              mediaType: 'sticker' as const,
+              originalData: {
+                content_type: extension === 'gif' ? 'image/gif' : 'image/png',
+                size: undefined,
+                ...sticker
+              }
+            };
+            
+            // Apply filtering
+            const filterResult = this.shouldDownloadMedia(mediaItem);
+            if (filterResult.allowed) {
+              mediaItems.push(mediaItem);
+            } else {
+              logger.debug(`Filtering out ${mediaItem.filename}: ${filterResult.reason}`);
+              this.stats.filtered++;
+            }
           }
         }
       }
@@ -330,16 +458,18 @@ class MediaDownloader {
    * Download a single media file with retry logic
    */
   private async downloadMedia(mediaItem: MediaDownloadItem): Promise<boolean> {
-    for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
-      const success = await this.downloadMediaAttempt(mediaItem, attempt);
+    const maxRetries = this.config.retryAttempts || MAX_RETRY_ATTEMPTS;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const success = await this.downloadMediaAttempt(mediaItem, attempt, maxRetries);
       if (success) {
         return true;
       }
       
       // If not the last attempt, wait before retrying with exponential backoff
-      if (attempt < MAX_RETRY_ATTEMPTS) {
+      if (attempt < maxRetries) {
         const delay = RETRY_DELAY_BASE_MS * Math.pow(2, attempt - 1);
-        logger.debug(`Retrying download for ${mediaItem.filename} in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRY_ATTEMPTS})`);
+        logger.debug(`Retrying download for ${mediaItem.filename} in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
@@ -350,20 +480,21 @@ class MediaDownloader {
   /**
    * Single attempt to download a media file
    */
-  private async downloadMediaAttempt(mediaItem: MediaDownloadItem, attempt: number): Promise<boolean> {
-    const dateDir = path.join(this.baseDir, mediaItem.messageDate);
-    const guildChannelDir = `${this.sanitizeFilename(mediaItem.guildName)}_${this.sanitizeFilename(mediaItem.channelName)}`;
-    const channelDir = path.join(dateDir, guildChannelDir);
+  private async downloadMediaAttempt(mediaItem: MediaDownloadItem, attempt: number, maxRetries: number = MAX_RETRY_ATTEMPTS): Promise<boolean> {
+    // Determine file type directory
+    const attachment = mediaItem.originalData as DiscordAttachment;
+    const fileTypeDir = this.getFileTypeDir(attachment.content_type || '', mediaItem.filename);
+    const typeDir = path.join(this.baseDir, fileTypeDir);
     
     // Ensure directories exist
-    fs.mkdirSync(channelDir, { recursive: true });
+    fs.mkdirSync(typeDir, { recursive: true });
     
     // Create unique filename to avoid conflicts
     const hash = createHash('sha256').update(mediaItem.url).digest('hex').substring(0, 8);
     const basename = path.parse(mediaItem.filename).name;
     const extension = path.parse(mediaItem.filename).ext;
     const uniqueFilename = `${basename}_${hash}${extension}`;
-    const filePath = path.join(channelDir, uniqueFilename);
+    const filePath = path.join(typeDir, uniqueFilename);
     
     // Skip if file already exists
     if (fs.existsSync(filePath)) {
@@ -387,7 +518,14 @@ class MediaDownloader {
         resolve(false);
       }, DOWNLOAD_TIMEOUT_MS);
 
-      const request = https.get(mediaItem.url, (response) => {
+      const options = {
+        headers: {
+          'User-Agent': USER_AGENT,
+          'Accept': '*/*'
+        }
+      };
+      
+      const request = https.get(mediaItem.url, options, (response) => {
         if (hasTimedOut) return;
         
         // Handle redirects
@@ -408,8 +546,25 @@ class MediaDownloader {
 
         if (response.statusCode !== 200) {
           clearTimeout(timeout);
+          
+          // Handle Discord rate limiting (HTTP 429)
+          if (response.statusCode === 429) {
+            const retryAfter = response.headers['retry-after'];
+            const waitTime = retryAfter ? parseInt(retryAfter as string) * 1000 : 5000;
+            logger.warning(`Rate limited by Discord API. Waiting ${waitTime}ms before retry`);
+            
+            file.close();
+            try { fs.unlinkSync(filePath); } catch (e) {} // Clean up partial file
+            
+            // Wait for rate limit reset before retrying
+            setTimeout(() => {
+              resolve(false); // This will trigger retry logic with exponential backoff
+            }, waitTime);
+            return;
+          }
+          
           const errorMsg = `HTTP ${response.statusCode} for ${mediaItem.url} (attempt ${attempt})`;
-          if (attempt === MAX_RETRY_ATTEMPTS) {
+          if (attempt === maxRetries) {
             this.stats.failed++;
             this.stats.errors.push(errorMsg);
             logger.error(`Failed to download ${mediaItem.url}: HTTP ${response.statusCode}`);
@@ -428,6 +583,16 @@ class MediaDownloader {
           if (attempt === 1) { // Only count once
             this.stats.downloaded++;
             logger.debug(`Downloaded: ${uniqueFilename}`);
+            
+            // Update analytics with downloaded file info
+            try {
+              const fileStats = fs.statSync(filePath);
+              this.updateAnalytics(mediaItem, fileStats.size);
+            } catch (e) {
+              // If we can't get file size, use original size or 0
+              const attachment = mediaItem.originalData as DiscordAttachment;
+              this.updateAnalytics(mediaItem, attachment.size || 0);
+            }
           }
           resolve(true);
         });
@@ -435,7 +600,7 @@ class MediaDownloader {
         file.on('error', (err) => {
           clearTimeout(timeout);
           const errorMsg = `File write error for ${mediaItem.url}: ${err.message} (attempt ${attempt})`;
-          if (attempt === MAX_RETRY_ATTEMPTS) {
+          if (attempt === maxRetries) {
             this.stats.failed++;
             this.stats.errors.push(errorMsg);
             logger.error(errorMsg);
@@ -450,14 +615,30 @@ class MediaDownloader {
         if (hasTimedOut) return;
         clearTimeout(timeout);
         const errorMsg = `Download error for ${mediaItem.url}: ${err.message} (attempt ${attempt})`;
-        if (attempt === MAX_RETRY_ATTEMPTS) {
+        
+        // Handle common network errors that warrant retry
+        const retryableErrors = ['ECONNRESET', 'ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT'];
+        const isRetryable = retryableErrors.some(code => err.message.includes(code));
+        
+        if (attempt === maxRetries || !isRetryable) {
           this.stats.failed++;
           this.stats.errors.push(errorMsg);
           logger.error(errorMsg);
+        } else {
+          logger.debug(`Network error (retryable): ${err.message}`);
         }
+        
         file.close();
         try { fs.unlinkSync(filePath); } catch (e) {} // Clean up partial file
         resolve(false);
+      });
+      
+      // Set request timeout
+      request.setTimeout(DOWNLOAD_TIMEOUT_MS, () => {
+        if (hasTimedOut) return;
+        hasTimedOut = true;
+        logger.debug(`Request timeout for ${mediaItem.url} (attempt ${attempt})`);
+        request.destroy();
       });
 
       // Set timeout on the request itself
@@ -509,10 +690,11 @@ class MediaDownloader {
         logger.info(`Progress: ${processed}/${allMediaItems.length} (${Math.round(processed/allMediaItems.length*100)}%)`);
       }
       
-      // Rate limiting - wait 100ms between downloads
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Rate limiting - configurable delay between downloads
+      await new Promise(resolve => setTimeout(resolve, this.config.rateLimit || DEFAULT_RATE_LIMIT_MS));
     }
     
+    this.stats.analytics = this.analytics;
     return this.stats;
   }
 
@@ -533,6 +715,7 @@ class MediaDownloader {
     logger.info(`Total media items: ${this.stats.total}`);
     logger.info(`✅ Downloaded: ${this.stats.downloaded}`);
     logger.info(`⏭️  Skipped (already exists): ${this.stats.skipped}`);
+    logger.info(`🚫 Filtered out: ${this.stats.filtered}`);
     logger.info(`❌ Failed: ${this.stats.failed}`);
     
     if (this.stats.errors.length > 0) {
@@ -543,8 +726,42 @@ class MediaDownloader {
       }
     }
     
+    // Print analytics if we have downloaded files
+    if (this.stats.downloaded > 0) {
+      this.printAnalytics();
+    }
+    
     const successRate = this.stats.total > 0 ? Math.round((this.stats.downloaded / this.stats.total) * 100) : 0;
     logger.info(`\n🎯 Success rate: ${successRate}%`);
+  }
+
+  /**
+   * Print media analytics information
+   */
+  private printAnalytics(): void {
+    logger.info('\n📈 Media Analytics:');
+    
+    // Media types distribution
+    const types = Object.keys(this.analytics.totalFilesByType);
+    if (types.length > 0) {
+      logger.info('\n📊 File Types:');
+      types.forEach(type => {
+        const count = this.analytics.totalFilesByType[type];
+        const avgSizeMB = (this.analytics.averageFileSizeByType[type] / 1024 / 1024).toFixed(2);
+        const totalSizeMB = (this.analytics.totalSizeByType[type] / 1024 / 1024).toFixed(2);
+        logger.info(`  ${type}: ${count} files, avg ${avgSizeMB}MB, total ${totalSizeMB}MB`);
+        
+        // Show top 5 largest files for this type
+        const largest = this.analytics.largestFilesByType[type];
+        if (largest && largest.length > 0) {
+          logger.info(`    Largest files:`);
+          largest.slice(0, 5).forEach((file, index) => {
+            const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+            logger.info(`      ${index + 1}. ${file.filename} (${sizeMB}MB)`);
+          });
+        }
+      });
+    }
   }
 
   async close(): Promise<void> {
