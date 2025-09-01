@@ -33,6 +33,45 @@ interface MediaDownloadItem {
   originalData: DiscordAttachment | DiscordEmbed | DiscordSticker;
 }
 
+interface MediaReference {
+  hash: string;
+  originalFilename: string;
+  messageId: string;
+  channelId: string;
+  channelName: string;
+  guildId: string;
+  guildName: string;
+  userId: string;
+  timestamp: number;
+  messageDate: string;
+  mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
+  url: string;
+  fileSize?: number;
+  contentType?: string;
+  width?: number;
+  height?: number;
+}
+
+interface MediaIndexEntry {
+  hash: string;
+  originalFilename: string;
+  contentType: string;
+  fileSize: number;
+  filePath: string; // relative to media directory
+  firstSeen: number;
+  width?: number;
+  height?: number;
+  duration?: number;
+}
+
+interface DailyMediaMetadata {
+  date: string;
+  references: MediaReference[];
+  totalFiles: number;
+  uniqueFiles: number;
+  totalSize: number;
+}
+
 interface DownloadStats {
   total: number;
   downloaded: number;
@@ -45,6 +84,8 @@ class MediaDownloader {
   private storage: SQLiteStorage;
   private baseDir: string;
   private stats: DownloadStats;
+  private mediaIndex: Map<string, MediaIndexEntry> = new Map();
+  private dailyReferences: MediaReference[] = [];
 
   constructor(dbPath: string, baseDir: string = './media') {
     this.storage = new SQLiteStorage({ name: 'media-downloader', dbPath });
@@ -59,11 +100,125 @@ class MediaDownloader {
   }
 
   /**
-   * Initialize storage connection
+   * Initialize storage connection and load media index
    */
   async init(): Promise<void> {
     await this.storage.init();
+    await this.loadMediaIndex();
+    await this.ensureDirectoryStructure();
     logger.info('Media downloader initialized');
+  }
+
+  /**
+   * Load existing media index from file
+   */
+  private async loadMediaIndex(): Promise<void> {
+    const indexPath = path.join(this.baseDir, 'metadata', 'index.json');
+    
+    if (fs.existsSync(indexPath)) {
+      try {
+        const indexData = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+        for (const entry of indexData) {
+          this.mediaIndex.set(entry.hash, entry);
+        }
+        logger.debug(`Loaded ${this.mediaIndex.size} entries from media index`);
+      } catch (error) {
+        logger.error(`Failed to load media index: ${error}`);
+      }
+    }
+  }
+
+  /**
+   * Save media index to file
+   */
+  private async saveMediaIndex(): Promise<void> {
+    const indexPath = path.join(this.baseDir, 'metadata', 'index.json');
+    const metadataDir = path.dirname(indexPath);
+    
+    fs.mkdirSync(metadataDir, { recursive: true });
+    
+    const indexData = Array.from(this.mediaIndex.values());
+    fs.writeFileSync(indexPath, JSON.stringify(indexData, null, 2));
+    logger.debug(`Saved ${indexData.length} entries to media index`);
+  }
+
+  /**
+   * Save daily metadata to file
+   */
+  private async saveDailyMetadata(date: string): Promise<void> {
+    if (this.dailyReferences.length === 0) return;
+    
+    const metadataPath = path.join(this.baseDir, 'metadata', `${date}.json`);
+    const metadataDir = path.dirname(metadataPath);
+    
+    fs.mkdirSync(metadataDir, { recursive: true });
+    
+    const uniqueHashes = new Set(this.dailyReferences.map(ref => ref.hash));
+    const totalSize = this.dailyReferences.reduce((sum, ref) => sum + (ref.fileSize || 0), 0);
+    
+    const dailyMetadata: DailyMediaMetadata = {
+      date,
+      references: this.dailyReferences,
+      totalFiles: this.dailyReferences.length,
+      uniqueFiles: uniqueHashes.size,
+      totalSize
+    };
+    
+    fs.writeFileSync(metadataPath, JSON.stringify(dailyMetadata, null, 2));
+    logger.info(`Saved metadata for ${dailyMetadata.totalFiles} media references (${dailyMetadata.uniqueFiles} unique) on ${date}`);
+    
+    // Clear daily references for next batch
+    this.dailyReferences = [];
+  }
+
+  /**
+   * Ensure directory structure exists
+   */
+  private async ensureDirectoryStructure(): Promise<void> {
+    const dirs = [
+      path.join(this.baseDir, 'images'),
+      path.join(this.baseDir, 'videos'),
+      path.join(this.baseDir, 'audio'),
+      path.join(this.baseDir, 'documents'),
+      path.join(this.baseDir, 'metadata')
+    ];
+    
+    for (const dir of dirs) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  }
+
+  /**
+   * Determine file type directory based on MIME type
+   */
+  private getFileTypeDir(contentType: string, filename: string): string {
+    if (contentType) {
+      if (contentType.startsWith('image/')) return 'images';
+      if (contentType.startsWith('video/')) return 'videos';  
+      if (contentType.startsWith('audio/')) return 'audio';
+    }
+    
+    // Fallback to extension
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return 'images';
+    if (['mp4', 'webm', 'avi', 'mov', 'mkv', 'flv'].includes(ext)) return 'videos';
+    if (['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'].includes(ext)) return 'audio';
+    
+    return 'documents';
+  }
+
+  /**
+   * Generate content hash from file data
+   */
+  private generateContentHash(data: Buffer): string {
+    return createHash('sha256').update(data).digest('hex');
+  }
+
+  /**
+   * Generate URL-based hash for deduplication before download
+   */
+  private generateUrlHash(url: string): string {
+    return createHash('sha256').update(url).digest('hex');
   }
 
   /**
@@ -393,6 +548,7 @@ class MediaDownloader {
   }
 
   async close(): Promise<void> {
+    await this.saveMediaIndex();
     await this.storage.close();
   }
 }
@@ -419,7 +575,8 @@ async function main() {
 Discord Media Downloader
 
 Downloads media files from Discord messages stored in the database.
-Organizes files by date: media/YYYY-MM-DD/guild-name_channel-name/
+Organizes files by type: media/images/, media/videos/, media/audio/, media/documents/
+Stores metadata in: media/metadata/YYYY-MM-DD.json, media/metadata/index.json
 
 Usage:
   npm run download-media                    # Download today's media

@@ -231,12 +231,27 @@ export interface DiscordSticker {
 }
 
 /**
+ * Configuration interface for media downloads
+ * @interface MediaDownloadConfig
+ */
+export interface MediaDownloadConfig {
+  enabled: boolean;
+  outputPath?: string;
+  maxFileSize?: number; // in bytes, default 50MB
+  allowedTypes?: string[]; // MIME types or extensions
+  excludedTypes?: string[];
+  rateLimit?: number; // milliseconds between downloads, default 100
+  retryAttempts?: number; // default 3
+}
+
+/**
  * Configuration interface for DiscordRawDataSource
  * @interface DiscordRawDataSourceConfig
  * @property {string} name - The name identifier for this Discord source
  * @property {string} botToken - Discord bot token for authentication
  * @property {string[]} channelIds - Array of Discord channel IDs to monitor
  * @property {string} guildId - Discord guild/server ID
+ * @property {MediaDownloadConfig} mediaDownload - Optional media download configuration
  */
 export interface DiscordRawDataSourceConfig {
   name: string;
@@ -244,6 +259,7 @@ export interface DiscordRawDataSourceConfig {
   channelIds: string[];
   guildId: string;
   storage: StoragePlugin;
+  mediaDownload?: MediaDownloadConfig;
 }
 
 /**

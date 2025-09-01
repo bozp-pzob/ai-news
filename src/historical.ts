@@ -7,6 +7,7 @@
  */
 
 import { HistoricalAggregator } from "./aggregator/HistoricalAggregator";
+import { MediaDownloader } from "./download-media";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -31,6 +32,7 @@ dotenv.config();
      * --after: Start date for range fetching
      * --during: Date to fetch data during
      * --onlyFetch: Only fetch data without generating summaries
+     * --download-media: Enable media downloads after data collection
      * --output/-o: Output directory path
      */
     const args = process.argv.slice(2);
@@ -39,6 +41,7 @@ dotenv.config();
     let dateStr = today.toISOString().slice(0, 10);
     let onlyFetch = false;
     let onlyGenerate = false;
+    let downloadMedia = false;
     let beforeDate;
     let afterDate;
     let duringDate;
@@ -60,6 +63,7 @@ Options:
   --during=<YYYY-MM-DD> Alias for --date.
   --onlyFetch=<true|false>  Only fetch data, do not generate summaries.
   --onlyGenerate=<true|false> Only generate summaries from existing data, do not fetch.
+  --download-media=<true|false> Download Discord media after data collection (default: false).
   --output=<path>       Output directory path (default: ./)
   -h, --help            Show this help message.
       `);
@@ -75,6 +79,8 @@ Options:
         onlyGenerate = arg.split('=')[1].toLowerCase() == 'true';
       } else if (arg.startsWith('--onlyFetch=')) {
         onlyFetch = arg.split('=')[1].toLowerCase() == 'true';
+      } else if (arg.startsWith('--download-media=')) {
+        downloadMedia = arg.split('=')[1].toLowerCase() == 'true';
       } else if (arg.startsWith('--before=')) {
         beforeDate = arg.split('=')[1];
       } else if (arg.startsWith('--after=')) {
@@ -219,6 +225,47 @@ Options:
       console.log("Content aggregator is finished fetching historical.");
     }
     
+    /**
+     * Download Discord media if requested and enabled in source configs
+     * Runs after data collection but before summary generation
+     */
+    if (downloadMedia && !onlyGenerate) {
+      console.log("Starting media downloads...");
+      
+      for (const config of sourceConfigs) {
+        if (config.instance.name.includes('discord') || config.instance.name.includes('Discord')) {
+          const mediaConfig = (config.instance as any).mediaDownload;
+          if (mediaConfig?.enabled) {
+            console.log(`Downloading media for ${config.instance.name}...`);
+            
+            const storage = (config.instance as any).storage;
+            const dbPath = storage.dbPath || './data/db.sqlite';
+            const outputPath = mediaConfig.outputPath || './media';
+            
+            const downloader = new MediaDownloader(dbPath, outputPath);
+            await downloader.init();
+            
+            let stats;
+            if (filter.filterType || (filter.after && filter.before)) {
+              // Date range download
+              const startDate = new Date(filter.after || filter.date);
+              const endDate = new Date(filter.before || filter.date);
+              stats = await downloader.downloadMediaInDateRange(startDate, endDate);
+            } else {
+              // Single date download
+              const date = new Date(dateStr);
+              stats = await downloader.downloadMediaForDate(date);
+            }
+            
+            downloader.printStats();
+            await downloader.close();
+          }
+        }
+      }
+      
+      console.log("Media downloads completed.");
+    }
+
 
     /**
      * Generate summaries if not in fetch-only mode
