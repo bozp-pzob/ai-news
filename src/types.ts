@@ -91,6 +91,7 @@ export interface ConfigItem {
   name: string;
   params: Record<string, any>;
   interval?: number;
+  mediaDownload?: MediaDownloadConfig;
 }
 
 /**

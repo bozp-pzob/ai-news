@@ -5,7 +5,7 @@
 
 import { Client, TextChannel, Message, GuildMember, User, MessageType, MessageReaction, Collection, GatewayIntentBits, ChannelType, GuildBasedChannel, Guild } from 'discord.js';
 import { ContentSource } from './ContentSource';
-import { ContentItem, DiscordRawData, DiscordRawDataSourceConfig, TimeBlock, DiscordAttachment, DiscordEmbed, DiscordSticker } from '../../types';
+import { ContentItem, DiscordRawData, DiscordRawDataSourceConfig, TimeBlock, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig } from '../../types';
 import { logger, createProgressBar } from '../../helpers/cliHelper';
 import { delay, retryOperation } from '../../helpers/generalHelper';
 import { isMediaFile } from '../../helpers/fileHelper';
@@ -40,11 +40,19 @@ function snowflakeToDate(snowflake: string): Date {
 }
 
 /**
+ * Interface for sources that support media downloading
+ */
+export interface MediaDownloadCapable {
+  readonly mediaDownload?: MediaDownloadConfig;
+  hasMediaDownloadEnabled(): boolean;
+}
+
+/**
  * DiscordRawDataSource class that implements ContentSource interface for detailed Discord data
  * Handles comprehensive message retrieval, user data management, and media content processing
  * @implements {ContentSource}
  */
-export class DiscordRawDataSource implements ContentSource {
+export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable {
   /** Name identifier for this Discord source */
   public name: string;
   /** Discord.js client instance */
@@ -57,6 +65,8 @@ export class DiscordRawDataSource implements ContentSource {
   private guildId: string;
   /** Store to cursors for recently pulled discord channels*/
   private storage: StoragePlugin;
+  /** Media download configuration */
+  public mediaDownload?: MediaDownloadConfig;
 
   /**
    * Creates a new DiscordRawDataSource instance
@@ -68,6 +78,7 @@ export class DiscordRawDataSource implements ContentSource {
     this.channelIds = config.channelIds;
     this.guildId = config.guildId;
     this.storage = config.storage;
+    this.mediaDownload = config.mediaDownload;
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -83,6 +94,13 @@ export class DiscordRawDataSource implements ContentSource {
         process.exit(1);
       }
     });
+  }
+
+  /**
+   * Check if media download is enabled for this source
+   */
+  hasMediaDownloadEnabled(): boolean {
+    return this.mediaDownload?.enabled === true;
   }
 
   private async fetchUserData(member: GuildMember | null, user: User): Promise<DiscordRawData['users'][string]> {
