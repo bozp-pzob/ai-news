@@ -20,7 +20,7 @@
         "storage": "SQLiteStorage",
         "mediaDownload": {
           "enabled": true,
-          "outputPath": "./media",
+          "outputPath": "./hyperfy-media",
           "maxFileSize": 52428800,
           "rateLimit": 100,
           "retryAttempts": 3
