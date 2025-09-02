@@ -40,11 +40,19 @@ function snowflakeToDate(snowflake: string): Date {
 }
 
 /**
+ * Interface for sources that support media downloading
+ */
+export interface MediaDownloadCapable {
+  readonly mediaDownload?: MediaDownloadConfig;
+  hasMediaDownloadEnabled(): boolean;
+}
+
+/**
  * DiscordRawDataSource class that implements ContentSource interface for detailed Discord data
  * Handles comprehensive message retrieval, user data management, and media content processing
  * @implements {ContentSource}
  */
-export class DiscordRawDataSource implements ContentSource {
+export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable {
   /** Name identifier for this Discord source */
   public name: string;
   /** Discord.js client instance */
@@ -86,6 +94,13 @@ export class DiscordRawDataSource implements ContentSource {
         process.exit(1);
       }
     });
+  }
+
+  /**
+   * Check if media download is enabled for this source
+   */
+  hasMediaDownloadEnabled(): boolean {
+    return this.mediaDownload?.enabled === true;
   }
 
   private async fetchUserData(member: GuildMember | null, user: User): Promise<DiscordRawData['users'][string]> {
