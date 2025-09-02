@@ -368,11 +368,24 @@ class MediaDownloader {
   /**
    * Determine file type directory based on MIME type
    */
-  private getFileTypeDir(contentType: string, filename: string): string {
+  /**
+   * Determine appropriate file type directory based on actual file content
+   */
+  private async getFileTypeDir(contentType: string, filename: string, filePath?: string): Promise<string> {
+    // If we have the downloaded file, check its actual content type
+    if (filePath && fs.existsSync(filePath)) {
+      const actualType = await this.detectActualFileType(filePath);
+      if (actualType !== 'unknown') {
+        return actualType;
+      }
+    }
+
+    // Use provided content type if available
     if (contentType) {
       if (contentType.startsWith('image/')) return 'images';
       if (contentType.startsWith('video/')) return 'videos';  
       if (contentType.startsWith('audio/')) return 'audio';
+      if (contentType.startsWith('text/html')) return 'documents'; // HTML files go to documents
     }
     
     // Fallback to extension
@@ -382,6 +395,145 @@ class MediaDownloader {
     if (['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'].includes(ext)) return 'audio';
     
     return 'documents';
+  }
+
+  /**
+   * Detect actual file type by examining file content
+   */
+  private async detectActualFileType(filePath: string): Promise<string> {
+    try {
+      const buffer = fs.readFileSync(filePath); // Read file
+      const chunk = buffer.slice(0, Math.min(buffer.length, 512)); // Use first 512 bytes
+      const header = chunk.toString('utf8', 0, Math.min(chunk.length, 100));
+      
+      // Check for HTML content
+      if (header.includes('<!DOCTYPE html') || header.includes('<html') || header.includes('<HTML')) {
+        return 'documents';
+      }
+      
+      // Check magic numbers for common file types
+      const hex = chunk.toString('hex', 0, Math.min(chunk.length, 16));
+      
+      // Image formats
+      if (hex.startsWith('89504e47')) return 'images'; // PNG
+      if (hex.startsWith('ffd8ff')) return 'images'; // JPEG
+      if (hex.startsWith('47494638')) return 'images'; // GIF
+      if (hex.startsWith('52494646') && buffer.toString('utf8', 8, 12) === 'WEBP') return 'images'; // WEBP
+      if (hex.startsWith('424d')) return 'images'; // BMP
+      
+      // Video formats
+      if (hex.startsWith('00000000667479704d503441')) return 'videos'; // MP4
+      if (hex.startsWith('1a45dfa3')) return 'videos'; // MKV/WEBM
+      if (hex.startsWith('464c5601')) return 'videos'; // FLV
+      
+      // Audio formats  
+      if (hex.startsWith('494433') || hex.startsWith('fff3') || hex.startsWith('fffb')) return 'audio'; // MP3
+      if (hex.startsWith('52494646') && buffer.toString('utf8', 8, 12) === 'WAVE') return 'audio'; // WAV
+      if (hex.startsWith('4f676753')) return 'audio'; // OGG
+      if (hex.startsWith('664c6143')) return 'audio'; // FLAC
+      
+    } catch (error) {
+      logger.debug(`Failed to detect file type for ${filePath}: ${error}`);
+    }
+    
+    return 'unknown';
+  }
+
+  /**
+   * Organize downloaded file into correct directory based on actual content
+   */
+  private async organizeDownloadedFile(filePath: string, mediaItem: MediaDownloadItem, hash: string, originalFilename: string): Promise<number> {
+    let actualFileSize = 0;
+    
+    try {
+      // Get actual file size
+      const fileStats = fs.statSync(filePath);
+      actualFileSize = fileStats.size;
+      
+      // Detect actual file type from content
+      const actualFileType = await this.detectActualFileType(filePath);
+      const attachment = mediaItem.originalData as DiscordAttachment;
+      const expectedType = await this.getFileTypeDir(attachment.content_type || '', mediaItem.filename);
+      
+      let finalPath = filePath;
+      let finalType = expectedType;
+      
+      // If actual type differs from expected, move file to correct directory
+      if (actualFileType !== 'unknown' && actualFileType !== expectedType) {
+        const correctDir = path.join(this.baseDir, actualFileType);
+        fs.mkdirSync(correctDir, { recursive: true });
+        
+        const newPath = path.join(correctDir, originalFilename);
+        
+        // Move file to correct directory
+        if (!fs.existsSync(newPath)) {
+          fs.renameSync(filePath, newPath);
+          finalPath = newPath;
+          finalType = actualFileType;
+          
+          logger.info(`📁 Moved ${originalFilename} from ${expectedType}/ to ${actualFileType}/ (detected: ${this.getFileTypeDescription(actualFileType)})`);
+        } else {
+          // File already exists in correct location, remove duplicate
+          fs.unlinkSync(filePath);
+          logger.debug(`Removed duplicate file: ${originalFilename}`);
+          return actualFileSize;
+        }
+      }
+      
+      // Update analytics
+      this.updateAnalytics(mediaItem, actualFileSize, finalType);
+      
+      // Add to media index
+      const mediaIndexEntry: MediaIndexEntry = {
+        hash,
+        originalFilename: mediaItem.filename,
+        contentType: attachment.content_type || 'unknown',
+        fileSize: actualFileSize,
+        filePath: path.relative(this.baseDir, finalPath),
+        firstSeen: Date.now()
+      };
+      this.mediaIndex.set(hash, mediaIndexEntry);
+      
+      // Add to daily references
+      this.dailyReferences.push({
+        hash,
+        originalFilename: mediaItem.filename,
+        messageId: mediaItem.messageId,
+        channelId: mediaItem.channelId,
+        channelName: mediaItem.channelName,
+        guildId: mediaItem.guildId,
+        guildName: mediaItem.guildName,
+        userId: mediaItem.userId,
+        timestamp: Date.now(),
+        messageDate: new Date().toISOString(),
+        mediaType: mediaItem.mediaType,
+        url: mediaItem.url,
+        fileSize: actualFileSize,
+        contentType: attachment.content_type
+      });
+      
+    } catch (error) {
+      logger.debug(`Failed to organize downloaded file ${filePath}: ${error}`);
+      // Fallback to original analytics logic
+      const attachment = mediaItem.originalData as DiscordAttachment;
+      actualFileSize = attachment.size || 0;
+      this.updateAnalytics(mediaItem, actualFileSize);
+    }
+    
+    return actualFileSize;
+  }
+
+  /**
+   * Get human-readable description of file type
+   */
+  private getFileTypeDescription(fileType: string): string {
+    switch (fileType) {
+      case 'images': return 'Image file';
+      case 'videos': return 'Video file';
+      case 'audio': return 'Audio file';
+      case 'documents': return 'Document/HTML file';
+      default: return 'Unknown file type';
+    }
   }
 
   /**
@@ -401,10 +553,9 @@ class MediaDownloader {
   /**
    * Update analytics with media information
    */
-  private updateAnalytics(mediaItem: MediaDownloadItem, fileSize?: number): void {
+  private updateAnalytics(mediaItem: MediaDownloadItem, fileSize?: number, fileType?: string): void {
     const attachment = mediaItem.originalData as DiscordAttachment;
-    const contentType = attachment.content_type || 'unknown';
-    const type = this.getFileTypeDir(contentType, mediaItem.filename);
+    const type = fileType || 'documents'; // Default to documents if no type specified
     const size = fileSize || attachment.size || 0;
     
     // Update counts
@@ -646,9 +797,9 @@ class MediaDownloader {
    * Single attempt to download a media file
    */
   private async downloadMediaAttempt(mediaItem: MediaDownloadItem, attempt: number, maxRetries: number = MAX_RETRY_ATTEMPTS): Promise<boolean> {
-    // Determine file type directory
+    // Determine file type directory (initial classification)
     const attachment = mediaItem.originalData as DiscordAttachment;
-    const fileTypeDir = this.getFileTypeDir(attachment.content_type || '', mediaItem.filename);
+    const fileTypeDir = await this.getFileTypeDir(attachment.content_type || '', mediaItem.filename);
     const typeDir = path.join(this.baseDir, fileTypeDir);
     
     // Ensure directories exist
@@ -789,54 +940,16 @@ class MediaDownloader {
 
         response.pipe(file);
         
-        file.on('finish', () => {
+        file.on('finish', async () => {
           clearTimeout(timeout);
           file.close();
           if (attempt === 1) { // Only count once
             this.stats.downloaded++;
-            logger.debug(`Downloaded: ${uniqueFilename}`);
             
-            // Update analytics with downloaded file info
-            let actualFileSize = 0;
-            try {
-              const fileStats = fs.statSync(filePath);
-              actualFileSize = fileStats.size;
-              this.updateAnalytics(mediaItem, actualFileSize);
-            } catch (e) {
-              // If we can't get file size, use original size or 0
-              const attachment = mediaItem.originalData as DiscordAttachment;
-              actualFileSize = attachment.size || 0;
-              this.updateAnalytics(mediaItem, actualFileSize);
-            }
-
-            // Add to media index for tracking
-            const mediaIndexEntry: MediaIndexEntry = {
-              hash,
-              originalFilename: mediaItem.filename,
-              contentType: (mediaItem.originalData as DiscordAttachment).content_type || 'unknown',
-              fileSize: actualFileSize,
-              filePath: path.relative(this.baseDir, filePath),
-              firstSeen: Date.now()
-            };
-            this.mediaIndex.set(hash, mediaIndexEntry);
+            // Post-download file organization - check actual file type and move if needed
+            const actualFileSize = await this.organizeDownloadedFile(filePath, mediaItem, hash, uniqueFilename);
             
-            // Add to daily references for metadata export
-            this.dailyReferences.push({
-              hash,
-              originalFilename: mediaItem.filename,
-              messageId: mediaItem.messageId,
-              channelId: mediaItem.channelId || 'unknown',
-              channelName: mediaItem.channelName,
-              guildId: mediaItem.guildId || 'unknown',
-              guildName: mediaItem.guildName,
-              userId: mediaItem.userId || 'unknown',
-              timestamp: Date.now(),
-              messageDate: new Date().toISOString(),
-              mediaType: mediaItem.mediaType,
-              url: mediaItem.url,
-              fileSize: actualFileSize,
-              contentType: (mediaItem.originalData as DiscordAttachment).content_type
-            });
+            logger.debug(`Downloaded and organized: ${uniqueFilename}`);
           }
           resolve(true);
         });
