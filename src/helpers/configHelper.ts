@@ -78,7 +78,7 @@ export const loadItems = async (items: ConfigItem[], mapping: Record<string, any
         }, {} as Record<string, any>);
 
         // Build the constructor config object with all available properties
-        const constructorConfig = { name, ...resolvedParams };
+        const constructorConfig: any = { name, ...resolvedParams };
         
         // Include mediaDownload config if present (for Discord sources)
         if (mediaDownload) {

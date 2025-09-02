@@ -30,8 +30,11 @@ interface MediaDownloadItem {
   filename: string;
   messageId: string;
   messageDate: string;
+  channelId: string;
   channelName: string;
+  guildId: string;
   guildName: string;
+  userId: string;
   mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
   originalData: DiscordAttachment | DiscordEmbed | DiscordSticker;
 }
@@ -350,8 +353,11 @@ class MediaDownloader {
               filename: attachment.filename,
               messageId: message.id,
               messageDate,
+              channelId: discordData.channel.id,
               channelName: discordData.channel.name,
+              guildId: item.metadata?.guildId || 'unknown',
               guildName: item.metadata?.guildName || 'unknown',
+              userId: message.uid,
               mediaType: 'attachment',
               originalData: attachment
             });
@@ -368,8 +374,11 @@ class MediaDownloader {
                 filename,
                 messageId: message.id,
                 messageDate,
+                channelId: discordData.channel.id,
                 channelName: discordData.channel.name,
+                guildId: item.metadata?.guildId || 'unknown',
                 guildName: item.metadata?.guildName || 'unknown',
+                userId: message.uid,
                 mediaType: 'embed_image',
                 originalData: embed
               });
@@ -382,8 +391,11 @@ class MediaDownloader {
                 filename,
                 messageId: message.id,
                 messageDate,
+                channelId: discordData.channel.id,
                 channelName: discordData.channel.name,
+                guildId: item.metadata?.guildId || 'unknown',
                 guildName: item.metadata?.guildName || 'unknown',
+                userId: message.uid,
                 mediaType: 'embed_thumbnail',
                 originalData: embed
               });
@@ -396,8 +408,11 @@ class MediaDownloader {
                 filename,
                 messageId: message.id,
                 messageDate,
+                channelId: discordData.channel.id,
                 channelName: discordData.channel.name,
+                guildId: item.metadata?.guildId || 'unknown',
                 guildName: item.metadata?.guildName || 'unknown',
+                userId: message.uid,
                 mediaType: 'embed_video' as const,
                 originalData: { content_type: 'video/mp4', size: undefined, ...embed }
               };
@@ -426,8 +441,11 @@ class MediaDownloader {
               filename,
               messageId: message.id,
               messageDate,
+              channelId: discordData.channel.id,
               channelName: discordData.channel.name,
+              guildId: item.metadata?.guildId || 'unknown',
               guildName: item.metadata?.guildName || 'unknown',
+              userId: message.uid,
               mediaType: 'sticker' as const,
               originalData: {
                 content_type: extension === 'gif' ? 'image/gif' : 'image/png',
@@ -496,11 +514,51 @@ class MediaDownloader {
     const uniqueFilename = `${basename}_${hash}${extension}`;
     const filePath = path.join(typeDir, uniqueFilename);
     
-    // Skip if file already exists
+    // Skip if file already exists, but still add to index if not already there
     if (fs.existsSync(filePath)) {
       if (attempt === 1) { // Only log once
         logger.debug(`Skipping existing file: ${uniqueFilename}`);
         this.stats.skipped++;
+
+        // Add to media index if not already present (for existing files)
+        if (!this.mediaIndex.has(hash)) {
+          let fileSize = 0;
+          try {
+            const fileStats = fs.statSync(filePath);
+            fileSize = fileStats.size;
+          } catch (e) {
+            const attachment = mediaItem.originalData as DiscordAttachment;
+            fileSize = attachment.size || 0;
+          }
+
+          const mediaIndexEntry: MediaIndexEntry = {
+            hash,
+            originalFilename: mediaItem.filename,
+            contentType: (mediaItem.originalData as DiscordAttachment).content_type || 'unknown',
+            fileSize,
+            filePath: path.relative(this.baseDir, filePath),
+            firstSeen: Date.now()
+          };
+          this.mediaIndex.set(hash, mediaIndexEntry);
+          
+          // Add to daily references for metadata export
+          this.dailyReferences.push({
+            hash,
+            originalFilename: mediaItem.filename,
+            messageId: mediaItem.messageId,
+            channelId: mediaItem.channelId,
+            channelName: mediaItem.channelName,
+            guildId: mediaItem.guildId,
+            guildName: mediaItem.guildName,
+            userId: mediaItem.userId,
+            timestamp: Date.now(),
+            messageDate: new Date().toISOString(),
+            mediaType: mediaItem.mediaType,
+            url: mediaItem.url,
+            fileSize,
+            contentType: (mediaItem.originalData as DiscordAttachment).content_type
+          });
+        }
       }
       return true;
     }
@@ -585,14 +643,46 @@ class MediaDownloader {
             logger.debug(`Downloaded: ${uniqueFilename}`);
             
             // Update analytics with downloaded file info
+            let actualFileSize = 0;
             try {
               const fileStats = fs.statSync(filePath);
-              this.updateAnalytics(mediaItem, fileStats.size);
+              actualFileSize = fileStats.size;
+              this.updateAnalytics(mediaItem, actualFileSize);
             } catch (e) {
               // If we can't get file size, use original size or 0
               const attachment = mediaItem.originalData as DiscordAttachment;
-              this.updateAnalytics(mediaItem, attachment.size || 0);
+              actualFileSize = attachment.size || 0;
+              this.updateAnalytics(mediaItem, actualFileSize);
             }
+
+            // Add to media index for tracking
+            const mediaIndexEntry: MediaIndexEntry = {
+              hash,
+              originalFilename: mediaItem.filename,
+              contentType: (mediaItem.originalData as DiscordAttachment).content_type || 'unknown',
+              fileSize: actualFileSize,
+              filePath: path.relative(this.baseDir, filePath),
+              firstSeen: Date.now()
+            };
+            this.mediaIndex.set(hash, mediaIndexEntry);
+            
+            // Add to daily references for metadata export
+            this.dailyReferences.push({
+              hash,
+              originalFilename: mediaItem.filename,
+              messageId: mediaItem.messageId,
+              channelId: mediaItem.channelId || 'unknown',
+              channelName: mediaItem.channelName,
+              guildId: mediaItem.guildId || 'unknown',
+              guildName: mediaItem.guildName,
+              userId: mediaItem.userId || 'unknown',
+              timestamp: Date.now(),
+              messageDate: new Date().toISOString(),
+              mediaType: mediaItem.mediaType,
+              url: mediaItem.url,
+              fileSize: actualFileSize,
+              contentType: (mediaItem.originalData as DiscordAttachment).content_type
+            });
           }
           resolve(true);
         });
@@ -692,6 +782,13 @@ class MediaDownloader {
       
       // Rate limiting - configurable delay between downloads
       await new Promise(resolve => setTimeout(resolve, this.config.rateLimit || DEFAULT_RATE_LIMIT_MS));
+    }
+    
+    // Save daily metadata if there were any downloads
+    if (this.dailyReferences.length > 0) {
+      // Use the first day from the date range for the filename
+      const dateStr = startDate.toISOString().split('T')[0];
+      await this.saveDailyMetadata(dateStr);
     }
     
     this.stats.analytics = this.analytics;

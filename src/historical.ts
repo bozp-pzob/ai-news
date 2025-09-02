@@ -27,7 +27,7 @@ dotenv.config();
 /**
  * Type guard to check if a source supports media downloading
  */
-function hasMediaDownloadCapability(source: any): source is MediaDownloadCapable {
+function hasMediaDownloadCapability(source: any): source is MediaDownloadCapable & { name: string } {
   return source && typeof source.hasMediaDownloadEnabled === 'function';
 }
 
@@ -247,7 +247,7 @@ Options:
         if (hasMediaDownloadCapability(config.instance) && config.instance.hasMediaDownloadEnabled()) {
           logger.info(`✓ Source ${config.instance.name} supports media downloads`);
           const mediaConfig = config.instance.mediaDownload;
-          logger.debug(`Media config:`, mediaConfig);
+          logger.debug(`Media config: ${JSON.stringify(mediaConfig)}`);
           if (mediaConfig?.enabled) {
             logger.info(`Downloading media for ${config.instance.name}...`);
             
