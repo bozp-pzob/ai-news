@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-09-02 06:34:21 UTC*
+*Updated: 2025-09-03 06:31:25 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 107 | **Currently Tracking**: 6 | **New Channels**: 101
+**Total Channels**: 109 | **Currently Tracking**: 6 | **New Channels**: 103
 
 ### Channels
 - [ ] #rules-and-faq (1285103549944168450) **NEW**
@@ -81,7 +81,8 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #country-leads (1389897960736690338) **NEW**
 - [ ] #contributor (1408523591842267158) **NEW**
 - [ ] #eliza-cabal (1406925412780740708) **NEW**
-- [ ] #eliza-cabal-posts (1409460517231267911) **NEW**
+- [ ] #cabal-posts (1409460517231267911) **NEW**
+- [ ] #cabal-socials (1412403278968258640) **NEW**
 
 **ARCHIVES:**
 - [ ] #base-agent (1405275024360996904) **NEW**
@@ -144,6 +145,9 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #elizacon (1321693385635139647) **NEW**
 - [ ] #trust (1301766662722289744) **NEW**
 - [ ] #events (1310472593588883466) **NEW**
+
+**💠 ENGAGE ECOSYSTEM:**
+- [ ] #💠│engage-logs (1412406873788907560) **NEW**
 
 ## Hyperfy (958209073277456457)
 **Total Channels**: 54 | **Currently Tracking**: 5 | **New Channels**: 49
