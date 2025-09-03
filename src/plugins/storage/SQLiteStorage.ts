@@ -227,33 +227,6 @@ export class SQLiteStorage implements StoragePlugin {
   
     return item;
   }
-  
-  public async getContentItemByLink(link: string): Promise<ContentItem | null> {
-    if (!this.db) {
-      throw new Error("Database not initialized. Call init() first.");
-    }
-  
-    const row = await this.db.get(`SELECT * FROM items WHERE link = ?`, [link]);
-  
-    if (!row) {
-      return null;
-    }
-  
-    const item: ContentItem = {
-      id: row.id,
-      type: row.type,
-      source: row.source,
-      cid: row.cid,
-      title: row.title,
-      text: row.text,
-      link: row.link,
-      topics: row.topics ? JSON.parse(row.topics) : null,
-      date: row.date,
-      metadata: row.metadata ? JSON.parse(row.metadata) : null
-    };
-  
-    return item;
-  }
 
   /**
    * Saves or updates a summary item in the database.

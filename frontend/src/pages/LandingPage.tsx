@@ -4,6 +4,7 @@ import Hero from '../components/sections/Hero';
 import Features from '../components/sections/Features';
 import Demo from '../components/sections/Demo';
 import GithubStats from '../components/sections/GithubStats';
+import Documentation from '../components/sections/Documentation';
 import CallToAction from '../components/sections/CallToAction';
 
 // This is a simplified version of the landing page
@@ -16,6 +17,7 @@ const LandingPage: React.FC = () => {
       <Features />
       <Demo />
       <GithubStats />
+      {/* <Documentation /> */}
       <CallToAction />
     </Layout>
   );

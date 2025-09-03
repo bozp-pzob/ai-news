@@ -16,6 +16,10 @@ const Navbar: React.FC = () => {
     ? "text-white"
     : "text-amber-600";
 
+  const linkClass = isLandingPage
+    ? "text-gray-300 hover:text-white"
+    : "text-gray-600 hover:text-amber-600";
+
   const handleLaunchAppClick = (e: React.MouseEvent) => {
     e.preventDefault();
     navigate('/app');
@@ -31,6 +35,14 @@ const Navbar: React.FC = () => {
                 AI News
               </Link>
             </div>
+            {/* <div className="hidden md:ml-6 md:flex md:space-x-8">
+              <Link 
+                to="/docs/intro" 
+                className={`${linkClass} px-3 py-2 rounded-md text-sm font-medium`}
+              >
+                Documentation
+              </Link>
+            </div> */}
           </div>
           <div className="flex items-center">
             {isAppPage ? (

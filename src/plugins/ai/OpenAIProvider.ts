@@ -184,30 +184,10 @@ export class OpenAIProvider implements AiProvider {
       };
   
       const image = await client.images.generate(params);
-      //@ts-ignore
-      return JSON.parse(image?.data[0].url || "[]");
+      console.log(image.data[0].url);
+      return JSON.parse(image.data[0].url || "[]");
     } catch (e) {
       console.error("Error in image generation:", e);
-      return [];
-    }
-  }
-
-  /**
-   * Deepsearch for specific query.
-   * Returns Json formatted text of the results.
-   * @param text - Text to analyze for topics
-   * @returns Promise<string[]> Array of topic keywords
-   */
-  public async search(prompt: string): Promise<any> {
-    try {
-      const completion = await this.openai.chat.completions.create({
-        model: this.model,
-        messages: [{ role: 'user', content: prompt }]
-      });
-
-      return completion.choices[0]?.message?.content || "";
-    } catch (e) {
-      console.error("Error in search:", e);
       return [];
     }
   }

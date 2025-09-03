@@ -8,30 +8,15 @@ import { StoragePlugin } from "./plugins/storage/StoragePlugin";
 export interface ContentItem {
   id?: number;          // Will be assigned by storage if not provided
   cid: string;          // Content Id from the source
-  type: string;          // e.g. "newsArticle", "discordMessage", "githubIssue"
-  source: string;        // e.g. "bbc-rss", "discord", "github"
-  title?: string;        // optional – for articles, title or subject line
-  text?: string;         // main text content (article abstract, message content, etc.)
+  type: string;          // e.g. "tweet", "newsArticle", "discordMessage", "githubIssue"
+  source: string;        // e.g. "twitter", "bbc-rss", "discord", "github"
+  title?: string;        // optional – for articles, maybe a tweet "title" is same as text
+  text?: string;         // main text content (tweet text, article abstract, etc.)
   link?: string;         // URL to the item
   topics?: string[];
   date?: number;           // When it was created/published
-  metadata?: {
-    // General metadata fields
-    photos?: any[]; 
-    videos?: any[];
-    likes?: number;
-    replies?: number;
-    isPin?: boolean;
-    isReply?: boolean;
-    hashtags?: string[];
-    mentions?: any[];
-    urls?: string[];
-    sensitiveContent?: boolean;
-    // Keep allowing other dynamic keys
-    [key: string]: any;
-  };
+  metadata?: Record<string, any>; // Additional key-value data
 }
-
 
 /**
  * Represents a summary of multiple content items.
@@ -39,13 +24,12 @@ export interface ContentItem {
  */
 export interface SummaryItem {
   id?: number;          // Will be assigned by storage if not provided
-  type: string;          // e.g. "newsArticle", "discordMessage", "githubIssue"
-  title?: string;        // optional – for articles, title or subject line
+  type: string;          // e.g. "tweet", "newsArticle", "discordMessage", "githubIssue"
+  title?: string;        // optional – for articles, maybe a tweet "title" is same as text
   categories?: string;   // main content (JSON string for structured summaries)
   markdown?: string;     // Optional Markdown version of the summary
   date?: number;         // When it was created/published (epoch seconds)
 }
-  
 
 /**
  * Represents the detailed status of an aggregation process
@@ -132,7 +116,6 @@ export interface AiProvider {
   summarize(text: string): Promise<string>;
   topics(text: string): Promise<string[]>;
   image(text: string): Promise<string[]>;
-  search(text:string): Promise<string>;
 }
 
 /**
@@ -173,10 +156,6 @@ export interface DateConfig {
   date?: string;
   after?: string;
   before?: string;
-}
-
-export interface ParserConfig {
-  provider?: AiProvider | undefined;
 }
 
 /**

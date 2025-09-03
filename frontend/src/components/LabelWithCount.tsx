@@ -35,6 +35,7 @@ export const LabelWithCount: React.FC<LabelWithCountProps> = ({
 // Preview component for demonstration
 export const LabelWithCountPreview: React.FC = () => {
   const examples = [
+    { label: 'Twitter', count: 127 },
     { label: 'Reddit', count: 85 },
     { label: 'Hacker News', count: 42 },
     { label: 'Product Hunt', count: 19 },

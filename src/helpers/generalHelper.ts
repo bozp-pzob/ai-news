@@ -1,4 +1,3 @@
-import { ContentItem } from "../types";
 import { logger } from "./cliHelper";
 
 /**
@@ -66,33 +65,3 @@ export const retryOperation = async (operation: () => Promise<any>, retries = MA
     }
     throw new Error('Operation failed after max retries');
   }
-
-/**
- * Extracts data from specified source fields (supports nested paths like 'metadata.title')
- */
-export const extractFieldData = (contentItem: ContentItem, fields: string[], strictValueCheck: boolean = false): Record<string, any> => {
-  const data: Record<string, any> = {};
-
-  for (const fieldPath of fields) {
-    const value = getNestedValue(contentItem, fieldPath);
-    if (value !== undefined && value !== null && value !== '') {
-      data[fieldPath] = value;
-    }
-    else if (!strictValueCheck) {
-      data[fieldPath] = fieldPath;
-    }
-  }
-
-  return data;
-}
-
-
-
-/**
- * Gets nested value using dot notation (e.g., 'metadata.title')
- */
-export const getNestedValue = (obj: any, path: string): any => {
-  return path.split('.').reduce((current, key) => 
-    current?.[key], obj
-  );
-}

@@ -12,8 +12,9 @@ const aggregator = new ContentAggregator();
 
 // Configure Data Sources
 const sources = [
-  new RSSSource({
-    name: "rss",
+  new TwitterSource({
+    name: "twitter",
+    accounts: ["daosdotfun", "ai16zdao"]
   }),
   new GitHubDataSource({
     name: "github_data",
@@ -41,14 +42,14 @@ aggregator.registerEnricher(
 );
 
 // Fetch and Process Data
-const items = await aggregator.fetchSource("rss");
+const items = await aggregator.fetchSource("twitter");
 await storage.save(items);
 
 // Generate Daily Summary
 const summary = await summaryGenerator.generateAndStoreSummary(dateStr);`;
 
 const sources = [
-  { name: "RSSSource", delay: 1000 },
+  { name: "Twitter", delay: 1000 },
   { name: "GitHub", delay: 2000 },
   { name: "Discord", delay: 3000 },
   { name: "Market Data", delay: 2500 }

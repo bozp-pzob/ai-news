@@ -81,3 +81,97 @@ export class Cache {
   }
 }
 
+/**
+ * Specialized cache for Twitter data.
+ * 
+ * This class provides:
+ * - Caching of Twitter data by account and date
+ * - Caching of Twitter cursors for pagination
+ * - Automatic expiration of cursor data
+ */
+export class TwitterCache {
+  /** The underlying cache instance */
+  private cache: Cache;
+
+  /**
+   * Creates a new TwitterCache instance.
+   */
+  constructor() {
+    this.cache = new Cache();
+  }
+
+  /**
+   * Generates a cache key for Twitter data.
+   * 
+   * @param account - The Twitter account
+   * @param date - The date string
+   * @returns A formatted cache key
+   */
+  private getCacheKey(account: string, date: string): string {
+    return `twitter:${account}:${date}`;
+  }
+  
+  /**
+   * Generates a cache key for Twitter cursors.
+   * 
+   * @param account - The Twitter account
+   * @returns A formatted cache key
+   */
+  private getCursorKey(account: string): string {
+    return `twitter:${account}:cursor`;
+  }
+
+  /**
+   * Sets Twitter data in the cache.
+   * 
+   * @param account - The Twitter account
+   * @param date - The date string
+   * @param data - The data to cache
+   * @param ttlSeconds - Optional time-to-live in seconds
+   */
+  public set(account: string, date: string, data: any, ttlSeconds?: number): void {
+    const key = this.getCacheKey(account, date);
+    this.cache.set(key, data, ttlSeconds);
+  }
+
+  /**
+   * Gets Twitter data from the cache.
+   * 
+   * @param account - The Twitter account
+   * @param date - The date string
+   * @returns The cached data or undefined if not found or expired
+   */
+  public get(account: string, date: string): any | undefined {
+    const key = this.getCacheKey(account, date);
+    return this.cache.get(key);
+  }
+  
+  /**
+   * Sets a Twitter cursor in the cache.
+   * 
+   * @param account - The Twitter account
+   * @param cursor - The cursor value
+   */
+  public setCursor(account: string, cursor: string): void {
+    const key = this.getCursorKey(account);
+    this.cache.set(key, cursor, 300); // 5 minute TTL for cursors
+  }
+  
+  /**
+   * Gets a Twitter cursor from the cache.
+   * 
+   * @param account - The Twitter account
+   * @returns The cached cursor or undefined if not found or expired
+   */
+  public getCursor(account: string): string | undefined {
+    const key = this.getCursorKey(account);
+    return this.cache.get(key);
+  }
+
+  /**
+   * Clears the entire Twitter cache.
+   */
+  public clear(): void {
+    this.cache.clear();
+  }
+}
