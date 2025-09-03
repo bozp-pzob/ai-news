@@ -35,6 +35,24 @@ export class DiscordAnnouncementSource implements ContentSource {
   /** Discord.js client instance */
   private client: Client;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'botToken',
+        type: 'string',
+        required: true,
+        description: 'Discord bot token for authentication',
+        secret: true
+      },
+      {
+        name: 'channelIds',
+        type: 'string[]',
+        required: true,
+        description: 'Array of Discord channel IDs to monitor for announcements'
+      }
+    ]
+  };
+
   /**
    * Creates a new DiscordAnnouncementSource instance
    * @param {DiscordAnnouncementSourceConfig} config - Configuration object for the Discord source

@@ -33,6 +33,36 @@ export class DiscordChannelSource implements ContentSource {
   private channelIds: string[];
   private client: Client;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'botToken',
+        type: 'string',
+        required: true,
+        description: 'Discord bot token for authentication',
+        secret: true
+      },
+      {
+        name: 'channelIds',
+        type: 'string[]',
+        required: true,
+        description: 'Array of Discord channel IDs to monitor'
+      },
+      {
+        name: 'storage',
+        type: 'StoragePlugin',
+        required: true,
+        description: 'Storage to store data fetching cursors'
+      },
+      {
+        name: 'provider',
+        type: 'AiProvider',
+        required: false,
+        description: 'Optional AI provider for content processing'
+      }
+    ]
+  };
+
   /**
    * Creates a new instance of DiscordChannelSource.
    * @param config - Configuration object containing bot token, channel IDs, and AI provider

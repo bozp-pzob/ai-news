@@ -59,7 +59,7 @@ export const loadDirectoryModules = async (directory : string): Promise<Record<s
  * @returns A promise that resolves to an array of component instances with optional intervals
  * @throws Error if a component type is unknown
  */
-export const loadItems = async (items: ConfigItem[], mapping: Record<string, any>, category: string): Promise<InstanceConfig[]> => {
+export const loadItems = async (items: ConfigItem[], mapping: Record<string, any>, category: string, secrets: any = {}): Promise<InstanceConfig[]> => {
   if (!items) return []; // Handle case where config section is missing
   return items.map((item) => {
     const { type, name, params, interval } = item;
@@ -73,7 +73,7 @@ export const loadItems = async (items: ConfigItem[], mapping: Record<string, any
     }
     try {
         const resolvedParams = Object.entries(params || {}).reduce((acc, [key, value]) => {
-          acc[key] = typeof value === "string" ? resolveParam(value) : value;
+          acc[key] = typeof value === "string" ? resolveParam(value, secrets) : value;
           return acc;
         }, {} as Record<string, any>);
 
@@ -100,6 +100,7 @@ export const loadItems = async (items: ConfigItem[], mapping: Record<string, any
 export const loadProviders = async (instances: InstanceConfig[], providers: InstanceConfig[]): Promise<InstanceConfig[]> => {
   instances.forEach(({ instance }) => {
     const requiredProviderName = instance.provider; // Provider name often stored directly
+    const requiredSearchProvider = instance.searchProvider; // Search Provider name often stored directly
     if (requiredProviderName && typeof requiredProviderName === 'string') {
       const chosenProvider = providers.find((providerConfig : InstanceConfig) => {
         return providerConfig.instance.name === requiredProviderName;
@@ -112,7 +113,38 @@ export const loadProviders = async (instances: InstanceConfig[], providers: Inst
         logger.info(`[Config Injection] Injected provider '${requiredProviderName}' into component '${instance.name}'.`);
       }
     }
+    if (requiredSearchProvider && typeof requiredSearchProvider === 'string') {
+      const chosenProvider = providers.find((providerConfig : InstanceConfig) => {
+        return providerConfig.instance.name === requiredSearchProvider;
+      });
+
+      if (!chosenProvider) {
+        logger.warning(`[Config Injection] Component '${instance.name}' requires provider '${requiredSearchProvider}', but it was not found. Provider will not be injected.`);
+      } else {
+        instance.searchProvider = chosenProvider.instance; // Overwrite name string with instance
+        logger.info(`[Config Injection] Injected provider '${requiredSearchProvider}' into component '${instance.name}'.`);
+      }
+    }
   });
+  return instances;
+}
+
+export const loadParsers = async (instances: InstanceConfig[], parsers: InstanceConfig[]): Promise<InstanceConfig[]> => {
+  instances.forEach(({ instance }) => {
+    if ("parser" in instance && instance.parser) {
+      const chosenParser = parsers.find((parser : any) => {
+        return parser.instance.name === instance.parser
+      });
+
+      if ( ! chosenParser ) {
+        throw(`Error: Invalid Parser Name ${instance.parser}`);
+      }
+      else {
+        instance.parser = chosenParser.instance;
+      }
+    }
+  });
+
   return instances;
 }
 
@@ -141,7 +173,10 @@ export const loadStorage = async (instances: InstanceConfig[], storages: Instanc
 /**
  * Resolves parameter values, including environment variables.
  */
-export const resolveParam = (value: string): any => { // Ensure input is string
+export const resolveParam = (value: string, secrets: any = {}): any => { // Ensure input is string
+  if (secrets[value] || secrets[value.replace("process.env.", "")]) {
+    return secrets[value] || secrets[value.replace("process.env.", "")]
+  }
   if (value.startsWith("process.env.")) {
     const envVar = value.replace("process.env.", "");
     return process.env[envVar]; // Return undefined if not found

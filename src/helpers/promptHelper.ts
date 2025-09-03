@@ -1,7 +1,4 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { ensureDirectoryExists, writeFile } from './fileHelper';
-import { ContentItem } from '../types'; // Ensure ContentItem is imported if not already
+import * as cheerio from "cheerio";
 
 /**
  * Prompt generation utilities for the AI News Aggregator.
@@ -14,74 +11,36 @@ import { ContentItem } from '../types'; // Ensure ContentItem is imported if not
  * Creates a prompt for converting JSON summary data into markdown format.
  * 
  * This function:
- * 1. Takes JSON summary data (an array of categories/topics) and a date string
+ * 1. Takes JSON summary data and a date string
  * 2. Formats a prompt that instructs an AI model to convert the JSON into markdown
- * 3. Includes specific guidelines for the markdown format.
+ * 3. Includes specific guidelines for the markdown format
  * 
- * @param categories - The array of category/topic objects, where each object contains a `topic` identifier (though not strictly used by this prompt anymore for H2), a `title`, and `content` to be converted to markdown.
- * @param dateStr - The date string associated with the summary data.
- * @returns A formatted prompt string for the AI model.
+ * @param summaryData - The JSON data to be converted to markdown
+ * @param dateStr - The date string associated with the summary data
+ * @returns A formatted prompt string for the AI model
  */
-export const createMarkdownPromptForJSON = (categories: any[], dateStr: string): string => {
-  const jsonStr = JSON.stringify(categories, null, 2); // Stringify the whole categories array
-
-  // Attempt to find a repository_name from any of the categories if present (for general use in prompt)
-  let repoNameFromData = "the repository"; // Default
-  const ghCategoryWithRepo = categories.find(cat => cat.repository_name);
-  if (ghCategoryWithRepo) {
-    repoNameFromData = ghCategoryWithRepo.repository_name;
-  }
-
+export const createMarkdownPromptForJSON = (summaryData: any, dateStr: string): string => {
+  const jsonStr = JSON.stringify(summaryData, null, 2);
   return `You are an expert at converting structured JSON data into a concise markdown report for language model processing.
-  The overall report WILL HAVE A MAIN H1 TITLE (e.g., "# Daily Report - ${dateStr}") PREPENDED TO YOUR OUTPUT SEPARATELY.
-  YOUR TASK IS TO GENERATE THE MARKDOWN FOR THE SUBSEQUENT CONTENT SECTIONS based on the JSON array of categories provided below.
   
-For each category object in the JSON array:
-- Use H2 (##) for the main heading of EACH section, using the 'title' field from the category object. For example, if a category title is "Pull Requests or Issues for ${repoNameFromData}", the heading should be "### Pull Requests for ${repoNameFromData}".
-- Under each H2, iterate through the 'content' array of that category.
-- For each item/theme in the 'content' array:
-    - If the category's 'topic' is 'crypto market', each item in its 'content' array is a string. Display each string as a direct bullet point.
-      - Example for a crypto market item:
-        - WETH is currently trading at $2,663.02.
-    - For all other topics (e.g., 'issue', 'pull_request', 'github_summary', 'github_other'):
-      - Each item in the 'content' array is an object which will have a 'text' property and may have an optional 'link' property.
-      - Display the 'text' as a bullet point or paragraph.
-      - If a 'link' property exists for an item, display it after its text, perhaps as " (Source: [link])" or on a new sub-bullet for clarity.
-      - Example for an issue/PR item with a link:
-        - Issue #123 by @user titled 'Fix bug' is open. (Source: https://github.com/issue/123)
-      - Example for a summary item (e.g., from github_other) with a link:
-        - A bug fix was implemented for TEE Tests. (Source: https://github.com/elizaOS/eliza/pull/4807)
-      - Example for an item with no link:
-        - This is a summary point from the AI with no direct source link provided for this entry.
+The markdown should:
+- Use clear, hierarchical headings
+- Include bullet lists for key points
+- Be concise and easy to parse
+- Exclude any raw JSON output
+- Maintain hierarchical structure
+- Focus on key information
+- ONLY report on what has been done or accomplished
+- DO NOT include statements about what is missing, not done, or needs improvement
+- DO NOT include recommendations or suggestions
+- DO NOT include phrases like "no technical discussions" or "limited content"
 
-General Markdown Guidelines:
-- Be concise and easy to parse.
-- Avoid unnecessary newlines, especially between items in a bulleted list. Ensure list items flow directly one after another.
-- Exclude any raw JSON output.
-- Maintain hierarchical structure where appropriate.
-- Focus on key information and accomplishments.
-- DO NOT include statements about what is missing, not done, or needs improvement.
-- DO NOT include recommendations or suggestions.
-- DO NOT include phrases like "no technical discussions" or "limited content" unless that IS the summary from the AI.
-- When summarizing content that originates from user posts (especially if the AI includes attributions in its 'text' summary), ensure these attributions are preserved in the markdown.
-
-Given the following JSON array of categories for ${dateStr}, generate a markdown report accordingly:
+Given the following JSON summary for ${dateStr}, generate a markdown report accordingly:
 
 ${jsonStr}
 
-Only return the markdown text for the content sections. The H1 title will be added separately.`;
+Only return the final markdown text.`;
 }
-
-
-// Helper function to write prompt to a file
-const logPromptToFile = (topic: string, dateStr: string, prompt: string) => {
-  const logsDir = path.join(__dirname, '../../logs/prompts'); // Define a logs directory
-  ensureDirectoryExists(logsDir);
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `${dateStr}_${topic.replace(/\s+/g, '_')}_${timestamp}`;
-  console.log(`Prompt for topic '${topic}' logged to: ${filename}`);
-  writeFile(logsDir, filename, prompt, 'log');
-};
 
 /**
  * Creates a prompt for generating a JSON summary of topics from content items.
@@ -95,45 +54,297 @@ const logPromptToFile = (topic: string, dateStr: string, prompt: string) => {
  * @param topic - The topic to summarize
  * @param objects - Array of content items related to the topic
  * @param dateStr - The date string associated with the content
- * @param customInstructions - Optional custom instructions for the AI, including a title for the output.
  * @returns A formatted prompt string for the AI model
  */
-export const createJSONPromptForTopics = (topic: string, objects: ContentItem[], dateStr: string, customInstructions?: { title?: string, aiPrompt?: string, repositoryName?: string, dataProviderName?: string }): string => {
-  let prompt = ``;
-  prompt += customInstructions?.aiPrompt || `Generate a summary for the topic: '${topic}'.\n`;
-  prompt += `\n--- Input Item Sources for Analysis (Details for each item are provided below, identified by its 0-based [INDEX]) ---\n`;
-
-  objects.forEach((item, index) => {
-    prompt += `\n***Item Context [${index}]***\n`;
-    prompt += `cid: ${item.cid}\n`;
-    prompt += `link: ${item.link || 'N/A'}\n`;
-    prompt += `type: ${item.type}\n`;
-    prompt += `source_plugin: ${item.source}\n`;
-
-    if (item.source.toLowerCase().includes('github') && (item.type.toLowerCase().includes('issue') || item.type.toLowerCase().includes('pull_request'))) {
-      // GitHub Issue or Pull Request specific context
-      prompt += `title: ${item.title || 'N/A'}\n`;
-      prompt += `item_author: ${item.metadata?.author || 'unknown'}\n`;
-      prompt += `item_number: ${item.metadata?.number || 'N/A'}\n`;
-      prompt += `item_state: ${item.metadata?.state || 'unknown'}\n`;
-      prompt += `item_createdAt: ${item.metadata?.createdAt || 'N/A'}\n`;
-      if (item.metadata?.closedAt) {
-        prompt += `item_closedAt: ${item.metadata.closedAt}\n`;
-      }
-      if (typeof item.metadata?.commentCount === 'number') {
-        prompt += `item_commentCount: ${item.metadata.commentCount}\n`;
-      }
-      prompt += `text_snippet: ${(item.text || item.title || '').substring(0, 500)}\n`; // Use body or title for snippet
-    } else { // For other general items
-      prompt += `title: ${item.title || 'N/A'}\n`;
-      prompt += `text_snippet: ${(item.text || '').substring(0, 500)}\n`; 
-    }
-    prompt += `***End Item Context [${index}]***\n`;
+export const createJSONPromptForTopics = (topic: string, objects: any[], dateStr: string): string => {
+  let prompt = `Generate a summary for the topic. Focus on the following details:\n\n`;
+  objects.forEach((item) => {
+    prompt += `\n***source***\n`;
+    if (item.text) prompt += `text: ${item.text}\n`;
+    if (item.link) prompt += `sources: ${item.link}\n`;
+    if (item.metadata?.photos) prompt += `photos: ${item.metadata?.photos}\n`;
+    if (item.metadata?.videos) prompt += `videos: ${item.metadata?.videos}\n`;
+    prompt += `\n***source_end***\n\n`;
   });
-  prompt += `\n--- End of Input Item Sources ---\n\n`;
 
-  if (process.env.DEBUG || process.env.LOG_PROMPT) {
-    logPromptToFile(topic, dateStr, prompt);
-  }
+  prompt += `Provide a clear and concise summary based on the ***sources*** above for the topic. DO NOT PULL DATA FROM OUTSIDE SOURCES'${topic}'. Combine similar sources into a longer summary if it makes sense.\n\n`;
+
+  prompt += `Response MUST be a valid JSON object containing:\n- 'title': The title of the topic.\n- 'content': A list of messages with keys 'text', 'sources', 'images', and 'videos'.\n\n`;
+
   return prompt;
 }
+
+export const cleanHTML = (rawHTML: string): string => {
+  const MAX_SCRIPT_CHARS = 10000; // adjust as needed
+  
+  //@ts-ignore
+  const $ = cheerio.load(rawHTML, { decodeEntities: false });
+
+  // 1) Extract all <script type="application/ld+json"> blocks.
+  const jsonLdBlocks: string[] = [];
+  $('script[type="application/ld+json"]').each((_, el) => {
+    const inner = $(el).html();
+    if (inner && inner.trim()) {
+      jsonLdBlocks.push(inner.trim());
+    }
+  });
+  // Remove JSON‑LD tags from the DOM now.
+  $('script[type="application/ld+json"]').remove();
+
+  // 2) Collect every other <script> if it’s small enough; drop the rest.
+  const keptScriptContents: string[] = [];
+  $('script').each((_, el) => {
+    const inner = $(el).html() || '';
+    const trimmed = inner.trim();
+    if (trimmed && trimmed.length <= MAX_SCRIPT_CHARS) {
+      keptScriptContents.push(trimmed);
+    }
+  });
+  // Remove all remaining <script> tags from the DOM.
+  $('script').remove();
+
+  // 3) Remove redundant chrome: header, footer, style, noscript, iframe.
+  $('header, footer, style, noscript, iframe').remove();
+
+  // Helper: escape triple‑backticks so fences don’t break
+  function escapeBackticks(text: string): string {
+    return text.replace(/```/g, '\\`\\`\\`');
+  }
+
+  // Convert a <table> → Markdown
+  //@ts-ignore
+  function tableToMarkdown(tableElem: cheerio.Element): string {
+    const rows: string[][] = [];
+    const $table = $(tableElem);
+
+    $table.find('tr').each((_, tr) => {
+      const cells: string[] = [];
+      $(tr)
+        .find('th, td')
+        .each((_, cell) => {
+          const txt = $(cell).text().replace(/\s+/g, ' ').trim();
+          cells.push(txt);
+        });
+      if (cells.length) {
+        rows.push(cells);
+      }
+    });
+
+    if (!rows.length) return '';
+
+    const header = rows[0];
+    const colCount = header.length;
+    const separator = header.map(() => '---');
+
+    const mdLines: string[] = [];
+    mdLines.push(`| ${header.join(' | ')} |`);
+    mdLines.push(`| ${separator.join(' | ')} |`);
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i].slice();
+      while (row.length < colCount) row.push('');
+      mdLines.push(`| ${row.join(' | ')} |`);
+    }
+    return mdLines.join('\n');
+  }
+
+  // 4) Recursively convert any node to Markdown
+  //@ts-ignore
+  function nodeToMarkdown(node: cheerio.Element, indentLevel = 0): string {
+    if (node.type === 'text') {
+      const raw = (node.data || '').replace(/\s+/g, ' ').trim();
+      return raw ? raw : '';
+    }
+    if (node.type !== 'tag') {
+      return '';
+    }
+
+    const tag = node.tagName.toLowerCase();
+    const $node = $(node);
+
+    switch (tag) {
+      case 'h1': {
+        const txt = $node.text().replace(/\s+/g, ' ').trim();
+        return txt ? `# ${txt}\n\n` : '';
+      }
+      case 'h2': {
+        const txt = $node.text().replace(/\s+/g, ' ').trim();
+        return txt ? `## ${txt}\n\n` : '';
+      }
+      case 'h3': {
+        const txt = $node.text().replace(/\s+/g, ' ').trim();
+        return txt ? `### ${txt}\n\n` : '';
+      }
+      case 'h4': {
+        const txt = $node.text().replace(/\s+/g, ' ').trim();
+        return txt ? `#### ${txt}\n\n` : '';
+      }
+      case 'h5': {
+        const txt = $node.text().replace(/\s+/g, ' ').trim();
+        return txt ? `##### ${txt}\n\n` : '';
+      }
+      case 'h6': {
+        const txt = $node.text().replace(/\s+/g, ' ').trim();
+        return txt ? `###### ${txt}\n\n` : '';
+      }
+
+      case 'ul':
+      case 'ol': {
+        const lines: string[] = [];
+        const isOrdered = tag === 'ol';
+        let counter = 1;
+        $node.children('li').each((_, li) => {
+          const liMd = nodeToMarkdown(li, indentLevel + 1).trim();
+          if (!liMd) return;
+          const prefix = isOrdered ? `${counter++}. ` : '- ';
+          const indentSpaces = '  '.repeat(indentLevel);
+          liMd.split('\n').forEach((subLine, idx) => {
+            if (idx === 0) {
+              lines.push(`${indentSpaces}${prefix}${subLine}`);
+            } else {
+              lines.push(`${indentSpaces}   ${subLine}`);
+            }
+          });
+        });
+        return lines.length ? lines.join('\n') + '\n\n' : '';
+      }
+      case 'li': {
+        const parts: string[] = [];
+        //@ts-ignore
+        node.children.forEach((child: cheerio.Element) => {
+          const md = nodeToMarkdown(child, indentLevel);
+          if (md) parts.push(md);
+        });
+        return parts.join(' ').trim();
+      }
+
+      case 'p':
+      case 'div':
+      case 'section':
+      case 'article':
+      case 'span':
+      case 'blockquote':
+      case 'figure':
+      case 'figcaption':
+      case 'details':
+      case 'summary': {
+        let prefix = '';
+        let suffix = '';
+        if (tag === 'strong' || tag === 'b') {
+          prefix = suffix = '**';
+        } else if (tag === 'em' || tag === 'i' || tag === 'u') {
+          prefix = suffix = '_';
+        }
+        const parts: string[] = [];
+        //@ts-ignore
+        node.children.forEach((child: cheerio.Element) => {
+          const md = nodeToMarkdown(child, indentLevel);
+          if (md) parts.push(md);
+        });
+        const combined = parts.join('').trim();
+        return combined ? `${prefix}${combined}${suffix}` : '';
+      }
+
+      case 'br': {
+        return '  \n';
+      }
+
+      case 'code': {
+        const txt = $node.text();
+        const esc = escapeBackticks(txt);
+        return `\`${esc.trim()}\``;
+      }
+
+      case 'pre': {
+        let codeText = '';
+        if ($node.children('code').length) {
+          codeText = $node.children('code').text();
+        } else {
+          codeText = $node.text();
+        }
+        const esc = escapeBackticks(codeText);
+        return `\`\`\`\n${esc}\n\`\`\`\n\n`;
+      }
+
+      case 'table': {
+        const mdTable = tableToMarkdown(node);
+        return mdTable ? mdTable + '\n\n' : '';
+      }
+      case 'thead':
+      case 'tbody':
+      case 'tfoot':
+      case 'tr':
+      case 'th':
+      case 'td': {
+        return '';
+      }
+
+      case 'img': {
+        const alt = $node.attr('alt') || '';
+        const src = $node.attr('src') || '';
+        if (alt.trim()) {
+          return `![${alt.trim()}](${src.trim()})`;
+        } else if (src.trim()) {
+          return `![](${src.trim()})`;
+        }
+        return '';
+      }
+
+      case 'a': {
+        const href = $node.attr('href') || '';
+        const parts: string[] = [];
+        //@ts-ignore
+        node.children.forEach((child: cheerio.Element) => {
+          const md = nodeToMarkdown(child, indentLevel);
+          if (md) parts.push(md);
+        });
+        const text = parts.join('').trim() || href;
+        return href ? `[${text}](${href.trim()})` : text;
+      }
+
+      default: {
+        const parts: string[] = [];
+        //@ts-ignore
+        node.children.forEach((child: cheerio.Element) => {
+          const md = nodeToMarkdown(child, indentLevel);
+          if (md) parts.push(md);
+        });
+        return parts.join('').trim();
+      }
+    }
+  }
+
+  // 5) Build the final Markdown string:
+  let result = '';
+
+  // 5a) Emit JSON‑LD first
+  if (jsonLdBlocks.length) {
+    result += '```json\n';
+    jsonLdBlocks.forEach((blk) => {
+      result += blk.trim() + '\n';
+    });
+    result += '```\n\n';
+  }
+
+  // 5b) Traverse the DOM (minus header/footer/scripts) → Markdown
+  const rootElem = $.root()[0];
+  const allChildren = rootElem.children || [];
+  for (const child of allChildren) {
+    const md = nodeToMarkdown(child, 0).trim();
+    if (md) {
+      result += md;
+      if (!md.endsWith('\n\n')) {
+        result += '\n\n';
+      }
+    }
+  }
+
+  // 5c) Append each “kept” <script> (under MAX_SCRIPT_CHARS) as a ```js``` fence
+  if (keptScriptContents.length) {
+    keptScriptContents.forEach((scriptText) => {
+      const esc = escapeBackticks(scriptText);
+      result += `\`\`\`js\n${esc}\n\`\`\`\n\n`;
+    });
+  }
+  
+  return result.trim() + '\n';
+};

@@ -33,6 +33,24 @@ export class SolanaAnalyticsSource implements ContentSource {
   /** List of Solana token addresses to track */
   private tokenAddresses: string[];
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'apiKey',
+        type: 'string',
+        required: true,
+        description: 'API key for Solana Analytics',
+        secret: true
+      },
+      {
+        name: 'tokenAddresses',
+        type: 'string[]',
+        required: true,
+        description: 'Array of Solana token addresses to track'
+      }
+    ]
+  };
+
   /**
    * Creates a new SolanaAnalyticsSource instance
    * @param {SolanaTokenAnalyticsSourceConfig} config - Configuration object for the analytics source
