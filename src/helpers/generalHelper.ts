@@ -65,3 +65,17 @@ export const retryOperation = async (operation: () => Promise<any>, retries = MA
     }
     throw new Error('Operation failed after max retries');
   }
+
+/**
+ * Ensures that a string is formatted as a hexadecimal string with a "0x" prefix.
+ * If the input already starts with "0x", it is returned unchanged.
+ * 
+ * @param s - The string to format as a hex string
+ * @returns A hex string starting with "0x"
+ */
+export const toHexString = (s: string | undefined): `0x${string}` | undefined => {
+  if (!s) {
+    return;
+  }
+  return (s.startsWith("0x") ? s : `0x${s}`) as `0x${string}`;
+};

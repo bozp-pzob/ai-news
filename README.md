@@ -29,6 +29,9 @@ A modular TypeScript-based news aggregator that collects, enriches, and analyzes
 - **Configuration Driven**  
   Behavior controlled by JSON configuration files and environment variables.
 
+- **Premium Report Access with x402 Payments**  
+  The API now supports [x402](https://x402.org/) payment-gated routes. Clients must send valid on-chain payments to unlock premium reports.
+
 ## Prerequisites
 
 - Node.js â‰¥ 18 (v23 recommended)
@@ -61,7 +64,29 @@ DISCORD_TOKEN=
 DISCORD_GUILD_ID=
 
 CODEX_API_KEY=
+
+# x402 Payment Settings
+ETHEREUM_WALLET=0xYourEthereumAddress
+REPORT_USDC_PRICE=1
 ```
+
+## Payment Integration
+
+The aggregator exposes **premium reports** behind an x402 paywall:
+
+### Environment Variables
+- `ETHEREUM_WALLET` – wallet address that receives payments.  
+- `REPORT_USDC_PRICE` – price in USDC required to access reports.  
+
+### Protected Routes
+- `GET /report/daily` → Fetches the latest daily JSON report.  
+- `GET /report/daily/:date` → Fetches a report for a specific date (`YYYY-MM-DD.json`).  
+
+### Example Request Flow
+1. Client requests `/report/daily`.  
+2. `x402-express` middleware validates the on-chain payment.  
+3. On success, the JSON report is returned.  
+4. On failure, access is denied with an appropriate error.  
 
 ## GitHub Actions Secrets
 

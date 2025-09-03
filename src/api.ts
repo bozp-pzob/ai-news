@@ -3,10 +3,12 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import http from 'http';
 import path from 'path';
+
 import { ConfigService, Config } from './services/configService';
 import { AggregatorService } from './services/aggregatorService';
 import { PluginService } from './services/pluginService';
 import { WebSocketService } from './services/websocketService';
+import { setupX402Payment } from './middleware/x402';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -20,6 +22,8 @@ app.use(bodyParser.json());
 
 // Serve static files from the frontend build directory
 app.use(express.static(path.join(__dirname, '../frontend/build')));
+
+setupX402Payment(app);
 
 // Initialize services
 const configService = new ConfigService();
