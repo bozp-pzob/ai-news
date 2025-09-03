@@ -274,3 +274,5 @@ export interface ActionItems {
   description: string;
   mentionedBy: string;
 }
+
+export type HexString = `0x${string}`;

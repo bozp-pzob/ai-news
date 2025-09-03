@@ -30,7 +30,6 @@
     "@mui/icons-material": "^7.1.0",
     "@mui/material": "^7.1.0",
     "@types/jsdom": "^21.1.7",
-    "agent-twitter-client": "^0.0.18",
     "body-parser": "^1.20.3",
     "cheerio": "^1.0.0",
     "cors": "^2.8.5",
@@ -48,7 +47,8 @@
     "ts-node": "^10.9.2",
     "twitter-api-v2": "^1.19.0",
     "uuid": "^11.1.0",
-    "ws": "^8.18.2"
+    "ws": "^8.18.2",
+    "x402-express": "^0.5.3"
   },
   "devDependencies": {
     "@types/body-parser": "^1.19.5",
