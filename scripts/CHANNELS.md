@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-09-03 06:31:25 UTC*
+*Updated: 2025-09-04 06:32:08 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -11,7 +11,7 @@
 
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
-## elizaOS (1253563208833433701)
+## undefined (1253563208833433701)
 **Total Channels**: 109 | **Currently Tracking**: 6 | **New Channels**: 103
 
 ### Channels
@@ -27,8 +27,8 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #waiting-room (1361911608841994402) **NEW**
 
 **DEV:**
-- [x] #💻-coders (1300025221834739744)
-- [ ] #tech-support (1392374405606150245) **NEW**
+- [x] #💬-coders (1300025221834739744)
+- [ ] #💻-tech-support (1392374405606150245) **NEW**
 - [ ] #contributor-dev (1379775100915810314) **NEW**
 - [x] #core-devs (1377726087789940836)
 - [ ] #elizaos-github (1377733240449925150) **NEW**
@@ -36,7 +36,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #offsite-sept (1408212848513122549) **NEW**
 
 **THE ARENA:**
-- [x] #discussion (1253563209462448241)
+- [x] #💬-discussion (1253563209462448241)
 - [ ] #ecosystem-watchtower (1300480482466861147) **NEW**
 - [ ] #🤖-the-arena (1285105813349859421) **NEW**
 - [ ] #content-and-memes (1299956148253884416) **NEW**
