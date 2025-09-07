@@ -10,7 +10,9 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "historical": "ts-node src/historical.ts",
-    "api": "ts-node src/api.ts"
+    "api": "ts-node src/api.ts",
+    "discover-channels": "node scripts/discover-channels.js",
+    "update-configs": "node scripts/update-configs-from-checklist.js"
   },
   "keywords": [
     "news",
