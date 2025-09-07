@@ -31,6 +31,22 @@ function verifySignature(body, signature) {
   return timingSafeEquals(expected, signature.trim());
 }
 
+// Validate date parameter to prevent command injection
+function isValidDate(date) {
+  if (!date) return true; // Empty date is allowed
+  // Only allow YYYY-MM-DD format
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(date)) return false;
+  
+  // Verify it's a real date
+  try {
+    const parsed = new Date(date + "T00:00:00Z");
+    return !isNaN(parsed.getTime()) && parsed.toISOString().startsWith(date);
+  } catch {
+    return false;
+  }
+}
+
 // Run collection script
 function runCollection(config, date) {
   return new Promise((resolve) => {
@@ -90,6 +106,12 @@ const server = http.createServer(async (req, res) => {
   if (!ALLOWED.has(config)) {
     res.writeHead(400, {"content-type": "application/json"});
     res.end(JSON.stringify({error: "bad_config"}));
+    return;
+  }
+
+  if (!isValidDate(date)) {
+    res.writeHead(400, {"content-type": "application/json"});
+    res.end(JSON.stringify({error: "invalid_date"}));
     return;
   }
 
