@@ -274,3 +274,84 @@ export interface ActionItems {
   description: string;
   mentionedBy: string;
 }
+
+/**
+ * Interface for Discord message attachments
+ * @interface DiscordAttachment
+ */
+export interface DiscordAttachment {
+  id: string;
+  filename: string;
+  size: number;
+  url: string;
+  proxy_url?: string;
+  content_type?: string;
+  width?: number;
+  height?: number;
+  description?: string;
+}
+
+/**
+ * Interface for Discord message embeds
+ * @interface DiscordEmbed
+ */
+export interface DiscordEmbed {
+  title?: string;
+  type?: string;
+  description?: string;
+  url?: string;
+  timestamp?: string;
+  color?: number;
+  image?: {
+    url: string;
+    proxy_url?: string;
+    width?: number;
+    height?: number;
+  };
+  thumbnail?: {
+    url: string;
+    proxy_url?: string;
+    width?: number;
+    height?: number;
+  };
+  video?: {
+    url: string;
+    width?: number;
+    height?: number;
+  };
+  author?: {
+    name?: string;
+    url?: string;
+    icon_url?: string;
+  };
+  fields?: Array<{
+    name: string;
+    value: string;
+    inline?: boolean;
+  }>;
+}
+
+/**
+ * Interface for Discord message stickers
+ * @interface DiscordSticker
+ */
+export interface DiscordSticker {
+  id: string;
+  name: string;
+  format_type: number;
+  description?: string;
+}
+
+/**
+ * Configuration interface for media downloads
+ * @interface MediaDownloadConfig
+ */
+export interface MediaDownloadConfig {
+  enabled: boolean;
+  outputPath?: string;
+  maxFileSize?: number; // in bytes, default 50MB
+  allowedTypes?: string[]; // MIME types or extensions
+  excludedTypes?: string[];
+  rateLimit?: number; // milliseconds between downloads, default 100
+  retryAttempts?: number; // default 3
+}

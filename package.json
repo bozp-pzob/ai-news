@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "historical": "ts-node src/historical.ts",
-    "api": "ts-node src/api.ts"
+    "api": "ts-node src/api.ts",
+    "download-media": "ts-node src/download-media.ts"
   },
   "keywords": [
     "news",
