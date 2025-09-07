@@ -83,13 +83,16 @@ Create three repository secrets in GitHub:
 
 2. `SQLITE_ENCRYPTION_KEY` â€" strong password to encrypt the database.
 
-3. `SERVER_CONFIG` â€" Server connection details for remote data collection:
-```json
-{
-  "host": "your-server.com",
-  "user": "your-username",
-  "ssh_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"
-}
+### For Webhook Server Integration (deploy-media-collection.yml)
+
+3. `COLLECT_WEBHOOK_URL` â€" Your webhook server endpoint:
+```
+https://your-server.com/run-collect
+```
+
+4. `COLLECT_WEBHOOK_SECRET` â€" HMAC signing secret (generate with `openssl rand -hex 32`):
+```
+a1b2c3d4e5f6...
 ```
 
 ## Running the Application
@@ -158,46 +161,49 @@ npm run update-configs -- --dry-run
 
 For running data collection on a server instead of GitHub Actions (recommended for media downloads due to file size limits):
 
-### Server Setup
+### Webhook Server Setup
 1. Clone repository to server: `git clone <repo> ~/ai-news`
 2. Install dependencies: `cd ~/ai-news && npm install && npm run build`
 3. Copy `.env.example` to `.env` and configure with your API keys
-4. Make collection script executable: `chmod +x ~/ai-news/scripts/collect-daily.sh`
+4. Generate webhook secret: `openssl rand -hex 32`
+5. Start webhook server:
+   ```bash
+   export COLLECT_WEBHOOK_SECRET="your-generated-secret"
+   npm run webhook
+   ```
+6. Setup reverse proxy (Nginx/Caddy) with HTTPS for production
 
 ### Usage
 
-**Manual Collection:**
+**Webhook Server:**
 ```bash
-# Collect yesterday's data for ElizaOS
+# Start server (listens on localhost:3000)
+export COLLECT_WEBHOOK_SECRET="your-secret"
+npm run webhook
+
+# Test webhook locally
+./scripts/test-webhook.sh elizaos.json 2025-01-15
+```
+
+**Manual Collection (Alternative):**
+```bash
+# Direct script execution
 ./scripts/collect-daily.sh elizaos.json
-
-# Collect specific date
 ./scripts/collect-daily.sh hyperfy-discord.json 2025-01-15
-
-# Default (elizaos.json, yesterday's date)
-./scripts/collect-daily.sh
 ```
 
-**Automated Collection via GitHub Actions:**
-- Configure `SERVER_CONFIG` secret as shown above
-- GitHub Actions will SSH to your server and trigger collection daily at 6 AM UTC
+**GitHub Actions Integration:**
+- Configure `COLLECT_WEBHOOK_URL` and `COLLECT_WEBHOOK_SECRET` in GitHub Secrets
+- GitHub Actions sends HMAC-signed webhook requests daily at 6 AM UTC
 - View/trigger manual runs at Actions > Daily Media Collection
-- Select specific configs or run all configs
+- No SSH keys or server access needed
 
-**Continuous Collection (Alternative):**
-```bash
-# Run in tmux/screen for persistence
-while true; do
-  ./scripts/collect-daily.sh elizaos.json
-  sleep 86400  # 24 hours
-done
-```
-
-**Benefits of Server Deployment:**
+**Benefits of Webhook Approach:**
+- No SSH complexity or key management
+- Secure HMAC signature verification
 - No GitHub file size limits for media downloads
-- Persistent storage on your server
-- GitHub Actions still provides scheduling and monitoring
-- Can run manually or automated
+- GitHub Actions provides scheduling and monitoring
+- Simple HTTP-based integration
 
 ## Project Structure
 

@@ -2,6 +2,7 @@
   "name": "news-aggregator",
   "version": "1.0.0",
   "description": "A modular Node.js TypeScript news aggregator with multiple data sources, enrichers, and SQLite storage.",
+  "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc --noEmitOnError false || echo 'TypeScript compilation completed with type issues in dependencies'",
@@ -13,7 +14,8 @@
     "discover-channels": "node scripts/discover-channels.js",
     "update-configs": "node scripts/update-configs-from-checklist.js",
     "dashboard": "node scripts/generate-dashboard.js",
-    "status": "node scripts/generate-dashboard.js --dry-run"
+    "status": "node scripts/generate-dashboard.js --dry-run",
+    "webhook": "node scripts/server.js"
   },
   "keywords": [
     "news",
