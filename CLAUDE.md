@@ -78,7 +78,7 @@ The system uses five plugin types:
 JSON configuration files in `config/` directory:
 - `sources.json` - Default configuration
 - `elizaos2.json` - Unified ElizaOS configuration (Discord + GitHub + Codex analytics)
-- `hyperfy-discord.json`, `ai16zdao.json` - Specialized configurations
+- `hyperfy-discord.json` - Specialized configuration for Hyperfy Discord
 
 Each config contains: `settings`, `sources`, `ai`, `enrichers`, `storage`, `generators` arrays.
 

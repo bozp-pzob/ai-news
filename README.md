@@ -65,9 +65,9 @@ CODEX_API_KEY=
 
 ## GitHub Actions Secrets
 
-Create two repository secrets in GitHub:
+Create three repository secrets in GitHub:
 
-1. `ENV_SECRETS` â€“ JSON object with credentials:
+1. `ENV_SECRETS` â€" JSON object with credentials:
 ```json
 {
   "OPENAI_API_KEY": "sk-...",
@@ -81,7 +81,16 @@ Create two repository secrets in GitHub:
 }
 ```
 
-2. `SQLITE_ENCRYPTION_KEY` â€“ strong password to encrypt the database.
+2. `SQLITE_ENCRYPTION_KEY` â€" strong password to encrypt the database.
+
+3. `SERVER_CONFIG` â€" Server connection details for remote data collection:
+```json
+{
+  "host": "your-server.com",
+  "user": "your-username",
+  "ssh_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"
+}
+```
 
 ## Running the Application
 
@@ -144,6 +153,51 @@ npm run update-configs -- --dry-run
 1. Open [scripts/CHANNELS.md](scripts/CHANNELS.md) on GitHub and edit
 2. Commit changes → Pull locally: `git pull`
 3. Apply updates: `npm run update-configs`
+
+## Server Deployment
+
+For running data collection on a server instead of GitHub Actions (recommended for media downloads due to file size limits):
+
+### Server Setup
+1. Clone repository to server: `git clone <repo> ~/ai-news`
+2. Install dependencies: `cd ~/ai-news && npm install && npm run build`
+3. Copy `.env.example` to `.env` and configure with your API keys
+4. Make collection script executable: `chmod +x ~/ai-news/scripts/collect-daily.sh`
+
+### Usage
+
+**Manual Collection:**
+```bash
+# Collect yesterday's data for ElizaOS
+./scripts/collect-daily.sh elizaos.json
+
+# Collect specific date
+./scripts/collect-daily.sh hyperfy-discord.json 2025-01-15
+
+# Default (elizaos.json, yesterday's date)
+./scripts/collect-daily.sh
+```
+
+**Automated Collection via GitHub Actions:**
+- Configure `SERVER_CONFIG` secret as shown above
+- GitHub Actions will SSH to your server and trigger collection daily at 6 AM UTC
+- View/trigger manual runs at Actions > Daily Media Collection
+- Select specific configs or run all configs
+
+**Continuous Collection (Alternative):**
+```bash
+# Run in tmux/screen for persistence
+while true; do
+  ./scripts/collect-daily.sh elizaos.json
+  sleep 86400  # 24 hours
+done
+```
+
+**Benefits of Server Deployment:**
+- No GitHub file size limits for media downloads
+- Persistent storage on your server
+- GitHub Actions still provides scheduling and monitoring
+- Can run manually or automated
 
 ## Project Structure
 
