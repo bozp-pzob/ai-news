@@ -20,7 +20,7 @@
         ],
         "storage": "SQLiteStorage",
         "mediaDownload": {
-          "enabled": true,
+          "enabled": false,
           "outputPath": "./elizaos-media",
           "maxFileSize": 524288000,
           "rateLimit": 100,
