@@ -2,10 +2,10 @@
   "project": {
     "name": "AI News Aggregator",
     "github": {
-      "owner": "m3-org", 
+      "owner": "bozp-pzob", 
       "repo": "ai-news"
     },
-    "homepage": "https://m3-org.github.io/ai-news"
+    "homepage": "https://bozp-pzob.github.io/ai-news"
   },
   "thresholds": {
     "drift": {
@@ -34,18 +34,17 @@
   "monitoring": {
     "workflows": [
       "elizaos.yml",
-      "channel-management.yml",
       "hyperfy.yml"
     ],
     "criticalFiles": [
-      "/elizaos/discord/daily.json",
-      "/elizaos/json/daily.json",
-      "/data/elizaos.sqlite.enc"
+      "elizaos/json/daily.json",
+      "hyperfy/daily.json",
+      "data/db.sqlite"
     ],
     "links": {
-      "repository": "https://github.com/m3-org/ai-news",
-      "actions": "https://github.com/m3-org/ai-news/actions",
-      "analytics": "https://discord.com/developers/servers/1253563208833433701/analytics/engagement"
+      "repository": "https://github.com/bozp-pzob/ai-news",
+      "actions": "https://github.com/bozp-pzob/ai-news/actions",
+      "analytics": "https://discord.com/developers/applications"
     }
   }
 }

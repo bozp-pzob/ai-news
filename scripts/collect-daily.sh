@@ -9,15 +9,12 @@
 CONFIG=${1:-"elizaos.json"}
 DATE=${2:-$(date -d "yesterday" +'%Y-%m-%d')}
 
-# Change to ai-news directory (assuming script runs from server home)
-cd ~/ai-news
-
 echo "🚀 Starting data collection..."
 echo "📋 Config: $CONFIG"
 echo "📅 Date: $DATE"
 
-# Run historical data collection with media download
-npm run historical -- --source="$CONFIG" --download-media=true --date="$DATE"
+# Run historical data collection
+npm run historical -- --source="$CONFIG" --date="$DATE"
 
 if [ $? -eq 0 ]; then
     echo "✅ Collection completed successfully for $CONFIG on $DATE"
