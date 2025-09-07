@@ -18,7 +18,14 @@
           "1301363808421543988",
           "1377726087789940836"
         ],
-        "storage": "SQLiteStorage"
+        "storage": "SQLiteStorage",
+        "mediaDownload": {
+          "enabled": false,
+          "outputPath": "./elizaos-media",
+          "maxFileSize": 524288000,
+          "rateLimit": 100,
+          "retryAttempts": 3
+        }
       }
     },
     {

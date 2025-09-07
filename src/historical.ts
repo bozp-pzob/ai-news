@@ -7,6 +7,8 @@
  */
 
 import { HistoricalAggregator } from "./aggregator/HistoricalAggregator";
+import { MediaDownloader } from "./download-media";
+import { MediaDownloadCapable } from "./plugins/sources/DiscordRawDataSource";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -18,8 +20,16 @@ import {
   validateConfiguration
 } from "./helpers/configHelper";
 import { addOneDay, parseDate, formatDate, callbackDateRangeLogic } from "./helpers/dateHelper";
+import { logger } from "./helpers/cliHelper";
 
 dotenv.config();
+
+/**
+ * Type guard to check if a source supports media downloading
+ */
+function hasMediaDownloadCapability(source: any): source is MediaDownloadCapable & { name: string } {
+  return source && typeof source.hasMediaDownloadEnabled === 'function';
+}
 
 (async () => {
   try {
@@ -31,6 +41,7 @@ dotenv.config();
      * --after: Start date for range fetching
      * --during: Date to fetch data during
      * --onlyFetch: Only fetch data without generating summaries
+     * --download-media: Enable media downloads after data collection
      * --output/-o: Output directory path
      */
     const args = process.argv.slice(2);
@@ -39,13 +50,14 @@ dotenv.config();
     let dateStr = today.toISOString().slice(0, 10);
     let onlyFetch = false;
     let onlyGenerate = false;
+    let downloadMedia = false;
     let beforeDate;
     let afterDate;
     let duringDate;
     let outputPath = './'; // Default output path
 
     if (args.includes('--help') || args.includes('-h')) {
-      console.log(`
+      logger.info(`
 Historical Data Fetcher & Summarizer
 
 Usage:
@@ -60,6 +72,7 @@ Options:
   --during=<YYYY-MM-DD> Alias for --date.
   --onlyFetch=<true|false>  Only fetch data, do not generate summaries.
   --onlyGenerate=<true|false> Only generate summaries from existing data, do not fetch.
+  --download-media=<true|false> Download Discord media after data collection (default: false).
   --output=<path>       Output directory path (default: ./)
   -h, --help            Show this help message.
       `);
@@ -75,6 +88,8 @@ Options:
         onlyGenerate = arg.split('=')[1].toLowerCase() == 'true';
       } else if (arg.startsWith('--onlyFetch=')) {
         onlyFetch = arg.split('=')[1].toLowerCase() == 'true';
+      } else if (arg.startsWith('--download-media=')) {
+        downloadMedia = arg.split('=')[1].toLowerCase() == 'true';
       } else if (arg.startsWith('--before=')) {
         beforeDate = arg.split('=')[1];
       } else if (arg.startsWith('--after=')) {
@@ -95,13 +110,13 @@ Options:
     // Apply general configuration overrides from the JSON file for settings like onlyFetch, onlyGenerate
     if (typeof configJSON?.settings?.onlyFetch === 'boolean') {
       onlyFetch = configJSON.settings.onlyFetch; // If present in config, it overrides CLI or default
-      if (onlyFetch) console.log(`[HistoricalConfig] Setting: onlyFetch is true (from config).`);
-      else console.log(`[HistoricalConfig] Setting: onlyFetch is false (from config).`);
+      if (onlyFetch) logger.debug(`[HistoricalConfig] Setting: onlyFetch is true (from config).`);
+      else logger.debug(`[HistoricalConfig] Setting: onlyFetch is false (from config).`);
     }
     if (typeof configJSON?.settings?.onlyGenerate === 'boolean') {
       onlyGenerate = configJSON.settings.onlyGenerate; // If present in config, it overrides CLI or default
-      if (onlyGenerate) console.log(`[HistoricalConfig] Setting: onlyGenerate is true (from config).`);
-      else console.log(`[HistoricalConfig] Setting: onlyGenerate is false (from config).`);
+      if (onlyGenerate) logger.debug(`[HistoricalConfig] Setting: onlyGenerate is true (from config).`);
+      else logger.debug(`[HistoricalConfig] Setting: onlyGenerate is false (from config).`);
     }
     // Note: CLI flags for onlyFetch/onlyGenerate already set the initial values. 
     // The logic above means config file settings for these take precedence if they exist.
@@ -216,9 +231,60 @@ Options:
           await aggregator.fetchAndStore(config.instance.name, dateStr);
         }
       }
-      console.log("Content aggregator is finished fetching historical.");
+      logger.info("Content aggregator is finished fetching historical.");
     }
     
+    /**
+     * Download Discord media if requested and enabled in source configs
+     * Runs after data collection but before summary generation
+     */
+    if (downloadMedia && !onlyGenerate) {
+      logger.info("Starting media downloads...");
+      logger.info(`Found ${sourceConfigs.length} source configs to check`);
+      
+      for (const config of sourceConfigs) {
+        logger.debug(`Checking source: ${config.instance.name}`);
+        if (hasMediaDownloadCapability(config.instance) && config.instance.hasMediaDownloadEnabled()) {
+          logger.info(`✓ Source ${config.instance.name} supports media downloads`);
+          const mediaConfig = config.instance.mediaDownload;
+          logger.debug(`Media config: ${JSON.stringify(mediaConfig)}`);
+          if (mediaConfig?.enabled) {
+            logger.info(`Downloading media for ${config.instance.name}...`);
+            
+            try {
+              const storage = (config.instance as any).storage;
+              const dbPath = storage.dbPath || './data/db.sqlite';
+              const outputPath = mediaConfig.outputPath || './media';
+              
+              const downloader = new MediaDownloader(dbPath, outputPath, mediaConfig);
+              await downloader.init();
+              
+              let stats;
+              if (filter.filterType || (filter.after && filter.before)) {
+                // Date range download
+                const startDate = new Date(filter.after || filter.date);
+                const endDate = new Date(filter.before || filter.date);
+                stats = await downloader.downloadMediaInDateRange(startDate, endDate);
+              } else {
+                // Single date download
+                const date = new Date(dateStr);
+                stats = await downloader.downloadMediaForDate(date);
+              }
+              
+              downloader.printStats();
+              await downloader.close();
+              logger.success(`Media download completed successfully for ${config.instance.name}`);
+            } catch (error) {
+              logger.error(`Media download failed for ${config.instance.name}: ${error instanceof Error ? error.message : String(error)}`);
+              // Continue processing other sources rather than failing completely
+            }
+          }
+        }
+      }
+      
+      logger.info("Media downloads completed.");
+    }
+
 
     /**
      * Generate summaries if not in fetch-only mode
@@ -232,7 +298,7 @@ Options:
           await callbackDateRangeLogic(filter, (dateStr:string) => generator.instance.generateAndStoreSummary(dateStr));
         }
       } else {
-        console.log(`Creating summary for date ${dateStr}`);
+        logger.info(`Creating summary for date ${dateStr}`);
         for (const generator of generatorConfigs) {
           await generator.instance.storage.init();
           await generator.instance.generateAndStoreSummary(dateStr);
@@ -240,14 +306,14 @@ Options:
       }
     }
     else {
-      console.log("Historical Data successfully saved. Summary wasn't generated");
+      logger.info("Historical Data successfully saved. Summary wasn't generated");
     }
 
     /**
      * Clean up resources and exit
      * This ensures all storage connections are properly closed
      */
-    console.log("Shutting down...");
+    logger.info("Shutting down...");
     storageConfigs.forEach(async (storage : any) => {
       await storage.close();
     });

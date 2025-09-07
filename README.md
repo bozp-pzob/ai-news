@@ -65,9 +65,9 @@ CODEX_API_KEY=
 
 ## GitHub Actions Secrets
 
-Create two repository secrets in GitHub:
+Create three repository secrets in GitHub:
 
-1. `ENV_SECRETS` â€“ JSON object with credentials:
+1. `ENV_SECRETS` â€" JSON object with credentials:
 ```json
 {
   "OPENAI_API_KEY": "sk-...",
@@ -81,7 +81,19 @@ Create two repository secrets in GitHub:
 }
 ```
 
-2. `SQLITE_ENCRYPTION_KEY` â€“ strong password to encrypt the database.
+2. `SQLITE_ENCRYPTION_KEY` â€" strong password to encrypt the database.
+
+### For Webhook Server Integration (deploy-media-collection.yml)
+
+3. `COLLECT_WEBHOOK_URL` â€" Your webhook server endpoint:
+```
+https://your-server.com/run-collect
+```
+
+4. `COLLECT_WEBHOOK_SECRET` â€" HMAC signing secret (generate with `openssl rand -hex 32`):
+```
+a1b2c3d4e5f6...
+```
 
 ## Running the Application
 
@@ -144,6 +156,54 @@ npm run update-configs -- --dry-run
 1. Open [scripts/CHANNELS.md](scripts/CHANNELS.md) on GitHub and edit
 2. Commit changes → Pull locally: `git pull`
 3. Apply updates: `npm run update-configs`
+
+## Server Deployment
+
+For running data collection on a server instead of GitHub Actions (recommended for media downloads due to file size limits):
+
+### Webhook Server Setup
+1. Clone repository to server: `git clone <repo> ~/ai-news`
+2. Install dependencies: `cd ~/ai-news && npm install && npm run build`
+3. Copy `.env.example` to `.env` and configure with your API keys
+4. Generate webhook secret: `openssl rand -hex 32`
+5. Start webhook server:
+   ```bash
+   export COLLECT_WEBHOOK_SECRET="your-generated-secret"
+   npm run webhook
+   ```
+6. Setup reverse proxy (Nginx/Caddy) with HTTPS for production
+
+### Usage
+
+**Webhook Server:**
+```bash
+# Start server (listens on localhost:3000)
+export COLLECT_WEBHOOK_SECRET="your-secret"
+npm run webhook
+
+# Test webhook locally
+./scripts/test-webhook.sh elizaos.json 2025-01-15
+```
+
+**Manual Collection (Alternative):**
+```bash
+# Direct script execution
+./scripts/collect-daily.sh elizaos.json
+./scripts/collect-daily.sh hyperfy-discord.json 2025-01-15
+```
+
+**GitHub Actions Integration:**
+- Configure `COLLECT_WEBHOOK_URL` and `COLLECT_WEBHOOK_SECRET` in GitHub Secrets
+- GitHub Actions sends HMAC-signed webhook requests daily at 6 AM UTC
+- View/trigger manual runs at Actions > Daily Media Collection
+- No SSH keys or server access needed
+
+**Benefits of Webhook Approach:**
+- No SSH complexity or key management
+- Secure HMAC signature verification
+- No GitHub file size limits for media downloads
+- GitHub Actions provides scheduling and monitoring
+- Simple HTTP-based integration
 
 ## Project Structure
 

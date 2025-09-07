@@ -17,7 +17,14 @@
           "1326789867312775290",
           "1031058655581323324"
         ],
-        "storage": "SQLiteStorage"
+        "storage": "SQLiteStorage",
+        "mediaDownload": {
+          "enabled": false,
+          "outputPath": "./hyperfy-media",
+          "maxFileSize": 52428800,
+          "rateLimit": 100,
+          "retryAttempts": 3
+        }
       }
     }
   ],
