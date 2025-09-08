@@ -1,0 +1,51 @@
+{
+  "project": {
+    "name": "AI News Aggregator",
+    "github": {
+      "owner": "m3-org", 
+      "repo": "ai-news"
+    },
+    "homepage": "https://m3-org.github.io/ai-news"
+  },
+  "thresholds": {
+    "drift": {
+      "warning": 25,
+      "critical": 50
+    },
+    "channels": {
+      "moderate": 10,
+      "high": 25,
+      "critical": 50
+    },
+    "workflow": {
+      "hoursForRecent": 24,
+      "maxFailuresWarning": 1,
+      "maxFailuresCritical": 3
+    }
+  },
+  "sources": {
+    "channelsFile": "scripts/CHANNELS.md"
+  },
+  "output": {
+    "directory": "./public",
+    "statusFile": "status.txt",
+    "dashboardFile": "index.html"
+  },
+  "monitoring": {
+    "workflows": [
+      "elizaos.yml",
+      "channel-management.yml",
+      "hyperfy.yml"
+    ],
+    "criticalFiles": [
+      "/elizaos/discord/daily.json",
+      "/elizaos/json/daily.json",
+      "/data/elizaos.sqlite.enc"
+    ],
+    "links": {
+      "repository": "https://github.com/m3-org/ai-news",
+      "actions": "https://github.com/m3-org/ai-news/actions",
+      "analytics": "https://discord.com/developers/servers/1253563208833433701/analytics/engagement"
+    }
+  }
+}

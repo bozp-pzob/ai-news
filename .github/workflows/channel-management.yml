@@ -1,0 +1,166 @@
+name: Discord Channel Management
+
+on:
+  schedule:
+    # Run daily at 6:00 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  manage-channels:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to commit the updated checklist and configs
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+          
+      - name: Process secrets securely
+        run: |
+          echo '${{ secrets.ENV_SECRETS }}' > env_secrets.json
+          chmod 600 env_secrets.json
+          
+          # Mask values
+          jq -r 'to_entries[] | .value' env_secrets.json | while read -r value; do
+            if [ -n "$value" ]; then
+              echo "::add-mask::$value"
+            fi
+          done
+          
+          # Set environment variables
+          jq -r 'to_entries[] | "\(.key)=\(.value)"' env_secrets.json > env_vars.txt
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              echo "$line" >> $GITHUB_ENV
+            fi
+          done < env_vars.txt
+          
+          # Clean up
+          rm env_secrets.json env_vars.txt
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run channel discovery
+        run: node scripts/discover-channels.mjs
+        env:
+          NODE_ENV: production
+
+      - name: Check for channel checklist changes
+        id: checklist_changes
+        run: |
+          if [ -f "scripts/CHANNELS.md" ]; then
+            if git diff --quiet HEAD -- scripts/CHANNELS.md; then
+              echo "checklist_changed=false" >> $GITHUB_OUTPUT
+              echo "No changes detected in channel checklist"
+            else
+              echo "checklist_changed=true" >> $GITHUB_OUTPUT
+              echo "Changes detected in channel checklist"
+            fi
+          else
+            echo "checklist_changed=true" >> $GITHUB_OUTPUT
+            echo "New channel checklist created"
+          fi
+
+      - name: Run config auto-update
+        if: steps.checklist_changes.outputs.checklist_changed == 'true'
+        run: node scripts/update-configs-from-checklist.mjs
+        env:
+          NODE_ENV: production
+
+      - name: Check for config changes
+        id: config_changes
+        run: |
+          if git diff --quiet HEAD -- config/; then
+            echo "configs_changed=false" >> $GITHUB_OUTPUT
+            echo "No changes detected in config files"
+          else
+            echo "configs_changed=true" >> $GITHUB_OUTPUT
+            echo "Changes detected in config files"
+          fi
+
+      - name: Generate dashboard
+        run: node scripts/generate-dashboard.mjs
+        env:
+          NODE_ENV: production
+
+      - name: Commit and push changes
+        if: steps.checklist_changes.outputs.checklist_changed == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # Add checklist changes
+          git add scripts/CHANNELS.md
+          
+          # Add config changes if any
+          if [ "${{ steps.config_changes.outputs.configs_changed }}" = "true" ]; then
+            git add config/
+          fi
+          
+          # Get summary for commit message
+          TIMESTAMP=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          if [ -f "scripts/CHANNELS.md" ]; then
+            TOTAL_CHANNELS=$(grep "Total Channels" scripts/CHANNELS.md | head -1 | sed 's/.*Total Channels\*\*: \([0-9]*\).*/\1/' || echo "unknown")
+            NEW_CHANNELS=$(grep "New Channels" scripts/CHANNELS.md | head -1 | sed 's/.*New Channels\*\*: \([0-9]*\).*/\1/' || echo "0")
+            
+            if [ "${{ steps.config_changes.outputs.configs_changed }}" = "true" ]; then
+              COMMIT_MSG="Update Discord channels & configs - ${TOTAL_CHANNELS} total, ${NEW_CHANNELS} new channels (${TIMESTAMP})"
+            else
+              COMMIT_MSG="Update Discord channel checklist - ${TOTAL_CHANNELS} total, ${NEW_CHANNELS} new channels (${TIMESTAMP})"
+            fi
+          else
+            COMMIT_MSG="Add Discord channel management (${TIMESTAMP})"
+          fi
+          
+          git commit -m "$COMMIT_MSG"
+          git push
+
+      - name: Deploy dashboard to gh-pages
+        if: steps.checklist_changes.outputs.checklist_changed == 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          keep_files: true
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: "Update dashboard files from channel management"
+
+
+      - name: Summary
+        run: |
+          if [ -f "scripts/CHANNELS.md" ]; then
+            echo "✅ Channel management completed successfully"
+            echo "📋 Checklist available at: scripts/CHANNELS.md"
+            
+            # Extract and display summary
+            TOTAL=$(grep "Total Channels" scripts/CHANNELS.md | head -1 | sed 's/.*Total Channels\*\*: \([0-9]*\).*/\1/' || echo "unknown")
+            TRACKED=$(grep "Currently Tracking" scripts/CHANNELS.md | head -1 | sed 's/.*Currently Tracking\*\*: \([0-9]*\).*/\1/' || echo "unknown") 
+            NEW=$(grep "New Channels" scripts/CHANNELS.md | head -1 | sed 's/.*New Channels\*\*: \([0-9]*\).*/\1/' || echo "0")
+            
+            echo "📊 Summary: ${TOTAL} total channels, ${TRACKED} currently tracked, ${NEW} new channels found"
+            
+            if [ "${{ steps.config_changes.outputs.configs_changed }}" = "true" ]; then
+              echo "🔧 Config files updated with new channel selections"
+            fi
+            
+            if [ "$NEW" != "0" ] && [ "$NEW" != "unknown" ]; then
+              echo "⚠️  Action required: ${NEW} new channels found that are not being tracked"
+            fi
+            
+            if [ "${{ steps.checklist_changes.outputs.checklist_changed }}" = "true" ]; then
+              echo "📊 Dashboard updated"
+            fi
+          else
+            echo "❌ Channel discovery failed - no checklist generated"
+          fi
