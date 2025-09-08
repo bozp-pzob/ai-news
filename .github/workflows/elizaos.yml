@@ -1,4 +1,5 @@
-name: ElizaOS Daily Summary
+name: ElizaOS Daily Data Collection
+
 on:
   schedule:
     - cron: '0 0 * * *' # Run at midnight UTC every day
@@ -17,48 +18,65 @@ on:
         required: false
         type: boolean
         default: false
+
 jobs:
   sqlite-job:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      contents: write # Needed for checkout and gh-pages push
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Fetch all history for consistency
 
       # Fetch existing DB from gh-pages branch if it exists
-      - name: Check and fetch database
+      - name: Check and fetch database (elizaos.sqlite)
         run: |
           mkdir -p data
           
-          # Check if gh-pages branch exists
+          # Check if gh-pages branch exists on remote
+          echo "Checking if gh-pages branch exists on remote..."
           if git ls-remote --heads origin gh-pages | grep -q gh-pages; then
-            echo "gh-pages branch exists, fetching database"
-            git fetch origin gh-pages:gh-pages || true
+            echo "✅ gh-pages branch exists, attempting to fetch database"
             
-            # Check if db.sqlite exists in the branch
-            if git ls-tree -r --name-only gh-pages | grep -q "data/db.sqlite"; then
-              git show gh-pages:data/db.sqlite > data/db.sqlite
-              echo "Restored database from gh-pages branch"
+            # Fetch gh-pages branch with proper error handling
+            if git fetch origin gh-pages:gh-pages --depth=1; then
+              echo "✅ Successfully fetched gh-pages branch"
+              
+              # Check if encrypted database exists in the branch
+              if git ls-tree -r --name-only gh-pages | grep -q "data/elizaos.sqlite.enc"; then
+                echo "📦 Found encrypted database, attempting to restore..."
+                
+                # Extract database file with validation
+                if git show gh-pages:data/elizaos.sqlite.enc > data/elizaos.sqlite.enc; then
+                  # Verify the file was created and has content
+                  if [ -f "data/elizaos.sqlite.enc" ] && [ -s "data/elizaos.sqlite.enc" ]; then
+                    echo "✅ Successfully restored encrypted database ($(wc -c < data/elizaos.sqlite.enc) bytes)"
+                  else
+                    echo "❌ Error: Database file was not properly extracted"
+                    exit 1
+                  fi
+                else
+                  echo "❌ Error: Failed to extract database from gh-pages branch"
+                  exit 1
+                fi
+              else
+                echo "ℹ️  No existing database found in gh-pages branch - will start with empty database"
+              fi
             else
-              echo "No existing database found in gh-pages branch"
+              echo "❌ Error: Failed to fetch gh-pages branch"
+              echo "This could indicate a network issue or repository access problem"
+              exit 1
             fi
           else
-            echo "gh-pages branch does not exist yet, will be created on first deployment"
+            echo "ℹ️  gh-pages branch does not exist yet - will be created on first deployment"
           fi
-      
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: '23' # Or your preferred Node.js version
           
       - name: Process secrets securely
         run: |
@@ -82,90 +100,158 @@ jobs:
           
           # Clean up
           rm env_secrets.json env_vars.txt
-      
+
       - name: Install dependencies
         run: npm install
-      
+
+      - name: Decrypt database (if exists)
+        env:
+          SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
+        run: |
+          # Mask the encryption key to prevent accidental logging
+          echo "::add-mask::$SQLITE_ENCRYPTION_KEY"
+          if [ -f "data/elizaos.sqlite.enc" ]; then
+            if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
+              echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."
+              exit 1
+            fi
+            echo "Decrypting data/elizaos.sqlite.enc..."
+            openssl enc -d -aes-256-cbc -pbkdf2 -in data/elizaos.sqlite.enc -out data/elizaos.sqlite -k "$SQLITE_ENCRYPTION_KEY"
+            if [ $? -ne 0 ]; then
+              echo "Error: Decryption failed. Check the encryption key or file integrity."
+              rm -f data/elizaos.sqlite 
+              exit 1
+            fi
+            echo "Decryption successful."
+
+            # Check database integrity
+            echo "Checking database integrity..."
+            if command -v sqlite3 &> /dev/null; then
+              sqlite3 data/elizaos.sqlite "PRAGMA integrity_check;"
+              if [ $? -ne 0 ]; then
+                echo "Error: Database integrity check failed! The decrypted file might be corrupted."
+                rm -f data/elizaos.sqlite 
+                exit 1 # Exit if integrity check fails
+              else
+                 echo "Database integrity check passed."
+              fi
+            else
+              echo "Warning: sqlite3 command not found. Skipping integrity check."
+            fi
+            rm data/elizaos.sqlite.enc 
+          else
+            echo "No encrypted database found to decrypt."
+          fi
+
       - name: Get yesterday's date
         id: date
         run: echo "YESTERDAY=$(date -d "yesterday" +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-        
-      - name: Run historical with date parameters
+
+      - name: Run historical generation
         run: |
+          # Build command dynamically
+          CMD="npm run historical -- --source=elizaos.json --output=./output"
+          
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ -n "${{ inputs.after_date }}" ] && [ -n "${{ inputs.before_date }}" ]; then
-              npm run historical -- --source=elizaos.json --after=${{ inputs.after_date }} --before=${{ inputs.before_date }} --output=./output/elizaos
-            elif [ -n "${{ inputs.after_date }}" ]; then
-              npm run historical -- --source=elizaos.json --after=${{ inputs.after_date }} --output=./output/elizaos
-            elif [ -n "${{ inputs.before_date }}" ]; then
-              npm run historical -- --source=elizaos.json --before=${{ inputs.before_date }} --output=./output/elizaos
-            else
-              npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --fetchMode=timeline --output=./output/elizaos
-            fi
+            [ -n "${{ inputs.after_date }}" ] && CMD="$CMD --after=${{ inputs.after_date }}"
+            [ -n "${{ inputs.before_date }}" ] && CMD="$CMD --before=${{ inputs.before_date }}"
+            # Use yesterday if no dates provided
+            [ -z "${{ inputs.after_date }}" ] && [ -z "${{ inputs.before_date }}" ] && CMD="$CMD --date=${{ steps.date.outputs.YESTERDAY }}"
           else
-            npm run historical -- --source=elizaos.json --date=${{ steps.date.outputs.YESTERDAY }} --fetchMode=timeline --output=./output/elizaos
+            CMD="$CMD --date=${{ steps.date.outputs.YESTERDAY }}"
           fi
+          
+          # Run historical generation (command not logged for security)
+          eval $CMD
         env:
           RUN_ONCE: true
           NODE_ENV: production
           FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }}
-      
-      - name: Handle data files
+
+      - name: Encrypt database
+        env:
+          SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
+        run: |
+          # Mask the encryption key to prevent accidental logging
+          echo "::add-mask::$SQLITE_ENCRYPTION_KEY"
+          DB_FILE="data/elizaos.sqlite"
+          
+          [ ! -f "$DB_FILE" ] && { echo "No $DB_FILE found to encrypt."; exit 0; }
+          [ -z "$SQLITE_ENCRYPTION_KEY" ] && { echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."; exit 1; }
+          
+          echo "Encrypting $DB_FILE..."
+          openssl enc -aes-256-cbc -salt -pbkdf2 -in "$DB_FILE" -out "${DB_FILE}.enc" -k "$SQLITE_ENCRYPTION_KEY" || {
+            echo "Error: Encryption failed."
+            exit 1
+          }
+          
+          echo "Encryption successful."
+          rm "$DB_FILE"
+
+      - name: Prepare files for deployment
         run: |
           YESTERDAY=${{ steps.date.outputs.YESTERDAY }}
-
-          # Create target directories
-          mkdir -p ./public/data
-          mkdir -p ./public/elizaos/json      # Target for JSON summaries
-          mkdir -p ./public/elizaos/md        # Target for MD summaries
-
-          # Copy SQLite database
-          if [ -f "data/db.sqlite" ]; then
-             echo "Copying data/db.sqlite to ./public/data/"
-             cp data/db.sqlite ./public/data/
+          
+          # Helper function for conditional file copying
+          copy_if_exists() {
+            local src="$1" dest="$2" desc="$3"
+            if [ -f "$src" ]; then
+              echo "Copying $desc: $src -> $dest"
+              mkdir -p "$(dirname "$dest")"
+              cp "$src" "$dest"
+            else
+              echo "Warning: $desc not found: $src"
+            fi
+          }
+          
+          # Setup directories and copy files
+          mkdir -p ./public/data ./public/elizaos/discord
+          copy_if_exists "data/elizaos.sqlite.enc" "./public/data/elizaos.sqlite.enc" "encrypted database"
+          
+          # Copy summary directories with proper error handling
+          echo "Copying Discord summaries..."
+          if [ -d "output/discord/summaries" ] && [ "$(ls -A output/discord/summaries 2>/dev/null)" ]; then
+            if cp -r output/discord/summaries/* ./public/elizaos/discord/; then
+              echo "✅ Successfully copied Discord summary files"
+            else
+              echo "❌ Error: Failed to copy Discord summary files"
+              exit 1
+            fi
           else
-             echo "No db.sqlite found locally to copy."
+            echo "ℹ️  No Discord summary files found to copy"
           fi
-
-          # Copy generated summary files
-          echo "Copying JSON summaries to ./public/elizaos/json/"
-          cp -r output/elizaos/json/*.json ./public/elizaos/json/ || echo "No JSON summary files generated or found to copy."
-          echo "Copying MD summaries to ./public/elizaos/md/"
-          cp -r output/elizaos/md/*.md ./public/elizaos/md/ || echo "No MD summary files generated or found to copy."
-
-          # Create daily.json from yesterday's summary
-          JSON_FILE="output/elizaos/json/${YESTERDAY}.json"
-          if [ -f "$JSON_FILE" ]; then
-            echo "Copying $JSON_FILE to ./public/elizaos/json/daily.json"
-            cp "$JSON_FILE" ./public/elizaos/json/daily.json
+          
+          echo "Copying ElizaOS daily summaries..."
+          if [ -d "output/elizaos" ] && [ "$(ls -A output/elizaos 2>/dev/null)" ]; then
+            if cp -r output/elizaos/* ./public/elizaos/; then
+              echo "✅ Successfully copied ElizaOS summary files"
+            else
+              echo "❌ Error: Failed to copy ElizaOS summary files"
+              exit 1
+            fi
           else
-            echo "Warning: Yesterday's JSON summary ($JSON_FILE) not found. Cannot create daily.json."
+            echo "ℹ️  No ElizaOS summary files found to copy"
           fi
-
-          # Create daily.md from yesterday's summary
-          MD_FILE="output/elizaos/md/${YESTERDAY}.md"
-          if [ -f "$MD_FILE" ]; then
-            echo "Copying $MD_FILE to ./public/elizaos/md/daily.md"
-            cp "$MD_FILE" ./public/elizaos/md/daily.md
-          else
-            echo "Warning: Yesterday's MD summary ($MD_FILE) not found. Cannot create daily.md."
-          fi
+          
+          # Create daily files
+          copy_if_exists "output/discord/summaries/${YESTERDAY}.json" "./public/elizaos/discord/daily.json" "Discord daily JSON"
+          copy_if_exists "output/discord/summaries/${YESTERDAY}.md" "./public/elizaos/discord/daily.md" "Discord daily MD"
+          copy_if_exists "output/elizaos/${YESTERDAY}.json" "./public/elizaos/json/daily.json" "ElizaOS daily JSON"
 
       - name: Validate JSON files
-        run: find ./public/elizaos/json -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; } # Validate summaries in json folder
+        run: find ./public/elizaos -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
 
       - name: Get current timestamp for commit message
         id: commit_time
         run: echo "COMMIT_DATETIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
 
-      - name: Deploy to gh-pages branch
-        id: deployment
+      - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
-          # force_orphan: false # Removed this line (default is false)
           keep_files: true
-          user_name: 'github-actions[bot]' # Added specific user/email
+          user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
-          commit_message: "Update ElizaOS data ${{ env.COMMIT_DATETIME }}" # Added specific commit message
+          commit_message: "Update ElizaOS unified data ${{ env.COMMIT_DATETIME }}"
+

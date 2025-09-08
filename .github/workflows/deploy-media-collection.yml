@@ -1,0 +1,92 @@
+name: Daily Media Collection
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Run at 6 AM UTC daily
+  workflow_dispatch:
+    inputs:
+      config:
+        description: 'all | elizaos.json | hyperfy-discord.json'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - elizaos.json
+          - hyperfy-discord.json
+      date:
+        description: 'YYYY-MM-DD (empty = yesterday)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  trigger-collection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+    - name: Send webhook request
+      env:
+        WEBHOOK_URL: ${{ secrets.COLLECT_WEBHOOK_URL }}
+        WEBHOOK_SECRET: ${{ secrets.COLLECT_WEBHOOK_SECRET }}
+      run: |
+        set -euo pipefail
+        
+        # Prepare payload
+        CONFIG="${{ github.event.inputs.config || 'all' }}"
+        DATE="${{ github.event.inputs.date || '' }}"
+        
+        # Create JSON payload (compact format)
+        PAYLOAD=$(jq -nc \
+          --arg config "$CONFIG" \
+          --arg date "$DATE" \
+          '{config: $config, date: $date}')
+        
+        # Generate HMAC signature (GitHub uses sha256= format)
+        SIGNATURE="sha256=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -binary | xxd -p -c 256)"
+        
+        # Mask sensitive data
+        echo "::add-mask::$WEBHOOK_SECRET"
+        echo "::add-mask::$SIGNATURE"
+        
+        # Send webhook request
+        echo "Triggering collection for config: $CONFIG, date: ${DATE:-yesterday}"
+        
+        RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$WEBHOOK_URL" \
+          -H "Content-Type: application/json" \
+          -H "X-Hub-Signature-256: $SIGNATURE" \
+          --data "$PAYLOAD")
+        
+        # Parse response
+        HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+        BODY=$(echo "$RESPONSE" | head -n -1)
+        
+        echo "HTTP Status: $HTTP_CODE"
+        echo "Response: $BODY"
+        
+        # Check for success
+        case $HTTP_CODE in
+          202)
+            echo "✅ Collection started successfully"
+            ;;
+          409)
+            echo "⚠️  Collection blocked - another run in progress"
+            exit 1
+            ;;
+          400)
+            echo "❌ Bad request: $BODY"
+            exit 1
+            ;;
+          401)
+            echo "❌ Authentication failed - check COLLECT_WEBHOOK_SECRET"
+            exit 1
+            ;;
+          *)
+            echo "❌ Unexpected response: $HTTP_CODE"
+            echo "$BODY"
+            exit 1
+            ;;
+        esac
