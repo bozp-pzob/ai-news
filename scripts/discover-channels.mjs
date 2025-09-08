@@ -7,9 +7,13 @@
  * a markdown checklist showing tracking status for each channel.
  */
 
-const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
-const fs = require('fs').promises;
-const path = require('path');
+import { Client, GatewayIntentBits, ChannelType } from 'discord.js';
+import { promises as fs, readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Configuration
 const CONFIG_DIR = path.join(__dirname, '../config');
@@ -174,7 +178,7 @@ function generateAnalyticsReminder() {
 function getLastAnalyticsCheck() {
     const analyticsFile = path.join(__dirname, '.last-analytics-check');
     try {
-        const content = require('fs').readFileSync(analyticsFile, 'utf8');
+        const content = readFileSync(analyticsFile, 'utf8');
         return new Date(content.trim());
     } catch {
         // Default to 28 days ago if no file exists
@@ -268,7 +272,8 @@ async function main() {
     console.log('🔍 Starting Discord channel discovery...');
 
     // Load environment variables
-    require('dotenv').config({ path: path.join(__dirname, '../.env') });
+    const { config } = await import('dotenv');
+    config({ path: path.join(__dirname, '../.env') });
 
     // Test mode - just validate configs without Discord API
     if (process.argv.includes('--test-configs')) {
@@ -348,8 +353,8 @@ async function main() {
 }
 
 // Run the script
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
     main().catch(console.error);
 }
 
-module.exports = { main };
+export { main };

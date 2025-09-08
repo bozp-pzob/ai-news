@@ -51,7 +51,7 @@ jobs:
         run: npm install
 
       - name: Run channel discovery
-        run: node scripts/discover-channels.js
+        run: node scripts/discover-channels.mjs
         env:
           NODE_ENV: production
 
@@ -73,7 +73,7 @@ jobs:
 
       - name: Run config auto-update
         if: steps.checklist_changes.outputs.checklist_changed == 'true'
-        run: node scripts/update-configs-from-checklist.js
+        run: node scripts/update-configs-from-checklist.mjs
         env:
           NODE_ENV: production
 
@@ -89,7 +89,7 @@ jobs:
           fi
 
       - name: Generate dashboard
-        run: node scripts/generate-dashboard.js
+        run: node scripts/generate-dashboard.mjs
         env:
           NODE_ENV: production
 
