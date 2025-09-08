@@ -12,8 +12,12 @@
  * Usage: node scripts/generate-dashboard.js [--config=path] [--dry-run]
  */
 
-const fs = require('fs').promises;
-const path = require('path');
+import { promises as fs } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Default configuration
 const DEFAULT_CONFIG_PATH = path.join(__dirname, '../config/dashboard.json');
@@ -505,7 +509,7 @@ async function generateDashboard(options = {}) {
 }
 
 // CLI handling
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
     const args = process.argv.slice(2);
     const options = {};
     
@@ -527,4 +531,4 @@ if (require.main === module) {
     generateDashboard(options);
 }
 
-module.exports = { generateDashboard };
+export { generateDashboard };
