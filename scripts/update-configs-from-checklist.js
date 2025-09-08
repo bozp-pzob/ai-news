@@ -7,8 +7,12 @@
  * newly checked channels to their respective configurations.
  */
 
-const fs = require('fs').promises;
-const path = require('path');
+import { promises as fs } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Configuration
 const CONFIG_DIR = path.join(__dirname, '../config');
@@ -280,8 +284,8 @@ async function main() {
 }
 
 // Run the script
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
     main().catch(console.error);
 }
 
-module.exports = { updateConfigs, parseChecklist };
+export { updateConfigs, parseChecklist };
