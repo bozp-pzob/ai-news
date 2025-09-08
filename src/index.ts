@@ -68,7 +68,6 @@ dotenv.config();
     const configFile = fs.readFileSync(configPath, "utf8");
     const configJSON = JSON.parse(configFile);
     
-    
     /**
      * Apply configuration overrides from the JSON file
      * These settings control the behavior of the aggregator

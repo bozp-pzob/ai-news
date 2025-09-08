@@ -78,7 +78,6 @@ Options:
       `);
       process.exit(0);
     }
-
     args.forEach(arg => {
       if (arg.startsWith('--source=')) {
         sourceFile = arg.split('=')[1];
@@ -101,13 +100,28 @@ Options:
       }
     });
 
-    // Load and parse the JSON configuration file FIRST
+    /**
+     * Load all plugin modules from their respective directories
+     * This includes sources, AI providers, enrichers, generators, and storage plugins
+     */
+    const sourceClasses = await loadDirectoryModules("sources");
+    const aiClasses = await loadDirectoryModules("ai");
+    const enricherClasses = await loadDirectoryModules("enrichers");
+    const generatorClasses = await loadDirectoryModules("generators");
+    const storageClasses = await loadDirectoryModules("storage");
+    
+    /**
+     * Load and parse the JSON configuration file
+     * This contains settings for all plugins and their parameters
+     */
     const configPath = path.join(__dirname, "../config", sourceFile);
     const configFile = fs.readFileSync(configPath, "utf8");
     const configJSON = JSON.parse(configFile);
 
-
-    // Apply general configuration overrides from the JSON file for settings like onlyFetch, onlyGenerate
+    /**
+     * Apply configuration overrides from the JSON file
+     * These settings control the behavior of the historical aggregator
+     */
     if (typeof configJSON?.settings?.onlyFetch === 'boolean') {
       onlyFetch = configJSON.settings.onlyFetch; // If present in config, it overrides CLI or default
       if (onlyFetch) logger.debug(`[HistoricalConfig] Setting: onlyFetch is true (from config).`);
@@ -120,16 +134,6 @@ Options:
     }
     // Note: CLI flags for onlyFetch/onlyGenerate already set the initial values. 
     // The logic above means config file settings for these take precedence if they exist.
-
-    /**
-     * Load all plugin modules from their respective directories
-     * This includes sources, AI providers, enrichers, generators, and storage plugins
-     */
-    const sourceClasses = await loadDirectoryModules("sources");
-    const aiClasses = await loadDirectoryModules("ai");
-    const enricherClasses = await loadDirectoryModules("enrichers");
-    const generatorClasses = await loadDirectoryModules("generators");
-    const storageClasses = await loadDirectoryModules("storage");
     
     /**
      * Initialize all plugin configurations
@@ -317,7 +321,6 @@ Options:
     storageConfigs.forEach(async (storage : any) => {
       await storage.close();
     });
-
     process.exit(0);
   } catch (error) {
     console.error("Error initializing the content aggregator:", error);

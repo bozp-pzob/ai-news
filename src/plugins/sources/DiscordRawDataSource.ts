@@ -68,6 +68,38 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
   /** Media download configuration */
   public mediaDownload?: MediaDownloadConfig;
 
+
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'botToken',
+        type: 'string',
+        required: true,
+        description: 'Discord bot token for authentication',
+        secret: true
+      },
+      {
+        name: 'channelIds',
+        type: 'string[]',
+        required: true,
+        description: 'Array of Discord channel IDs to monitor'
+      },
+      {
+        name: 'guildId',
+        type: 'string',
+        required: true,
+        description: 'Discord bot token for authentication',
+        secret: true
+      },
+      {
+        name: 'storage',
+        type: 'StoragePlugin',
+        required: true,
+        description: 'Storage to store data fetching cursors'
+      }
+    ]
+  };
+
   /**
    * Creates a new DiscordRawDataSource instance
    * @param {DiscordRawDataSourceConfig} config - Configuration object for the Discord source

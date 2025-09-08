@@ -1,0 +1,555 @@
+{
+  "source": [
+    {
+      "name": "TwitterSource",
+      "pluginName": "TwitterSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "username",
+            "type": "string",
+            "required": false,
+            "description": "Twitter username for authentication",
+            "secret": true
+          },
+          {
+            "name": "password",
+            "type": "string",
+            "required": false,
+            "description": "Twitter password for authentication",
+            "secret": true
+          },
+          {
+            "name": "email",
+            "type": "string",
+            "required": false,
+            "description": "Email associated with Twitter account",
+            "secret": true
+          },
+          {
+            "name": "cookies",
+            "type": "string",
+            "required": false,
+            "description": "JSON string of Twitter cookies",
+            "secret": true
+          },
+          {
+            "name": "accounts",
+            "type": "string[]",
+            "required": true,
+            "description": "Array of Twitter accounts to monitor"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SolanaAnalyticsSource",
+      "pluginName": "SolanaAnalyticsSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "apiKey",
+            "type": "string",
+            "required": true,
+            "description": "API key for Solana Analytics",
+            "secret": true
+          },
+          {
+            "name": "tokenAddresses",
+            "type": "string[]",
+            "required": true,
+            "description": "Array of Solana token addresses to track"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GitHubStatsDataSource",
+      "pluginName": "GitHubStatsDataSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "statsUrl",
+            "type": "string",
+            "required": true,
+            "description": "URL for stats data JSON endpoint"
+          },
+          {
+            "name": "historicalStatsUrl",
+            "type": "string",
+            "required": true,
+            "description": "URL template for historical summary data (includes date placeholders)"
+          },
+          {
+            "name": "githubCompany",
+            "type": "string",
+            "required": true,
+            "description": "GitHub company/organization name"
+          },
+          {
+            "name": "githubRepo",
+            "type": "string",
+            "required": true,
+            "description": "GitHub repository name"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GitHubDataSource",
+      "pluginName": "GitHubDataSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "contributorsUrl",
+            "type": "string",
+            "required": true,
+            "description": "URL for contributors data JSON endpoint"
+          },
+          {
+            "name": "summaryUrl",
+            "type": "string",
+            "required": true,
+            "description": "URL for summary data JSON endpoint"
+          },
+          {
+            "name": "historicalSummaryUrl",
+            "type": "string",
+            "required": true,
+            "description": "URL template for historical summary data (includes date placeholders)"
+          },
+          {
+            "name": "historicalContributorUrl",
+            "type": "string",
+            "required": true,
+            "description": "URL template for historical contributor data (includes date placeholders)"
+          },
+          {
+            "name": "githubCompany",
+            "type": "string",
+            "required": true,
+            "description": "GitHub company/organization name"
+          },
+          {
+            "name": "githubRepo",
+            "type": "string",
+            "required": true,
+            "description": "GitHub repository name"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DiscordRawDataSource",
+      "pluginName": "DiscordRawDataSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "botToken",
+            "type": "string",
+            "required": true,
+            "description": "Discord bot token for authentication",
+            "secret": true
+          },
+          {
+            "name": "channelIds",
+            "type": "string[]",
+            "required": true,
+            "description": "Array of Discord channel IDs to monitor"
+          },
+          {
+            "name": "guildId",
+            "type": "string",
+            "required": true,
+            "description": "Discord bot token for authentication",
+            "secret": true
+          },
+          {
+            "name": "storage",
+            "type": "StoragePlugin",
+            "required": true,
+            "description": "Storage to store data fetching cursors"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DiscordChannelSource",
+      "pluginName": "DiscordChannelSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "botToken",
+            "type": "string",
+            "required": true,
+            "description": "Discord bot token for authentication",
+            "secret": true
+          },
+          {
+            "name": "channelIds",
+            "type": "string[]",
+            "required": true,
+            "description": "Array of Discord channel IDs to monitor"
+          },
+          {
+            "name": "storage",
+            "type": "StoragePlugin",
+            "required": true,
+            "description": "Storage to store data fetching cursors"
+          },
+          {
+            "name": "provider",
+            "type": "AiProvider",
+            "required": false,
+            "description": "Optional AI provider for content processing"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DiscordAnnouncementSource",
+      "pluginName": "DiscordAnnouncementSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "botToken",
+            "type": "string",
+            "required": true,
+            "description": "Discord bot token for authentication",
+            "secret": true
+          },
+          {
+            "name": "channelIds",
+            "type": "string[]",
+            "required": true,
+            "description": "Array of Discord channel IDs to monitor for announcements"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ContentSource",
+      "pluginName": "ContentSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": null
+    },
+    {
+      "name": "CoinGeckoAnalyticsSource",
+      "pluginName": "CoinGeckoAnalyticsSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "tokenSymbols",
+            "type": "string[]",
+            "required": true,
+            "description": "Array of cryptocurrency symbols to track (e.g., [\"bitcoin\", \"ethereum\"])"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CodexAnalyticsSource",
+      "pluginName": "CodexAnalyticsSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "apiKey",
+            "type": "string",
+            "required": true,
+            "description": "API key for Codex Analytics",
+            "secret": true
+          },
+          {
+            "name": "tokenAddresses",
+            "type": "string[]",
+            "required": true,
+            "description": "Array of token addresses to track"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ApiSource",
+      "pluginName": "ApiSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "name",
+            "type": "string",
+            "required": true,
+            "description": "Name of the API source"
+          },
+          {
+            "name": "endpoint",
+            "type": "string",
+            "required": true,
+            "description": "API endpoint URL"
+          },
+          {
+            "name": "apiKey",
+            "type": "string",
+            "required": true,
+            "description": "API key for authentication",
+            "secret": true
+          }
+        ]
+      }
+    }
+  ],
+  "ai": [
+    {
+      "name": "OpenAIProvider",
+      "pluginName": "OpenAIProvider",
+      "type": "ai",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "apiKey",
+            "type": "string",
+            "required": true,
+            "description": "OpenAI API key for authentication",
+            "secret": true
+          },
+          {
+            "name": "model",
+            "type": "string",
+            "required": false,
+            "description": "OpenAI model to use (e.g., \"gpt-4\", \"gpt-3.5-turbo\")"
+          },
+          {
+            "name": "temperature",
+            "type": "number",
+            "required": false,
+            "description": "Temperature setting for model responses (0-2)"
+          },
+          {
+            "name": "useOpenRouter",
+            "type": "boolean",
+            "required": false,
+            "description": "Whether to use OpenRouter instead of direct OpenAI API"
+          },
+          {
+            "name": "siteUrl",
+            "type": "string",
+            "required": false,
+            "description": "URL of the site using this provider"
+          },
+          {
+            "name": "siteName",
+            "type": "string",
+            "required": false,
+            "description": "Name of the site using this provider"
+          }
+        ]
+      }
+    }
+  ],
+  "enricher": [
+    {
+      "name": "AiTopicsEnricher",
+      "pluginName": "AiTopicsEnricher",
+      "type": "enricher",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": []
+      }
+    },
+    {
+      "name": "AiImageEnricher",
+      "pluginName": "AiImageEnricher",
+      "type": "enricher",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": []
+      }
+    }
+  ],
+  "generator": [
+    {
+      "name": "RawDataExporter",
+      "pluginName": "RawDataExporter",
+      "type": "generator",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "storage",
+            "type": "StoragePlugin",
+            "required": true,
+            "description": "Storage Plugin to store the generated Daily Summary."
+          },
+          {
+            "name": "source",
+            "type": "string",
+            "required": false,
+            "description": "Specific source to generate the summary off."
+          },
+          {
+            "name": "outputPath",
+            "type": "string",
+            "required": false,
+            "description": "Location to store summary for md and json generation"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DiscordSummaryGenerator",
+      "pluginName": "DiscordSummaryGenerator",
+      "type": "generator",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "provider",
+            "type": "AIProvider",
+            "required": true,
+            "description": "AI Provider plugin for the generator to use to create the Daily Summary."
+          },
+          {
+            "name": "storage",
+            "type": "StoragePlugin",
+            "required": true,
+            "description": "Storage Plugin to store the generated Daily Summary."
+          },
+          {
+            "name": "summaryType",
+            "type": "string",
+            "required": true,
+            "description": "Type for summary to store in the database."
+          },
+          {
+            "name": "source",
+            "type": "string",
+            "required": false,
+            "description": "Specific source to generate the summary off."
+          },
+          {
+            "name": "outputPath",
+            "type": "string",
+            "required": false,
+            "description": "Location to store summary for md and json generation"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DailySummaryGenerator",
+      "pluginName": "DailySummaryGenerator",
+      "type": "generator",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "provider",
+            "type": "AIProvider",
+            "required": true,
+            "description": "AI Provider plugin for the generator to use to create the Daily Summary."
+          },
+          {
+            "name": "storage",
+            "type": "StoragePlugin",
+            "required": true,
+            "description": "Storage Plugin to store the generated Daily Summary."
+          },
+          {
+            "name": "summaryType",
+            "type": "string",
+            "required": true,
+            "description": "Type for summary to store in the database."
+          },
+          {
+            "name": "source",
+            "type": "string",
+            "required": false,
+            "description": "Specific source to generate the summary off."
+          },
+          {
+            "name": "outputPath",
+            "type": "string",
+            "required": false,
+            "description": "Location to store summary for md and json generation"
+          },
+          {
+            "name": "maxGroupsToSummarize",
+            "type": "string",
+            "required": false,
+            "description": "Max number of groups to generate summaries off ( Default 10 )."
+          },
+          {
+            "name": "groupBySourceType",
+            "type": "boolean",
+            "required": false,
+            "description": "Group by source type null storage, instead of topics generated null enriching."
+          }
+        ]
+      }
+    }
+  ],
+  "storage": [
+    {
+      "name": "StoragePlugin",
+      "pluginName": "StoragePlugin",
+      "type": "storage",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": null
+    },
+    {
+      "name": "SQLiteStorage",
+      "pluginName": "SQLiteStorage",
+      "type": "storage",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "dbPath",
+            "type": "string",
+            "required": true,
+            "description": "Path to the SQLite database file"
+          }
+        ]
+      }
+    }
+  ]
+}

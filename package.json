@@ -6,6 +6,8 @@
   "scripts": {
     "build": "tsc --noEmitOnError false || echo 'TypeScript compilation completed with type issues in dependencies'",
     "validate": "npm run historical -- --help && echo '✅ Validation passed - application compiles and runs correctly'",
+    "build:plugins": "node scripts/buildStaticPlugins.js",
+    "build:all": "npm run build && npm run build:plugins && cd frontend && npm run build",
     "start": "node dist/index.js",
     "dev": "ts-node --transpile-only src/index.ts",
     "historical": "ts-node --transpile-only src/historical.ts",

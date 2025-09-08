@@ -31,6 +31,48 @@ export class OpenAIProvider implements AiProvider {
   private temperature: number;
   private useOpenRouter: boolean;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'apiKey',
+        type: 'string',
+        required: true,
+        description: 'OpenAI API key for authentication',
+        secret: true
+      },
+      {
+        name: 'model',
+        type: 'string',
+        required: false,
+        description: 'OpenAI model to use (e.g., "gpt-4", "gpt-3.5-turbo")'
+      },
+      {
+        name: 'temperature',
+        type: 'number',
+        required: false,
+        description: 'Temperature setting for model responses (0-2)'
+      },
+      {
+        name: 'useOpenRouter',
+        type: 'boolean',
+        required: false,
+        description: 'Whether to use OpenRouter instead of direct OpenAI API'
+      },
+      {
+        name: 'siteUrl',
+        type: 'string',
+        required: false,
+        description: 'URL of the site using this provider'
+      },
+      {
+        name: 'siteName',
+        type: 'string',
+        required: false,
+        description: 'Name of the site using this provider'
+      }
+    ]
+  };
+
   /**
    * Creates a new instance of OpenAIProvider.
    * Initializes the OpenAI client with the provided configuration and sets up
@@ -142,7 +184,7 @@ export class OpenAIProvider implements AiProvider {
       };
   
       const image = await client.images.generate(params);
-      //@ts-ignore
+      console.log(image.data[0].url);
       return JSON.parse(image.data[0].url || "[]");
     } catch (e) {
       console.error("Error in image generation:", e);
