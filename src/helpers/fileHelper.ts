@@ -3,6 +3,8 @@ import path from "path";
 import { createHash } from "crypto";
 import { ContentItem, MediaDownloadItem } from "../types";
 import { logger } from "./cliHelper";
+import { extractAttachmentMedia, extractEmbedMedia, extractStickerMedia } from "./mediaHelper";
+import { safeJsonParse, isValidArray } from "./generalHelper";
 
 /**
  * file utility functions for the AI News Aggregator.
@@ -47,10 +49,91 @@ export const writeFile = async (outputPath: string, dateStr: string, content: an
 }
 
 /**
- * Ensures the output directory exists.
+ * Validates that a file path is safe to use (prevents path traversal attacks)
+ * @param filePath - File path to validate
+ * @returns True if path is safe, false otherwise
+ */
+export const isValidPath = (filePath: string): boolean => {
+  if (!filePath || typeof filePath !== 'string') {
+    return false;
+  }
+  
+  // Check for path traversal attempts
+  const dangerous = ['../', '..\\', '~/', '/etc/', '/root/', '/home/'];
+  if (dangerous.some(pattern => filePath.includes(pattern))) {
+    return false;
+  }
+  
+  // Ensure path is relative and not absolute
+  if (path.isAbsolute(filePath)) {
+    return false;
+  }
+  
+  return true;
+};
+
+/**
+ * Sanitizes a filename by removing dangerous characters
+ * @param filename - Original filename
+ * @returns Sanitized filename
+ */
+export const sanitizeFilename = (filename: string): string => {
+  if (!filename || typeof filename !== 'string') {
+    return 'unknown';
+  }
+  
+  // Remove dangerous characters and replace with underscores
+  return filename
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+    .replace(/^\.+/, '_') // Remove leading dots
+    .substring(0, 255); // Limit length
+};
+
+/**
+ * Validates that a URL is safe to download from
+ * @param url - URL to validate
+ * @returns True if URL is safe, false otherwise
+ */
+export const isValidUrl = (url: string): boolean => {
+  if (!url || typeof url !== 'string') {
+    return false;
+  }
+  
+  try {
+    const urlObj = new URL(url);
+    
+    // Only allow HTTPS and HTTP
+    if (!['http:', 'https:'].includes(urlObj.protocol)) {
+      return false;
+    }
+    
+    // Block localhost and private IP ranges
+    const hostname = urlObj.hostname.toLowerCase();
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0') {
+      return false;
+    }
+    
+    // Block private IP ranges (basic check)
+    if (hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.')) {
+      return false;
+    }
+    
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Ensures the output directory exists safely.
  * @param dirPath - Directory path to check/create
  */
 export const ensureDirectoryExists = (dirPath: string) => {
+    // Validate path before creating
+    if (!isValidPath(dirPath)) {
+      throw new Error(`Invalid directory path: ${dirPath}`);
+    }
+    
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
     }
@@ -125,51 +208,55 @@ export const extractDiscordMediaData = (item: ContentItem): MediaDownloadItem[] 
   }
 
   try {
-    const data = JSON.parse(item.text);
+    const data = safeJsonParse(item.text, {} as any);
     
-    if (data.messages && Array.isArray(data.messages)) {
+    if (data.messages && isValidArray(data.messages)) {
       for (const message of data.messages) {
-        if (message.attachments && Array.isArray(message.attachments)) {
+        const channelName = data.channel?.name || 'unknown';
+        const guildName = data.guild?.name || 'unknown';
+
+        // Process attachments using shared utility
+        if (message.attachments && isValidArray(message.attachments)) {
           for (const attachment of message.attachments) {
-            if (attachment.url) {
-              mediaItems.push({
-                url: attachment.url,
-                filename: attachment.filename || 'unknown',
-                contentType: attachment.content_type,
-                messageId: message.id,
-                messageDate: message.ts,
-                channelName: data.channel?.name || 'unknown',
-                guildName: data.guild?.name || 'unknown',
-                mediaType: 'attachment'
-              });
+            const mediaItem = extractAttachmentMedia(
+              attachment,
+              message.id,
+              message.ts,
+              channelName,
+              guildName
+            );
+            if (mediaItem) {
+              mediaItems.push(mediaItem);
             }
           }
         }
 
-        if (message.embeds && Array.isArray(message.embeds)) {
+        // Process embeds using shared utility
+        if (message.embeds && isValidArray(message.embeds)) {
           for (const embed of message.embeds) {
-            if (embed.image?.url) {
-              mediaItems.push({
-                url: embed.image.url,
-                filename: extractFilenameFromUrl(embed.image.url),
-                messageId: message.id,
-                messageDate: message.ts,
-                channelName: data.channel?.name || 'unknown',
-                guildName: data.guild?.name || 'unknown',
-                mediaType: 'embed_image'
-              });
-            }
-            
-            if (embed.thumbnail?.url) {
-              mediaItems.push({
-                url: embed.thumbnail.url,
-                filename: extractFilenameFromUrl(embed.thumbnail.url),
-                messageId: message.id,
-                messageDate: message.ts,
-                channelName: data.channel?.name || 'unknown',
-                guildName: data.guild?.name || 'unknown',
-                mediaType: 'embed_thumbnail'
-              });
+            const embedMedia = extractEmbedMedia(
+              embed,
+              message.id,
+              message.ts,
+              channelName,
+              guildName
+            );
+            mediaItems.push(...embedMedia);
+          }
+        }
+
+        // Process stickers using shared utility
+        if (message.sticker_items && isValidArray(message.sticker_items)) {
+          for (const sticker of message.sticker_items) {
+            const mediaItem = extractStickerMedia(
+              sticker,
+              message.id,
+              message.ts,
+              channelName,
+              guildName
+            );
+            if (mediaItem) {
+              mediaItems.push(mediaItem);
             }
           }
         }
