@@ -199,6 +199,9 @@ export interface DiscordRawData {
       emoji: string;
       count: number;
     }[];
+    attachments?: DiscordAttachment[];
+    embeds?: DiscordEmbed[];
+    sticker_items?: DiscordSticker[];
   }[];
 }
 
@@ -216,6 +219,7 @@ export interface DiscordRawDataSourceConfig {
   channelIds: string[];
   guildId: string;
   storage: StoragePlugin;
+  mediaDownload?: MediaDownloadConfig;
 }
 
 /**
@@ -282,13 +286,18 @@ export interface ActionItems {
 export interface DiscordAttachment {
   id: string;
   filename: string;
+  title?: string;
+  description?: string;
+  content_type?: string;
   size: number;
   url: string;
   proxy_url?: string;
-  content_type?: string;
-  width?: number;
   height?: number;
-  description?: string;
+  width?: number;
+  duration_secs?: number;
+  waveform?: string;
+  ephemeral?: boolean;
+  flags?: number;
 }
 
 /**
@@ -315,7 +324,8 @@ export interface DiscordEmbed {
     height?: number;
   };
   video?: {
-    url: string;
+    url?: string;
+    proxy_url?: string;
     width?: number;
     height?: number;
   };
@@ -354,4 +364,19 @@ export interface MediaDownloadConfig {
   excludedTypes?: string[];
   rateLimit?: number; // milliseconds between downloads, default 100
   retryAttempts?: number; // default 3
+}
+
+/**
+ * Interface for media download items
+ * @interface MediaDownloadItem
+ */
+export interface MediaDownloadItem {
+  url: string;
+  filename: string;
+  contentType?: string;
+  messageId: string;
+  messageDate: string;
+  channelName: string;
+  guildName: string;
+  mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
 }

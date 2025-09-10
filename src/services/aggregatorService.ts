@@ -3,7 +3,7 @@ import { loadDirectoryModules, loadItems, loadProviders, loadStorage } from "../
 import { Config } from "./configService";
 import { AggregationStatus, JobStatus } from "../types";
 import EventEmitter from "events";
-import { v4 as uuidv4 } from 'uuid';
+// import { v4 as uuidv4 } from 'uuid';
 import { HistoricalAggregator } from "../aggregator/HistoricalAggregator";
 import { callbackDateRangeLogic } from "../helpers/dateHelper";
 
@@ -123,7 +123,7 @@ export class AggregatorService {
 
   async startAggregation(configName: string, config: Config, settings: any, secrets: any): Promise<string> {
     // Create a job ID
-    const jobId = uuidv4();
+    const jobId = Math.random().toString(36).substr(2, 9);
     
     // Initialize job status
     const jobStatus: JobStatus = {
@@ -276,7 +276,7 @@ export class AggregatorService {
 
   async runAggregationOnce(configName: string, config: Config, settings: any, secrets: any): Promise<string> {
     // Create a job ID
-    const jobId = uuidv4();
+    const jobId = Math.random().toString(36).substr(2, 9);
     
     // Initialize job status
     const jobStatus: JobStatus = {

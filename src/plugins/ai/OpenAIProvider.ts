@@ -184,8 +184,11 @@ export class OpenAIProvider implements AiProvider {
       };
   
       const image = await client.images.generate(params);
-      console.log(image.data[0].url);
-      return JSON.parse(image.data[0].url || "[]");
+      if (image.data && image.data.length > 0 && image.data[0].url) {
+        console.log(image.data[0].url);
+        return [image.data[0].url];
+      }
+      return [];
     } catch (e) {
       console.error("Error in image generation:", e);
       return [];

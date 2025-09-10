@@ -7,6 +7,7 @@
  */
 
 import { HistoricalAggregator } from "./aggregator/HistoricalAggregator";
+import { MediaDownloader } from "./download-media";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -43,6 +44,7 @@ dotenv.config();
     let afterDate;
     let duringDate;
     let outputPath = './'; // Default output path
+    let downloadMedia = false;
 
     args.forEach(arg => {
       if (arg.startsWith('--source=')) {
@@ -61,6 +63,8 @@ dotenv.config();
         duringDate = arg.split('=')[1];
       } else if (arg.startsWith('--output=') || arg.startsWith('-o=')) {
         outputPath = arg.split('=')[1];
+      } else if (arg.startsWith('--download-media=')) {
+        downloadMedia = arg.split('=')[1].toLowerCase() === 'true';
       }
     });
 
@@ -113,6 +117,18 @@ dotenv.config();
     enricherConfigs = await loadProviders(enricherConfigs, aiConfigs);
     generatorConfigs = await loadProviders(generatorConfigs, aiConfigs);
     generatorConfigs = await loadStorage(generatorConfigs, storageConfigs);
+    
+    /**
+     * Override media download settings if --download-media flag is provided
+     */
+    if (downloadMedia) {
+      sourceConfigs.forEach(config => {
+        if (config.instance && config.instance.mediaDownload !== undefined) {
+          console.log(`[INFO] Enabling media download for source: ${config.instance.name} (overriding config)`);
+          config.instance.mediaDownload.enabled = true;
+        }
+      });
+    }
     
     /**
      * Call the validation function
@@ -196,6 +212,57 @@ dotenv.config();
       console.log("Content aggregator is finished fetching historical.");
     }
     
+    /**
+     * Download media files if --download-media flag is enabled
+     * This runs after historical data fetching but before summary generation
+     */
+    if (downloadMedia && !onlyGenerate) {
+      console.log("[INFO] Starting media download process...");
+      
+      // Find Discord sources with media download enabled
+      const discordSources = sourceConfigs.filter(config => 
+        config.instance?.mediaDownload?.enabled === true
+      );
+      
+      if (discordSources.length === 0) {
+        console.log("[WARNING] No Discord sources with media download enabled found.");
+      } else {
+        for (const sourceConfig of discordSources) {
+          const mediaDownload = sourceConfig.instance.mediaDownload;
+          const storage = sourceConfig.instance.storage;
+          
+          if (storage && storage.dbPath) {
+            console.log(`[INFO] Downloading media for source: ${sourceConfig.instance.name}`);
+            
+            const downloader = new MediaDownloader(
+              storage.dbPath, 
+              mediaDownload.outputPath || './media'
+            );
+            
+            try {
+              await downloader.init();
+              
+              if (filter.filterType || (filter.after && filter.before)) {
+                // Handle date range downloads
+                await callbackDateRangeLogic(filter, async (date: string) => {
+                  console.log(`[INFO] Downloading media for date: ${date}`);
+                  await downloader.downloadMediaForDate(new Date(date));
+                });
+              } else {
+                // Handle single date download
+                await downloader.downloadMediaForDate(new Date(dateStr));
+              }
+              
+              await downloader.close();
+              console.log(`[SUCCESS] Media download completed for source: ${sourceConfig.instance.name}`);
+              
+            } catch (error) {
+              console.error(`[ERROR] Media download failed for source ${sourceConfig.instance.name}:`, error);
+            }
+          }
+        }
+      }
+    }
 
     /**
      * Generate summaries if not in fetch-only mode
