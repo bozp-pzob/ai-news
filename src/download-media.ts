@@ -21,7 +21,7 @@ const DOWNLOAD_TIMEOUT_MS = 30000; // 30 seconds
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_BASE_MS = 1000; // Base delay for exponential backoff
 const DEFAULT_RATE_LIMIT_MS = 500; // Increased default rate limit between downloads (was 100ms)
-const USER_AGENT = 'DiscordBot (AI-News-Aggregator, 1.0) Node.js/Discord.js'; // Discord API compliant User-Agent
+const USER_AGENT = 'DiscordBot (ai-news, 1.0) Node.js/Discord.js'; // Discord API compliant User-Agent
 
 // Discord Rate Limiting Constants
 const DISCORD_GLOBAL_RATE_LIMIT = 50; // 50 requests per second globally

@@ -54,11 +54,26 @@ Only return the final markdown text.`;
  * @param dateStr - The date string associated with the content
  * @returns A formatted prompt string for the AI model
  */
+/**
+ * Truncates text content to stay within reasonable token limits
+ * @param text - Text to potentially truncate
+ * @param maxChars - Maximum characters (roughly 0.75 tokens per character)
+ * @returns Truncated text with indication if truncated
+ */
+const truncateContent = (text: string, maxChars: number = 50000): string => {
+  if (text.length <= maxChars) {
+    return text;
+  }
+  return text.substring(0, maxChars - 20) + '...[truncated]';
+};
+
 export const createJSONPromptForTopics = (topic: string, objects: any[], dateStr: string): string => {
   let prompt = `Generate a summary for the topic. Focus on the following details:\n\n`;
+  
   objects.forEach((item) => {
     prompt += `\n***source***\n`;
-    if (item.text) prompt += `text: ${item.text}\n`;
+    // Truncate text content to prevent token overflow
+    if (item.text) prompt += `text: ${truncateContent(item.text)}\n`;
     if (item.link) prompt += `sources: ${item.link}\n`;
     if (item.metadata?.photos) prompt += `photos: ${item.metadata?.photos}\n`;
     if (item.metadata?.videos) prompt += `videos: ${item.metadata?.videos}\n`;
