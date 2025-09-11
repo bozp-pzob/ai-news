@@ -1,109 +1,93 @@
 {
-    "settings": {
-        "runOnce": true
-    },
-    "sources": [
-      {
-        "type": "DiscordRawDataSource",
-        "name": "hyperfyDiscordRaw",
-        "interval": 360000,
-        "params": {
-          "botToken": "process.env.HYPERFY_DISCORD_TOKEN",
-          "guildId": "process.env.HYPERFY_DISCORD_GUILD_ID",
-          "channelIds": [
-              "994775534733115412",
-              "1330373197203505185",
-              "958209074045026327",
-              "1326789867312775290",
-              "1031058655581323324",
-              "958214956426350652",
-              "1347905902937767997"
-          ],
-          "storage": "SQLiteStorage"
-        }
-      },
-      {
-        "type": "CodexAnalyticsSource",
-        "name": "codexAnalytics",
-        "interval": 43200000,
-        "params": {
-            "apiKey": "process.env.CODEX_API_KEY",
-            "tokenAddresses": ["8vBMibwpn8wpfYKbQ9xqzodymg3LjmYec2tSNGRy23K8","So11111111111111111111111111111111111111112"]
+  "settings": {
+    "runOnce": true
+  },
+  "sources": [
+    {
+      "type": "DiscordRawDataSource",
+      "name": "hyperfyDiscordRaw",
+      "interval": 360000,
+      "params": {
+        "botToken": "process.env.HYPERFY_DISCORD_TOKEN",
+        "guildId": "process.env.HYPERFY_DISCORD_GUILD_ID",
+        "channelIds": [
+          "994775534733115412",
+          "1330373197203505185",
+          "958209074045026327",
+          "1326789867312775290",
+          "1031058655581323324"
+        ],
+        "storage": "SQLiteStorage",
+        "mediaDownload": {
+          "enabled": false,
+          "outputPath": "./hyperfy-media",
+          "maxFileSize": 52428800,
+          "rateLimit": 100,
+          "retryAttempts": 3
         }
       }
-    ],
-    "ai": [
-        {
-          "type": "OpenAIProvider",
-          "name": "summaryOpenAiProvider",
-          "params": {
-            "apiKey": "process.env.OPENAI_API_KEY",
-            "model": "anthropic/claude-3.7-sonnet",
-            "temperature": 0,
-            "useOpenRouter": true,
-            "siteUrl": "process.env.SITE_URL",
-            "siteName": "process.env.SITE_NAME",
-            "fallbackModel": "openrouter/sonoma-sky-alpha"
-          }
-        },
-        {
-          "type": "OpenAIProvider",
-          "name": "miniOpenAiProvider",
-          "params": {
-            "apiKey": "process.env.OPENAI_API_KEY",
-            "model": "openai/gpt-4o-mini",
-            "temperature": 0,
-            "useOpenRouter": true,
-            "siteUrl": "process.env.SITE_URL",
-            "siteName": "process.env.SITE_NAME",
-            "fallbackModel": "openrouter/sonoma-sky-alpha"
-          }
-        }
-    ],
-    "enrichers": [],
-    "storage": [
-        {
-            "type": "SQLiteStorage",
-            "name": "SQLiteStorage",
-            "params": {
-                "dbPath": "data/hyperfy-discord.sqlite"
-            }
-        }
-    ],
-    "generators": [
-        {
-          "type": "RawDataExporter",
-          "name": "HyperfyRawExporter",
-          "interval": 3600000,
-          "params": {
-            "storage": "SQLiteStorage",
-            "source": "discordRawData",
-            "outputPath": "./output/hyperfy/raw"
-          }
-        },
-        {
-          "type": "DailySummaryGenerator",
-          "name": "HyperfyDailySummary",
-          "interval": 3600000,
-          "params": {
-            "provider": "summaryOpenAiProvider",
-            "storage": "SQLiteStorage",
-            "summaryType": "hyperfyDailySummary",
-            "outputPath": "./output/hyperfy",
-            "groupBySourceType": true
-          }
-        },
-        {
-          "type": "DiscordSummaryGenerator",
-          "name": "HyperfyDiscordSummaryGenerator",
-          "interval": 3600000,
-          "params": {
-            "provider": "summaryOpenAiProvider",
-            "storage": "SQLiteStorage",
-            "summaryType": "hyperfyDiscordSummary",
-            "source": "discordRawData",
-            "outputPath": "./output/hyperfy/summaries"
-          }
-        }
-    ]
+    }
+  ],
+  "ai": [
+    {
+      "type": "OpenAIProvider",
+      "name": "summaryOpenAiProvider",
+      "params": {
+        "apiKey": "process.env.OPENAI_API_KEY",
+        "model": "anthropic/claude-3.7-sonnet",
+        "temperature": 0,
+        "useOpenRouter": true,
+        "siteUrl": "process.env.SITE_URL",
+        "siteName": "process.env.SITE_NAME",
+        "fallbackModel": "openrouter/sonoma-sky-alpha"
+      }
+    },
+    {
+      "type": "OpenAIProvider",
+      "name": "miniOpenAiProvider",
+      "params": {
+        "apiKey": "process.env.OPENAI_API_KEY",
+        "model": "openai/gpt-4o-mini",
+        "temperature": 0,
+        "useOpenRouter": true,
+        "siteUrl": "process.env.SITE_URL",
+        "siteName": "process.env.SITE_NAME",
+        "fallbackModel": "openrouter/sonoma-sky-alpha"
+      }
+    }
+  ],
+  "enrichers": [],
+  "storage": [
+    {
+      "type": "SQLiteStorage",
+      "name": "SQLiteStorage",
+      "params": {
+        "dbPath": "data/hyperfy-discord.sqlite"
+      }
+    }
+  ],
+  "generators": [
+    {
+      "type": "RawDataExporter",
+      "name": "HyperfyRawExporter",
+      "interval": 3600000,
+      "params": {
+        "storage": "SQLiteStorage",
+        "source": "discordRawData",
+        "outputPath": "./output/hyperfy/raw"
+      }
+    },
+    {
+      "type": "DiscordSummaryGenerator",
+      "name": "HyperfyDiscordSummaryGenerator",
+      "interval": 3600000,
+      "params": {
+        "provider": "summaryOpenAiProvider",
+        "storage": "SQLiteStorage",
+        "summaryType": "hyperfyDiscordSummary",
+        "source": "discordRawData",
+        "outputPath": "./output/hyperfy/summaries"
+      }
+    }
+  ]
 }
