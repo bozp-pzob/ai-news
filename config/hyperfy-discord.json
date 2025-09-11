@@ -42,7 +42,8 @@
             "temperature": 0,
             "useOpenRouter": true,
             "siteUrl": "process.env.SITE_URL",
-            "siteName": "process.env.SITE_NAME"
+            "siteName": "process.env.SITE_NAME",
+            "fallbackModel": "openrouter/sonoma-sky-alpha"
           }
         },
         {
@@ -54,7 +55,8 @@
             "temperature": 0,
             "useOpenRouter": true,
             "siteUrl": "process.env.SITE_URL",
-            "siteName": "process.env.SITE_NAME"
+            "siteName": "process.env.SITE_NAME",
+            "fallbackModel": "openrouter/sonoma-sky-alpha"
           }
         }
     ],

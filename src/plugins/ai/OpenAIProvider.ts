@@ -15,6 +15,7 @@ interface OpenAIProviderConfig {
   useOpenRouter?: boolean; // Whether to use OpenRouter instead of direct OpenAI API
   siteUrl?: string;       // Optional site URL for OpenRouter
   siteName?: string;      // Optional site name for OpenRouter
+  fallbackModel?: string; // Optional large context model for fallback when token limits exceeded
 }
 
 /**
@@ -30,6 +31,7 @@ export class OpenAIProvider implements AiProvider {
   private model: string;
   private temperature: number;
   private useOpenRouter: boolean;
+  private fallbackModel?: string;
 
   static constructorInterface = {
     parameters: [
@@ -69,6 +71,12 @@ export class OpenAIProvider implements AiProvider {
         type: 'string',
         required: false,
         description: 'Name of the site using this provider'
+      },
+      {
+        name: 'fallbackModel',
+        type: 'string',
+        required: false,
+        description: 'Large context model to fallback to when token limits exceeded (e.g., "openrouter/sonoma-sky-alpha")'
       }
     ]
   };
@@ -82,6 +90,7 @@ export class OpenAIProvider implements AiProvider {
   constructor(config: OpenAIProviderConfig) {
     this.name = config.name;
     this.useOpenRouter = config.useOpenRouter || false;
+    this.fallbackModel = config.fallbackModel;
     
     // Initialize main client (OpenRouter or OpenAI)
     const openAIConfig: any = {
@@ -121,16 +130,68 @@ export class OpenAIProvider implements AiProvider {
    */
   public async summarize(prompt: string): Promise<string> {
     try {
+      console.log("OpenAI API Call:", {
+        model: this.model,
+        useOpenRouter: this.useOpenRouter,
+        promptLength: prompt.length,
+        temperature: this.temperature
+      });
+
       const completion = await this.openai.chat.completions.create({
         model: this.model,
         messages: [{ role: 'user', content: prompt }],
         temperature: this.temperature
       });
 
+      // Debug: Log the actual API response to understand what's happening
+      console.log("OpenAI API Response:", {
+        hasCompletion: !!completion,
+        hasChoices: !!completion?.choices,
+        choicesLength: completion?.choices?.length,
+        completionKeys: completion ? Object.keys(completion) : 'no completion',
+        fullResponse: JSON.stringify(completion, null, 2)
+      });
+
+      if (!completion || !completion.choices || completion.choices.length === 0) {
+        console.error("Invalid OpenAI response - missing choices array");
+        throw new Error("No choices returned from OpenAI API");
+      }
+      
       return completion.choices[0]?.message?.content || "";
-    } catch (e) {
-      console.error("Error in summarize:", e);
-      throw e;
+    } catch (error: any) {
+      console.error("Error in summarize:", error);
+      
+      // Check if it's a token limit error and we have a fallback model
+      if (error.status === 400 && error.message?.includes('context limit') && this.fallbackModel) {
+        console.log(`[INFO] Token limit exceeded, retrying with fallback model: ${this.fallbackModel}`);
+        
+        try {
+          const fallbackCompletion = await this.openai.chat.completions.create({
+            model: this.fallbackModel,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: this.temperature
+          });
+
+          console.log("Fallback API Response:", {
+            model: this.fallbackModel,
+            hasCompletion: !!fallbackCompletion,
+            hasChoices: !!fallbackCompletion?.choices,
+            choicesLength: fallbackCompletion?.choices?.length
+          });
+
+          if (!fallbackCompletion || !fallbackCompletion.choices || fallbackCompletion.choices.length === 0) {
+            console.error("Invalid fallback OpenAI response - missing choices array");
+            throw new Error("No choices returned from fallback OpenAI API");
+          }
+          
+          return fallbackCompletion.choices[0]?.message?.content || "";
+        } catch (fallbackError) {
+          console.error("Fallback model also failed:", fallbackError);
+          throw fallbackError;
+        }
+      }
+      
+      throw error; // Re-throw if not a token limit error or no fallback
     }
   }
 
