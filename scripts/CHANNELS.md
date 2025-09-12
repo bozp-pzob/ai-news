@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-09-11 06:32:43 UTC*
+*Updated: 2025-09-12 06:32:28 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,19 +12,22 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 109 | **Currently Tracking**: 6 | **New Channels**: 103
+**Total Channels**: 110 | **Currently Tracking**: 6 | **New Channels**: 104
 
 ### Channels
-- [ ] #rules-and-faq (1285103549944168450) **NEW**
-- [ ] #welcome (1299517379721822208) **NEW**
 - [ ] #mod-chat (1299440237759696999) **NEW**
 - [ ] #bot-logs (1312926861793300500) **NEW**
-- [ ] #verify-now (1361911606967144528) **NEW**
 - [ ] #bot-commands (1307450932296028202) **NEW**
 - [ ] #moderator-audit-logs (1285103939007811594) **NEW**
-- [ ] #select-role (1300245650180669472) **NEW**
 - [ ] #collabland-config (1300245647789916190) **NEW**
 - [ ] #waiting-room (1361911608841994402) **NEW**
+
+**START HERE:**
+- [ ] #rules-and-faq (1285103549944168450) **NEW**
+- [ ] #welcome (1299517379721822208) **NEW**
+- [ ] #verify-now (1361911606967144528) **NEW**
+- [ ] #select-role (1300245650180669472) **NEW**
+- [ ] #builder-onboarding (1415627400456437831) **NEW**
 
 **DEV:**
 - [x] #💬-coders (1300025221834739744)
