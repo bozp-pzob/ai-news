@@ -127,6 +127,7 @@ export interface ConfigItem {
   name: string;
   params: Record<string, any>;
   interval?: number;
+  mediaDownload?: MediaDownloadConfig;
 }
 
 /**
@@ -206,12 +207,88 @@ export interface DiscordRawData {
 }
 
 /**
+ * Interface for Discord attachment objects
+ * Based on Discord API message attachment structure
+ */
+export interface DiscordAttachment {
+  id: string;
+  filename: string;
+  title?: string;
+  description?: string;
+  content_type?: string;
+  size: number;
+  url: string;
+  proxy_url: string;
+  height?: number;
+  width?: number;
+  duration_secs?: number;
+  waveform?: string;
+  ephemeral?: boolean;
+  flags?: number;
+}
+
+/**
+ * Interface for Discord embed objects (simplified for media-relevant fields)
+ * Based on Discord API message embed structure
+ */
+export interface DiscordEmbed {
+  title?: string;
+  description?: string;
+  url?: string;
+  color?: number;
+  image?: {
+    url: string;
+    proxy_url?: string;
+    height?: number;
+    width?: number;
+  };
+  thumbnail?: {
+    url: string;
+    proxy_url?: string;
+    height?: number;
+    width?: number;
+  };
+  video?: {
+    url?: string;
+    proxy_url?: string;
+    height?: number;
+    width?: number;
+  };
+}
+
+/**
+ * Interface for Discord sticker objects
+ * Based on Discord API sticker item structure
+ */
+export interface DiscordSticker {
+  id: string;
+  name: string;
+  format_type: number;
+  description?: string;
+}
+
+/**
+ * Configuration interface for media downloads
+ * @interface MediaDownloadConfig
+ */
+export interface MediaDownloadConfig {
+  enabled: boolean;
+  outputPath?: string;
+  maxFileSize?: number; // in bytes, default 50MB
+  allowedTypes?: string[]; // MIME types or extensions
+  excludedTypes?: string[];
+  rateLimit?: number; // milliseconds between downloads, default 100
+  retryAttempts?: number; // default 3
+}
+
+/**
  * Configuration interface for DiscordRawDataSource
  * @interface DiscordRawDataSourceConfig
  * @property {string} name - The name identifier for this Discord source
  * @property {string} botToken - Discord bot token for authentication
  * @property {string[]} channelIds - Array of Discord channel IDs to monitor
  * @property {string} guildId - Discord guild/server ID
+ * @property {MediaDownloadConfig} mediaDownload - Optional media download configuration
  */
 export interface DiscordRawDataSourceConfig {
   name: string;

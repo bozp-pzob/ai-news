@@ -623,7 +623,7 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
       embeds: [] as DiscordEmbed[],
       stickers: [] as DiscordSticker[]
     };
-
+    
     // Process attachments using shared utility
     for (const attachment of message.attachments.values()) {
       result.attachments.push(processDiscordAttachment(attachment));

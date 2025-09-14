@@ -1,3 +1,6 @@
 /node_modules/
 .env
 data/discord-raw.sqlite
+
+# Lock files - this project uses npm, not yarn
+yarn.lock

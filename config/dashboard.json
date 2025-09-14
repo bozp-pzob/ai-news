@@ -1,0 +1,50 @@
+{
+  "project": {
+    "name": "AI News Aggregator",
+    "github": {
+      "owner": "bozp-pzob", 
+      "repo": "ai-news"
+    },
+    "homepage": "https://bozp-pzob.github.io/ai-news"
+  },
+  "thresholds": {
+    "drift": {
+      "warning": 25,
+      "critical": 50
+    },
+    "channels": {
+      "moderate": 10,
+      "high": 25,
+      "critical": 50
+    },
+    "workflow": {
+      "hoursForRecent": 24,
+      "maxFailuresWarning": 1,
+      "maxFailuresCritical": 3
+    }
+  },
+  "sources": {
+    "channelsFile": "scripts/CHANNELS.md"
+  },
+  "output": {
+    "directory": "./public",
+    "statusFile": "status.txt",
+    "dashboardFile": "index.html"
+  },
+  "monitoring": {
+    "workflows": [
+      "elizaos.yml",
+      "hyperfy.yml"
+    ],
+    "criticalFiles": [
+      "elizaos/json/daily.json",
+      "hyperfy/daily.json",
+      "data/db.sqlite"
+    ],
+    "links": {
+      "repository": "https://github.com/bozp-pzob/ai-news",
+      "actions": "https://github.com/bozp-pzob/ai-news/actions",
+      "analytics": "https://discord.com/developers/applications"
+    }
+  }
+}

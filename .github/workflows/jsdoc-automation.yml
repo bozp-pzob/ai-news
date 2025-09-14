@@ -91,15 +91,15 @@ jobs:
         run: bun install
 
       - name: Install package dependencies
-        working-directory: packages/autodoc
+        working-directory: scripts/autodoc
         run: bun install
 
       - name: Build TypeScript
-        working-directory: packages/autodoc
+        working-directory: scripts/autodoc
         run: bun run build
 
       - name: Run documentation generator
-        working-directory: packages/autodoc
+        working-directory: scripts/autodoc
         run: bun run autodoc
         env:
           INPUT_ROOT_DIRECTORY: ${{ github.event.inputs.root_directory }}

@@ -1,4 +1,4 @@
-name: Hyperfy Daily Summary
+name: Hyperfy Discord
 
 on:
   schedule:
@@ -25,37 +25,51 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # Needed for checkout and gh-pages push
-      pages: write      # Needed for gh-pages deployment
-      id-token: write   # Needed for gh-pages deployment
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          # Fetch all history so that the last modified date can be determined
-          fetch-depth: 0
 
       # Fetch existing DB from gh-pages branch if it exists
       - name: Check and fetch database (hyperfy-discord.sqlite.enc)
         run: |
           mkdir -p data
           
-          # Check if gh-pages branch exists
+          # Check if gh-pages branch exists on remote
+          echo "Checking if gh-pages branch exists on remote..."
           if git ls-remote --heads origin gh-pages | grep -q gh-pages; then
-            echo "gh-pages branch exists, fetching database"
-            git fetch origin gh-pages:gh-pages --depth=1 || true
+            echo "✅ gh-pages branch exists, attempting to fetch database"
             
-            # Check if encrypted sqlite db exists in the branch
-            if git ls-tree -r --name-only gh-pages | grep -q "data/hyperfy-discord.sqlite.enc"; then
-              echo "Restoring encrypted hyperfy-discord.sqlite.enc from gh-pages branch"
-              git show gh-pages:data/hyperfy-discord.sqlite.enc > data/hyperfy-discord.sqlite.enc
+            # Fetch gh-pages branch with proper error handling
+            if git fetch origin gh-pages:gh-pages --depth=1; then
+              echo "✅ Successfully fetched gh-pages branch"
+              
+              # Check if encrypted database exists in the branch
+              if git ls-tree -r --name-only gh-pages | grep -q "data/hyperfy-discord.sqlite.enc"; then
+                echo "📦 Found encrypted database, attempting to restore..."
+                
+                # Extract database file with validation
+                if git show gh-pages:data/hyperfy-discord.sqlite.enc > data/hyperfy-discord.sqlite.enc; then
+                  # Verify the file was created and has content
+                  if [ -f "data/hyperfy-discord.sqlite.enc" ] && [ -s "data/hyperfy-discord.sqlite.enc" ]; then
+                    echo "✅ Successfully restored encrypted database ($(wc -c < data/hyperfy-discord.sqlite.enc) bytes)"
+                  else
+                    echo "❌ Error: Database file was not properly extracted"
+                    exit 1
+                  fi
+                else
+                  echo "❌ Error: Failed to extract database from gh-pages branch"
+                  exit 1
+                fi
+              else
+                echo "ℹ️  No existing database found in gh-pages branch - will start with empty database"
+              fi
             else
-              echo "No existing hyperfy-discord.sqlite.enc found in gh-pages branch"
+              echo "❌ Error: Failed to fetch gh-pages branch"
+              echo "This could indicate a network issue or repository access problem"
+              exit 1
             fi
           else
-            echo "gh-pages branch does not exist yet, will be created on first deployment"
+            echo "ℹ️  gh-pages branch does not exist yet - will be created on first deployment"
           fi
       
       - name: Set up Node.js
@@ -93,6 +107,8 @@ jobs:
         env:
           SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
         run: |
+          # Mask the encryption key to prevent accidental logging
+          echo "::add-mask::$SQLITE_ENCRYPTION_KEY"
           if [ -f "data/hyperfy-discord.sqlite.enc" ]; then
             if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
               echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."
@@ -156,6 +172,8 @@ jobs:
         env:
           SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
         run: |
+          # Mask the encryption key to prevent accidental logging
+          echo "::add-mask::$SQLITE_ENCRYPTION_KEY"
           if [ -f "data/hyperfy-discord.sqlite" ]; then
             if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
               echo "Error: SQLITE_ENCRYPTION_KEY secret is not set."
@@ -189,9 +207,18 @@ jobs:
              echo "No encrypted hyperfy-discord.sqlite.enc found to copy."
           fi
 
-          # Copy summary files
-          echo "Copying summaries to ./public/hyperfy/" # Updated path
-          cp -r output/hyperfy/summaries/* ./public/hyperfy/ || echo "No summary files generated or found to copy." # Updated paths
+          # Copy summary files with proper error handling
+          echo "Copying summaries to ./public/hyperfy/"
+          if [ -d "output/hyperfy/summaries" ] && [ "$(ls -A output/hyperfy/summaries 2>/dev/null)" ]; then
+            if cp -r output/hyperfy/summaries/* ./public/hyperfy/; then
+              echo "✅ Successfully copied Hyperfy summary files"
+            else
+              echo "❌ Error: Failed to copy Hyperfy summary files"
+              exit 1
+            fi
+          else
+            echo "ℹ️  No Hyperfy summary files found to copy"
+          fi
 
           # Create daily.json
           JSON_FILE="output/hyperfy/summaries/${YESTERDAY}.json"
@@ -218,8 +245,7 @@ jobs:
         id: commit_time
         run: echo "COMMIT_DATETIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
 
-      - name: Deploy to gh-pages branch
-        id: deployment
+      - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -228,3 +254,4 @@ jobs:
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
           commit_message: "Update Hyperfy data ${{ env.COMMIT_DATETIME }}"
+

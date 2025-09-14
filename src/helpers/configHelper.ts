@@ -65,7 +65,7 @@ export const loadDirectoryModules = async (directory : string): Promise<Record<s
 export const loadItems = async (items: ConfigItem[], mapping: Record<string, any>, category: string, secrets: any = {}): Promise<InstanceConfig[]> => {
   if (!items) return []; // Handle case where config section is missing
   return items.map((item) => {
-    const { type, name, params, interval } = item;
+    const { type, name, params, interval, mediaDownload } = item;
     const ClassRef = mapping[type];
     if (!ClassRef) {
       // Log warning instead of throwing error immediately, allows validation later
@@ -80,8 +80,16 @@ export const loadItems = async (items: ConfigItem[], mapping: Record<string, any
           return acc;
         }, {} as Record<string, any>);
 
+        // Build the constructor config object with all available properties
+        const constructorConfig: any = { name, ...resolvedParams };
+        
+        // Include mediaDownload config if present (for Discord sources)
+        if (mediaDownload) {
+          constructorConfig.mediaDownload = mediaDownload;
+        }
+
         // Pass the configured name to the constructor if the class expects it
-        const instance = new ClassRef({ name, ...resolvedParams });
+        const instance = new ClassRef(constructorConfig);
         
         // Store the original config name on the instance if not already present
         if (!instance.name) {

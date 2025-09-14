@@ -21,6 +21,7 @@ import {
   validateConfiguration
 } from "./helpers/configHelper";
 import { addOneDay, parseDate, formatDate, callbackDateRangeLogic } from "./helpers/dateHelper";
+import { logger } from "./helpers/cliHelper";
 
 dotenv.config();
 
@@ -77,12 +78,35 @@ Examples:
     let dateStr = today.toISOString().slice(0, 10);
     let onlyFetch = false;
     let onlyGenerate = false;
+    let downloadMedia = false;
     let beforeDate;
     let afterDate;
     let duringDate;
     let outputPath = './'; // Default output path
     let downloadMedia = false;
 
+    if (args.includes('--help') || args.includes('-h')) {
+      logger.info(`
+Historical Data Fetcher & Summarizer
+
+Usage:
+  npm run historical -- --source=<config_file.json> [options]
+  ts-node src/historical.ts --source=<config_file.json> [options]
+
+Options:
+  --source=<file>       JSON configuration file path (default: sources.json)
+  --date=<YYYY-MM-DD>   Specific date to process.
+  --before=<YYYY-MM-DD> End date for a range.
+  --after=<YYYY-MM-DD>  Start date for a range.
+  --during=<YYYY-MM-DD> Alias for --date.
+  --onlyFetch=<true|false>  Only fetch data, do not generate summaries.
+  --onlyGenerate=<true|false> Only generate summaries from existing data, do not fetch.
+  --download-media=<true|false> Download Discord media after data collection (default: false).
+  --output=<path>       Output directory path (default: ./)
+  -h, --help            Show this help message.
+      `);
+      process.exit(0);
+    }
     args.forEach(arg => {
       if (arg.startsWith('--source=')) {
         sourceFile = arg.split('=')[1];
@@ -92,6 +116,8 @@ Examples:
         onlyGenerate = arg.split('=')[1].toLowerCase() == 'true';
       } else if (arg.startsWith('--onlyFetch=')) {
         onlyFetch = arg.split('=')[1].toLowerCase() == 'true';
+      } else if (arg.startsWith('--download-media=')) {
+        downloadMedia = arg.split('=')[1].toLowerCase() == 'true';
       } else if (arg.startsWith('--before=')) {
         beforeDate = arg.split('=')[1];
       } else if (arg.startsWith('--after=')) {
@@ -246,7 +272,7 @@ Examples:
           await aggregator.fetchAndStore(config.instance.name, dateStr);
         }
       }
-      console.log("Content aggregator is finished fetching historical.");
+      logger.info("Content aggregator is finished fetching historical.");
     }
     
     /**
@@ -316,7 +342,7 @@ Examples:
           await callbackDateRangeLogic(filter, (dateStr:string) => generator.instance.generateAndStoreSummary(dateStr));
         }
       } else {
-        console.log(`Creating summary for date ${dateStr}`);
+        logger.info(`Creating summary for date ${dateStr}`);
         for (const generator of generatorConfigs) {
           await generator.instance.storage.init();
           await generator.instance.generateAndStoreSummary(dateStr);
@@ -324,14 +350,14 @@ Examples:
       }
     }
     else {
-      console.log("Historical Data successfully saved. Summary wasn't generated");
+      logger.info("Historical Data successfully saved. Summary wasn't generated");
     }
 
     /**
      * Clean up resources and exit
      * This ensures all storage connections are properly closed
      */
-    console.log("Shutting down...");
+    logger.info("Shutting down...");
     storageConfigs.forEach(async (storage : any) => {
       await storage.close();
     });
