@@ -220,4 +220,4 @@ app.get('*', (req, res) => {
 server.listen(port, () => {
   console.log(`API server running on port ${port}`);
   console.log(`Frontend served at http://localhost:${port}`);
-}); 
+});

@@ -116,6 +116,58 @@ export class DailySummaryGenerator {
   }
 
   /**
+   * Performs hierarchical summarization to handle large datasets within token limits
+   * Recursively summarizes chunks until all content fits in one final summary
+   * @param summaries - Array of summary objects to process
+   * @param dateStr - Date string for context
+   * @param chunkSize - Number of summaries to process per chunk (default: 8)
+   * @returns Final markdown summary
+   */
+  private async hierarchicalSummarize(summaries: any[], dateStr: string, chunkSize: number = 8): Promise<string> {
+    if (!summaries || summaries.length === 0) {
+      return `# Daily Report - ${dateStr}\n\nNo content to summarize.`;
+    }
+
+    // Base case: if we have few enough summaries, summarize directly
+    if (summaries.length <= chunkSize) {
+      console.log(`[INFO] Direct summarization of ${summaries.length} summaries`);
+      const mdPrompt = createMarkdownPromptForJSON(summaries, dateStr);
+      return await retryOperation(() => this.provider.summarize(mdPrompt));
+    }
+
+    // Recursive case: break into chunks and summarize each chunk
+    console.log(`[INFO] Hierarchical summarization: ${summaries.length} summaries in chunks of ${chunkSize}`);
+    const chunks: any[][] = [];
+    for (let i = 0; i < summaries.length; i += chunkSize) {
+      chunks.push(summaries.slice(i, i + chunkSize));
+    }
+
+    // Summarize each chunk in parallel
+    const chunkSummaries = await Promise.all(
+      chunks.map(async (chunk, index) => {
+        console.log(`[INFO] Processing chunk ${index + 1}/${chunks.length} (${chunk.length} items)`);
+        const chunkPrompt = createMarkdownPromptForJSON(chunk, `${dateStr} - Part ${index + 1}`);
+        const chunkResult = await retryOperation(() => this.provider.summarize(chunkPrompt));
+        
+        // Return as a structured object for next level
+        return {
+          topic: `Summary Part ${index + 1}`,
+          content: [{
+            text: chunkResult.replace(/```markdown\n|```/g, ""),
+            sources: [],
+            images: [],
+            videos: []
+          }]
+        };
+      })
+    );
+
+    // Recursively summarize the chunk results
+    console.log(`[INFO] Combining ${chunkSummaries.length} chunk summaries`);
+    return await this.hierarchicalSummarize(chunkSummaries, dateStr, chunkSize);
+  }
+
+  /**
    * Generates and stores a daily summary for a specific date
    * @param {string} dateStr - ISO date string to generate summary for
    * @returns {Promise<void>}
@@ -166,8 +218,7 @@ export class DailySummaryGenerator {
         }
       }
 
-      const mdPrompt = createMarkdownPromptForJSON(allSummaries, dateStr);
-      const markdownReport = await retryOperation(() => this.provider.summarize(mdPrompt));
+      const markdownReport = await this.hierarchicalSummarize(allSummaries, dateStr);
       const markdownString = markdownReport.replace(/```markdown\n|```/g, "");
 
       const summaryItem: SummaryItem = {

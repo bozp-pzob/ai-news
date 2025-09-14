@@ -355,3 +355,105 @@ export interface ActionItems {
   description: string;
   mentionedBy: string;
 }
+
+/**
+ * Interface for Discord message attachments
+ * @interface DiscordAttachment
+ */
+export interface DiscordAttachment {
+  id: string;
+  filename: string;
+  title?: string;
+  description?: string;
+  content_type?: string;
+  size: number;
+  url: string;
+  proxy_url?: string;
+  height?: number;
+  width?: number;
+  duration_secs?: number;
+  waveform?: string;
+  ephemeral?: boolean;
+  flags?: number;
+}
+
+/**
+ * Interface for Discord message embeds
+ * @interface DiscordEmbed
+ */
+export interface DiscordEmbed {
+  title?: string;
+  type?: string;
+  description?: string;
+  url?: string;
+  timestamp?: string;
+  color?: number;
+  image?: {
+    url: string;
+    proxy_url?: string;
+    width?: number;
+    height?: number;
+  };
+  thumbnail?: {
+    url: string;
+    proxy_url?: string;
+    width?: number;
+    height?: number;
+  };
+  video?: {
+    url?: string;
+    proxy_url?: string;
+    width?: number;
+    height?: number;
+  };
+  author?: {
+    name?: string;
+    url?: string;
+    icon_url?: string;
+  };
+  fields?: Array<{
+    name: string;
+    value: string;
+    inline?: boolean;
+  }>;
+}
+
+/**
+ * Interface for Discord message stickers
+ * @interface DiscordSticker
+ */
+export interface DiscordSticker {
+  id: string;
+  name: string;
+  format_type: number;
+  description?: string;
+}
+
+/**
+ * Configuration interface for media downloads
+ * @interface MediaDownloadConfig
+ */
+export interface MediaDownloadConfig {
+  enabled: boolean;
+  outputPath?: string;
+  maxFileSize?: number; // in bytes, default 50MB
+  allowedTypes?: string[]; // MIME types or extensions
+  excludedTypes?: string[];
+  rateLimit?: number; // milliseconds between downloads, default 100
+  retryAttempts?: number; // default 3
+}
+
+/**
+ * Interface for media download items
+ * @interface MediaDownloadItem
+ */
+export interface MediaDownloadItem {
+  url: string;
+  filename: string;
+  contentType?: string;
+  messageId: string;
+  messageDate: string;
+  channelName: string;
+  guildName: string;
+  mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
+}

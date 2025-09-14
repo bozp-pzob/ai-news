@@ -34,13 +34,16 @@ export const loadDirectoryModules = async (directory : string): Promise<Record<s
     return classes;
   }
 
-  const files = fs.readdirSync(dir).filter(file => file.endsWith(".ts"));
+  // Check if we're running in compiled JavaScript or TypeScript environment
+  const isCompiledJS = __filename.endsWith('.js');
+  const extension = isCompiledJS ? '.js' : '.ts';
+  const files = fs.readdirSync(dir).filter(file => file.endsWith(extension));
   
   for (const file of files) {
     const modulePath = path.join(dir, file);
     try {
         const moduleExports = await import(modulePath);
-        const className = file.replace(".ts", "");
+        const className = file.replace(extension, "");
         classes[className] = moduleExports.default || moduleExports[className];
     } catch (importError: any) {
          logger.error(`Failed to import module ${modulePath}: ${importError.message}`);

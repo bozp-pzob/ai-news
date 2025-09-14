@@ -9,6 +9,7 @@ import { ContentItem, DiscordRawData, DiscordRawDataSourceConfig, TimeBlock, Dis
 import { logger, createProgressBar } from '../../helpers/cliHelper';
 import { delay, retryOperation } from '../../helpers/generalHelper';
 import { isMediaFile } from '../../helpers/fileHelper';
+import { processDiscordAttachment, processDiscordEmbed, processDiscordSticker } from '../../helpers/mediaHelper';
 import { StoragePlugin } from '../storage/StoragePlugin';
 
 const API_RATE_LIMIT_DELAY = 50; // Reduced to 50ms between API calls
@@ -68,9 +69,14 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
   /** Media download configuration */
   public mediaDownload?: MediaDownloadConfig;
 
-
   static constructorInterface = {
     parameters: [
+      {
+        name: 'name',
+        type: 'string',
+        required: true,
+        description: 'Name identifier for this Discord source'
+      },
       {
         name: 'botToken',
         type: 'string',
@@ -80,22 +86,27 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
       },
       {
         name: 'channelIds',
-        type: 'string[]',
+        type: 'array',
         required: true,
-        description: 'Array of Discord channel IDs to monitor'
+        description: 'List of Discord channel IDs to monitor'
       },
       {
         name: 'guildId',
         type: 'string',
         required: true,
-        description: 'Discord bot token for authentication',
-        secret: true
+        description: 'Discord guild/server ID'
       },
       {
         name: 'storage',
-        type: 'StoragePlugin',
+        type: 'object',
         required: true,
-        description: 'Storage to store data fetching cursors'
+        description: 'Storage plugin for cursor management'
+      },
+      {
+        name: 'mediaDownload',
+        type: 'object',
+        required: false,
+        description: 'Media download configuration'
       }
     ]
   };
@@ -612,69 +623,20 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
       embeds: [] as DiscordEmbed[],
       stickers: [] as DiscordSticker[]
     };
-
-    // Process attachments
+    
+    // Process attachments using shared utility
     for (const attachment of message.attachments.values()) {
-      const discordAttachment: DiscordAttachment = {
-        id: attachment.id,
-        filename: attachment.name || 'unknown',
-        title: attachment.title || undefined,
-        description: attachment.description || undefined,
-        content_type: attachment.contentType || undefined,
-        size: attachment.size,
-        url: attachment.url,
-        proxy_url: attachment.proxyURL,
-        height: attachment.height || undefined,
-        width: attachment.width || undefined,
-        duration_secs: attachment.duration || undefined,
-        waveform: attachment.waveform || undefined,
-        ephemeral: attachment.ephemeral || undefined,
-        flags: attachment.flags?.bitfield || undefined
-      };
-
-      result.attachments.push(discordAttachment);
+      result.attachments.push(processDiscordAttachment(attachment));
     }
 
-    // Process embeds
+    // Process embeds using shared utility
     for (const embed of message.embeds) {
-      const discordEmbed: DiscordEmbed = {
-        title: embed.title || undefined,
-        description: embed.description || undefined,
-        url: embed.url || undefined,
-        color: embed.color || undefined,
-        image: embed.image ? {
-          url: embed.image.url,
-          proxy_url: embed.image.proxyURL || undefined,
-          height: embed.image.height || undefined,
-          width: embed.image.width || undefined
-        } : undefined,
-        thumbnail: embed.thumbnail ? {
-          url: embed.thumbnail.url,
-          proxy_url: embed.thumbnail.proxyURL || undefined,
-          height: embed.thumbnail.height || undefined,
-          width: embed.thumbnail.width || undefined
-        } : undefined,
-        video: embed.video ? {
-          url: embed.video.url || undefined,
-          proxy_url: embed.video.proxyURL || undefined,
-          height: embed.video.height || undefined,
-          width: embed.video.width || undefined
-        } : undefined
-      };
-
-      result.embeds.push(discordEmbed);
+      result.embeds.push(processDiscordEmbed(embed));
     }
 
-    // Process stickers
+    // Process stickers using shared utility
     for (const sticker of message.stickers.values()) {
-      const discordSticker: DiscordSticker = {
-        id: sticker.id,
-        name: sticker.name,
-        format_type: sticker.format,
-        description: sticker.description || undefined
-      };
-
-      result.stickers.push(discordSticker);
+      result.stickers.push(processDiscordSticker(sticker));
     }
 
     return result;

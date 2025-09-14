@@ -2,6 +2,7 @@
 
 import { AiProvider } from "../../types";
 import OpenAI from "openai";
+import { logger } from "../../helpers/cliHelper";
 
 /**
  * Configuration interface for OpenAIProvider.
@@ -15,6 +16,7 @@ interface OpenAIProviderConfig {
   useOpenRouter?: boolean; // Whether to use OpenRouter instead of direct OpenAI API
   siteUrl?: string;       // Optional site URL for OpenRouter
   siteName?: string;      // Optional site name for OpenRouter
+  fallbackModel?: string; // Optional large context model for fallback when token limits exceeded
 }
 
 /**
@@ -30,6 +32,7 @@ export class OpenAIProvider implements AiProvider {
   private model: string;
   private temperature: number;
   private useOpenRouter: boolean;
+  private fallbackModel?: string;
 
   static constructorInterface = {
     parameters: [
@@ -69,6 +72,12 @@ export class OpenAIProvider implements AiProvider {
         type: 'string',
         required: false,
         description: 'Name of the site using this provider'
+      },
+      {
+        name: 'fallbackModel',
+        type: 'string',
+        required: false,
+        description: 'Large context model to fallback to when token limits exceeded (e.g., "openrouter/sonoma-sky-alpha")'
       }
     ]
   };
@@ -82,6 +91,7 @@ export class OpenAIProvider implements AiProvider {
   constructor(config: OpenAIProviderConfig) {
     this.name = config.name;
     this.useOpenRouter = config.useOpenRouter || false;
+    this.fallbackModel = config.fallbackModel;
     
     // Initialize main client (OpenRouter or OpenAI)
     const openAIConfig: any = {
@@ -121,16 +131,52 @@ export class OpenAIProvider implements AiProvider {
    */
   public async summarize(prompt: string): Promise<string> {
     try {
+      logger.debug(`OpenAI API Call: model=${this.model}, useOpenRouter=${this.useOpenRouter}, promptLength=${prompt.length}, temperature=${this.temperature}`);
+
       const completion = await this.openai.chat.completions.create({
         model: this.model,
         messages: [{ role: 'user', content: prompt }],
         temperature: this.temperature
       });
 
+      // Debug: Log the actual API response to understand what's happening
+      logger.debug(`OpenAI API Response: hasCompletion=${!!completion}, hasChoices=${!!completion?.choices}, choicesLength=${completion?.choices?.length}`);
+
+      if (!completion || !completion.choices || completion.choices.length === 0) {
+        logger.error("Invalid OpenAI response - missing choices array");
+        throw new Error("No choices returned from OpenAI API");
+      }
+      
       return completion.choices[0]?.message?.content || "";
-    } catch (e) {
-      console.error("Error in summarize:", e);
-      throw e;
+    } catch (error: any) {
+      logger.error(`Error in summarize: ${error}`);
+      
+      // Check if it's a token limit error and we have a fallback model
+      if (error.status === 400 && error.message?.includes('context limit') && this.fallbackModel) {
+        logger.info(`Token limit exceeded, retrying with fallback model: ${this.fallbackModel}`);
+        
+        try {
+          const fallbackCompletion = await this.openai.chat.completions.create({
+            model: this.fallbackModel,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: this.temperature
+          });
+
+          logger.debug(`Fallback API Response: model=${this.fallbackModel}, hasCompletion=${!!fallbackCompletion}, hasChoices=${!!fallbackCompletion?.choices}, choicesLength=${fallbackCompletion?.choices?.length}`);
+
+          if (!fallbackCompletion || !fallbackCompletion.choices || fallbackCompletion.choices.length === 0) {
+            logger.error("Invalid fallback OpenAI response - missing choices array");
+            throw new Error("No choices returned from fallback OpenAI API");
+          }
+          
+          return fallbackCompletion.choices[0]?.message?.content || "";
+        } catch (fallbackError) {
+          logger.error(`Fallback model also failed: ${fallbackError}`);
+          throw fallbackError;
+        }
+      }
+      
+      throw error; // Re-throw if not a token limit error or no fallback
     }
   }
 
@@ -152,7 +198,7 @@ export class OpenAIProvider implements AiProvider {
 
       return JSON.parse(completion.choices[0]?.message?.content || "[]");
     } catch (e) {
-      console.error("Error in topics:", e);
+      logger.error(`Error in topics: ${e}`);
       return [];
     }
   }
@@ -166,7 +212,7 @@ export class OpenAIProvider implements AiProvider {
    */
   public async image(text: string): Promise<string[]> {
     if (!this.canGenerateImages) {
-      console.warn("Image generation is not available. When using OpenRouter, set OPENAI_DIRECT_KEY for image generation.");
+      logger.warning("Image generation is not available. When using OpenRouter, set OPENAI_DIRECT_KEY for image generation.");
       return [];
     }
 
@@ -184,10 +230,13 @@ export class OpenAIProvider implements AiProvider {
       };
   
       const image = await client.images.generate(params);
-      console.log(image.data[0].url);
-      return JSON.parse(image.data[0].url || "[]");
+      if (image.data && image.data.length > 0 && image.data[0].url) {
+        logger.debug(`Generated image URL: ${image.data[0].url}`);
+        return [image.data[0].url];
+      }
+      return [];
     } catch (e) {
-      console.error("Error in image generation:", e);
+      logger.error(`Error in image generation: ${e}`);
       return [];
     }
   }
