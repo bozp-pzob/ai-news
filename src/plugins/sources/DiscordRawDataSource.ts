@@ -5,10 +5,11 @@
 
 import { Client, TextChannel, Message, GuildMember, User, MessageType, MessageReaction, Collection, GatewayIntentBits, ChannelType, GuildBasedChannel, Guild } from 'discord.js';
 import { ContentSource } from './ContentSource';
-import { ContentItem, DiscordRawData, DiscordRawDataSourceConfig, TimeBlock } from '../../types';
+import { ContentItem, DiscordRawData, DiscordRawDataSourceConfig, TimeBlock, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig } from '../../types';
 import { logger, createProgressBar } from '../../helpers/cliHelper';
 import { delay, retryOperation } from '../../helpers/generalHelper';
 import { isMediaFile } from '../../helpers/fileHelper';
+import { processDiscordAttachment, processDiscordEmbed, processDiscordSticker } from '../../helpers/mediaHelper';
 import { StoragePlugin } from '../storage/StoragePlugin';
 
 const API_RATE_LIMIT_DELAY = 50; // Reduced to 50ms between API calls
@@ -40,11 +41,19 @@ function snowflakeToDate(snowflake: string): Date {
 }
 
 /**
+ * Interface for sources that support media downloading
+ */
+export interface MediaDownloadCapable {
+  readonly mediaDownload?: MediaDownloadConfig;
+  hasMediaDownloadEnabled(): boolean;
+}
+
+/**
  * DiscordRawDataSource class that implements ContentSource interface for detailed Discord data
  * Handles comprehensive message retrieval, user data management, and media content processing
  * @implements {ContentSource}
  */
-export class DiscordRawDataSource implements ContentSource {
+export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable {
   /** Name identifier for this Discord source */
   public name: string;
   /** Discord.js client instance */
@@ -57,10 +66,17 @@ export class DiscordRawDataSource implements ContentSource {
   private guildId: string;
   /** Store to cursors for recently pulled discord channels*/
   private storage: StoragePlugin;
-
+  /** Media download configuration */
+  public mediaDownload?: MediaDownloadConfig;
 
   static constructorInterface = {
     parameters: [
+      {
+        name: 'name',
+        type: 'string',
+        required: true,
+        description: 'Name identifier for this Discord source'
+      },
       {
         name: 'botToken',
         type: 'string',
@@ -70,22 +86,27 @@ export class DiscordRawDataSource implements ContentSource {
       },
       {
         name: 'channelIds',
-        type: 'string[]',
+        type: 'array',
         required: true,
-        description: 'Array of Discord channel IDs to monitor'
+        description: 'List of Discord channel IDs to monitor'
       },
       {
         name: 'guildId',
         type: 'string',
         required: true,
-        description: 'Discord bot token for authentication',
-        secret: true
+        description: 'Discord guild/server ID'
       },
       {
         name: 'storage',
-        type: 'StoragePlugin',
+        type: 'object',
         required: true,
-        description: 'Storage to store data fetching cursors'
+        description: 'Storage plugin for cursor management'
+      },
+      {
+        name: 'mediaDownload',
+        type: 'object',
+        required: false,
+        description: 'Media download configuration'
       }
     ]
   };
@@ -100,6 +121,7 @@ export class DiscordRawDataSource implements ContentSource {
     this.channelIds = config.channelIds;
     this.guildId = config.guildId;
     this.storage = config.storage;
+    this.mediaDownload = config.mediaDownload;
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -115,6 +137,13 @@ export class DiscordRawDataSource implements ContentSource {
         process.exit(1);
       }
     });
+  }
+
+  /**
+   * Check if media download is enabled for this source
+   */
+  hasMediaDownloadEnabled(): boolean {
+    return this.mediaDownload?.enabled === true;
   }
 
   private async fetchUserData(member: GuildMember | null, user: User): Promise<DiscordRawData['users'][string]> {
@@ -227,6 +256,9 @@ export class DiscordRawDataSource implements ContentSource {
         count: reaction.count || 0
       }));
 
+      // Process and store media data
+      const attachments = await this.processMessageMedia(message, channel);
+
       processedMessages.push({
         id: message.id,
         ts: message.createdAt.toISOString(),
@@ -236,7 +268,10 @@ export class DiscordRawDataSource implements ContentSource {
         mentions: message.mentions.users.map(u => u.id),
         ref: message.reference?.messageId,
         edited: message.editedAt?.toISOString(),
-        reactions: reactions.length > 0 ? reactions : undefined
+        reactions: reactions.length > 0 ? reactions : undefined,
+        attachments: attachments.attachments.length > 0 ? attachments.attachments : undefined,
+        embeds: attachments.embeds.length > 0 ? attachments.embeds : undefined,
+        sticker_items: attachments.stickers.length > 0 ? attachments.stickers : undefined
       });
     }
     
@@ -570,6 +605,43 @@ export class DiscordRawDataSource implements ContentSource {
     logger.success(`Finished processing all channels for date ${date}`);
     return items;
   }
+
+  /**
+   * Process all media from a Discord message and store it in the database.
+   * Returns processed media data for inclusion in the message object.
+   * @param message - Discord message to process
+   * @param channel - Text channel the message came from
+   * @returns Promise with processed attachments, embeds, and stickers
+   */
+  private async processMessageMedia(message: Message<true>, channel: TextChannel): Promise<{
+    attachments: DiscordAttachment[];
+    embeds: DiscordEmbed[];
+    stickers: DiscordSticker[];
+  }> {
+    const result = {
+      attachments: [] as DiscordAttachment[],
+      embeds: [] as DiscordEmbed[],
+      stickers: [] as DiscordSticker[]
+    };
+
+    // Process attachments using shared utility
+    for (const attachment of message.attachments.values()) {
+      result.attachments.push(processDiscordAttachment(attachment));
+    }
+
+    // Process embeds using shared utility
+    for (const embed of message.embeds) {
+      result.embeds.push(processDiscordEmbed(embed));
+    }
+
+    // Process stickers using shared utility
+    for (const sticker of message.stickers.values()) {
+      result.stickers.push(processDiscordSticker(sticker));
+    }
+
+    return result;
+  }
+
 
   private extractMediaUrls(message: Message<true>): string[] {
     const mediaUrls: string[] = [];

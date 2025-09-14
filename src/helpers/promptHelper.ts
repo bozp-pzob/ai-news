@@ -54,8 +54,10 @@ Only return the final markdown text.`;
  * @param dateStr - The date string associated with the content
  * @returns A formatted prompt string for the AI model
  */
+
 export const createJSONPromptForTopics = (topic: string, objects: any[], dateStr: string): string => {
   let prompt = `Generate a summary for the topic. Focus on the following details:\n\n`;
+  
   objects.forEach((item) => {
     prompt += `\n***source***\n`;
     if (item.text) prompt += `text: ${item.text}\n`;

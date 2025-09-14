@@ -7,6 +7,9 @@
  */
 
 import { HistoricalAggregator } from "./aggregator/HistoricalAggregator";
+import { MediaDownloader } from "./download-media";
+import { MediaDownloadCapable } from "./plugins/sources/DiscordRawDataSource";
+import { logger } from "./helpers/cliHelper";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -21,6 +24,13 @@ import { addOneDay, parseDate, formatDate, callbackDateRangeLogic } from "./help
 
 dotenv.config();
 
+/**
+ * Type guard to check if a source supports media downloading
+ */
+function hasMediaDownloadCapability(source: any): source is MediaDownloadCapable & { name: string } {
+  return source && typeof source.hasMediaDownloadEnabled === 'function';
+}
+
 (async () => {
   try {
     /**
@@ -31,9 +41,37 @@ dotenv.config();
      * --after: Start date for range fetching
      * --during: Date to fetch data during
      * --onlyFetch: Only fetch data without generating summaries
+     * --download-media: Enable media downloads after data collection
      * --output/-o: Output directory path
      */
     const args = process.argv.slice(2);
+    
+    if (args.includes('--help') || args.includes('-h')) {
+      logger.info(`
+Historical Data Fetcher & Summarizer
+
+Usage:
+  npm run historical -- --source=<config_file.json> [options]
+
+Options:
+  --source=<file>       JSON configuration file (default: sources.json)
+  --date=<YYYY-MM-DD>   Specific date to fetch data for (default: today)
+  --before=<YYYY-MM-DD> End date for a range.
+  --after=<YYYY-MM-DD>  Start date for a range.
+  --during=<YYYY-MM-DD> Alias for --date.
+  --onlyFetch=<true|false>  Only fetch data, do not generate summaries.
+  --onlyGenerate=<true|false> Only generate summaries from existing data, do not fetch.
+  --download-media=<true|false> Download Discord media after data collection (default: false).
+  --output=<path>       Output directory path (default: ./)
+  -h, --help            Show this help message.
+
+Examples:
+  npm run historical -- --date=2024-01-15
+  npm run historical -- --after=2024-01-10 --before=2024-01-15
+  npm run historical -- --source=elizaos.json --download-media=true
+      `);
+      process.exit(0);
+    }
     const today = new Date();
     let sourceFile = "sources.json";
     let dateStr = today.toISOString().slice(0, 10);
@@ -43,6 +81,7 @@ dotenv.config();
     let afterDate;
     let duringDate;
     let outputPath = './'; // Default output path
+    let downloadMedia = false;
 
     args.forEach(arg => {
       if (arg.startsWith('--source=')) {
@@ -61,6 +100,8 @@ dotenv.config();
         duringDate = arg.split('=')[1];
       } else if (arg.startsWith('--output=') || arg.startsWith('-o=')) {
         outputPath = arg.split('=')[1];
+      } else if (arg.startsWith('--download-media=')) {
+        downloadMedia = arg.split('=')[1].toLowerCase() === 'true';
       }
     });
 
@@ -113,6 +154,18 @@ dotenv.config();
     enricherConfigs = await loadProviders(enricherConfigs, aiConfigs);
     generatorConfigs = await loadProviders(generatorConfigs, aiConfigs);
     generatorConfigs = await loadStorage(generatorConfigs, storageConfigs);
+    
+    /**
+     * Override media download settings if --download-media flag is provided
+     */
+    if (downloadMedia) {
+      sourceConfigs.forEach(config => {
+        if (config.instance && config.instance.mediaDownload !== undefined) {
+          console.log(`[INFO] Enabling media download for source: ${config.instance.name} (overriding config)`);
+          config.instance.mediaDownload.enabled = true;
+        }
+      });
+    }
     
     /**
      * Call the validation function
@@ -196,6 +249,60 @@ dotenv.config();
       console.log("Content aggregator is finished fetching historical.");
     }
     
+    /**
+     * Download media files if --download-media flag is enabled
+     * This runs after historical data fetching but before summary generation
+     */
+    if (downloadMedia && !onlyGenerate) {
+      logger.info("Starting media downloads...");
+      logger.info(`Found ${sourceConfigs.length} source configs to check`);
+      
+      // Find sources with media download capability
+      const mediaCapableSources = sourceConfigs.filter(config => 
+        hasMediaDownloadCapability(config.instance) && config.instance.hasMediaDownloadEnabled()
+      );
+      
+      if (mediaCapableSources.length === 0) {
+        logger.warning("No sources with media download enabled found.");
+      } else {
+        for (const sourceConfig of mediaCapableSources) {
+          logger.debug(`Checking source: ${sourceConfig.instance.name}`);
+          logger.info(`✓ Source ${sourceConfig.instance.name} supports media downloads`);
+          const mediaConfig = sourceConfig.instance.mediaDownload;
+          logger.debug(`Media config: ${JSON.stringify(mediaConfig)}`);
+          if (mediaConfig?.enabled) {
+            logger.info(`Downloading media for ${sourceConfig.instance.name}...`);
+            
+            try {
+              const storage = (sourceConfig.instance as any).storage;
+              const dbPath = storage.dbPath || './data/db.sqlite';
+              const outputPath = mediaConfig.outputPath || './media';
+              
+              const downloader = new MediaDownloader(dbPath, outputPath, mediaConfig);
+              await downloader.init();
+              
+              let stats;
+              if (filter.filterType || (filter.after && filter.before)) {
+                // Date range download
+                const startDate = new Date(filter.after || filter.date);
+                const endDate = new Date(filter.before || filter.date);
+                stats = await downloader.downloadMediaInDateRange(startDate, endDate);
+              } else {
+                // Single date download
+                stats = await downloader.downloadMediaForDate(new Date(filter.date));
+              }
+              
+              downloader.printStats();
+              await downloader.close();
+              logger.info(`✅ Media download completed for source: ${sourceConfig.instance.name}`);
+              
+            } catch (error) {
+              logger.error(`❌ Media download failed for source ${sourceConfig.instance.name}: ${error}`);
+            }
+          }
+        }
+      }
+    }
 
     /**
      * Generate summaries if not in fetch-only mode
