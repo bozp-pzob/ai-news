@@ -2,6 +2,7 @@
 
 import { AiProvider } from "../../types";
 import OpenAI from "openai";
+import { logger } from "../../helpers/cliHelper";
 
 /**
  * Configuration interface for OpenAIProvider.
@@ -130,12 +131,7 @@ export class OpenAIProvider implements AiProvider {
    */
   public async summarize(prompt: string): Promise<string> {
     try {
-      console.log("OpenAI API Call:", {
-        model: this.model,
-        useOpenRouter: this.useOpenRouter,
-        promptLength: prompt.length,
-        temperature: this.temperature
-      });
+      logger.debug(`OpenAI API Call: model=${this.model}, useOpenRouter=${this.useOpenRouter}, promptLength=${prompt.length}, temperature=${this.temperature}`);
 
       const completion = await this.openai.chat.completions.create({
         model: this.model,
@@ -144,26 +140,20 @@ export class OpenAIProvider implements AiProvider {
       });
 
       // Debug: Log the actual API response to understand what's happening
-      console.log("OpenAI API Response:", {
-        hasCompletion: !!completion,
-        hasChoices: !!completion?.choices,
-        choicesLength: completion?.choices?.length,
-        completionKeys: completion ? Object.keys(completion) : 'no completion',
-        fullResponse: JSON.stringify(completion, null, 2)
-      });
+      logger.debug(`OpenAI API Response: hasCompletion=${!!completion}, hasChoices=${!!completion?.choices}, choicesLength=${completion?.choices?.length}`);
 
       if (!completion || !completion.choices || completion.choices.length === 0) {
-        console.error("Invalid OpenAI response - missing choices array");
+        logger.error("Invalid OpenAI response - missing choices array");
         throw new Error("No choices returned from OpenAI API");
       }
       
       return completion.choices[0]?.message?.content || "";
     } catch (error: any) {
-      console.error("Error in summarize:", error);
+      logger.error(`Error in summarize: ${error}`);
       
       // Check if it's a token limit error and we have a fallback model
       if (error.status === 400 && error.message?.includes('context limit') && this.fallbackModel) {
-        console.log(`[INFO] Token limit exceeded, retrying with fallback model: ${this.fallbackModel}`);
+        logger.info(`Token limit exceeded, retrying with fallback model: ${this.fallbackModel}`);
         
         try {
           const fallbackCompletion = await this.openai.chat.completions.create({
@@ -172,21 +162,16 @@ export class OpenAIProvider implements AiProvider {
             temperature: this.temperature
           });
 
-          console.log("Fallback API Response:", {
-            model: this.fallbackModel,
-            hasCompletion: !!fallbackCompletion,
-            hasChoices: !!fallbackCompletion?.choices,
-            choicesLength: fallbackCompletion?.choices?.length
-          });
+          logger.debug(`Fallback API Response: model=${this.fallbackModel}, hasCompletion=${!!fallbackCompletion}, hasChoices=${!!fallbackCompletion?.choices}, choicesLength=${fallbackCompletion?.choices?.length}`);
 
           if (!fallbackCompletion || !fallbackCompletion.choices || fallbackCompletion.choices.length === 0) {
-            console.error("Invalid fallback OpenAI response - missing choices array");
+            logger.error("Invalid fallback OpenAI response - missing choices array");
             throw new Error("No choices returned from fallback OpenAI API");
           }
           
           return fallbackCompletion.choices[0]?.message?.content || "";
         } catch (fallbackError) {
-          console.error("Fallback model also failed:", fallbackError);
+          logger.error(`Fallback model also failed: ${fallbackError}`);
           throw fallbackError;
         }
       }
@@ -213,7 +198,7 @@ export class OpenAIProvider implements AiProvider {
 
       return JSON.parse(completion.choices[0]?.message?.content || "[]");
     } catch (e) {
-      console.error("Error in topics:", e);
+      logger.error(`Error in topics: ${e}`);
       return [];
     }
   }
@@ -227,7 +212,7 @@ export class OpenAIProvider implements AiProvider {
    */
   public async image(text: string): Promise<string[]> {
     if (!this.canGenerateImages) {
-      console.warn("Image generation is not available. When using OpenRouter, set OPENAI_DIRECT_KEY for image generation.");
+      logger.warning("Image generation is not available. When using OpenRouter, set OPENAI_DIRECT_KEY for image generation.");
       return [];
     }
 
@@ -246,12 +231,12 @@ export class OpenAIProvider implements AiProvider {
   
       const image = await client.images.generate(params);
       if (image.data && image.data.length > 0 && image.data[0].url) {
-        console.log(image.data[0].url);
+        logger.debug(`Generated image URL: ${image.data[0].url}`);
         return [image.data[0].url];
       }
       return [];
     } catch (e) {
-      console.error("Error in image generation:", e);
+      logger.error(`Error in image generation: ${e}`);
       return [];
     }
   }

@@ -1,7 +1,6 @@
-/*
-// import express from 'express';
-// import cors from 'cors';
-// import bodyParser from 'body-parser';
+import express from 'express';
+import cors from 'cors';
+import bodyParser from 'body-parser';
 import http from 'http';
 import path from 'path';
 import { ConfigService, Config } from './services/configService';
@@ -221,5 +220,4 @@ app.get('*', (req, res) => {
 server.listen(port, () => {
   console.log(`API server running on port ${port}`);
   console.log(`Frontend served at http://localhost:${port}`);
-}); 
-*/
+});

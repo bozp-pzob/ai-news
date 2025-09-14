@@ -3,7 +3,6 @@ import { loadDirectoryModules, loadItems, loadProviders, loadStorage } from "../
 import { Config } from "./configService";
 import { AggregationStatus, JobStatus } from "../types";
 import EventEmitter from "events";
-// import { v4 as uuidv4 } from 'uuid';
 import { HistoricalAggregator } from "../aggregator/HistoricalAggregator";
 import { callbackDateRangeLogic } from "../helpers/dateHelper";
 
