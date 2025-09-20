@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-09-19 06:32:45 UTC*
+*Updated: 2025-09-20 06:30:14 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -83,8 +83,8 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #country-leads (1389897960736690338) **NEW**
 - [ ] #contributor (1408523591842267158) **NEW**
 - [ ] #eliza-cabal (1406925412780740708) **NEW**
-- [ ] #cabal-posts (1409460517231267911) **NEW**
-- [ ] #cabal-socials (1412403278968258640) **NEW**
+- [ ] #cabal-content-creation (1409460517231267911) **NEW**
+- [ ] #cabal-social-posts (1412403278968258640) **NEW**
 
 **ARCHIVES:**
 - [ ] #base-agent (1405275024360996904) **NEW**
