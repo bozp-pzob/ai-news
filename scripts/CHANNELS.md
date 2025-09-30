@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-09-29 06:35:09 UTC*
+*Updated: 2025-09-30 06:33:54 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -44,7 +44,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #🤖-the-arena (1285105813349859421) **NEW**
 - [ ] #content-and-memes (1299956148253884416) **NEW**
 - [ ] #price-talk-trenches (1299989396874854440) **NEW**
-- [x] #fun (1361442528813121556)
 - [ ] #scarletts-office (1329595287727247422) **NEW**
 
 **SPARTAN:**
@@ -78,6 +77,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 **COMMUNITY WORKGROUPS:**
 - [ ] #partner-portal-workgroup (1327141924183998555) **NEW**
 - [ ] #workgroups-general (1310291767341486101) **NEW**
+- [x] #fun (1361442528813121556)
 - [ ] #elizaos-testers (1372559034384646144) **NEW**
 - [ ] #country-leads (1389897960736690338) **NEW**
 - [ ] #vaulter-agents-testing (1416118175451316266) **NEW**
