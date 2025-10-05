@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-10-04 06:29:36 UTC*
+*Updated: 2025-10-05 06:29:51 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 113 | **Currently Tracking**: 6 | **New Channels**: 107
+**Total Channels**: 116 | **Currently Tracking**: 6 | **New Channels**: 110
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -54,9 +54,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #spartan-holders (1308149076893630555) **NEW**
 - [ ] #spartan (1353787967340281976) **NEW**
 
-**Agents:**
-- [ ] #agent-dev (1395058973509554186) **NEW**
-
 **INTERNATIONAL:**
 - [ ] #中文频道 (1303194468949950504) **NEW**
 - [ ] #turkish-delight (1307210646525317181) **NEW**
@@ -80,6 +77,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #partner-portal-workgroup (1327141924183998555) **NEW**
 - [ ] #workgroups-general (1310291767341486101) **NEW**
 - [x] #fun (1361442528813121556)
+- [ ] #agent-dev (1395058973509554186) **NEW**
 - [ ] #elizaos-testers (1372559034384646144) **NEW**
 - [ ] #country-leads (1389897960736690338) **NEW**
 - [ ] #vaulter-agents-testing (1416118175451316266) **NEW**
@@ -87,6 +85,11 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #eliza-cabal (1406925412780740708) **NEW**
 - [ ] #cabal-content-creation (1409460517231267911) **NEW**
 - [ ] #cabal-social-posts (1412403278968258640) **NEW**
+
+**MIGRATION:**
+- [ ] #migration-start-here (1423981117987487805) **NEW**
+- [ ] #open-a-ticket (1423981231300935801) **NEW**
+- [ ] #ticket-0003 (1423999773257760800) **NEW**
 
 **ARCHIVES:**
 - [ ] #base-agent (1405275024360996904) **NEW**
