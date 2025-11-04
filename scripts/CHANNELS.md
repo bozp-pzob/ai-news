@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-11-03 06:36:16 UTC*
+*Updated: 2025-11-04 06:35:15 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 117 | **Currently Tracking**: 6 | **New Channels**: 111
+**Total Channels**: 119 | **Currently Tracking**: 6 | **New Channels**: 113
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -38,6 +38,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #plugins-github (1377733306594099371) **NEW**
 - [ ] #offsite-sept (1408212848513122549) **NEW**
 - [ ] #cloud (1422802977457967156) **NEW**
+- [ ] #cloud-logs (1434932532473757829) **NEW**
 - [ ] #erc-8004 (1423188508394258522) **NEW**
 
 **MIGRATION:**
@@ -79,6 +80,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #dao-organization (1351627860351258685) **NEW**
 
 **COMMUNITY WORKGROUPS:**
+- [ ] #otaku (1435049002231009423) **NEW**
 - [ ] #partner-portal-workgroup (1327141924183998555) **NEW**
 - [ ] #workgroups-general (1310291767341486101) **NEW**
 - [x] #fun (1361442528813121556)
