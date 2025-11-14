@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-11-13 06:35:43 UTC*
+*Updated: 2025-11-14 06:35:30 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 162 | **Currently Tracking**: 6 | **New Channels**: 156
+**Total Channels**: 168 | **Currently Tracking**: 6 | **New Channels**: 162
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -21,6 +21,14 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #moderator-audit-logs (1285103939007811594) **NEW**
 - [ ] #collabland-config (1300245647789916190) **NEW**
 - [ ] #waiting-room (1361911608841994402) **NEW**
+- [ ] #ticket-0063 (1438430885765447680) **NEW**
+- [ ] #ticket-0064 (1438436761209405500) **NEW**
+- [ ] #ticket-0065 (1438446351665860608) **NEW**
+- [ ] #ticket-0066 (1438453892856676362) **NEW**
+- [ ] #ticket-0072 (1438537221937430638) **NEW**
+- [ ] #ticket-0073 (1438552551174705214) **NEW**
+- [ ] #ticket-0075 (1438578410883649569) **NEW**
+- [ ] #ticket-0076 (1438594475243995146) **NEW**
 
 **START HERE:**
 - [ ] #rules-and-faq (1285103549944168450) **NEW**
@@ -43,35 +51,27 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 
 **MIGRATION:**
 - [ ] #migration-start-here (1423981117987487805) **NEW**
+- [ ] #ticket-response (1438601160142618725) **NEW**
 - [ ] #open-a-ticket (1423981231300935801) **NEW**
-- [ ] #closed-0017 (1436352768594939947) **NEW**
-- [ ] #closed-0019 (1436398987078008903) **NEW**
 - [ ] #ticket-0020 (1436401530592034816) **NEW**
 - [ ] #ticket-0021 (1437085456004153378) **NEW**
-- [ ] #ticket-0022 (1437606262748610591) **NEW**
 - [ ] #ticket-0024 (1437967134989750383) **NEW**
 - [ ] #ticket-0025 (1437968539280478280) **NEW**
 - [ ] #ticket-0026 (1437968689315057736) **NEW**
 - [ ] #ticket-0027 (1437969855868567723) **NEW**
 - [ ] #ticket-0028 (1437981799602065582) **NEW**
-- [ ] #closed-0030 (1437998626738802802) **NEW**
 - [ ] #ticket-0031 (1437999889370972160) **NEW**
 - [ ] #ticket-0032 (1438003651695349871) **NEW**
 - [ ] #ticket-0033 (1438011573473116285) **NEW**
-- [ ] #closed-0034 (1438075096936747025) **NEW**
 - [ ] #ticket-0035 (1438075153220374639) **NEW**
 - [ ] #ticket-0036 (1438077975617867877) **NEW**
 - [ ] #ticket-0037 (1438079382097760369) **NEW**
-- [ ] #closed-0038 (1438123847055442042) **NEW**
 - [ ] #ticket-0039 (1438126050591903836) **NEW**
 - [ ] #ticket-0040 (1438127340134596709) **NEW**
-- [ ] #ticket-0041 (1438141239391162470) **NEW**
 - [ ] #ticket-0042 (1438144040234389697) **NEW**
 - [ ] #ticket-0043 (1438146324985024524) **NEW**
-- [ ] #closed-0044 (1438149562442321930) **NEW**
 - [ ] #ticket-0045 (1438157633029935267) **NEW**
 - [ ] #ticket-0046 (1438157828467589296) **NEW**
-- [ ] #ticket-0047 (1438165099247440025) **NEW**
 - [ ] #ticket-0048 (1438170480941994085) **NEW**
 - [ ] #ticket-0049 (1438175197483106314) **NEW**
 - [ ] #ticket-0050 (1438183859299811458) **NEW**
@@ -82,11 +82,17 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0055 (1438269284919939113) **NEW**
 - [ ] #ticket-0056 (1438275400525418620) **NEW**
 - [ ] #ticket-0057 (1438286284106760243) **NEW**
-- [ ] #ticket-0058 (1438322941073948844) **NEW**
 - [ ] #ticket-0059 (1438328581884481596) **NEW**
 - [ ] #ticket-0060 (1438335492650434630) **NEW**
 - [ ] #ticket-0061 (1438388288078610533) **NEW**
-- [ ] #ticket-0062 (1438415748631625912) **NEW**
+- [ ] #ticket-0068 (1438469438990192670) **NEW**
+- [ ] #ticket-0069 (1438483254788362260) **NEW**
+- [ ] #ticket-0070 (1438483486041182300) **NEW**
+- [ ] #ticket-0071 (1438527962319421583) **NEW**
+- [ ] #ticket-0077 (1438615490250543220) **NEW**
+- [ ] #ticket-0078 (1438630806841983161) **NEW**
+- [ ] #ticket-0079 (1438663887913222245) **NEW**
+- [ ] #ticket-0080 (1438718203571343361) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
