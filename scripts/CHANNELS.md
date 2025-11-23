@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-11-22 06:31:36 UTC*
+*Updated: 2025-11-23 06:33:19 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 188 | **Currently Tracking**: 6 | **New Channels**: 182
+**Total Channels**: 192 | **Currently Tracking**: 6 | **New Channels**: 186
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -36,7 +36,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0130 (1440541957897060513) **NEW**
 - [ ] #ticket-0143 (1440757441217167521) **NEW**
 - [ ] #ticket-0146 (1440781394287530035) **NEW**
-- [ ] #ticket-0147 (1440790845656797256) **NEW**
 - [ ] #ticket-0148 (1440800444107722934) **NEW**
 - [ ] #ticket-0149 (1440802280894103753) **NEW**
 - [ ] #ticket-0150 (1440803580461191189) **NEW**
@@ -76,6 +75,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #clone-ur-crush (1440207337087307817) **NEW**
 
 **MIGRATION:**
+- [ ] #closed-0147 (1440790845656797256) **NEW**
 - [ ] #closed-0063 (1438430885765447680) **NEW**
 - [ ] #migration-start-here (1423981117987487805) **NEW**
 - [ ] #ticket-response (1438601160142618725) **NEW**
@@ -105,13 +105,17 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #closed-0129 (1440451091660673177) **NEW**
 - [ ] #ticket-0131 (1440677859223146538) **NEW**
 - [ ] #closed-0133 (1440681814460207227) **NEW**
-- [ ] #ticket-0134 (1440688500898005136) **NEW**
+- [ ] #closed-0134 (1440688500898005136) **NEW**
 - [ ] #closed-0135 (1440701919873073235) **NEW**
 - [ ] #ticket-0136 (1440708477826895892) **NEW**
 - [ ] #ticket-0139 (1440711262219665525) **NEW**
 - [ ] #ticket-0142 (1440741439586963628) **NEW**
 - [ ] #ticket-0168 (1441100861420867585) **NEW**
 - [ ] #ticket-0171 (1441154821678698526) **NEW**
+- [ ] #ticket-0174 (1441797694803677295) **NEW**
+- [ ] #ticket-0175 (1441819964775465062) **NEW**
+- [ ] #ticket-0176 (1441861782963490946) **NEW**
+- [ ] #ticket-0177 (1441983879157121126) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
@@ -149,8 +153,9 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 
 **COMMUNITY WORKGROUPS:**
 - [ ] #otaku (1435049002231009423) **NEW**
-- [ ] #partner-portal-workgroup (1327141924183998555) **NEW**
+- [ ] #babylon (1441448972265984191) **NEW**
 - [ ] #workgroups-general (1310291767341486101) **NEW**
+- [ ] #partner-portal-workgroup (1327141924183998555) **NEW**
 - [x] #fun (1361442528813121556)
 - [ ] #agent-dev (1395058973509554186) **NEW**
 - [ ] #elizaos-testers (1372559034384646144) **NEW**
@@ -161,7 +166,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #cabal-social-posts (1412403278968258640) **NEW**
 - [ ] #cabal-sentiment-tracker (1409460517231267911) **NEW**
 - [ ] #studios (1427621933998145646) **NEW**
-- [ ] #babylon (1441448972265984191) **NEW**
 
 **ARCHIVES:**
 - [ ] #base-agent (1405275024360996904) **NEW**
