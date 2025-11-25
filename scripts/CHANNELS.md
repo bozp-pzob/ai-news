@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-11-24 06:36:11 UTC*
+*Updated: 2025-11-25 06:36:58 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 184 | **Currently Tracking**: 6 | **New Channels**: 178
+**Total Channels**: 192 | **Currently Tracking**: 6 | **New Channels**: 186
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -21,7 +21,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #moderator-audit-logs (1285103939007811594) **NEW**
 - [ ] #collabland-config (1300245647789916190) **NEW**
 - [ ] #waiting-room (1361911608841994402) **NEW**
-- [ ] #ticket-0072 (1438537221937430638) **NEW**
 - [ ] #ticket-0085 (1438903643553267863) **NEW**
 - [ ] #ticket-0096 (1439331868595064832) **NEW**
 - [ ] #ticket-0097 (1439368272096137286) **NEW**
@@ -48,6 +47,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0167 (1441022405848862820) **NEW**
 - [ ] #ticket-0172 (1441183169725595729) **NEW**
 - [ ] #ticket-0173 (1441497291805561104) **NEW**
+- [ ] #ticket-0197 (1442693773355122738) **NEW**
 
 **START HERE:**
 - [ ] #rules-and-faq (1285103549944168450) **NEW**
@@ -80,14 +80,9 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0046 (1438157828467589296) **NEW**
 - [ ] #ticket-0049 (1438175197483106314) **NEW**
 - [ ] #ticket-0054 (1438233964157468737) **NEW**
-- [ ] #ticket-0060 (1438335492650434630) **NEW**
 - [ ] #ticket-0061 (1438388288078610533) **NEW**
-- [ ] #ticket-0068 (1438469438990192670) **NEW**
 - [ ] #ticket-0069 (1438483254788362260) **NEW**
-- [ ] #ticket-0070 (1438483486041182300) **NEW**
-- [ ] #ticket-0079 (1438663887913222245) **NEW**
 - [ ] #ticket-0081 (1438833769338372146) **NEW**
-- [ ] #ticket-0086 (1439022547734761677) **NEW**
 - [ ] #ticket-0117 (1440050412592959560) **NEW**
 - [ ] #ticket-0120 (1440215522800304219) **NEW**
 - [ ] #ticket-0121 (1440266711315120169) **NEW**
@@ -108,6 +103,19 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0180 (1442289064408518656) **NEW**
 - [ ] #ticket-0181 (1442336320843153428) **NEW**
 - [ ] #ticket-0182 (1442373971940212858) **NEW**
+- [ ] #ticket-0183 (1442435648744329256) **NEW**
+- [ ] #ticket-0184 (1442436380524412950) **NEW**
+- [ ] #closed-0185 (1442437217229344778) **NEW**
+- [ ] #ticket-0186 (1442440028423979048) **NEW**
+- [ ] #ticket-0187 (1442440347824291840) **NEW**
+- [ ] #closed-0188 (1442491720444018688) **NEW**
+- [ ] #ticket-0189 (1442518085574721739) **NEW**
+- [ ] #ticket-0190 (1442522023132922049) **NEW**
+- [ ] #ticket-0192 (1442541089167900774) **NEW**
+- [ ] #ticket-0193 (1442629145753419938) **NEW**
+- [ ] #ticket-0194 (1442632086027763834) **NEW**
+- [ ] #ticket-0195 (1442637761248231554) **NEW**
+- [ ] #ticket-0196 (1442683111925088317) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
@@ -124,14 +132,16 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #spartan-holders (1308149076893630555) **NEW**
 - [ ] #spartan (1353787967340281976) **NEW**
 
-**INTERNATIONAL:**
-- [ ] #中文频道 (1303194468949950504) **NEW**
-- [ ] #turkish-delight (1307210646525317181) **NEW**
-- [ ] #안녕하세요 (1311068612970152026) **NEW**
-- [ ] #olá (1311068861860282460) **NEW**
-- [ ] #french (1323124707452784761) **NEW**
-- [ ] #italiano (1400432884711428197) **NEW**
-- [ ] #भारत (1400485325372919900) **NEW**
+**COMMUNITY WORKGROUPS:**
+- [ ] #otaku (1435049002231009423) **NEW**
+- [ ] #babylon (1441448972265984191) **NEW**
+- [ ] #elizaos-testers (1372559034384646144) **NEW**
+- [ ] #country-leads (1389897960736690338) **NEW**
+- [ ] #vaulter-agents-testing (1416118175451316266) **NEW**
+- [ ] #contributor (1408523591842267158) **NEW**
+- [ ] #eliza-cabal (1406925412780740708) **NEW**
+- [ ] #cabal-social-posts (1412403278968258640) **NEW**
+- [ ] #cabal-sentiment-tracker (1409460517231267911) **NEW**
 
 **DAO Zone:**
 - [x] #🥇-partners (1301363808421543988)
@@ -143,21 +153,14 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ops (1308770075389460602) **NEW**
 - [ ] #dao-organization (1351627860351258685) **NEW**
 
-**COMMUNITY WORKGROUPS:**
-- [ ] #otaku (1435049002231009423) **NEW**
-- [ ] #babylon (1441448972265984191) **NEW**
-- [ ] #workgroups-general (1310291767341486101) **NEW**
-- [ ] #partner-portal-workgroup (1327141924183998555) **NEW**
-- [x] #fun (1361442528813121556)
-- [ ] #agent-dev (1395058973509554186) **NEW**
-- [ ] #elizaos-testers (1372559034384646144) **NEW**
-- [ ] #country-leads (1389897960736690338) **NEW**
-- [ ] #vaulter-agents-testing (1416118175451316266) **NEW**
-- [ ] #contributor (1408523591842267158) **NEW**
-- [ ] #eliza-cabal (1406925412780740708) **NEW**
-- [ ] #cabal-social-posts (1412403278968258640) **NEW**
-- [ ] #cabal-sentiment-tracker (1409460517231267911) **NEW**
-- [ ] #studios (1427621933998145646) **NEW**
+**INTERNATIONAL:**
+- [ ] #中文频道 (1303194468949950504) **NEW**
+- [ ] #turkish-delight (1307210646525317181) **NEW**
+- [ ] #안녕하세요 (1311068612970152026) **NEW**
+- [ ] #olá (1311068861860282460) **NEW**
+- [ ] #french (1323124707452784761) **NEW**
+- [ ] #italiano (1400432884711428197) **NEW**
+- [ ] #भारत (1400485325372919900) **NEW**
 
 **ARCHIVES:**
 - [ ] #base-agent (1405275024360996904) **NEW**
@@ -209,6 +212,11 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #core-devs-archived (1318117081215930459) **NEW**
 
 **ARCHIVES-2:**
+- [ ] #studios (1427621933998145646) **NEW**
+- [ ] #partner-portal-workgroup (1327141924183998555) **NEW**
+- [ ] #workgroups-general (1310291767341486101) **NEW**
+- [ ] #agent-dev (1395058973509554186) **NEW**
+- [x] #fun (1361442528813121556)
 - [ ] #2x-yaps (1389507912191184998) **NEW**
 - [ ] #tweets (1361523520676560997) **NEW**
 - [ ] #⭐-starboard (1303039409494429696) **NEW**
