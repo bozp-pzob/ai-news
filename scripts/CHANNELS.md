@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-11-25 06:36:58 UTC*
+*Updated: 2025-11-26 06:36:12 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 192 | **Currently Tracking**: 6 | **New Channels**: 186
+**Total Channels**: 190 | **Currently Tracking**: 6 | **New Channels**: 184
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -45,9 +45,9 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0163 (1440990755685404715) **NEW**
 - [ ] #ticket-0165 (1441009867820236851) **NEW**
 - [ ] #ticket-0167 (1441022405848862820) **NEW**
-- [ ] #ticket-0172 (1441183169725595729) **NEW**
 - [ ] #ticket-0173 (1441497291805561104) **NEW**
 - [ ] #ticket-0197 (1442693773355122738) **NEW**
+- [ ] #ticket-0199 (1442867375102886023) **NEW**
 
 **START HERE:**
 - [ ] #rules-and-faq (1285103549944168450) **NEW**
@@ -60,7 +60,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [x] #💬-coders (1300025221834739744)
 - [ ] #💻-tech-support (1392374405606150245) **NEW**
 - [x] #core-devs (1377726087789940836)
-- [ ] #contributor-dev (1379775100915810314) **NEW**
 - [ ] #elizaos-github (1377733240449925150) **NEW**
 - [ ] #plugins-github (1377733306594099371) **NEW**
 - [ ] #offsite-sept (1408212848513122549) **NEW**
@@ -74,26 +73,19 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #migration-start-here (1423981117987487805) **NEW**
 - [ ] #ticket-response (1438601160142618725) **NEW**
 - [ ] #open-a-ticket (1423981231300935801) **NEW**
-- [ ] #closed-0035 (1438075153220374639) **NEW**
 - [ ] #ticket-0037 (1438079382097760369) **NEW**
-- [ ] #ticket-0039 (1438126050591903836) **NEW**
 - [ ] #ticket-0046 (1438157828467589296) **NEW**
-- [ ] #ticket-0049 (1438175197483106314) **NEW**
+- [ ] #closed-0049 (1438175197483106314) **NEW**
 - [ ] #ticket-0054 (1438233964157468737) **NEW**
 - [ ] #ticket-0061 (1438388288078610533) **NEW**
 - [ ] #ticket-0069 (1438483254788362260) **NEW**
 - [ ] #ticket-0081 (1438833769338372146) **NEW**
 - [ ] #ticket-0117 (1440050412592959560) **NEW**
-- [ ] #ticket-0120 (1440215522800304219) **NEW**
-- [ ] #ticket-0121 (1440266711315120169) **NEW**
 - [ ] #ticket-0125 (1440340255902269671) **NEW**
 - [ ] #ticket-0126 (1440375068227141773) **NEW**
 - [ ] #ticket-0127 (1440381339386777660) **NEW**
 - [ ] #ticket-0131 (1440677859223146538) **NEW**
-- [ ] #ticket-0136 (1440708477826895892) **NEW**
 - [ ] #ticket-0139 (1440711262219665525) **NEW**
-- [ ] #closed-0142 (1440741439586963628) **NEW**
-- [ ] #closed-0168 (1441100861420867585) **NEW**
 - [ ] #ticket-0171 (1441154821678698526) **NEW**
 - [ ] #ticket-0174 (1441797694803677295) **NEW**
 - [ ] #ticket-0175 (1441819964775465062) **NEW**
@@ -116,6 +108,13 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0194 (1442632086027763834) **NEW**
 - [ ] #ticket-0195 (1442637761248231554) **NEW**
 - [ ] #ticket-0196 (1442683111925088317) **NEW**
+- [ ] #ticket-0198 (1442830093385732126) **NEW**
+- [ ] #closed-0200 (1442934936473567364) **NEW**
+- [ ] #ticket-0201 (1442943144235630632) **NEW**
+- [ ] #closed-0202 (1442945769912012962) **NEW**
+- [ ] #ticket-0203 (1442961756669612052) **NEW**
+- [ ] #ticket-0204 (1442982584681365545) **NEW**
+- [ ] #ticket-0205 (1443036482997850123) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
@@ -137,10 +136,9 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #babylon (1441448972265984191) **NEW**
 - [ ] #elizaos-testers (1372559034384646144) **NEW**
 - [ ] #country-leads (1389897960736690338) **NEW**
-- [ ] #vaulter-agents-testing (1416118175451316266) **NEW**
 - [ ] #contributor (1408523591842267158) **NEW**
+- [ ] #contributor-dev (1379775100915810314) **NEW**
 - [ ] #eliza-cabal (1406925412780740708) **NEW**
-- [ ] #cabal-social-posts (1412403278968258640) **NEW**
 - [ ] #cabal-sentiment-tracker (1409460517231267911) **NEW**
 
 **DAO Zone:**
