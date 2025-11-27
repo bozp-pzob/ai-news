@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-11-26 06:36:12 UTC*
+*Updated: 2025-11-27 06:36:55 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 190 | **Currently Tracking**: 6 | **New Channels**: 184
+**Total Channels**: 203 | **Currently Tracking**: 6 | **New Channels**: 197
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -48,6 +48,18 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0173 (1441497291805561104) **NEW**
 - [ ] #ticket-0197 (1442693773355122738) **NEW**
 - [ ] #ticket-0199 (1442867375102886023) **NEW**
+- [ ] #ticket-0206 (1443141587860193411) **NEW**
+- [ ] #ticket-0207 (1443148378266669218) **NEW**
+- [ ] #ticket-0208 (1443156975297888356) **NEW**
+- [ ] #ticket-0209 (1443166758956699721) **NEW**
+- [ ] #ticket-0210 (1443185106318659594) **NEW**
+- [ ] #ticket-0211 (1443186275199746108) **NEW**
+- [ ] #ticket-0212 (1443211703226732545) **NEW**
+- [ ] #ticket-0215 (1443336460626563184) **NEW**
+- [ ] #ticket-0216 (1443359315636519043) **NEW**
+- [ ] #ticket-0217 (1443361965664637051) **NEW**
+- [ ] #ticket-0219 (1443415717667147796) **NEW**
+- [ ] #ticket-0220 (1443434201675206747) **NEW**
 
 **START HERE:**
 - [ ] #rules-and-faq (1285103549944168450) **NEW**
@@ -87,7 +99,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0131 (1440677859223146538) **NEW**
 - [ ] #ticket-0139 (1440711262219665525) **NEW**
 - [ ] #ticket-0171 (1441154821678698526) **NEW**
-- [ ] #ticket-0174 (1441797694803677295) **NEW**
 - [ ] #ticket-0175 (1441819964775465062) **NEW**
 - [ ] #ticket-0176 (1441861782963490946) **NEW**
 - [ ] #ticket-0177 (1441983879157121126) **NEW**
@@ -97,10 +108,9 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0182 (1442373971940212858) **NEW**
 - [ ] #ticket-0183 (1442435648744329256) **NEW**
 - [ ] #ticket-0184 (1442436380524412950) **NEW**
-- [ ] #closed-0185 (1442437217229344778) **NEW**
+- [ ] #ticket-0185 (1442437217229344778) **NEW**
 - [ ] #ticket-0186 (1442440028423979048) **NEW**
 - [ ] #ticket-0187 (1442440347824291840) **NEW**
-- [ ] #closed-0188 (1442491720444018688) **NEW**
 - [ ] #ticket-0189 (1442518085574721739) **NEW**
 - [ ] #ticket-0190 (1442522023132922049) **NEW**
 - [ ] #ticket-0192 (1442541089167900774) **NEW**
@@ -115,6 +125,9 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0203 (1442961756669612052) **NEW**
 - [ ] #ticket-0204 (1442982584681365545) **NEW**
 - [ ] #ticket-0205 (1443036482997850123) **NEW**
+- [ ] #ticket-0213 (1443290317490229409) **NEW**
+- [ ] #ticket-0214 (1443294307615506638) **NEW**
+- [ ] #closed-0218 (1443384671391055922) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
@@ -137,8 +150,8 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #elizaos-testers (1372559034384646144) **NEW**
 - [ ] #country-leads (1389897960736690338) **NEW**
 - [ ] #contributor (1408523591842267158) **NEW**
-- [ ] #contributor-dev (1379775100915810314) **NEW**
 - [ ] #eliza-cabal (1406925412780740708) **NEW**
+- [ ] #contributor-dev (1379775100915810314) **NEW**
 - [ ] #cabal-sentiment-tracker (1409460517231267911) **NEW**
 
 **DAO Zone:**
