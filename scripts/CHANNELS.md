@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-11-27 06:36:55 UTC*
+*Updated: 2025-11-28 06:36:35 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 203 | **Currently Tracking**: 6 | **New Channels**: 197
+**Total Channels**: 189 | **Currently Tracking**: 6 | **New Channels**: 183
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -21,9 +21,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #moderator-audit-logs (1285103939007811594) **NEW**
 - [ ] #collabland-config (1300245647789916190) **NEW**
 - [ ] #waiting-room (1361911608841994402) **NEW**
-- [ ] #ticket-0085 (1438903643553267863) **NEW**
 - [ ] #ticket-0096 (1439331868595064832) **NEW**
-- [ ] #ticket-0097 (1439368272096137286) **NEW**
 - [ ] #ticket-0103 (1439433827952099411) **NEW**
 - [ ] #ticket-0105 (1439459484471918704) **NEW**
 - [ ] #ticket-0110 (1439625131147132970) **NEW**
@@ -35,19 +33,10 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0148 (1440800444107722934) **NEW**
 - [ ] #ticket-0149 (1440802280894103753) **NEW**
 - [ ] #ticket-0150 (1440803580461191189) **NEW**
-- [ ] #ticket-0151 (1440814711775170692) **NEW**
-- [ ] #ticket-0152 (1440829083205238826) **NEW**
-- [ ] #ticket-0154 (1440834055691178136) **NEW**
 - [ ] #ticket-0155 (1440837579275501672) **NEW**
-- [ ] #ticket-0157 (1440877481207926934) **NEW**
-- [ ] #ticket-0160 (1440939674775588936) **NEW**
-- [ ] #ticket-0162 (1440949474435530772) **NEW**
-- [ ] #ticket-0163 (1440990755685404715) **NEW**
 - [ ] #ticket-0165 (1441009867820236851) **NEW**
 - [ ] #ticket-0167 (1441022405848862820) **NEW**
 - [ ] #ticket-0173 (1441497291805561104) **NEW**
-- [ ] #ticket-0197 (1442693773355122738) **NEW**
-- [ ] #ticket-0199 (1442867375102886023) **NEW**
 - [ ] #ticket-0206 (1443141587860193411) **NEW**
 - [ ] #ticket-0207 (1443148378266669218) **NEW**
 - [ ] #ticket-0208 (1443156975297888356) **NEW**
@@ -58,8 +47,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0215 (1443336460626563184) **NEW**
 - [ ] #ticket-0216 (1443359315636519043) **NEW**
 - [ ] #ticket-0217 (1443361965664637051) **NEW**
-- [ ] #ticket-0219 (1443415717667147796) **NEW**
-- [ ] #ticket-0220 (1443434201675206747) **NEW**
 
 **START HERE:**
 - [ ] #rules-and-faq (1285103549944168450) **NEW**
@@ -82,13 +69,21 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #clone-ur-crush (1440207337087307817) **NEW**
 
 **MIGRATION:**
+- [ ] #closed-0097 (1439368272096137286) **NEW**
+- [ ] #closed-0151 (1440814711775170692) **NEW**
+- [ ] #closed-0152 (1440829083205238826) **NEW**
+- [ ] #closed-0154 (1440834055691178136) **NEW**
+- [ ] #closed-0157 (1440877481207926934) **NEW**
+- [ ] #closed-0160 (1440939674775588936) **NEW**
+- [ ] #closed-0162 (1440949474435530772) **NEW**
+- [ ] #closed-0163 (1440990755685404715) **NEW**
+- [ ] #closed-0219 (1443415717667147796) **NEW**
+- [ ] #closed-0220 (1443434201675206747) **NEW**
+- [ ] #closed-0085 (1438903643553267863) **NEW**
 - [ ] #migration-start-here (1423981117987487805) **NEW**
 - [ ] #ticket-response (1438601160142618725) **NEW**
 - [ ] #open-a-ticket (1423981231300935801) **NEW**
-- [ ] #ticket-0037 (1438079382097760369) **NEW**
 - [ ] #ticket-0046 (1438157828467589296) **NEW**
-- [ ] #closed-0049 (1438175197483106314) **NEW**
-- [ ] #ticket-0054 (1438233964157468737) **NEW**
 - [ ] #ticket-0061 (1438388288078610533) **NEW**
 - [ ] #ticket-0069 (1438483254788362260) **NEW**
 - [ ] #ticket-0081 (1438833769338372146) **NEW**
@@ -96,21 +91,13 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0125 (1440340255902269671) **NEW**
 - [ ] #ticket-0126 (1440375068227141773) **NEW**
 - [ ] #ticket-0127 (1440381339386777660) **NEW**
-- [ ] #ticket-0131 (1440677859223146538) **NEW**
-- [ ] #ticket-0139 (1440711262219665525) **NEW**
-- [ ] #ticket-0171 (1441154821678698526) **NEW**
-- [ ] #ticket-0175 (1441819964775465062) **NEW**
 - [ ] #ticket-0176 (1441861782963490946) **NEW**
 - [ ] #ticket-0177 (1441983879157121126) **NEW**
 - [ ] #ticket-0179 (1442253288925040672) **NEW**
 - [ ] #ticket-0180 (1442289064408518656) **NEW**
-- [ ] #ticket-0181 (1442336320843153428) **NEW**
 - [ ] #ticket-0182 (1442373971940212858) **NEW**
 - [ ] #ticket-0183 (1442435648744329256) **NEW**
-- [ ] #ticket-0184 (1442436380524412950) **NEW**
 - [ ] #ticket-0185 (1442437217229344778) **NEW**
-- [ ] #ticket-0186 (1442440028423979048) **NEW**
-- [ ] #ticket-0187 (1442440347824291840) **NEW**
 - [ ] #ticket-0189 (1442518085574721739) **NEW**
 - [ ] #ticket-0190 (1442522023132922049) **NEW**
 - [ ] #ticket-0192 (1442541089167900774) **NEW**
@@ -119,15 +106,14 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0195 (1442637761248231554) **NEW**
 - [ ] #ticket-0196 (1442683111925088317) **NEW**
 - [ ] #ticket-0198 (1442830093385732126) **NEW**
-- [ ] #closed-0200 (1442934936473567364) **NEW**
 - [ ] #ticket-0201 (1442943144235630632) **NEW**
-- [ ] #closed-0202 (1442945769912012962) **NEW**
 - [ ] #ticket-0203 (1442961756669612052) **NEW**
 - [ ] #ticket-0204 (1442982584681365545) **NEW**
 - [ ] #ticket-0205 (1443036482997850123) **NEW**
-- [ ] #ticket-0213 (1443290317490229409) **NEW**
 - [ ] #ticket-0214 (1443294307615506638) **NEW**
-- [ ] #closed-0218 (1443384671391055922) **NEW**
+- [ ] #ticket-0223 (1443589567163797568) **NEW**
+- [ ] #ticket-0225 (1443649427805044898) **NEW**
+- [ ] #ticket-0226 (1443725871650308127) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
