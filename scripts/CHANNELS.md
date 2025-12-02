@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-12-01 06:39:08 UTC*
+*Updated: 2025-12-02 06:37:56 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 214 | **Currently Tracking**: 6 | **New Channels**: 208
+**Total Channels**: 203 | **Currently Tracking**: 6 | **New Channels**: 197
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -24,29 +24,21 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0096 (1439331868595064832) **NEW**
 - [ ] #ticket-0103 (1439433827952099411) **NEW**
 - [ ] #ticket-0105 (1439459484471918704) **NEW**
-- [ ] #ticket-0110 (1439625131147132970) **NEW**
 - [ ] #ticket-0111 (1439691502878986350) **NEW**
 - [ ] #ticket-0113 (1439887991043788880) **NEW**
 - [ ] #ticket-0130 (1440541957897060513) **NEW**
 - [ ] #ticket-0143 (1440757441217167521) **NEW**
 - [ ] #ticket-0146 (1440781394287530035) **NEW**
-- [ ] #ticket-0148 (1440800444107722934) **NEW**
-- [ ] #ticket-0149 (1440802280894103753) **NEW**
 - [ ] #ticket-0150 (1440803580461191189) **NEW**
 - [ ] #ticket-0165 (1441009867820236851) **NEW**
 - [ ] #ticket-0167 (1441022405848862820) **NEW**
-- [ ] #ticket-0173 (1441497291805561104) **NEW**
 - [ ] #ticket-0206 (1443141587860193411) **NEW**
 - [ ] #ticket-0208 (1443156975297888356) **NEW**
 - [ ] #ticket-0210 (1443185106318659594) **NEW**
-- [ ] #ticket-0211 (1443186275199746108) **NEW**
 - [ ] #ticket-0215 (1443336460626563184) **NEW**
 - [ ] #ticket-0216 (1443359315636519043) **NEW**
-- [ ] #ticket-0229 (1443969057337380986) **NEW**
 - [ ] #ticket-0230 (1443980671252172891) **NEW**
 - [ ] #ticket-0231 (1443996135051235388) **NEW**
-- [ ] #ticket-0232 (1444002147778953308) **NEW**
-- [ ] #ticket-0233 (1444003391805067386) **NEW**
 - [ ] #ticket-0234 (1444013518943686758) **NEW**
 - [ ] #ticket-0235 (1444026600671678525) **NEW**
 - [ ] #ticket-0236 (1444029398037823650) **NEW**
@@ -55,9 +47,8 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0239 (1444072069376638976) **NEW**
 - [ ] #ticket-0240 (1444107883338797189) **NEW**
 - [ ] #ticket-0241 (1444131328302776494) **NEW**
-- [ ] #closed-0242 (1444220928702812201) **NEW**
+- [ ] #ticket-0242 (1444220928702812201) **NEW**
 - [ ] #ticket-0243 (1444221860169646101) **NEW**
-- [ ] #closed-0244 (1444222719125229638) **NEW**
 - [ ] #ticket-0245 (1444245126397427714) **NEW**
 - [ ] #ticket-0246 (1444246965411119179) **NEW**
 - [ ] #ticket-0247 (1444281422830374932) **NEW**
@@ -72,6 +63,11 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0257 (1444601455314079745) **NEW**
 - [ ] #ticket-0259 (1444764329118400784) **NEW**
 - [ ] #ticket-0260 (1444770925491916910) **NEW**
+- [ ] #ticket-0264 (1445078621193768970) **NEW**
+- [ ] #ticket-0265 (1445092373725052972) **NEW**
+- [ ] #ticket-0266 (1445102123489558538) **NEW**
+- [ ] #ticket-0267 (1445111735890743480) **NEW**
+- [ ] #ticket-0268 (1445117368769712159) **NEW**
 
 **START HERE:**
 - [ ] #rules-and-faq (1285103549944168450) **NEW**
@@ -94,30 +90,21 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #clone-ur-crush (1440207337087307817) **NEW**
 
 **MIGRATION:**
-- [ ] #closed-0157 (1440877481207926934) **NEW**
+- [ ] #closed-0229 (1443969057337380986) **NEW**
+- [ ] #closed-0233 (1444003391805067386) **NEW**
 - [ ] #ticket-0160 (1440939674775588936) **NEW**
-- [ ] #closed-0207 (1443148378266669218) **NEW**
-- [ ] #closed-0209 (1443166758956699721) **NEW**
-- [ ] #closed-0212 (1443211703226732545) **NEW**
-- [ ] #closed-0217 (1443361965664637051) **NEW**
-- [ ] #closed-0219 (1443415717667147796) **NEW**
-- [ ] #closed-0220 (1443434201675206747) **NEW**
-- [ ] #closed-0085 (1438903643553267863) **NEW**
 - [ ] #migration-start-here (1423981117987487805) **NEW**
 - [ ] #ticket-response (1438601160142618725) **NEW**
 - [ ] #open-a-ticket (1423981231300935801) **NEW**
 - [ ] #ticket-0046 (1438157828467589296) **NEW**
 - [ ] #ticket-0069 (1438483254788362260) **NEW**
-- [ ] #closed-0081 (1438833769338372146) **NEW**
 - [ ] #ticket-0117 (1440050412592959560) **NEW**
-- [ ] #closed-0125 (1440340255902269671) **NEW**
 - [ ] #ticket-0126 (1440375068227141773) **NEW**
 - [ ] #ticket-0127 (1440381339386777660) **NEW**
 - [ ] #ticket-0176 (1441861782963490946) **NEW**
-- [ ] #ticket-0177 (1441983879157121126) **NEW**
+- [ ] #closed-0177 (1441983879157121126) **NEW**
 - [ ] #ticket-0180 (1442289064408518656) **NEW**
 - [ ] #ticket-0182 (1442373971940212858) **NEW**
-- [ ] #closed-0183 (1442435648744329256) **NEW**
 - [ ] #ticket-0185 (1442437217229344778) **NEW**
 - [ ] #ticket-0189 (1442518085574721739) **NEW**
 - [ ] #ticket-0190 (1442522023132922049) **NEW**
@@ -131,14 +118,16 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0204 (1442982584681365545) **NEW**
 - [ ] #ticket-0205 (1443036482997850123) **NEW**
 - [ ] #ticket-0214 (1443294307615506638) **NEW**
-- [ ] #closed-0223 (1443589567163797568) **NEW**
 - [ ] #ticket-0225 (1443649427805044898) **NEW**
-- [ ] #closed-0226 (1443725871650308127) **NEW**
 - [ ] #ticket-0227 (1443889286230315150) **NEW**
 - [ ] #ticket-0228 (1443939551017177210) **NEW**
 - [ ] #ticket-0258 (1444676580977934367) **NEW**
 - [ ] #ticket-0261 (1444929748840087726) **NEW**
 - [ ] #ticket-0262 (1444934073217847307) **NEW**
+- [ ] #ticket-0263 (1445015611674722344) **NEW**
+- [ ] #ticket-0269 (1445142197379928248) **NEW**
+- [ ] #ticket-0270 (1445154405807820835) **NEW**
+- [ ] #ticket-0271 (1445264747560697936) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
@@ -161,8 +150,8 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #elizaos-testers (1372559034384646144) **NEW**
 - [ ] #country-leads (1389897960736690338) **NEW**
 - [ ] #contributor (1408523591842267158) **NEW**
-- [ ] #eliza-cabal (1406925412780740708) **NEW**
 - [ ] #contributor-dev (1379775100915810314) **NEW**
+- [ ] #eliza-cabal (1406925412780740708) **NEW**
 - [ ] #cabal-sentiment-tracker (1409460517231267911) **NEW**
 
 **DAO Zone:**
