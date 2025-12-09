@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-12-08 06:40:18 UTC*
+*Updated: 2025-12-09 06:38:08 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 173 | **Currently Tracking**: 6 | **New Channels**: 167
+**Total Channels**: 172 | **Currently Tracking**: 6 | **New Channels**: 166
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -62,21 +62,18 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0205 (1443036482997850123) **NEW**
 - [ ] #ticket-0214 (1443294307615506638) **NEW**
 - [ ] #ticket-0228 (1443939551017177210) **NEW**
-- [ ] #ticket-0263 (1445015611674722344) **NEW**
+- [ ] #closed-0263 (1445015611674722344) **NEW**
 - [ ] #ticket-0270 (1445154405807820835) **NEW**
-- [ ] #ticket-0272 (1445463061501837473) **NEW**
+- [ ] #closed-0272 (1445463061501837473) **NEW**
 - [ ] #ticket-0273 (1445497745203789886) **NEW**
 - [ ] #ticket-0281 (1445776625395302554) **NEW**
 - [ ] #ticket-0282 (1445783215150338182) **NEW**
-- [ ] #closed-0283 (1445817525270220945) **NEW**
 - [ ] #ticket-0284 (1445821290152722542) **NEW**
-- [ ] #ticket-0286 (1445879169400574102) **NEW**
+- [ ] #closed-0286 (1445879169400574102) **NEW**
 - [ ] #ticket-0287 (1445885520029941791) **NEW**
-- [ ] #ticket-0288 (1445896506925121750) **NEW**
+- [ ] #closed-0288 (1445896506925121750) **NEW**
 - [ ] #ticket-0294 (1446091101718052864) **NEW**
-- [ ] #ticket-0295 (1446120001382781038) **NEW**
 - [ ] #ticket-0296 (1446136887419863141) **NEW**
-- [ ] #ticket-0297 (1446140657679990846) **NEW**
 - [ ] #ticket-0298 (1446159229269311528) **NEW**
 - [ ] #ticket-0300 (1446209747715096727) **NEW**
 - [ ] #ticket-0301 (1446211208469545113) **NEW**
@@ -84,19 +81,21 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0304 (1446243596956336340) **NEW**
 - [ ] #ticket-0305 (1446294131478364352) **NEW**
 - [ ] #ticket-0306 (1446345271347777606) **NEW**
-- [ ] #closed-0308 (1446608802022686885) **NEW**
 - [ ] #ticket-0309 (1446626453621047338) **NEW**
 - [ ] #ticket-0310 (1446734497675739239) **NEW**
 - [ ] #ticket-0311 (1446765783886729298) **NEW**
 - [ ] #ticket-0312 (1446784761925341214) **NEW**
-- [ ] #closed-0314 (1446902374957453326) **NEW**
-- [ ] #ticket-0315 (1447183873099173898) **NEW**
 - [ ] #ticket-0316 (1447242338136096849) **NEW**
-- [ ] #ticket-0317 (1447251372973232199) **NEW**
-- [ ] #closed-0318 (1447310066498932779) **NEW**
 - [ ] #ticket-0319 (1447344854911680623) **NEW**
 - [ ] #ticket-0320 (1447394928694132858) **NEW**
 - [ ] #ticket-0321 (1447404444676395019) **NEW**
+- [ ] #ticket-0322 (1447507751680081992) **NEW**
+- [ ] #ticket-0323 (1447600372616007731) **NEW**
+- [ ] #ticket-0324 (1447690020738568242) **NEW**
+- [ ] #ticket-0325 (1447699565435162775) **NEW**
+- [ ] #ticket-0326 (1447728699494633692) **NEW**
+- [ ] #ticket-0327 (1447784655934722241) **NEW**
+- [ ] #ticket-0328 (1447788637633904693) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
