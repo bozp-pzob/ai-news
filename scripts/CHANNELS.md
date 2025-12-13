@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-09-08 21:54:11 UTC*
+*Updated: 2025-12-12 06:39:05 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,39 +12,69 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 109 | **Currently Tracking**: 6 | **New Channels**: 103
+**Total Channels**: 142 | **Currently Tracking**: 6 | **New Channels**: 136
 
 ### Channels
-- [ ] #rules-and-faq (1285103549944168450) **NEW**
-- [ ] #welcome (1299517379721822208) **NEW**
 - [ ] #mod-chat (1299440237759696999) **NEW**
 - [ ] #bot-logs (1312926861793300500) **NEW**
-- [ ] #verify-now (1361911606967144528) **NEW**
 - [ ] #bot-commands (1307450932296028202) **NEW**
 - [ ] #moderator-audit-logs (1285103939007811594) **NEW**
-- [ ] #select-role (1300245650180669472) **NEW**
 - [ ] #collabland-config (1300245647789916190) **NEW**
 - [ ] #waiting-room (1361911608841994402) **NEW**
+- [ ] #ticket-0103 (1439433827952099411) **NEW**
+- [ ] #ticket-0267 (1445111735890743480) **NEW**
+- [ ] #ticket-0290 (1445974746989723708) **NEW**
+
+**START HERE:**
+- [ ] #rules-and-faq (1285103549944168450) **NEW**
+- [ ] #welcome (1299517379721822208) **NEW**
+- [ ] #verify-now (1361911606967144528) **NEW**
+- [ ] #select-role (1300245650180669472) **NEW**
+- [ ] #builder-onboarding (1415627400456437831) **NEW**
 
 **DEV:**
 - [x] #💬-coders (1300025221834739744)
+- [ ] #sapience-hackathon (1447960081948872764) **NEW**
 - [ ] #💻-tech-support (1392374405606150245) **NEW**
-- [ ] #contributor-dev (1379775100915810314) **NEW**
 - [x] #core-devs (1377726087789940836)
 - [ ] #elizaos-github (1377733240449925150) **NEW**
 - [ ] #plugins-github (1377733306594099371) **NEW**
-- [ ] #offsite-sept (1408212848513122549) **NEW**
+- [ ] #cloud (1422802977457967156) **NEW**
+- [ ] #cloud-logs (1434932532473757829) **NEW**
+- [ ] #babylon (1423188508394258522) **NEW**
+- [ ] #mini-apps (1439009937438146801) **NEW**
+- [ ] #clone-ur-crush (1440207337087307817) **NEW**
+
+**MIGRATION:**
+- [ ] #ticket-response (1438601160142618725) **NEW**
+- [ ] #open-a-ticket (1423981231300935801) **NEW**
+- [ ] #ticket-0270 (1445154405807820835) **NEW**
+- [ ] #ticket-0282 (1445783215150338182) **NEW**
+- [ ] #closed-0287 (1445885520029941791) **NEW**
+- [ ] #ticket-0309 (1446626453621047338) **NEW**
+- [ ] #ticket-0323 (1447600372616007731) **NEW**
+- [ ] #ticket-0325 (1447699565435162775) **NEW**
+- [ ] #ticket-0327 (1447784655934722241) **NEW**
+- [ ] #ticket-0328 (1447788637633904693) **NEW**
+- [ ] #ticket-0330 (1447990479739424919) **NEW**
+- [ ] #ticket-0331 (1448050267516960910) **NEW**
+- [ ] #ticket-0332 (1448230371253555335) **NEW**
+- [ ] #ticket-0335 (1448441098060959874) **NEW**
+- [ ] #ticket-0336 (1448656805554028627) **NEW**
+- [ ] #ticket-0337 (1448683833355407432) **NEW**
+- [ ] #closed-0338 (1448790205355000046) **NEW**
+- [ ] #ticket-0340 (1448806926405210253) **NEW**
+- [ ] #ticket-0341 (1448873964830195896) **NEW**
+- [ ] #ticket-0342 (1448887577116414002) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
-- [ ] #ecosystem-watchtower (1300480482466861147) **NEW**
+- [ ] #🌈-migration-questions (1425417640071139358) **NEW**
+- [ ] #🔦-watchtower (1300480482466861147) **NEW**
 - [ ] #🤖-the-arena (1285105813349859421) **NEW**
 - [ ] #content-and-memes (1299956148253884416) **NEW**
 - [ ] #price-talk-trenches (1299989396874854440) **NEW**
 - [ ] #scarletts-office (1329595287727247422) **NEW**
-
-**AUTO.FUN:**
-- [x] #fun (1361442528813121556)
 
 **SPARTAN:**
 - [ ] #spartan-dev (1341224194687500402) **NEW**
@@ -52,8 +82,21 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #spartan-holders (1308149076893630555) **NEW**
 - [ ] #spartan (1353787967340281976) **NEW**
 
-**Agents:**
-- [ ] #agent-dev (1395058973509554186) **NEW**
+**COMMUNITY WORKGROUPS:**
+- [ ] #otaku (1435049002231009423) **NEW**
+- [ ] #babylon (1441448972265984191) **NEW**
+- [ ] #elizaos-testers (1372559034384646144) **NEW**
+- [ ] #contributor (1408523591842267158) **NEW**
+- [ ] #contributor-dev (1379775100915810314) **NEW**
+- [ ] #eliza-cabal (1406925412780740708) **NEW**
+- [ ] #cabal-sentiment-tracker (1409460517231267911) **NEW**
+- [ ] #mini-mod (1448611851364601937) **NEW**
+
+**DAO Zone:**
+- [x] #🥇-partners (1301363808421543988)
+- [ ] #alphai16z (1310042950507430019) **NEW**
+- [x] #associates (1328592959444095038)
+- [ ] #what-i-did (1309395998870605844) **NEW**
 
 **INTERNATIONAL:**
 - [ ] #中文频道 (1303194468949950504) **NEW**
@@ -63,26 +106,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #french (1323124707452784761) **NEW**
 - [ ] #italiano (1400432884711428197) **NEW**
 - [ ] #भारत (1400485325372919900) **NEW**
-
-**DAO Zone:**
-- [x] #🥇-partners (1301363808421543988)
-- [ ] #alphai16z (1310042950507430019) **NEW**
-- [x] #associates (1328592959444095038)
-- [ ] #what-i-did (1309395998870605844) **NEW**
-
-**PARTNER WORKGROUPS:**
-- [ ] #ops (1308770075389460602) **NEW**
-- [ ] #dao-organization (1351627860351258685) **NEW**
-
-**COMMUNITY WORKGROUPS:**
-- [ ] #partner-portal-workgroup (1327141924183998555) **NEW**
-- [ ] #workgroups-general (1310291767341486101) **NEW**
-- [ ] #elizaos-testers (1372559034384646144) **NEW**
-- [ ] #country-leads (1389897960736690338) **NEW**
-- [ ] #contributor (1408523591842267158) **NEW**
-- [ ] #eliza-cabal (1406925412780740708) **NEW**
-- [ ] #cabal-posts (1409460517231267911) **NEW**
-- [ ] #cabal-socials (1412403278968258640) **NEW**
 
 **ARCHIVES:**
 - [ ] #base-agent (1405275024360996904) **NEW**
@@ -134,6 +157,14 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #core-devs-archived (1318117081215930459) **NEW**
 
 **ARCHIVES-2:**
+- [ ] #offsite-sept (1408212848513122549) **NEW**
+- [ ] #dao-organization (1351627860351258685) **NEW**
+- [ ] #ops (1308770075389460602) **NEW**
+- [ ] #studios (1427621933998145646) **NEW**
+- [ ] #partner-portal-workgroup (1327141924183998555) **NEW**
+- [ ] #workgroups-general (1310291767341486101) **NEW**
+- [ ] #agent-dev (1395058973509554186) **NEW**
+- [x] #fun (1361442528813121556)
 - [ ] #2x-yaps (1389507912191184998) **NEW**
 - [ ] #tweets (1361523520676560997) **NEW**
 - [ ] #⭐-starboard (1303039409494429696) **NEW**
