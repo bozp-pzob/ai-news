@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-12-12 06:39:05 UTC*
+*Updated: 2025-12-13 06:35:04 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 142 | **Currently Tracking**: 6 | **New Channels**: 136
+**Total Channels**: 137 | **Currently Tracking**: 6 | **New Channels**: 131
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -22,7 +22,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #collabland-config (1300245647789916190) **NEW**
 - [ ] #waiting-room (1361911608841994402) **NEW**
 - [ ] #ticket-0103 (1439433827952099411) **NEW**
-- [ ] #ticket-0267 (1445111735890743480) **NEW**
 - [ ] #ticket-0290 (1445974746989723708) **NEW**
 
 **START HERE:**
@@ -50,22 +49,18 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #open-a-ticket (1423981231300935801) **NEW**
 - [ ] #ticket-0270 (1445154405807820835) **NEW**
 - [ ] #ticket-0282 (1445783215150338182) **NEW**
-- [ ] #closed-0287 (1445885520029941791) **NEW**
 - [ ] #ticket-0309 (1446626453621047338) **NEW**
-- [ ] #ticket-0323 (1447600372616007731) **NEW**
+- [ ] #closed-0323 (1447600372616007731) **NEW**
 - [ ] #ticket-0325 (1447699565435162775) **NEW**
 - [ ] #ticket-0327 (1447784655934722241) **NEW**
-- [ ] #ticket-0328 (1447788637633904693) **NEW**
 - [ ] #ticket-0330 (1447990479739424919) **NEW**
 - [ ] #ticket-0331 (1448050267516960910) **NEW**
-- [ ] #ticket-0332 (1448230371253555335) **NEW**
 - [ ] #ticket-0335 (1448441098060959874) **NEW**
 - [ ] #ticket-0336 (1448656805554028627) **NEW**
-- [ ] #ticket-0337 (1448683833355407432) **NEW**
-- [ ] #closed-0338 (1448790205355000046) **NEW**
 - [ ] #ticket-0340 (1448806926405210253) **NEW**
 - [ ] #ticket-0341 (1448873964830195896) **NEW**
 - [ ] #ticket-0342 (1448887577116414002) **NEW**
+- [ ] #ticket-0343 (1449023000253960362) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
