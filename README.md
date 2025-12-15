@@ -205,6 +205,45 @@ npm run webhook
 - GitHub Actions provides scheduling and monitoring
 - Simple HTTP-based integration
 
+## Media Download
+
+Discord media files (images, videos, attachments) can be downloaded to a VPS using a manifest-based approach.
+
+### How It Works
+
+1. **GitHub Actions** generates a `media-manifest.json` with URLs during daily runs
+2. **Manifest** is deployed to gh-pages branch
+3. **VPS script** fetches manifest and downloads files
+
+### Generate Manifest Locally
+
+```bash
+npm run generate-manifest -- --db=data/elizaos.sqlite --date=2024-12-14 --source=elizaos --manifest-output=./output/manifest.json
+```
+
+### VPS Setup
+
+```bash
+# Clone and setup
+git clone https://github.com/M3-org/ai-news.git ~/ai-news-media
+python3 ~/ai-news-media/scripts/media-sync.py setup
+
+# Download media
+python3 ~/ai-news-media/scripts/media-sync.py sync --dry-run  # Preview
+python3 ~/ai-news-media/scripts/media-sync.py sync            # Download
+
+# Check status
+python3 ~/ai-news-media/scripts/media-sync.py status
+```
+
+The `setup` command installs a systemd timer that runs daily at 01:30 UTC.
+
+### Manifest Location
+
+After GitHub Actions runs, manifests are available at:
+- `https://raw.githubusercontent.com/M3-org/ai-news/gh-pages/elizaos/media-manifest.json`
+- `https://raw.githubusercontent.com/M3-org/ai-news/gh-pages/hyperfy/media-manifest.json`
+
 ## Project Structure
 
 ```

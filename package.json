@@ -10,6 +10,7 @@
     "dev": "ts-node --transpile-only src/index.ts",
     "historical": "ts-node --transpile-only src/historical.ts",
     "download-media": "ts-node --transpile-only src/download-media.ts",
+    "generate-manifest": "ts-node --transpile-only src/download-media.ts --generate-manifest",
     "discover-channels": "node scripts/discover-channels.mjs",
     "update-configs": "node scripts/update-configs-from-checklist.mjs",
     "dashboard": "node scripts/generate-dashboard.mjs",
