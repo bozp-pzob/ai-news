@@ -218,7 +218,12 @@ Discord media files (images, videos, attachments) can be downloaded to a VPS usi
 ### Generate Manifest Locally
 
 ```bash
-npm run generate-manifest -- --db=data/elizaos.sqlite --date=2024-12-14 --source=elizaos --manifest-output=./output/manifest.json
+# Generate manifest from local database
+npm run generate-manifest -- --db data/elizaos.sqlite --date 2024-12-14 --source elizaos --manifest-output ./output/manifest.json
+
+# View manifest contents
+cat ./output/manifest.json | jq '.files | length'  # Count files
+cat ./output/manifest.json | jq '.total_size'      # Total size in bytes
 ```
 
 ### VPS Setup
@@ -229,14 +234,22 @@ git clone https://github.com/M3-org/ai-news.git ~/ai-news-media
 python3 ~/ai-news-media/scripts/media-sync.py setup
 
 # Download media
-python3 ~/ai-news-media/scripts/media-sync.py sync --dry-run  # Preview
-python3 ~/ai-news-media/scripts/media-sync.py sync            # Download
+python3 ~/ai-news-media/scripts/media-sync.py sync --dry-run  # Preview downloads
+python3 ~/ai-news-media/scripts/media-sync.py sync            # Download files
+python3 ~/ai-news-media/scripts/media-sync.py sync -v         # Verbose (show skipped)
 
-# Check status
+# Disk space management
+python3 ~/ai-news-media/scripts/media-sync.py sync --min-free 1000  # Stop if <1GB free
+MIN_FREE_SPACE_MB=2000 python3 scripts/media-sync.py sync           # Via environment
+
+# Check status (shows disk usage and media sizes)
 python3 ~/ai-news-media/scripts/media-sync.py status
+
+# Uninstall systemd timer
+python3 ~/ai-news-media/scripts/media-sync.py uninstall
 ```
 
-The `setup` command installs a systemd timer that runs daily at 01:30 UTC.
+The `setup` command installs a systemd timer that runs daily at 01:30 UTC. Downloads stop automatically if disk space drops below the threshold (default: 500MB).
 
 ### Manifest Location
 
