@@ -15,6 +15,7 @@ Usage:
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -29,6 +30,7 @@ SOURCES = ["elizaos", "hyperfy"]
 BASE_URL = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}"
 INSTALL_DIR = Path(os.environ.get("INSTALL_DIR", Path.home() / "ai-news-media"))
 SERVICE_NAME = "ai-news-media-sync"
+MIN_FREE_SPACE_MB = int(os.environ.get("MIN_FREE_SPACE_MB", 500))  # Default 500MB
 
 
 def log(msg: str, symbol: str = "*"):
@@ -36,11 +38,46 @@ def log(msg: str, symbol: str = "*"):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {symbol} {msg}")
 
 
+def format_bytes(size_bytes: int) -> str:
+    """Format bytes as human-readable string."""
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if abs(size_bytes) < 1024:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} PB"
+
+
+def get_disk_space(path: Path) -> tuple[int, int, int]:
+    """Get disk space for path. Returns (total, used, free) in bytes."""
+    # Ensure path exists for statvfs
+    path.mkdir(parents=True, exist_ok=True)
+    usage = shutil.disk_usage(path)
+    return usage.total, usage.used, usage.free
+
+
+def check_disk_space(path: Path, min_free_mb: int) -> tuple[bool, int]:
+    """Check if enough disk space is available. Returns (ok, free_bytes)."""
+    _, _, free = get_disk_space(path)
+    min_free_bytes = min_free_mb * 1024 * 1024
+    return free >= min_free_bytes, free
+
+
 def cmd_sync(args):
     """Download media files from all source manifests."""
     log("Media Sync Started", "=")
 
-    stats = {"downloaded": 0, "skipped": 0, "failed": 0}
+    min_free_mb = args.min_free if hasattr(args, 'min_free') else MIN_FREE_SPACE_MB
+    stats = {"downloaded": 0, "skipped": 0, "failed": 0, "disk_stopped": False}
+    total_download_size = 0
+    files_to_download = 0
+
+    # Initial disk space check
+    ok, free_bytes = check_disk_space(INSTALL_DIR, min_free_mb)
+    log(f"Disk space: {format_bytes(free_bytes)} free (min: {min_free_mb} MB)")
+
+    if not ok and not args.dry_run:
+        log(f"Insufficient disk space! Need at least {min_free_mb} MB free", "!")
+        return 1
 
     for source in SOURCES:
         manifest_url = f"{BASE_URL}/{source}/media-manifest.json"
@@ -64,6 +101,7 @@ def cmd_sync(args):
             url = entry["url"]
             filename = entry["unique_name"]
             file_type = entry["type"]
+            file_size = entry.get("size", 0)
 
             # Organize by type: images/, videos/, etc.
             dest = output_dir / f"{file_type}s" / filename
@@ -76,8 +114,17 @@ def cmd_sync(args):
                 continue
 
             if args.dry_run:
-                log(f"Would download: {filename}", "o")
+                log(f"Would download: {filename} ({format_bytes(file_size)})", "o")
+                total_download_size += file_size
+                files_to_download += 1
                 continue
+
+            # Check disk space before each download
+            ok, free_bytes = check_disk_space(INSTALL_DIR, min_free_mb)
+            if not ok:
+                log(f"Stopping: disk space low ({format_bytes(free_bytes)} free)", "!")
+                stats["disk_stopped"] = True
+                break
 
             # Download
             try:
@@ -89,11 +136,27 @@ def cmd_sync(args):
                 log(f"Failed: {filename} - {e}", "x")
                 stats["failed"] += 1
 
-    log(
-        f"Sync Complete: {stats['downloaded']} downloaded, "
-        f"{stats['skipped']} skipped, {stats['failed']} failed",
-        "="
-    )
+        if stats["disk_stopped"]:
+            break
+
+    # Summary
+    if args.dry_run:
+        log(
+            f"Dry Run: {files_to_download} files to download "
+            f"(~{format_bytes(total_download_size)}), {stats['skipped']} already exist",
+            "="
+        )
+    else:
+        msg = (
+            f"Sync Complete: {stats['downloaded']} downloaded, "
+            f"{stats['skipped']} skipped, {stats['failed']} failed"
+        )
+        if stats["disk_stopped"]:
+            msg += " (stopped: low disk space)"
+        log(msg, "=")
+
+    if stats["disk_stopped"]:
+        return 2  # Special exit code for disk space issue
     return 0 if stats["failed"] == 0 else 1
 
 
@@ -182,7 +245,28 @@ WantedBy=timers.target
 
 def cmd_status(args):
     """Show timer status and recent logs."""
-    print("=== Timer Status ===")
+    # Disk space info
+    print("=== Disk Space ===")
+    total, used, free = get_disk_space(INSTALL_DIR)
+    percent_used = (used / total) * 100 if total > 0 else 0
+    print(f"Install dir: {INSTALL_DIR}")
+    print(f"Total: {format_bytes(total)}")
+    print(f"Used:  {format_bytes(used)} ({percent_used:.1f}%)")
+    print(f"Free:  {format_bytes(free)}")
+    print(f"Min:   {MIN_FREE_SPACE_MB} MB")
+
+    # Media directory sizes
+    print("\n=== Media Sizes ===")
+    for source in SOURCES:
+        media_dir = INSTALL_DIR / f"{source}-media"
+        if media_dir.exists():
+            size = sum(f.stat().st_size for f in media_dir.rglob("*") if f.is_file())
+            file_count = sum(1 for f in media_dir.rglob("*") if f.is_file())
+            print(f"{source}: {format_bytes(size)} ({file_count} files)")
+        else:
+            print(f"{source}: (no files yet)")
+
+    print("\n=== Timer Status ===")
     subprocess.run(
         ["systemctl", "list-timers", f"{SERVICE_NAME}.timer", "--no-pager"],
         check=False
@@ -233,18 +317,26 @@ def main():
 Examples:
   %(prog)s sync              Download new media files
   %(prog)s sync --dry-run    Preview what would be downloaded
+  %(prog)s sync --min-free 1000  Stop if less than 1GB free
   %(prog)s setup             Install systemd timer (run once)
-  %(prog)s status            Check timer and recent logs
+  %(prog)s status            Check disk space, timer, and logs
   %(prog)s uninstall         Remove systemd timer
 
 Environment:
-  INSTALL_DIR    Installation directory (default: ~/ai-news-media)
+  INSTALL_DIR        Installation directory (default: ~/ai-news-media)
+  MIN_FREE_SPACE_MB  Minimum free disk space in MB (default: 500)
+
+Exit codes:
+  0  Success
+  1  Download failures or insufficient disk space at start
+  2  Stopped mid-sync due to low disk space
 
 Current config:
   Repository:    {REPO}
   Branch:        {BRANCH}
   Sources:       {', '.join(SOURCES)}
   Install dir:   {INSTALL_DIR}
+  Min free:      {MIN_FREE_SPACE_MB} MB
 """
     )
 
@@ -257,6 +349,10 @@ Current config:
     )
     sync_parser.add_argument(
         "-v", "--verbose", action="store_true", help="Show skipped files"
+    )
+    sync_parser.add_argument(
+        "--min-free", type=int, default=MIN_FREE_SPACE_MB,
+        help=f"Minimum free disk space in MB (default: {MIN_FREE_SPACE_MB})"
     )
     sync_parser.set_defaults(func=cmd_sync)
 
