@@ -7,7 +7,7 @@
  */
 
 import { HistoricalAggregator } from "./aggregator/HistoricalAggregator";
-import { MediaDownloader } from "./download-media";
+import { MediaDownloader, generateManifestToFile } from "./download-media";
 import { MediaDownloadCapable } from "./plugins/sources/DiscordRawDataSource";
 import dotenv from "dotenv";
 import fs from "fs";
@@ -51,6 +51,8 @@ function hasMediaDownloadCapability(source: any): source is MediaDownloadCapable
     let onlyFetch = false;
     let onlyGenerate = false;
     let downloadMedia = false;
+    let generateManifest = false;
+    let manifestOutput: string | undefined;
     let beforeDate;
     let afterDate;
     let duringDate;
@@ -73,6 +75,8 @@ Options:
   --onlyFetch=<true|false>  Only fetch data, do not generate summaries.
   --onlyGenerate=<true|false> Only generate summaries from existing data, do not fetch.
   --download-media=<true|false> Download Discord media after data collection (default: false).
+  --generate-manifest=<true|false> Generate media manifest JSON for VPS downloads (default: false).
+  --manifest-output=<path> Output path for manifest file (default: <output>/media-manifest.json).
   --output=<path>       Output directory path (default: ./)
   -h, --help            Show this help message.
       `);
@@ -90,6 +94,10 @@ Options:
         onlyFetch = arg.split('=')[1].toLowerCase() == 'true';
       } else if (arg.startsWith('--download-media=')) {
         downloadMedia = arg.split('=')[1].toLowerCase() == 'true';
+      } else if (arg.startsWith('--generate-manifest=')) {
+        generateManifest = arg.split('=')[1].toLowerCase() == 'true';
+      } else if (arg.startsWith('--manifest-output=')) {
+        manifestOutput = arg.split('=')[1];
       } else if (arg.startsWith('--before=')) {
         beforeDate = arg.split('=')[1];
       } else if (arg.startsWith('--after=')) {
@@ -285,6 +293,52 @@ Options:
       logger.info("Media downloads completed.");
     }
 
+    /**
+     * Generate media manifest if requested
+     * Creates a JSON file listing all media URLs for VPS download
+     */
+    if (generateManifest && !onlyGenerate) {
+      logger.info("Generating media manifest...");
+
+      for (const config of sourceConfigs) {
+        if (hasMediaDownloadCapability(config.instance)) {
+          try {
+            const storage = (config.instance as any).storage;
+            const dbPath = storage?.dbPath || './data/db.sqlite';
+
+            // Determine source name from config
+            const sourceName = sourceFile.replace('.json', '').replace('-discord', '');
+
+            // Determine manifest output path
+            const manifestPath = manifestOutput || path.join(outputPath, sourceName, 'media-manifest.json');
+
+            // Ensure output directory exists
+            const manifestDir = path.dirname(manifestPath);
+            if (!fs.existsSync(manifestDir)) {
+              fs.mkdirSync(manifestDir, { recursive: true });
+            }
+
+            // Generate manifest for date or date range
+            if (filter.filterType || (filter.after && filter.before)) {
+              // Date range - generate combined manifest
+              const startDate = filter.after || filter.date;
+              const endDate = filter.before || filter.date;
+              logger.info(`Generating manifest for date range: ${startDate} to ${endDate}`);
+              await generateManifestToFile(dbPath, startDate, sourceName, manifestPath, endDate);
+            } else {
+              // Single date
+              logger.info(`Generating manifest for date: ${dateStr}`);
+              await generateManifestToFile(dbPath, dateStr, sourceName, manifestPath);
+            }
+
+            logger.success(`Media manifest generated: ${manifestPath}`);
+          } catch (error) {
+            logger.error(`Manifest generation failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+          break; // Only generate one manifest per run
+        }
+      }
+    }
 
     /**
      * Generate summaries if not in fetch-only mode

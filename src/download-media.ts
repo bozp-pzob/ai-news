@@ -1303,6 +1303,78 @@ class MediaDownloader {
 }
 
 /**
+ * Standalone helper function for generating manifests
+ * Can be imported and used from other modules like historical.ts
+ */
+export async function generateManifestToFile(
+  dbPath: string,
+  dateStr: string,
+  sourceName: string,
+  outputPath: string,
+  endDateStr?: string
+): Promise<MediaManifest> {
+  const downloader = new MediaDownloader(dbPath, './media'); // outputDir not used for manifest
+  await downloader.init();
+
+  try {
+    if (endDateStr) {
+      // Date range: generate combined manifest
+      const startDate = new Date(dateStr);
+      const endDate = new Date(endDateStr);
+      const allEntries: MediaManifestEntry[] = [];
+      const seenUrls = new Set<string>();
+
+      // Iterate through each date in range
+      const currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const manifest = await downloader.generateManifest(currentDate, sourceName);
+        for (const entry of manifest.files) {
+          if (!seenUrls.has(entry.url)) {
+            seenUrls.add(entry.url);
+            allEntries.push(entry);
+          }
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // Build combined manifest
+      const combinedManifest: MediaManifest = {
+        date: `${dateStr}_to_${endDateStr}`,
+        source: sourceName,
+        generated_at: new Date().toISOString(),
+        base_path: `${sourceName}-media`,
+        files: allEntries,
+        stats: {
+          total_files: allEntries.length,
+          by_type: allEntries.reduce((acc, e) => {
+            acc[e.type] = (acc[e.type] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>),
+          total_size_bytes: allEntries.reduce((sum, e) => sum + (e.size || 0), 0),
+        },
+      };
+
+      // Ensure output directory exists
+      const fs = await import('fs');
+      const path = await import('path');
+      const dir = path.dirname(outputPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      fs.writeFileSync(outputPath, JSON.stringify(combinedManifest, null, 2));
+      return combinedManifest;
+    } else {
+      // Single date
+      const date = new Date(dateStr);
+      return await downloader.generateManifestToFile(date, sourceName, outputPath);
+    }
+  } finally {
+    await downloader.close();
+  }
+}
+
+/**
  * Main execution function
  */
 async function main() {
