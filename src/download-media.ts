@@ -1409,8 +1409,9 @@ Usage:
   npm run download-media -- --db ./custom.sqlite   # Use custom database
   npm run download-media -- --output ./downloads   # Custom output directory
 
-Manifest Generation (for VPS download):
-  npm run download-media -- --generate-manifest --date 2024-01-15 --source elizaos --manifest-output ./output/manifest.json
+Manifest Generation (for VPS download - no API calls, reads from database):
+  npm run generate-manifest -- --date 2024-01-15 --source elizaos --db ./data/elizaos.sqlite
+  npm run generate-manifest -- --start 2024-01-01 --end 2024-01-15 --source elizaos --db ./data/elizaos.sqlite
 
 Options:
   --date YYYY-MM-DD       Download/generate manifest for specific date
@@ -1465,12 +1466,20 @@ Options:
 
     // Manifest generation mode
     if (generateManifest) {
-      const date = dateStr ? new Date(dateStr) : new Date();
-      const dateStrFormatted = date.toISOString().split('T')[0];
       const outputPath = manifestOutput || `./output/${sourceName}/media-manifest.json`;
+      let manifest: MediaManifest;
 
-      logger.info(`Generating media manifest for ${dateStrFormatted}`);
-      const manifest = await downloader.generateManifestToFile(date, sourceName, outputPath);
+      if (startDateStr && endDateStr) {
+        // Date range manifest
+        logger.info(`Generating media manifest for range: ${startDateStr} to ${endDateStr}`);
+        manifest = await generateManifestToFile(dbPath, startDateStr, sourceName, outputPath, endDateStr);
+      } else {
+        // Single date manifest
+        const date = dateStr ? new Date(dateStr) : new Date();
+        const dateStrFormatted = date.toISOString().split('T')[0];
+        logger.info(`Generating media manifest for ${dateStrFormatted}`);
+        manifest = await downloader.generateManifestToFile(date, sourceName, outputPath);
+      }
 
       logger.info(`\nManifest Summary:`);
       logger.info(`  Date: ${manifest.date}`);

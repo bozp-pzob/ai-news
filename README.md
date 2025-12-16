@@ -217,19 +217,20 @@ Discord media files (images, videos, attachments) can be downloaded to a VPS usi
 
 ### Generate Manifest Locally
 
+No API calls - reads directly from existing database:
+
 ```bash
-# Generate manifest from local database (standalone)
-npm run generate-manifest -- --db data/elizaos.sqlite --date 2024-12-14 --source elizaos --manifest-output ./output/manifest.json
+# Single date
+npm run generate-manifest -- --db data/elizaos.sqlite --date 2024-12-14 --source elizaos
 
-# Generate manifest as part of historical run (recommended for backfill)
-npm run historical -- --source=elizaos.json --date=2025-01-15 --generate-manifest=true --output=./output
+# Date range (for backfill)
+npm run generate-manifest -- --db data/elizaos.sqlite --start 2024-12-01 --end 2024-12-14 --source elizaos
 
-# Backfill: generate manifest for a date range
-npm run historical -- --source=elizaos.json --after=2025-01-01 --before=2025-01-15 --generate-manifest=true --output=./output
+# Custom output path
+npm run generate-manifest -- --db data/elizaos.sqlite --date 2024-12-14 --source elizaos --manifest-output ./my-manifest.json
 
 # View manifest contents
-cat ./output/elizaos/media-manifest.json | jq '.files | length'  # Count files
-cat ./output/elizaos/media-manifest.json | jq '.stats'           # Stats summary
+cat ./output/elizaos/media-manifest.json | jq '.stats'
 ```
 
 ### VPS Setup
