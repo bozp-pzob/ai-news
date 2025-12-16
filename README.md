@@ -233,6 +233,26 @@ npm run generate-manifest -- --db data/elizaos.sqlite --date 2024-12-14 --source
 cat ./output/elizaos/media-manifest.json | jq '.stats'
 ```
 
+### Manifest Contents
+
+Each manifest entry includes full Discord metadata for querying:
+
+```bash
+# Filter by user
+cat manifest.json | jq '.files[] | select(.user_id == "123456789")'
+
+# Only direct attachments (no embeds)
+cat manifest.json | jq '.files[] | select(.media_type == "attachment")'
+
+# Files with reactions
+cat manifest.json | jq '.files[] | select(.reactions != null)'
+
+# Count per user
+cat manifest.json | jq '[.files[].user_id] | group_by(.) | map({user: .[0], count: length}) | sort_by(-.count)'
+```
+
+Fields: `url`, `filename`, `user_id`, `guild_id`, `channel_id`, `message_id`, `message_content`, `reactions`, `media_type`, `content_type`, `width`, `height`, `size`, `proxy_url`
+
 ### VPS Setup
 
 ```bash
@@ -240,23 +260,33 @@ cat ./output/elizaos/media-manifest.json | jq '.stats'
 git clone https://github.com/M3-org/ai-news.git ~/ai-news-media
 python3 ~/ai-news-media/scripts/media-sync.py setup
 
-# Download media
-python3 ~/ai-news-media/scripts/media-sync.py sync --dry-run  # Preview downloads
-python3 ~/ai-news-media/scripts/media-sync.py sync            # Download files
-python3 ~/ai-news-media/scripts/media-sync.py sync -v         # Verbose (show skipped)
-
-# Disk space management
+# Download media (from gh-pages manifests)
+python3 ~/ai-news-media/scripts/media-sync.py sync --dry-run  # Preview
+python3 ~/ai-news-media/scripts/media-sync.py sync            # Download
 python3 ~/ai-news-media/scripts/media-sync.py sync --min-free 1000  # Stop if <1GB free
-MIN_FREE_SPACE_MB=2000 python3 scripts/media-sync.py sync           # Via environment
 
-# Check status (shows disk usage and media sizes)
+# Check status (disk usage and media sizes)
 python3 ~/ai-news-media/scripts/media-sync.py status
-
-# Uninstall systemd timer
-python3 ~/ai-news-media/scripts/media-sync.py uninstall
 ```
 
-The `setup` command installs a systemd timer that runs daily at 01:30 UTC. Downloads stop automatically if disk space drops below the threshold (default: 500MB).
+The `setup` command installs a systemd timer that runs daily at 01:30 UTC.
+
+### Download with Fresh URLs
+
+Discord CDN URLs expire after ~24 hours. Use `refresh` to fetch fresh URLs and download:
+
+```bash
+export DISCORD_TOKEN  # Bot token required
+
+# Download all files for a specific user
+python3 scripts/media-sync.py refresh manifest.json --user USER_ID -o ./user_media
+
+# Only attachments (no embeds/thumbnails)
+python3 scripts/media-sync.py refresh manifest.json --user USER_ID --type attachment
+
+# Preview without downloading
+python3 scripts/media-sync.py refresh manifest.json --user USER_ID --dry-run
+```
 
 ### Manifest Location
 
