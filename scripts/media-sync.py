@@ -20,8 +20,9 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from urllib.request import urlopen, urlretrieve
+from urllib.request import urlopen, urlretrieve, Request
 from urllib.error import URLError, HTTPError
+import time
 
 # === Configuration ===
 REPO = "M3-org/ai-news"
@@ -309,6 +310,134 @@ def cmd_uninstall(args):
         return 1
 
 
+def cmd_refresh(args):
+    """Refresh expired Discord URLs and download files."""
+    token = os.environ.get("DISCORD_TOKEN")
+    if not token:
+        log("DISCORD_TOKEN environment variable required", "!")
+        return 1
+
+    manifest_path = Path(args.manifest)
+    if not manifest_path.exists():
+        log(f"Manifest not found: {manifest_path}", "!")
+        return 1
+
+    output_dir = Path(args.output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    log(f"Loading manifest: {manifest_path}", "=")
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+
+    files = manifest.get("files", [])
+
+    # Filter by user if specified
+    if args.user:
+        files = [f for f in files if f.get("user_id") == args.user]
+        log(f"Filtered to user {args.user}: {len(files)} files")
+
+    # Filter by media type if specified
+    if args.type:
+        files = [f for f in files if f.get("media_type") == args.type]
+        log(f"Filtered to type {args.type}: {len(files)} files")
+
+    if not files:
+        log("No files match filters", "!")
+        return 0
+
+    # Group by channel_id/message_id to minimize API calls
+    messages = {}
+    for f in files:
+        key = (f["channel_id"], f["message_id"])
+        if key not in messages:
+            messages[key] = []
+        messages[key].append(f)
+
+    log(f"Found {len(files)} files in {len(messages)} messages")
+
+    stats = {"downloaded": 0, "failed": 0, "skipped": 0}
+
+    for (channel_id, message_id), msg_files in messages.items():
+        # Check if all files already exist
+        all_exist = all(
+            (output_dir / f.get("unique_name", f["filename"])).exists()
+            for f in msg_files
+        )
+        if all_exist and not args.force:
+            stats["skipped"] += len(msg_files)
+            if args.verbose:
+                log(f"Skipped (exists): {msg_files[0]['filename']}", "o")
+            continue
+
+        if args.dry_run:
+            for f in msg_files:
+                log(f"Would download: {f['filename']}", "o")
+            continue
+
+        # Fetch fresh URLs from Discord API
+        try:
+            url = f"https://discord.com/api/v10/channels/{channel_id}/messages/{message_id}"
+            req = Request(url, headers={"Authorization": f"Bot {token}"})
+            with urlopen(req, timeout=30) as resp:
+                msg_data = json.loads(resp.read().decode())
+        except Exception as e:
+            log(f"API error for message {message_id}: {e}", "x")
+            stats["failed"] += len(msg_files)
+            continue
+
+        # Build URL map from fresh data
+        fresh_urls = {}
+        for att in msg_data.get("attachments", []):
+            fresh_urls[att["filename"]] = att["url"]
+        for embed in msg_data.get("embeds", []):
+            if embed.get("image"):
+                fresh_urls[f"embed-image-{message_id}"] = embed["image"]["url"]
+            if embed.get("thumbnail"):
+                fresh_urls[f"embed-thumbnail-{message_id}"] = embed["thumbnail"]["url"]
+            if embed.get("video"):
+                fresh_urls[f"embed-video-{message_id}"] = embed["video"]["url"]
+
+        # Download each file
+        for f in msg_files:
+            dest = output_dir / f.get("unique_name", f["filename"])
+
+            if dest.exists() and not args.force:
+                stats["skipped"] += 1
+                continue
+
+            # Find fresh URL
+            fresh_url = fresh_urls.get(f["filename"])
+            if not fresh_url:
+                # Try partial match for embeds
+                for key, url in fresh_urls.items():
+                    if key in f["filename"]:
+                        fresh_url = url
+                        break
+
+            if not fresh_url:
+                log(f"No fresh URL for: {f['filename']}", "x")
+                stats["failed"] += 1
+                continue
+
+            try:
+                urlretrieve(fresh_url, dest)
+                log(f"Downloaded: {f['filename']}", "+")
+                stats["downloaded"] += 1
+            except Exception as e:
+                log(f"Download failed: {f['filename']} - {e}", "x")
+                stats["failed"] += 1
+
+        # Rate limit
+        time.sleep(0.5)
+
+    log(
+        f"Complete: {stats['downloaded']} downloaded, "
+        f"{stats['skipped']} skipped, {stats['failed']} failed",
+        "="
+    )
+    return 0 if stats["failed"] == 0 else 1
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="AI News Media Sync - Download media from gh-pages manifests",
@@ -322,9 +451,14 @@ Examples:
   %(prog)s status            Check disk space, timer, and logs
   %(prog)s uninstall         Remove systemd timer
 
+  %(prog)s refresh manifest.json -o ./media     Refresh URLs and download
+  %(prog)s refresh manifest.json --user 12345   Download specific user's files
+  %(prog)s refresh manifest.json --type attachment  Only direct uploads
+
 Environment:
   INSTALL_DIR        Installation directory (default: ~/ai-news-media)
   MIN_FREE_SPACE_MB  Minimum free disk space in MB (default: 500)
+  DISCORD_TOKEN      Bot token for refreshing expired URLs
 
 Exit codes:
   0  Success
@@ -373,6 +507,35 @@ Current config:
         "uninstall", help="Remove systemd service and timer"
     )
     uninstall_parser.set_defaults(func=cmd_uninstall)
+
+    # refresh command
+    refresh_parser = subparsers.add_parser(
+        "refresh", help="Refresh expired URLs via Discord API and download"
+    )
+    refresh_parser.add_argument(
+        "manifest", help="Path to manifest JSON file"
+    )
+    refresh_parser.add_argument(
+        "-o", "--output", default="./media",
+        help="Output directory for downloads (default: ./media)"
+    )
+    refresh_parser.add_argument(
+        "--user", help="Filter by user ID"
+    )
+    refresh_parser.add_argument(
+        "--type", choices=["attachment", "embed_image", "embed_thumbnail", "embed_video", "sticker"],
+        help="Filter by media type"
+    )
+    refresh_parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be downloaded"
+    )
+    refresh_parser.add_argument(
+        "--force", action="store_true", help="Re-download even if file exists"
+    )
+    refresh_parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Show skipped files"
+    )
+    refresh_parser.set_defaults(func=cmd_refresh)
 
     args = parser.parse_args()
     sys.exit(args.func(args))
