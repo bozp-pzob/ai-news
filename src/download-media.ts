@@ -240,6 +240,38 @@ interface MediaAnalytics {
   largestFilesByType: Record<string, Array<{ filename: string; size: number; url: string; }>>;
 }
 
+/**
+ * Entry in the media manifest for VPS download
+ */
+interface MediaManifestEntry {
+  url: string;
+  filename: string;
+  unique_name: string;  // filename_hash12.ext
+  type: 'image' | 'video' | 'audio' | 'document';
+  size?: number;
+  hash: string;         // 12-char hash of URL
+  message_id: string;
+  channel_id: string;
+  channel_name: string;
+  timestamp: string;
+}
+
+/**
+ * Media manifest file structure for VPS download
+ */
+interface MediaManifest {
+  date: string;
+  source: string;       // elizaos, hyperfy
+  generated_at: string;
+  base_path: string;    // e.g., "elizaos-media"
+  files: MediaManifestEntry[];
+  stats: {
+    total_files: number;
+    by_type: Record<string, number>;
+    total_size_bytes: number;
+  };
+}
+
 class MediaDownloader {
   private storage: SQLiteStorage;
   private baseDir: string;
@@ -806,7 +838,7 @@ class MediaDownloader {
     fs.mkdirSync(typeDir, { recursive: true });
     
     // Create unique filename to avoid conflicts
-    const hash = createHash('sha256').update(mediaItem.url).digest('hex').substring(0, 8);
+    const hash = createHash('sha256').update(mediaItem.url).digest('hex').substring(0, 12);
     const basename = path.parse(mediaItem.filename).name;
     const extension = path.parse(mediaItem.filename).ext;
     const uniqueFilename = `${basename}_${hash}${extension}`;
@@ -1092,6 +1124,122 @@ class MediaDownloader {
   }
 
   /**
+   * Generate a media manifest for a specific date without downloading files.
+   * The manifest contains URLs and metadata that can be used by a VPS script
+   * to download the files later.
+   *
+   * @param date - The date to generate manifest for
+   * @param sourceName - Source identifier (e.g., 'elizaos', 'hyperfy')
+   * @returns MediaManifest object
+   */
+  async generateManifest(date: Date, sourceName: string): Promise<MediaManifest> {
+    const nextDay = new Date(date);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    const startEpoch = Math.floor(date.getTime() / 1000);
+    const endEpoch = Math.floor(nextDay.getTime() / 1000);
+    const dateStr = date.toISOString().split('T')[0];
+
+    logger.info(`Generating manifest for ${dateStr} (source: ${sourceName})`);
+
+    // Get all Discord raw data items in date range
+    const items = await this.storage.getContentItemsBetweenEpoch(startEpoch, endEpoch, 'discordRawData');
+
+    logger.info(`Found ${items.length} Discord data items to process`);
+
+    // Extract all media items
+    const allMediaItems: MediaDownloadItem[] = [];
+    for (const item of items) {
+      const mediaItems = this.extractMediaFromDiscordData(item);
+      allMediaItems.push(...mediaItems);
+    }
+
+    logger.info(`Found ${allMediaItems.length} media items for manifest`);
+
+    // Convert to manifest entries
+    const manifestEntries: MediaManifestEntry[] = [];
+    const seenUrls = new Set<string>();
+    const byType: Record<string, number> = {};
+    let totalSize = 0;
+
+    for (const mediaItem of allMediaItems) {
+      // Skip duplicates by URL
+      if (seenUrls.has(mediaItem.url)) {
+        continue;
+      }
+      seenUrls.add(mediaItem.url);
+
+      // Generate unique filename with hash
+      const hash = createHash('sha256').update(mediaItem.url).digest('hex').substring(0, 12);
+      const basename = path.parse(mediaItem.filename).name;
+      const extension = path.parse(mediaItem.filename).ext;
+      const uniqueName = `${basename}_${hash}${extension}`;
+
+      // Determine file type
+      const attachment = mediaItem.originalData as DiscordAttachment;
+      const fileTypeDir = await this.getFileTypeDir(attachment.content_type || '', mediaItem.filename);
+      const type = fileTypeDir.replace(/s$/, '') as 'image' | 'video' | 'audio' | 'document'; // Remove trailing 's'
+
+      // Track stats
+      byType[type] = (byType[type] || 0) + 1;
+      if (attachment.size) {
+        totalSize += attachment.size;
+      }
+
+      manifestEntries.push({
+        url: mediaItem.url,
+        filename: mediaItem.filename,
+        unique_name: uniqueName,
+        type,
+        size: attachment.size,
+        hash,
+        message_id: mediaItem.messageId,
+        channel_id: mediaItem.channelId,
+        channel_name: mediaItem.channelName,
+        timestamp: mediaItem.messageDate
+      });
+    }
+
+    const manifest: MediaManifest = {
+      date: dateStr,
+      source: sourceName,
+      generated_at: new Date().toISOString(),
+      base_path: `${sourceName}-media`,
+      files: manifestEntries,
+      stats: {
+        total_files: manifestEntries.length,
+        by_type: byType,
+        total_size_bytes: totalSize
+      }
+    };
+
+    logger.info(`Generated manifest with ${manifest.files.length} unique files (${Object.entries(byType).map(([k, v]) => `${k}: ${v}`).join(', ')})`);
+
+    return manifest;
+  }
+
+  /**
+   * Generate manifest and save to file
+   *
+   * @param date - The date to generate manifest for
+   * @param sourceName - Source identifier (e.g., 'elizaos', 'hyperfy')
+   * @param outputPath - Path to save the manifest JSON file
+   */
+  async generateManifestToFile(date: Date, sourceName: string, outputPath: string): Promise<MediaManifest> {
+    const manifest = await this.generateManifest(date, sourceName);
+
+    // Ensure output directory exists
+    const outputDir = path.dirname(outputPath);
+    fs.mkdirSync(outputDir, { recursive: true });
+
+    // Write manifest to file
+    fs.writeFileSync(outputPath, JSON.stringify(manifest, null, 2));
+    logger.info(`Saved manifest to ${outputPath}`);
+
+    return manifest;
+  }
+
+  /**
    * Print download statistics
    */
   printStats(): void {
@@ -1155,6 +1303,78 @@ class MediaDownloader {
 }
 
 /**
+ * Standalone helper function for generating manifests
+ * Can be imported and used from other modules like historical.ts
+ */
+export async function generateManifestToFile(
+  dbPath: string,
+  dateStr: string,
+  sourceName: string,
+  outputPath: string,
+  endDateStr?: string
+): Promise<MediaManifest> {
+  const downloader = new MediaDownloader(dbPath, './media'); // outputDir not used for manifest
+  await downloader.init();
+
+  try {
+    if (endDateStr) {
+      // Date range: generate combined manifest
+      const startDate = new Date(dateStr);
+      const endDate = new Date(endDateStr);
+      const allEntries: MediaManifestEntry[] = [];
+      const seenUrls = new Set<string>();
+
+      // Iterate through each date in range
+      const currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const manifest = await downloader.generateManifest(currentDate, sourceName);
+        for (const entry of manifest.files) {
+          if (!seenUrls.has(entry.url)) {
+            seenUrls.add(entry.url);
+            allEntries.push(entry);
+          }
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // Build combined manifest
+      const combinedManifest: MediaManifest = {
+        date: `${dateStr}_to_${endDateStr}`,
+        source: sourceName,
+        generated_at: new Date().toISOString(),
+        base_path: `${sourceName}-media`,
+        files: allEntries,
+        stats: {
+          total_files: allEntries.length,
+          by_type: allEntries.reduce((acc, e) => {
+            acc[e.type] = (acc[e.type] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>),
+          total_size_bytes: allEntries.reduce((sum, e) => sum + (e.size || 0), 0),
+        },
+      };
+
+      // Ensure output directory exists
+      const fs = await import('fs');
+      const path = await import('path');
+      const dir = path.dirname(outputPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      fs.writeFileSync(outputPath, JSON.stringify(combinedManifest, null, 2));
+      return combinedManifest;
+    } else {
+      // Single date
+      const date = new Date(dateStr);
+      return await downloader.generateManifestToFile(date, sourceName, outputPath);
+    }
+  } finally {
+    await downloader.close();
+  }
+}
+
+/**
  * Main execution function
  */
 async function main() {
@@ -1164,11 +1384,14 @@ async function main() {
   let dateStr: string | undefined;
   let startDateStr: string | undefined;
   let endDateStr: string | undefined;
+  let generateManifest = false;
+  let manifestOutput: string | undefined;
+  let sourceName = 'default';
 
   // Parse command line arguments
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    
+
     switch (arg) {
       case '--help':
       case '-h':
@@ -1186,34 +1409,53 @@ Usage:
   npm run download-media -- --db ./custom.sqlite   # Use custom database
   npm run download-media -- --output ./downloads   # Custom output directory
 
+Manifest Generation (for VPS download - no API calls, reads from database):
+  npm run generate-manifest -- --date 2024-01-15 --source elizaos --db ./data/elizaos.sqlite
+  npm run generate-manifest -- --start 2024-01-01 --end 2024-01-15 --source elizaos --db ./data/elizaos.sqlite
+
 Options:
-  --date YYYY-MM-DD     Download media for specific date
-  --start YYYY-MM-DD    Start date for range download
-  --end YYYY-MM-DD      End date for range download
-  --db PATH             Database file path (default: ./data/db.sqlite)
-  --output PATH         Output directory (default: ./media)
-  --help, -h            Show this help message
+  --date YYYY-MM-DD       Download/generate manifest for specific date
+  --start YYYY-MM-DD      Start date for range download
+  --end YYYY-MM-DD        End date for range download
+  --db PATH               Database file path (default: ./data/db.sqlite)
+  --output PATH           Output directory for downloads (default: ./media)
+  --generate-manifest     Generate manifest JSON instead of downloading
+  --manifest-output PATH  Output path for manifest file
+  --source NAME           Source name for manifest (default: 'default')
+  --help, -h              Show this help message
 `);
         process.exit(0);
-        
+
       case '--date':
         dateStr = args[++i];
         break;
-        
+
       case '--start':
         startDateStr = args[++i];
         break;
-        
+
       case '--end':
         endDateStr = args[++i];
         break;
-        
+
       case '--db':
         dbPath = args[++i];
         break;
-        
+
       case '--output':
         outputDir = args[++i];
+        break;
+
+      case '--generate-manifest':
+        generateManifest = true;
+        break;
+
+      case '--manifest-output':
+        manifestOutput = args[++i];
+        break;
+
+      case '--source':
+        sourceName = args[++i];
         break;
     }
   }
@@ -1222,6 +1464,36 @@ Options:
     const downloader = new MediaDownloader(dbPath, outputDir);
     await downloader.init();
 
+    // Manifest generation mode
+    if (generateManifest) {
+      const outputPath = manifestOutput || `./output/${sourceName}/media-manifest.json`;
+      let manifest: MediaManifest;
+
+      if (startDateStr && endDateStr) {
+        // Date range manifest
+        logger.info(`Generating media manifest for range: ${startDateStr} to ${endDateStr}`);
+        manifest = await generateManifestToFile(dbPath, startDateStr, sourceName, outputPath, endDateStr);
+      } else {
+        // Single date manifest
+        const date = dateStr ? new Date(dateStr) : new Date();
+        const dateStrFormatted = date.toISOString().split('T')[0];
+        logger.info(`Generating media manifest for ${dateStrFormatted}`);
+        manifest = await downloader.generateManifestToFile(date, sourceName, outputPath);
+      }
+
+      logger.info(`\nManifest Summary:`);
+      logger.info(`  Date: ${manifest.date}`);
+      logger.info(`  Source: ${manifest.source}`);
+      logger.info(`  Total files: ${manifest.stats.total_files}`);
+      logger.info(`  By type: ${Object.entries(manifest.stats.by_type).map(([k, v]) => `${k}: ${v}`).join(', ')}`);
+      logger.info(`  Total size: ${(manifest.stats.total_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+      logger.info(`  Output: ${outputPath}`);
+
+      await downloader.close();
+      process.exit(0);
+    }
+
+    // Download mode
     let stats: DownloadStats;
 
     if (startDateStr && endDateStr) {
@@ -1247,7 +1519,7 @@ Options:
     await downloader.close();
 
     process.exit(stats.failed > 0 ? 1 : 0);
-    
+
   } catch (error) {
     logger.error(`Failed to download media: ${error}`);
     process.exit(1);
@@ -1259,4 +1531,4 @@ if (require.main === module) {
   main();
 }
 
-export { MediaDownloader, MediaDownloadItem, DownloadStats };
+export { MediaDownloader, MediaDownloadItem, DownloadStats, MediaManifest, MediaManifestEntry };

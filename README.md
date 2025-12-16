@@ -205,6 +205,65 @@ npm run webhook
 - GitHub Actions provides scheduling and monitoring
 - Simple HTTP-based integration
 
+## Media Download
+
+Discord media files (images, videos, attachments) can be downloaded to a VPS using a manifest-based approach.
+
+### How It Works
+
+1. **GitHub Actions** generates a `media-manifest.json` with URLs during daily runs
+2. **Manifest** is deployed to gh-pages branch
+3. **VPS script** fetches manifest and downloads files
+
+### Generate Manifest Locally
+
+No API calls - reads directly from existing database:
+
+```bash
+# Single date
+npm run generate-manifest -- --db data/elizaos.sqlite --date 2024-12-14 --source elizaos
+
+# Date range (for backfill)
+npm run generate-manifest -- --db data/elizaos.sqlite --start 2024-12-01 --end 2024-12-14 --source elizaos
+
+# Custom output path
+npm run generate-manifest -- --db data/elizaos.sqlite --date 2024-12-14 --source elizaos --manifest-output ./my-manifest.json
+
+# View manifest contents
+cat ./output/elizaos/media-manifest.json | jq '.stats'
+```
+
+### VPS Setup
+
+```bash
+# Clone and setup
+git clone https://github.com/M3-org/ai-news.git ~/ai-news-media
+python3 ~/ai-news-media/scripts/media-sync.py setup
+
+# Download media
+python3 ~/ai-news-media/scripts/media-sync.py sync --dry-run  # Preview downloads
+python3 ~/ai-news-media/scripts/media-sync.py sync            # Download files
+python3 ~/ai-news-media/scripts/media-sync.py sync -v         # Verbose (show skipped)
+
+# Disk space management
+python3 ~/ai-news-media/scripts/media-sync.py sync --min-free 1000  # Stop if <1GB free
+MIN_FREE_SPACE_MB=2000 python3 scripts/media-sync.py sync           # Via environment
+
+# Check status (shows disk usage and media sizes)
+python3 ~/ai-news-media/scripts/media-sync.py status
+
+# Uninstall systemd timer
+python3 ~/ai-news-media/scripts/media-sync.py uninstall
+```
+
+The `setup` command installs a systemd timer that runs daily at 01:30 UTC. Downloads stop automatically if disk space drops below the threshold (default: 500MB).
+
+### Manifest Location
+
+After GitHub Actions runs, manifests are available at:
+- `https://raw.githubusercontent.com/M3-org/ai-news/gh-pages/elizaos/media-manifest.json`
+- `https://raw.githubusercontent.com/M3-org/ai-news/gh-pages/hyperfy/media-manifest.json`
+
 ## Project Structure
 
 ```

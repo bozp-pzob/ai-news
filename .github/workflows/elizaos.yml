@@ -151,7 +151,7 @@ jobs:
         run: |
           # Build command dynamically
           CMD="npm run historical -- --source=elizaos.json --output=./output"
-          
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             [ -n "${{ inputs.after_date }}" ] && CMD="$CMD --after=${{ inputs.after_date }}"
             [ -n "${{ inputs.before_date }}" ] && CMD="$CMD --before=${{ inputs.before_date }}"
@@ -160,13 +160,26 @@ jobs:
           else
             CMD="$CMD --date=${{ steps.date.outputs.YESTERDAY }}"
           fi
-          
+
           # Run historical generation (command not logged for security)
           eval $CMD
         env:
           RUN_ONCE: true
           NODE_ENV: production
           FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }}
+
+      - name: Generate media manifest
+        run: |
+          YESTERDAY=${{ steps.date.outputs.YESTERDAY }}
+          echo "Generating media manifest for $YESTERDAY..."
+
+          npm run generate-manifest -- \
+            --db=data/elizaos.sqlite \
+            --date=$YESTERDAY \
+            --source=elizaos \
+            --manifest-output=./output/elizaos/media-manifest.json
+
+          echo "✅ Media manifest generated"
 
       - name: Encrypt database
         env:
