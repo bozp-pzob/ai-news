@@ -182,6 +182,9 @@ interface MediaDownloadItem {
   userId: string;
   mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
   originalData: DiscordAttachment | DiscordEmbed | DiscordSticker;
+  // Additional context for manifest
+  messageContent?: string;
+  reactions?: Array<{ emoji: string; count: number }>;
 }
 
 interface MediaReference {
@@ -244,16 +247,33 @@ interface MediaAnalytics {
  * Entry in the media manifest for VPS download
  */
 interface MediaManifestEntry {
+  // Core identifiers
   url: string;
   filename: string;
   unique_name: string;  // filename_hash12.ext
-  type: 'image' | 'video' | 'audio' | 'document';
-  size?: number;
   hash: string;         // 12-char hash of URL
+
+  // File metadata
+  type: 'image' | 'video' | 'audio' | 'document';
+  media_type: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
+  size?: number;
+  content_type?: string;
+  width?: number;
+  height?: number;
+  proxy_url?: string;
+
+  // Discord context
   message_id: string;
   channel_id: string;
   channel_name: string;
+  guild_id: string;
+  guild_name: string;
+  user_id: string;
   timestamp: string;
+
+  // Message context (for search/filtering)
+  message_content?: string;
+  reactions?: Array<{ emoji: string; count: number }>;
 }
 
 /**
@@ -689,7 +709,9 @@ class MediaDownloader {
               guildName: item.metadata?.guildName || 'unknown',
               userId: message.uid,
               mediaType: 'attachment',
-              originalData: attachment
+              originalData: attachment,
+              messageContent: message.content,
+              reactions: message.reactions
             });
           }
         }
@@ -710,10 +732,12 @@ class MediaDownloader {
                 guildName: item.metadata?.guildName || 'unknown',
                 userId: message.uid,
                 mediaType: 'embed_image',
-                originalData: embed
+                originalData: embed,
+                messageContent: message.content,
+                reactions: message.reactions
               });
             }
-            
+
             if (embed.thumbnail) {
               const filename = `embed-thumbnail-${message.id}.${embed.thumbnail.url.split('.').pop() || 'jpg'}`;
               mediaItems.push({
@@ -727,7 +751,9 @@ class MediaDownloader {
                 guildName: item.metadata?.guildName || 'unknown',
                 userId: message.uid,
                 mediaType: 'embed_thumbnail',
-                originalData: embed
+                originalData: embed,
+                messageContent: message.content,
+                reactions: message.reactions
               });
             }
             
@@ -744,7 +770,9 @@ class MediaDownloader {
                 guildName: item.metadata?.guildName || 'unknown',
                 userId: message.uid,
                 mediaType: 'embed_video' as const,
-                originalData: { content_type: 'video/mp4', size: undefined, ...embed }
+                originalData: { content_type: 'video/mp4', size: undefined, ...embed },
+                messageContent: message.content,
+                reactions: message.reactions
               };
               
               // Apply filtering
@@ -781,7 +809,9 @@ class MediaDownloader {
                 content_type: extension === 'gif' ? 'image/gif' : 'image/png',
                 size: undefined,
                 ...sticker
-              }
+              },
+              messageContent: message.content,
+              reactions: message.reactions
             };
             
             // Apply filtering
@@ -1187,16 +1217,33 @@ class MediaDownloader {
       }
 
       manifestEntries.push({
+        // Core identifiers
         url: mediaItem.url,
         filename: mediaItem.filename,
         unique_name: uniqueName,
-        type,
-        size: attachment.size,
         hash,
+
+        // File metadata
+        type,
+        media_type: mediaItem.mediaType,
+        size: attachment.size,
+        content_type: attachment.content_type,
+        width: attachment.width,
+        height: attachment.height,
+        proxy_url: attachment.proxy_url,
+
+        // Discord context
         message_id: mediaItem.messageId,
         channel_id: mediaItem.channelId,
         channel_name: mediaItem.channelName,
-        timestamp: mediaItem.messageDate
+        guild_id: mediaItem.guildId,
+        guild_name: mediaItem.guildName,
+        user_id: mediaItem.userId,
+        timestamp: mediaItem.messageDate,
+
+        // Message context
+        message_content: mediaItem.messageContent,
+        reactions: mediaItem.reactions
       });
     }
 
