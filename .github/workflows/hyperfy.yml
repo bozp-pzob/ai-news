@@ -218,6 +218,7 @@ jobs:
           # Create target directories
           mkdir -p ./public/data
           mkdir -p ./public/hyperfy
+          touch ./public/.nojekyll  # Prevents Jekyll processing and silences gh-pages action warning
 
           # Copy encrypted SQLite database
           if [ -f "data/hyperfy-discord.sqlite.enc" ]; then

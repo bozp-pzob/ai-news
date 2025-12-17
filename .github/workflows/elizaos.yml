@@ -226,6 +226,7 @@ jobs:
           
           # Setup directories and copy files
           mkdir -p ./public/data ./public/elizaos/discord
+          touch ./public/.nojekyll  # Prevents Jekyll processing and silences gh-pages action warning
           copy_if_exists "data/elizaos.sqlite.enc" "./public/data/elizaos.sqlite.enc" "encrypted database"
           
           # Copy summary directories with proper error handling
