@@ -1162,6 +1162,16 @@ class MediaDownloader {
    * @param sourceName - Source identifier (e.g., 'elizaos', 'hyperfy')
    * @returns MediaManifest object
    */
+  async generateManifestAll(sourceName: string): Promise<MediaManifest> {
+    // Query all data from epoch 0 to far future
+    const startEpoch = 0;
+    const endEpoch = Math.floor(Date.now() / 1000) + 86400; // Tomorrow
+
+    logger.info(`Generating full manifest for all data (source: ${sourceName})`);
+
+    return this.generateManifestForEpochRange(startEpoch, endEpoch, 'all', sourceName);
+  }
+
   async generateManifest(date: Date, sourceName: string): Promise<MediaManifest> {
     const nextDay = new Date(date);
     nextDay.setDate(nextDay.getDate() + 1);
@@ -1171,6 +1181,11 @@ class MediaDownloader {
     const dateStr = date.toISOString().split('T')[0];
 
     logger.info(`Generating manifest for ${dateStr} (source: ${sourceName})`);
+
+    return this.generateManifestForEpochRange(startEpoch, endEpoch, dateStr, sourceName);
+  }
+
+  private async generateManifestForEpochRange(startEpoch: number, endEpoch: number, dateStr: string, sourceName: string): Promise<MediaManifest> {
 
     // Get all Discord raw data items in date range
     const items = await this.storage.getContentItemsBetweenEpoch(startEpoch, endEpoch, 'discordRawData');
@@ -1432,6 +1447,7 @@ async function main() {
   let startDateStr: string | undefined;
   let endDateStr: string | undefined;
   let generateManifest = false;
+  let allData = false;
   let manifestOutput: string | undefined;
   let sourceName = 'default';
 
@@ -1459,11 +1475,13 @@ Usage:
 Manifest Generation (for VPS download - no API calls, reads from database):
   npm run generate-manifest -- --date 2024-01-15 --source elizaos --db ./data/elizaos.sqlite
   npm run generate-manifest -- --start 2024-01-01 --end 2024-01-15 --source elizaos --db ./data/elizaos.sqlite
+  npm run generate-manifest -- --all --source elizaos --db ./data/elizaos.sqlite
 
 Options:
   --date YYYY-MM-DD       Download/generate manifest for specific date
   --start YYYY-MM-DD      Start date for range download
   --end YYYY-MM-DD        End date for range download
+  --all                   Generate manifest for ALL data in database
   --db PATH               Database file path (default: ./data/db.sqlite)
   --output PATH           Output directory for downloads (default: ./media)
   --generate-manifest     Generate manifest JSON instead of downloading
@@ -1497,6 +1515,10 @@ Options:
         generateManifest = true;
         break;
 
+      case '--all':
+        allData = true;
+        break;
+
       case '--manifest-output':
         manifestOutput = args[++i];
         break;
@@ -1516,7 +1538,19 @@ Options:
       const outputPath = manifestOutput || `./output/${sourceName}/media-manifest.json`;
       let manifest: MediaManifest;
 
-      if (startDateStr && endDateStr) {
+      if (allData) {
+        // All data manifest - single query, no date iteration
+        logger.info(`Generating full media manifest for all data`);
+        manifest = await downloader.generateManifestAll(sourceName);
+        // Save to file
+        const fs = await import('fs');
+        const path = await import('path');
+        const dir = path.dirname(outputPath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(outputPath, JSON.stringify(manifest, null, 2));
+      } else if (startDateStr && endDateStr) {
         // Date range manifest
         logger.info(`Generating media manifest for range: ${startDateStr} to ${endDateStr}`);
         manifest = await generateManifestToFile(dbPath, startDateStr, sourceName, outputPath, endDateStr);

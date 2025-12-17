@@ -168,18 +168,25 @@ jobs:
           NODE_ENV: production
           FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }}
 
-      - name: Generate media manifest
+      - name: Generate media manifests
         run: |
           YESTERDAY=${{ steps.date.outputs.YESTERDAY }}
-          echo "Generating media manifest for $YESTERDAY..."
 
+          echo "Generating daily media manifest for $YESTERDAY..."
           npm run generate-manifest -- \
-            --db=data/elizaos.sqlite \
-            --date=$YESTERDAY \
-            --source=elizaos \
-            --manifest-output=./output/elizaos/media-manifest.json
+            --db data/elizaos.sqlite \
+            --date $YESTERDAY \
+            --source elizaos \
+            --manifest-output ./output/elizaos/media-manifest.json
+          echo "✅ Daily manifest generated"
 
-          echo "✅ Media manifest generated"
+          echo "Generating full media manifest..."
+          npm run generate-manifest -- \
+            --db data/elizaos.sqlite \
+            --all \
+            --source elizaos \
+            --manifest-output ./output/elizaos/media-manifest-full.json
+          echo "✅ Full manifest generated"
 
       - name: Encrypt database
         env:
