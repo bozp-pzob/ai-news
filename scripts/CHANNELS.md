@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-12-19 06:37:17 UTC*
+*Updated: 2025-12-20 06:35:28 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 145 | **Currently Tracking**: 6 | **New Channels**: 139
+**Total Channels**: 152 | **Currently Tracking**: 6 | **New Channels**: 146
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -53,10 +53,9 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0355 (1450188687064432690) **NEW**
 - [ ] #ticket-0356 (1450237337488457879) **NEW**
 - [ ] #ticket-0358 (1450527404857626624) **NEW**
-- [ ] #ticket-0359 (1450642039820652709) **NEW**
+- [ ] #closed-0359 (1450642039820652709) **NEW**
 - [ ] #ticket-0360 (1450665795817312366) **NEW**
 - [ ] #ticket-0361 (1450673512355201026) **NEW**
-- [ ] #ticket-0362 (1450720420369141876) **NEW**
 - [ ] #ticket-0363 (1450723407044808856) **NEW**
 - [ ] #ticket-0364 (1450749118195564586) **NEW**
 - [ ] #ticket-0365 (1450873160919420971) **NEW**
@@ -67,6 +66,14 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0370 (1451127190606581822) **NEW**
 - [ ] #ticket-0371 (1451196573986980042) **NEW**
 - [ ] #ticket-0372 (1451309193394130984) **NEW**
+- [ ] #ticket-0373 (1451516425947582535) **NEW**
+- [ ] #ticket-0374 (1451526943118856349) **NEW**
+- [ ] #closed-0375 (1451588991806738563) **NEW**
+- [ ] #ticket-0377 (1451595965718069425) **NEW**
+- [ ] #closed-0379 (1451699723328294922) **NEW**
+- [ ] #ticket-0380 (1451699989821526283) **NEW**
+- [ ] #closed-0381 (1451719171422289951) **NEW**
+- [ ] #closed-0382 (1451721314485141515) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
@@ -183,79 +190,10 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 **💠 ENGAGE ECOSYSTEM:**
 - [ ] #💠│engage-logs (1412406873788907560) **NEW**
 
-## Hyperfy (958209073277456457)
-**Total Channels**: 54 | **Currently Tracking**: 5 | **New Channels**: 49
+## Guild 958209073277456457 (958209073277456457)
+**Total Channels**: 0 | **Currently Tracking**: 0 | **New Channels**: 0
 
 ### Channels
-- [ ] #🤝│welcome (958210210554576896) **NEW**
-- [ ] #collabland-config (1328543980865982484) **NEW**
-- [ ] #🔗│links (1014016264252969021) **NEW**
-- [ ] #🎟│roles (1328543983776825385) **NEW**
-- [ ] #❓│faq (1336620320748212224) **NEW**
-
-**Platform:**
-- [x] #⚡│general (958209074045026327)
-- [x] #🪙│hyper (1326789867312775290)
-- [ ] #🌆│share (999870741069692958) **NEW**
-- [ ] #🐞│issues (1022421054582423562) **NEW**
-- [ ] #🐋│hyperflyers (1329878804847657112) **NEW**
-- [ ] #mod-chat (1326253137119412285) **NEW**
-
-**Creators:**
-- [x] #💻│developers (994775534733115412)
-- [x] #🧊│3d-design (1031058655581323324)
-- [x] #🤖│agents (1330373197203505185)
-- [ ] #🏗│infra (1332108186676891649) **NEW**
-
-**Worlds:**
-- [ ] #vibe (1407912856250351666) **NEW**
-- [ ] #play-world (1350288455686684807) **NEW**
-- [ ] #fallen (1359000060632760350) **NEW**
-- [ ] #roustan-xyz (1372371596777619538) **NEW**
-
-**Legacy:**
-- [ ] #🌎│world-holders (1012527849024004167) **NEW**
-
-**Workgroups:**
-- [ ] #ai-docs (1347640847268839577) **NEW**
-- [ ] #webxr (1335092220092747866) **NEW**
-- [ ] #hypkg (1341570403071561794) **NEW**
-- [ ] #core (1334009864170770462) **NEW**
-- [ ] #organization (1334557753007673354) **NEW**
-- [ ] #docs (1336174072530473070) **NEW**
-- [ ] #marketing-content (1326972552442023936) **NEW**
-- [ ] #hypercity-race (1353070357354909786) **NEW**
-
-**Guardians:**
-- [ ] #new-world-events (1119599520381153400) **NEW**
-- [ ] #admin (958212042274250763) **NEW**
-- [ ] #important (1016487103531601931) **NEW**
-- [ ] #marketing (1043605684698218676) **NEW**
-- [ ] #inspo (993016681356075018) **NEW**
-- [ ] #alerts (958209588350578758) **NEW**
-- [ ] #discord-updates (1009279255819075655) **NEW**
-- [ ] #errors (965890094248644608) **NEW**
-- [ ] #missed-airdrop (1328355364646813706) **NEW**
-- [ ] #automod (1244795824395915327) **NEW**
-
-**Archived:**
-- [ ] #homebuild (1339961989111480362) **NEW**
-- [ ] #🎨│designers (1041682911348404284) **NEW**
-- [ ] #rules (958212042274250762) **NEW**
-- [ ] #🗣│self-promo (1059912035732832336) **NEW**
-- [ ] #hyperball (1333044708771106876) **NEW**
-- [ ] #🎟│get-roles (1012534165247369246) **NEW**
-- [ ] #🐞│sdk-issues (1029934945403154532) **NEW**
-- [ ] #📈│shill (1059913501415591989) **NEW**
-- [ ] #🌈│inspiration (1016283766664212490) **NEW**
-- [ ] #🙋│feat-requests (1015456103301136435) **NEW**
-- [ ] #portal-room (1021669089124548699) **NEW**
-- [ ] #🤝│interop (1150941215584424046) **NEW**
-- [ ] #💡│ideas-archive (971612146121183282) **NEW**
-- [ ] #🎛│backstage (1011085341156986890) **NEW**
-- [ ] #💏│collabs (1031495750825279508) **NEW**
-- [ ] #🎮│sneak-peek (978565225143996436) **NEW**
-
 ## Configuration Summary
 - **elizaos.json**: discordRaw (6 channels)
 - **hyperfy-discord.json**: hyperfyDiscordRaw (5 channels)
