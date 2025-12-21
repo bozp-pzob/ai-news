@@ -54,6 +54,53 @@ export class DailySummaryGenerator {
   /** Force Content grouping to be by Source types */
   private groupBySourceType: boolean;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'provider',
+        type: 'AIProvider',
+        required: true,
+        description: 'AI Provider plugin for the generator to use to create the Daily Summary.'
+      },
+      {
+        name: 'storage',
+        type: 'StoragePlugin',
+        required: true,
+        description: 'Storage Plugin to store the generated Daily Summary.'
+      },
+      {
+        name: 'summaryType',
+        type: 'string',
+        required: true,
+        description: 'Type for summary to store in the database.'
+      },
+      {
+        name: 'source',
+        type: 'string',
+        required: false,
+        description: 'Specific source to generate the summary off.'
+      },
+      {
+        name: 'outputPath',
+        type: 'string',
+        required: false,
+        description: 'Location to store summary for md and json generation'
+      },
+      {
+        name: 'maxGroupsToSummarize',
+        type: 'string',
+        required: false,
+        description: 'Max number of groups to generate summaries off ( Default 10 ).'
+      },
+      {
+        name: 'groupBySourceType',
+        type: 'boolean',
+        required: false,
+        description: 'Group by source type from storage, instead of topics generated from enriching.'
+      }
+    ]
+  };
+  
   /**
    * Creates a new DailySummaryGenerator instance
    * @param {DailySummaryGeneratorConfig} config - Configuration object for the generator
@@ -69,6 +116,58 @@ export class DailySummaryGenerator {
   }
 
   /**
+   * Performs hierarchical summarization to handle large datasets within token limits
+   * Recursively summarizes chunks until all content fits in one final summary
+   * @param summaries - Array of summary objects to process
+   * @param dateStr - Date string for context
+   * @param chunkSize - Number of summaries to process per chunk (default: 8)
+   * @returns Final markdown summary
+   */
+  private async hierarchicalSummarize(summaries: any[], dateStr: string, chunkSize: number = 8): Promise<string> {
+    if (!summaries || summaries.length === 0) {
+      return `# Daily Report - ${dateStr}\n\nNo content to summarize.`;
+    }
+
+    // Base case: if we have few enough summaries, summarize directly
+    if (summaries.length <= chunkSize) {
+      console.log(`[INFO] Direct summarization of ${summaries.length} summaries`);
+      const mdPrompt = createMarkdownPromptForJSON(summaries, dateStr);
+      return await retryOperation(() => this.provider.summarize(mdPrompt));
+    }
+
+    // Recursive case: break into chunks and summarize each chunk
+    console.log(`[INFO] Hierarchical summarization: ${summaries.length} summaries in chunks of ${chunkSize}`);
+    const chunks: any[][] = [];
+    for (let i = 0; i < summaries.length; i += chunkSize) {
+      chunks.push(summaries.slice(i, i + chunkSize));
+    }
+
+    // Summarize each chunk in parallel
+    const chunkSummaries = await Promise.all(
+      chunks.map(async (chunk, index) => {
+        console.log(`[INFO] Processing chunk ${index + 1}/${chunks.length} (${chunk.length} items)`);
+        const chunkPrompt = createMarkdownPromptForJSON(chunk, `${dateStr} - Part ${index + 1}`);
+        const chunkResult = await retryOperation(() => this.provider.summarize(chunkPrompt));
+        
+        // Return as a structured object for next level
+        return {
+          topic: `Summary Part ${index + 1}`,
+          content: [{
+            text: chunkResult.replace(/```markdown\n|```/g, ""),
+            sources: [],
+            images: [],
+            videos: []
+          }]
+        };
+      })
+    );
+
+    // Recursively summarize the chunk results
+    console.log(`[INFO] Combining ${chunkSummaries.length} chunk summaries`);
+    return await this.hierarchicalSummarize(chunkSummaries, dateStr, chunkSize);
+  }
+
+  /**
    * Generates and stores a daily summary for a specific date
    * @param {string} dateStr - ISO date string to generate summary for
    * @returns {Promise<void>}
@@ -78,13 +177,14 @@ export class DailySummaryGenerator {
       const currentTime = new Date(dateStr).getTime() / 1000;
       const targetTime = currentTime + (60 * 60 * 24);
       
+      // Fetch items based on whether a specific source type was configured
       let contentItems: ContentItem[];
       if (this.source) {
         console.log(`Fetching content for type: ${this.source}`);
         contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime, this.source);
       } else {
         console.log(`Fetching all content types for summary generation.`);
-        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime);
+        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime); // Fetch all types
       }
 
       if (contentItems.length === 0) {
@@ -92,225 +192,46 @@ export class DailySummaryGenerator {
         return;
       }
 
-      const groupedContent = this.groupObjects(contentItems); 
-      const allSummariesFromAI: any[] = []; 
+      const groupedContent = this.groupObjects(contentItems);
+
+      const allSummaries: any[] = [];
       let groupsToSummarize = 0;
-      let overallGitHubSummaryText: string | null = null;
-      const GITHUB_SUMMARY_TOPIC_ID = 'github_summary';
-      const PULL_REQUEST_TOPIC_ID = 'pull_request';
 
-      for (const group of groupedContent) {
+      for (const grouped of groupedContent) {
         try {
-          if (!group) continue;
-          const { topic, objects: itemsForThisTopic } = group; 
+          if (!grouped) continue;
+          const { topic, objects } = grouped;
           
-          if (!topic || !itemsForThisTopic || itemsForThisTopic.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) {
-            if (topic !== GITHUB_SUMMARY_TOPIC_ID) {
-                continue;
-            }
-            if (!topic || !itemsForThisTopic || itemsForThisTopic.length <= 0 ) continue;
-          }
+          if (!topic || !objects || objects.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) continue;
 
-          let promptCustomInstructions: { title?: string, aiPrompt?: string, repositoryName?: string, dataProviderName?: string } = {};
-          let topicForPrompt = topic;
-          console.log(`[DailySummaryGenerator] Preparing to summarize topic: '${topicForPrompt}'. Number of items: ${itemsForThisTopic.length}`);
-
-          if (topic === PULL_REQUEST_TOPIC_ID || topic === "issue") {
-            const repoCompany = itemsForThisTopic[0]?.metadata?.githubCompany;
-            const repoName = itemsForThisTopic[0]?.metadata?.githubRepo;
-            if (repoCompany && repoName) promptCustomInstructions.repositoryName = `${repoCompany}/${repoName}`;
-            else console.warn(`[DailySummaryGenerator] Repository details missing for GitHub topic: ${topic}`);
-            
-            let itemType = topic === "issue" ? "issue" : "pull request";
-            promptCustomInstructions.aiPrompt = 
-              String.raw`
-"""
-Please respond ONLY with a valid JSON object. Do not include any additional text, markdown, or any characters before or after the JSON object.
-
-Based on the "Input Item Sources for Analysis" provided by the system (which includes:
-  [INDEX], cid, link, title, item_author, item_number, item_state, item_createdAt,
-  item_closedAt, item_commentCount, and text_snippet for each item context):
-
-1. For each ${itemType} or group of related ${itemType}s, create a single, information-dense sentence.
-   - This summary must include the ${itemType} number, title, author (@item_author), and its current state (item_state, e.g., open, closed, merged).
-   - Mention key activities or findings very briefly if possible within the single sentence.
-
-   Example for an issue:
-     "Issue #${itemsForThisTopic[0]?.metadata?.number || 'X'} titled '${itemsForThisTopic[0]?.title || 'a topic'}' by @${itemsForThisTopic[0]?.metadata?.author || 'user'} is ${itemsForThisTopic[0]?.metadata?.state || 'open'}"
-
-   Example for a pull request:
-     "PR #${itemsForThisTopic[0]?.metadata?.number || 'Y'} by @${itemsForThisTopic[0]?.metadata?.author || 'contributor'} titled '${itemsForThisTopic[0]?.title || 'a feature'}' is ${itemsForThisTopic[0]?.metadata?.state || 'merged'}"
-
-2. The JSON output should be an object with:
-   - "title" (string, e.g., "Summary for ${topicForPrompt}")
-   - "content" (array of summary entry objects)
-
-3. Each summary entry object in the "content" array must include:
-   a. 'text' (string): Your narrative summary of one or more related input ${itemType}s.
-   b. 'contributing_item_indices' (array of numbers): An array of 0-based [INDEX] numbers from the input items that this summary text pertains to.
-
-Do NOT include detailed sources (beyond what's in your narrative text), images, or videos in YOUR response; only the contributing_item_indices.
-"""
-`
-
-          } else if (topic === GITHUB_SUMMARY_TOPIC_ID) {
- 
-            const repoCompany = itemsForThisTopic[0]?.metadata?.githubCompany;
-            const repoName = itemsForThisTopic[0]?.metadata?.githubRepo;
-            if (repoCompany && repoName) promptCustomInstructions.repositoryName = `${repoCompany}/${repoName}`;
-            promptCustomInstructions.aiPrompt = 
-              `Please respond ONLY with a valid JSON object. Do not include any additional text, markdown, or any characters before or after the JSON object.\n\n` +
-              `Based on the "Input Item Sources for Analysis" provided by the system (which includes [INDEX], cid, link, and text_snippet for each item context):\n` +
-              `1. Summarize the key information from the provided items for the topic '${topicForPrompt}'. This summary should cover overall repository activity like PRs opened/merged, issues, and contributor counts if available in the items.\n` +
-              `2. The JSON output should be an object with a "title" (string, e.g., "Overall GitHub Activity for ${promptCustomInstructions.repositoryName}") and a "content" (array of summary entry objects, typically one entry for this overall summary).\n` +
-              `3. Each summary entry object in the "content" array must include:
-` +
-              `   a. 'text' (string): Your overall summary of repository activity.
-` +
-              `   b. 'contributing_item_indices' (array of numbers): An array of 0-based [INDEX] numbers from the input items that this summary text pertains to.\n` +
-              `Do NOT include detailed sources, images, or videos in YOUR response; only the contributing_item_indices.`;
-          } else {
- 
-            if (topic === "crypto market") {
-              promptCustomInstructions.dataProviderName = (this as any).config?.marketDataProviderName || "codexAnalytics";
-            }
-            promptCustomInstructions.aiPrompt = 
-              `Please respond ONLY with a valid JSON object. Do not include any additional text, markdown, or any characters before or after the JSON object.\n\n` +
-              `Based on the "Input Item Sources for Analysis" provided by the system (which includes [INDEX], cid, link, and text_snippet for each item context):\n` +
-              `1. Summarize the key information from the provided items for the topic '${topicForPrompt}'.\n` +
-              `2. The JSON output should be an object with a "title" (string, e.g., "Summary for ${topicForPrompt}") and a "content" (array of summary entry objects).\n` +
-              `3. Each summary entry object in the "content" array must include:\n` +
-              `   a. 'text' (string): Your summary of one or more related input items.\n` +
-              `   b. 'contributing_item_indices' (array of numbers): An array of 0-based [INDEX] numbers from the input items that this summary text pertains to.\n` +
-              `Example entry: { "text": "Summary of item Z...", "contributing_item_indices": [2] }\n` +
-              `Do NOT include detailed sources, images, or videos in YOUR response; only the contributing_item_indices.`;
-          }
-
-          const prompt = createJSONPromptForTopics(topicForPrompt, itemsForThisTopic, dateStr, promptCustomInstructions);
-          let summaryTextFromAI = await retryOperation(() => this.provider.summarize(prompt));
-          console.log(`[DailySummaryGenerator] Raw AI Response for topic '${topicForPrompt}':\n${summaryTextFromAI}`);
-          let parsedAIResponse: any = {};
-          try {
-            let sanitizedJsonString = summaryTextFromAI.replace(/```json\n|```/g, "").trim();
-            parsedAIResponse = JSON.parse(sanitizedJsonString);
-          } catch (parseError: any) {
-            console.warn(`[DailySummaryGenerator] Initial JSON.parse failed for topic '${topicForPrompt}'. Attempting extraction. Error: ${parseError.message}`);
-            const firstBrace = summaryTextFromAI.indexOf('{');
-            const lastBrace = summaryTextFromAI.lastIndexOf('}');
-            if (firstBrace !== -1 && lastBrace > firstBrace) {
-              const extractedJson = summaryTextFromAI.substring(firstBrace, lastBrace + 1);
-              try {
-                parsedAIResponse = JSON.parse(extractedJson);
-                console.log(`[DailySummaryGenerator] Successfully parsed extracted JSON for topic '${topicForPrompt}'.`);
-              } catch (secondParseError: any) {
-                console.error(`[DailySummaryGenerator] Failed to parse extracted JSON for topic '${topicForPrompt}'. AI Response (substring attempt): ${extractedJson}. Error: ${secondParseError.message}`);
-                parsedAIResponse = { title: promptCustomInstructions.title || `Summary for ${topicForPrompt}`, content: [] }; 
-              }
-            } else {
-              console.error(`[DailySummaryGenerator] Could not find JSON in AI response for topic '${topicForPrompt}'. Raw AI Response: ${summaryTextFromAI}`);
-              parsedAIResponse = { title: promptCustomInstructions.title || `Summary for ${topicForPrompt}`, content: [] }; 
-            }
-          }
-          
-          let finalContentForTopic: any[] = [];
-          if (parsedAIResponse.content && Array.isArray(parsedAIResponse.content)) {
-            if (topic === PULL_REQUEST_TOPIC_ID && overallGitHubSummaryText) {
-              finalContentForTopic.push({ text: overallGitHubSummaryText });
-              overallGitHubSummaryText = null;
-            }
-            parsedAIResponse.content.forEach((aiEntry: any) => {
-              {
-                if (topic === "crypto market") {
-                  if (aiEntry.text) {
-                    finalContentForTopic.push(aiEntry.text);
-                  }
-                } else {
-                  const contentEntry: any = {
-                    text: aiEntry.text || ""
-                  };
-                  if (aiEntry.contributing_item_indices && 
-                      Array.isArray(aiEntry.contributing_item_indices) && 
-                      aiEntry.contributing_item_indices.length === 1) {
-                    const index = aiEntry.contributing_item_indices[0];
-                    if (index >= 0 && index < itemsForThisTopic.length) {
-                      const originalItem = itemsForThisTopic[index];
-                      if (originalItem.link) {
-                        contentEntry.link = originalItem.link;
-                      }
-                    }
-                  } 
-                  finalContentForTopic.push(contentEntry);
-                }
-              }
-            });
-          }
-
-          const getHumanReadableTitle = (topic: string, baseTitle: string, repoName?: string, dataProvider?: string) => {
-            switch (topic) {
-              case 'pull_request':
-                return repoName ? `Pull Requests for ${repoName}` : 'Pull Requests';
-              case 'issue':
-                return repoName ? `Issues for ${repoName}` : 'Issues';
-              case 'github_summary':
-                return repoName ? `GitHub Summary for ${repoName}` : 'GitHub Activity Summary';
-              case 'crypto market':
-                return dataProvider ? `Crypto Market Data from ${dataProvider}` : 'Crypto Market Update';
-              default:
-                return baseTitle;
-            }
-          };
-
-          const humanReadableTitle = getHumanReadableTitle(topic, parsedAIResponse.title || promptCustomInstructions.title || `Summary for ${topicForPrompt}`, promptCustomInstructions.repositoryName, promptCustomInstructions.dataProviderName);
-
-          const topicSummaryOutput: any = {
-            title: humanReadableTitle,
-            topic: topic,
-            content: finalContentForTopic 
-          };
-
-          if (promptCustomInstructions.repositoryName && !topicSummaryOutput.title.includes(promptCustomInstructions.repositoryName)) {
-            topicSummaryOutput.repository_name = promptCustomInstructions.repositoryName;
-          }
-          if (promptCustomInstructions.dataProviderName && !topicSummaryOutput.title.includes(promptCustomInstructions.dataProviderName)) {
-            topicSummaryOutput.data_provider = promptCustomInstructions.dataProviderName;
-          }
+          const prompt = createJSONPromptForTopics(topic, objects, dateStr);
+          const summaryText = await retryOperation(() => this.provider.summarize(prompt));
+          const summaryJSONString = summaryText.replace(/```json\n|```/g, "");
+          let summaryJSON = JSON.parse(summaryJSONString);
+          summaryJSON["topic"] = topic;
   
-          allSummariesFromAI.push(topicSummaryOutput);
-          if (topic !== GITHUB_SUMMARY_TOPIC_ID) {
-             groupsToSummarize++;
-          }
+          allSummaries.push(summaryJSON);
+          groupsToSummarize++;
         }
-        catch (e: any) {
-          console.error(`[DailySummaryGenerator] Error processing group for topic '${group?.topic}': ${e.message}`, e.stack);
+        catch (e) {
+          console.log(e);
         }
       }
 
-      if (allSummariesFromAI.length === 0 && contentItems.length > 0) {
-        console.warn(`[DailySummaryGenerator] No summaries were successfully generated for ${dateStr} despite having content items. Check AI provider or prompt issues.`);
-        return;
-      }
-
-      const summariesToOutput = allSummariesFromAI.map(({ topic, ...rest }) => rest);
-
-      const mdPrompt = createMarkdownPromptForJSON(summariesToOutput, dateStr);
-      const markdownReport = await retryOperation(() => this.provider.summarize(mdPrompt));
-      const markdownStringFromAI = markdownReport.replace(/```markdown\n|```/g, "");
-
-      const finalReportTitle = `Daily Report - ${dateStr}`;
+      const markdownReport = await this.hierarchicalSummarize(allSummaries, dateStr);
+      const markdownString = markdownReport.replace(/```markdown\n|```/g, "");
 
       const summaryItem: SummaryItem = {
         type: this.summaryType,
-        title: finalReportTitle,
-        categories: JSON.stringify(summariesToOutput, null, 2),
-        markdown: markdownStringFromAI,
+        title: `Daily Report - ${dateStr}`,
+        categories: JSON.stringify(allSummaries, null, 2),
+        markdown: markdownString,
         date: currentTime,
       };
 
       await this.storage.saveSummaryItem(summaryItem);
-      await this.writeSummaryToFile(dateStr, currentTime, summariesToOutput);
-      
-      const finalMarkdownContentForFile = `# ${finalReportTitle}\n\n${markdownStringFromAI}`;
-      await this.writeMDToFile(dateStr, finalMarkdownContentForFile);
+      await this.writeSummaryToFile(dateStr, currentTime, allSummaries);
+      await this.writeMDToFile(dateStr, markdownString);
 
       console.log(`Daily report for ${dateStr} generated and stored successfully.`);
     } catch (error) {
@@ -318,6 +239,12 @@ Do NOT include detailed sources (beyond what's in your narrative text), images, 
     }
   }
 
+  /**
+   * Checks if a file's content matches the database record and updates if needed
+   * @param {string} dateStr - ISO date string to check
+   * @param {SummaryItem} summary - Summary item from database
+   * @returns {Promise<void>}
+   */
   public async checkIfFileMatchesDB(dateStr: string, summary: SummaryItem) {
     try {
       let jsonParsed = await this.readSummaryFromFile(dateStr);
@@ -339,6 +266,10 @@ Do NOT include detailed sources (beyond what's in your narrative text), images, 
     }
   }
 
+  /**
+   * Generates content for the current day if not already generated
+   * @returns {Promise<void>}
+   */
   public async generateContent() {
     try {
       const today = new Date();
@@ -370,11 +301,24 @@ Do NOT include detailed sources (beyond what's in your narrative text), images, 
     }
   }
 
-  private deepEqual(obj1: any, obj2: any): boolean {
+  /**
+   * Deep equality comparison of two objects
+   * @private
+   * @param {any} obj1 - First object to compare
+   * @param {any} obj2 - Second object to compare
+   * @returns {boolean} True if objects are deeply equal
+   */
+  private deepEqual(obj1: any, obj2: any) {
     return JSON.stringify(obj1) === JSON.stringify(obj2);
   }
 
-  private async readSummaryFromFile(dateStr: string): Promise<any> {
+  /**
+   * Reads a summary from a JSON file
+   * @private
+   * @param {string} dateStr - ISO date string for the summary
+   * @returns {Promise<any>} Parsed summary data
+   */
+  private async readSummaryFromFile(dateStr: string) {
     try {
       const jsonDir = path.join(this.outputPath, 'json');
       this.ensureDirectoryExists(jsonDir);
@@ -386,11 +330,18 @@ Do NOT include detailed sources (beyond what's in your narrative text), images, 
     }
     catch (error) {
       console.error(`Error reading the file ${dateStr}:`, error);
-      return undefined;
     }
   }
 
-  private async writeSummaryToFile(dateStr: string, currentTime: number, allSummaries: any[]): Promise<void> {
+  /**
+   * Writes a summary to a JSON file
+   * @private
+   * @param {string} dateStr - ISO date string for the summary
+   * @param {number} currentTime - Current timestamp
+   * @param {any[]} allSummaries - Array of summaries to write
+   * @returns {Promise<void>}
+   */
+  private async writeSummaryToFile(dateStr: string, currentTime: number, allSummaries: any[]) {
     try {
       const jsonDir = path.join(this.outputPath, 'json');
       this.ensureDirectoryExists(jsonDir);
@@ -408,7 +359,14 @@ Do NOT include detailed sources (beyond what's in your narrative text), images, 
     }
   }
 
-  private async writeMDToFile(dateStr: string, content: string): Promise<void> {
+  /**
+   * Writes a summary to a Markdown file
+   * @private
+   * @param {string} dateStr - ISO date string for the summary
+   * @param {string} content - Markdown content to write
+   * @returns {Promise<void>}
+   */
+  private async writeMDToFile(dateStr: string, content: string) {
     try {
       const mdDir = path.join(this.outputPath, 'md');
       this.ensureDirectoryExists(mdDir);
@@ -420,19 +378,31 @@ Do NOT include detailed sources (beyond what's in your narrative text), images, 
     }
   }
 
-  private ensureDirectoryExists(dirPath: string): void {
+  /**
+   * Ensures a directory exists, creating it if necessary
+   * @private
+   * @param {string} dirPath - Path to the directory
+   */
+  private ensureDirectoryExists(dirPath: string) {
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
     }
   }
 
+  /**
+   * Groups content items, handling special cases for GitHub and crypto content
+   * @private
+   * @param {any[]} objects - Array of content items to group
+   * @returns {any[]} Array of grouped content
+   */
   private groupObjects(objects: any[]): any[] {
     const topicMap = new Map();
 
     objects.forEach(obj => {
+      // Handle GitHub content
       if (obj.source.indexOf('github') >= 0) {
         let github_topic;
-        if (obj.type === 'githubPullRequestContributor' || obj.type === 'githubPullRequest' || obj.type === 'githubCompletedItem') {
+        if (obj.type === 'githubPullRequestContributor' || obj.type === 'githubPullRequest') {
           github_topic = 'pull_request';
         } else if (obj.type === 'githubIssueContributor' || obj.type === 'githubIssue') {
           github_topic = 'issue';
@@ -440,6 +410,10 @@ Do NOT include detailed sources (beyond what's in your narrative text), images, 
           github_topic = 'commit';
         } else if (obj.type === 'githubStatsSummary') {
           github_topic = 'github_summary';
+        } else if (obj.type === 'githubTopContributors') {
+          github_topic = 'contributors';
+        } else if (obj.type === 'githubCompletedItem') {
+          github_topic = 'completed_items';
         } else {
           github_topic = 'github_other';
         }
@@ -457,6 +431,7 @@ Do NOT include detailed sources (beyond what's in your narrative text), images, 
         }
         topicMap.get(github_topic).push(obj);
       }
+      // Handle crypto analytics content
       else if (obj.cid.indexOf('analytics') >= 0) {
         let token_topic = 'crypto market';
         if (!obj.topics) {
@@ -468,8 +443,9 @@ Do NOT include detailed sources (beyond what's in your narrative text), images, 
         }
         topicMap.get(token_topic).push(obj);
       }
+      // Handle general content with topics
       else {
- if (obj.topics && obj.topics.length > 0 && !this.groupBySourceType) {
+        if (obj.topics && obj.topics.length > 0 && !this.groupBySourceType) {
           obj.topics.forEach((topic: any) => {
             let shortCase = topic.toLowerCase();
             if (!this.blockedTopics.includes(shortCase)) {
@@ -492,68 +468,70 @@ Do NOT include detailed sources (beyond what's in your narrative text), images, 
       }
     });
 
+    // Sort topics by number of items and handle miscellaneous content
     const sortedTopics = Array.from(topicMap.entries()).sort((a, b) => b[1].length - a[1].length);
     const alreadyAdded: any = {};
+
+    const miscTopics: any = {
+      topic: 'Misceleanous',
+      objects: [],
+      allTopics: []
+    };
+
     let groupedTopics: any[] = [];
-    let githubSummaryGroup: any = null;
 
-    const githubTopicNames = ['pull_request', 'issue', 'commit', 'contributors'];
-
-    const otherSortedTopics: any[] = []; 
-    for (const [topic, associatedObjects] of sortedTopics) {
-      const mergedTopics = new Set<string>();
+    sortedTopics.forEach(([topic, associatedObjects]) => {
+      const mergedTopics = new Set();
+      let topicAlreadyAdded = false;
       associatedObjects.forEach((obj: any) => {
         if (obj.topics) {
-          obj.topics.forEach((t: any) => mergedTopics.add(t.toLowerCase()));
-        }
-      });
+          obj.topics.forEach((t: any) => {
+            let lower = t.toLowerCase();
 
-      if (topic === 'github_summary') {
-        githubSummaryGroup = { topic, objects: associatedObjects, allTopics: Array.from(mergedTopics) };
-      } else {
-        otherSortedTopics.push([topic, associatedObjects]);
-      }
-    }
-
-
-    if (githubSummaryGroup) {
-      if (!alreadyAdded[githubSummaryGroup.topic]) {
-        alreadyAdded[githubSummaryGroup.topic] = true;
-        groupedTopics.push(githubSummaryGroup);
-      }
-    }
-
-    otherSortedTopics.forEach(([topic, associatedObjects]) => {
-      if (githubTopicNames.includes(topic)) {
-        if (!alreadyAdded[topic]) {
-          const mergedTopics = new Set<string>();
-          associatedObjects.forEach((obj: any) => {
-            if (obj.topics) {
-              obj.topics.forEach((t: any) => mergedTopics.add(t.toLowerCase()));
+            if (alreadyAdded[lower]) {
+              topicAlreadyAdded = true;
+            }
+            else {
+              mergedTopics.add(lower);
             }
           });
-          alreadyAdded[topic] = true;
-          groupedTopics.push({ topic, objects: associatedObjects, allTopics: Array.from(mergedTopics) });
-        }
-      }
-    });
-
-    otherSortedTopics.forEach(([topic, associatedObjects]) => {
-      if (alreadyAdded[topic]) return;
-
-      const mergedTopics = new Set<string>();
-      associatedObjects.forEach((obj: any) => {
-        if (obj.topics) {
-          obj.topics.forEach((t: any) => mergedTopics.add(t.toLowerCase()));
         }
       });
-
-      if (!(associatedObjects && associatedObjects.length > 1 && topic !== 'crypto market')) {
+      
+      // Handle GitHub topics separately
+      if (topic === 'pull_request' || topic === 'issue' || topic === 'commit' || 
+          topic === 'github_summary' || topic === 'contributors' || topic === 'completed_items') {
+        if (!topicAlreadyAdded) {
+          alreadyAdded[topic] = true;
+          groupedTopics.push({
+            topic,
+            objects: associatedObjects,
+            allTopics: Array.from(mergedTopics)
+          });
+        }
+      }
+      // Group small topics into miscellaneous
+      else if (associatedObjects && associatedObjects.length <= 1) {
+        let objectIds = associatedObjects.map((object: any) => object.id);
+        let alreadyAddedToMisc = miscTopics["objects"].find((object: any) => objectIds.indexOf(object.id) >= 0);
+        if (!alreadyAddedToMisc) {
+          miscTopics["objects"] = miscTopics["objects"].concat(associatedObjects);
+          miscTopics["allTopics"] = miscTopics["allTopics"].concat(Array.from(mergedTopics));
+        }
+      } 
+      // Add other topics normally
+      else if (!topicAlreadyAdded) {
         alreadyAdded[topic] = true;
-        groupedTopics.push({ topic, objects: associatedObjects, allTopics: Array.from(mergedTopics) });
+        groupedTopics.push({
+          topic,
+          objects: associatedObjects,
+          allTopics: Array.from(mergedTopics)
+        });
       }
     });
     
+    groupedTopics.push(miscTopics);
+
     return groupedTopics;
   }
 }

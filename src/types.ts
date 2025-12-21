@@ -8,30 +8,15 @@ import { StoragePlugin } from "./plugins/storage/StoragePlugin";
 export interface ContentItem {
   id?: number;          // Will be assigned by storage if not provided
   cid: string;          // Content Id from the source
-  type: string;          // e.g. "newsArticle", "discordMessage", "githubIssue"
-  source: string;        // e.g. "bbc-rss", "discord", "github"
-  title?: string;        // optional – for articles, title or subject line
-  text?: string;         // main text content (article abstract, message content, etc.)
+  type: string;          // e.g. "tweet", "newsArticle", "discordMessage", "githubIssue"
+  source: string;        // e.g. "twitter", "bbc-rss", "discord", "github"
+  title?: string;        // optional – for articles, maybe a tweet "title" is same as text
+  text?: string;         // main text content (tweet text, article abstract, etc.)
   link?: string;         // URL to the item
   topics?: string[];
   date?: number;           // When it was created/published
-  metadata?: {
-    // General metadata fields
-    photos?: any[]; 
-    videos?: any[];
-    likes?: number;
-    replies?: number;
-    isPin?: boolean;
-    isReply?: boolean;
-    hashtags?: string[];
-    mentions?: any[];
-    urls?: string[];
-    sensitiveContent?: boolean;
-    // Keep allowing other dynamic keys
-    [key: string]: any;
-  };
+  metadata?: Record<string, any>; // Additional key-value data
 }
-
 
 /**
  * Represents a summary of multiple content items.
@@ -39,11 +24,62 @@ export interface ContentItem {
  */
 export interface SummaryItem {
   id?: number;          // Will be assigned by storage if not provided
-  type: string;          // e.g. "newsArticle", "discordMessage", "githubIssue"
-  title?: string;        // optional – for articles, title or subject line
+  type: string;          // e.g. "tweet", "newsArticle", "discordMessage", "githubIssue"
+  title?: string;        // optional – for articles, maybe a tweet "title" is same as text
   categories?: string;   // main content (JSON string for structured summaries)
   markdown?: string;     // Optional Markdown version of the summary
   date?: number;         // When it was created/published (epoch seconds)
+}
+
+/**
+ * Represents the detailed status of an aggregation process
+ */
+export interface AggregationStatus {
+  status: 'running' | 'stopped';
+  currentSource?: string;
+  currentPhase?: 'fetching' | 'enriching' | 'generating' | 'idle' | 'connecting' | 'waiting';
+  lastUpdated?: number;
+  errors?: Array<{
+    message: string;
+    source?: string;
+    timestamp: number;
+  }>;
+  stats?: {
+    totalItemsFetched?: number;
+    itemsPerSource?: Record<string, number>;
+    lastFetchTimes?: Record<string, number>;
+  };
+}
+
+/**
+ * Represents an aggregation job with a unique ID
+ */
+export interface JobStatus {
+  jobId: string;
+  configName: string;
+  startTime: number;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress?: number; // 0-100
+  error?: string;
+  result?: any;
+  intervals?: NodeJS.Timeout[]; // Array of interval IDs for cleanup when stopping
+  aggregationStatus?: {
+    currentSource?: string;
+    currentPhase?: 'fetching' | 'enriching' | 'generating' | 'idle' | 'connecting' | 'waiting';
+    mode?: 'standard' | 'historical';
+    config?: any;
+    filter?: any;
+    errors?: Array<{
+      message: string;
+      source?: string;
+      timestamp: number;
+    }>;
+    stats?: {
+      totalItemsFetched?: number;
+      itemsPerSource?: Record<string, number>;
+      lastFetchTimes?: Record<string, number>;
+    };
+  };
 }
   
 /**
@@ -318,4 +354,106 @@ export interface ActionItems {
   type: 'Technical' | 'Documentation' | 'Feature';
   description: string;
   mentionedBy: string;
+}
+
+/**
+ * Interface for Discord message attachments
+ * @interface DiscordAttachment
+ */
+export interface DiscordAttachment {
+  id: string;
+  filename: string;
+  title?: string;
+  description?: string;
+  content_type?: string;
+  size: number;
+  url: string;
+  proxy_url?: string;
+  height?: number;
+  width?: number;
+  duration_secs?: number;
+  waveform?: string;
+  ephemeral?: boolean;
+  flags?: number;
+}
+
+/**
+ * Interface for Discord message embeds
+ * @interface DiscordEmbed
+ */
+export interface DiscordEmbed {
+  title?: string;
+  type?: string;
+  description?: string;
+  url?: string;
+  timestamp?: string;
+  color?: number;
+  image?: {
+    url: string;
+    proxy_url?: string;
+    width?: number;
+    height?: number;
+  };
+  thumbnail?: {
+    url: string;
+    proxy_url?: string;
+    width?: number;
+    height?: number;
+  };
+  video?: {
+    url?: string;
+    proxy_url?: string;
+    width?: number;
+    height?: number;
+  };
+  author?: {
+    name?: string;
+    url?: string;
+    icon_url?: string;
+  };
+  fields?: Array<{
+    name: string;
+    value: string;
+    inline?: boolean;
+  }>;
+}
+
+/**
+ * Interface for Discord message stickers
+ * @interface DiscordSticker
+ */
+export interface DiscordSticker {
+  id: string;
+  name: string;
+  format_type: number;
+  description?: string;
+}
+
+/**
+ * Configuration interface for media downloads
+ * @interface MediaDownloadConfig
+ */
+export interface MediaDownloadConfig {
+  enabled: boolean;
+  outputPath?: string;
+  maxFileSize?: number; // in bytes, default 50MB
+  allowedTypes?: string[]; // MIME types or extensions
+  excludedTypes?: string[];
+  rateLimit?: number; // milliseconds between downloads, default 100
+  retryAttempts?: number; // default 3
+}
+
+/**
+ * Interface for media download items
+ * @interface MediaDownloadItem
+ */
+export interface MediaDownloadItem {
+  url: string;
+  filename: string;
+  contentType?: string;
+  messageId: string;
+  messageDate: string;
+  channelName: string;
+  guildName: string;
+  mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
 }

@@ -9,6 +9,7 @@
 import { HistoricalAggregator } from "./aggregator/HistoricalAggregator";
 import { MediaDownloader, generateManifestToFile } from "./download-media";
 import { MediaDownloadCapable } from "./plugins/sources/DiscordRawDataSource";
+import { logger } from "./helpers/cliHelper";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -45,6 +46,33 @@ function hasMediaDownloadCapability(source: any): source is MediaDownloadCapable
      * --output/-o: Output directory path
      */
     const args = process.argv.slice(2);
+    
+    if (args.includes('--help') || args.includes('-h')) {
+      logger.info(`
+Historical Data Fetcher & Summarizer
+
+Usage:
+  npm run historical -- --source=<config_file.json> [options]
+
+Options:
+  --source=<file>       JSON configuration file (default: sources.json)
+  --date=<YYYY-MM-DD>   Specific date to fetch data for (default: today)
+  --before=<YYYY-MM-DD> End date for a range.
+  --after=<YYYY-MM-DD>  Start date for a range.
+  --during=<YYYY-MM-DD> Alias for --date.
+  --onlyFetch=<true|false>  Only fetch data, do not generate summaries.
+  --onlyGenerate=<true|false> Only generate summaries from existing data, do not fetch.
+  --download-media=<true|false> Download Discord media after data collection (default: false).
+  --output=<path>       Output directory path (default: ./)
+  -h, --help            Show this help message.
+
+Examples:
+  npm run historical -- --date=2024-01-15
+  npm run historical -- --after=2024-01-10 --before=2024-01-15
+  npm run historical -- --source=elizaos.json --download-media=true
+      `);
+      process.exit(0);
+    }
     const today = new Date();
     let sourceFile = "sources.json";
     let dateStr = today.toISOString().slice(0, 10);
@@ -57,6 +85,7 @@ function hasMediaDownloadCapability(source: any): source is MediaDownloadCapable
     let afterDate;
     let duringDate;
     let outputPath = './'; // Default output path
+    let downloadMedia = false;
 
     if (args.includes('--help') || args.includes('-h')) {
       logger.info(`
@@ -82,7 +111,6 @@ Options:
       `);
       process.exit(0);
     }
-
     args.forEach(arg => {
       if (arg.startsWith('--source=')) {
         sourceFile = arg.split('=')[1];
@@ -106,28 +134,10 @@ Options:
         duringDate = arg.split('=')[1];
       } else if (arg.startsWith('--output=') || arg.startsWith('-o=')) {
         outputPath = arg.split('=')[1];
+      } else if (arg.startsWith('--download-media=')) {
+        downloadMedia = arg.split('=')[1].toLowerCase() === 'true';
       }
     });
-
-    // Load and parse the JSON configuration file FIRST
-    const configPath = path.join(__dirname, "../config", sourceFile);
-    const configFile = fs.readFileSync(configPath, "utf8");
-    const configJSON = JSON.parse(configFile);
-
-
-    // Apply general configuration overrides from the JSON file for settings like onlyFetch, onlyGenerate
-    if (typeof configJSON?.settings?.onlyFetch === 'boolean') {
-      onlyFetch = configJSON.settings.onlyFetch; // If present in config, it overrides CLI or default
-      if (onlyFetch) logger.debug(`[HistoricalConfig] Setting: onlyFetch is true (from config).`);
-      else logger.debug(`[HistoricalConfig] Setting: onlyFetch is false (from config).`);
-    }
-    if (typeof configJSON?.settings?.onlyGenerate === 'boolean') {
-      onlyGenerate = configJSON.settings.onlyGenerate; // If present in config, it overrides CLI or default
-      if (onlyGenerate) logger.debug(`[HistoricalConfig] Setting: onlyGenerate is true (from config).`);
-      else logger.debug(`[HistoricalConfig] Setting: onlyGenerate is false (from config).`);
-    }
-    // Note: CLI flags for onlyFetch/onlyGenerate already set the initial values. 
-    // The logic above means config file settings for these take precedence if they exist.
 
     /**
      * Load all plugin modules from their respective directories
@@ -138,6 +148,25 @@ Options:
     const enricherClasses = await loadDirectoryModules("enrichers");
     const generatorClasses = await loadDirectoryModules("generators");
     const storageClasses = await loadDirectoryModules("storage");
+    
+    /**
+     * Load and parse the JSON configuration file
+     * This contains settings for all plugins and their parameters
+     */
+    const configPath = path.join(__dirname, "../config", sourceFile);
+    const configFile = fs.readFileSync(configPath, "utf8");
+    const configJSON = JSON.parse(configFile);
+
+    /**
+     * Apply configuration overrides from the JSON file
+     * These settings control the behavior of the historical aggregator
+     */
+    if (typeof configJSON?.settings?.onlyFetch === 'boolean') {
+      onlyFetch = configJSON?.settings?.onlyFetch || onlyFetch;
+    }
+    if (typeof configJSON?.settings?.onlyGenerate === 'boolean') {
+      onlyGenerate = configJSON?.settings?.onlyGenerate || onlyGenerate;
+    }
     
     /**
      * Initialize all plugin configurations
@@ -159,6 +188,18 @@ Options:
     enricherConfigs = await loadProviders(enricherConfigs, aiConfigs);
     generatorConfigs = await loadProviders(generatorConfigs, aiConfigs);
     generatorConfigs = await loadStorage(generatorConfigs, storageConfigs);
+    
+    /**
+     * Override media download settings if --download-media flag is provided
+     */
+    if (downloadMedia) {
+      sourceConfigs.forEach(config => {
+        if (config.instance && config.instance.mediaDownload !== undefined) {
+          console.log(`[INFO] Enabling media download for source: ${config.instance.name} (overriding config)`);
+          config.instance.mediaDownload.enabled = true;
+        }
+      });
+    }
     
     /**
      * Call the validation function
@@ -243,24 +284,31 @@ Options:
     }
     
     /**
-     * Download Discord media if requested and enabled in source configs
-     * Runs after data collection but before summary generation
+     * Download media files if --download-media flag is enabled
+     * This runs after historical data fetching but before summary generation
      */
     if (downloadMedia && !onlyGenerate) {
       logger.info("Starting media downloads...");
       logger.info(`Found ${sourceConfigs.length} source configs to check`);
       
-      for (const config of sourceConfigs) {
-        logger.debug(`Checking source: ${config.instance.name}`);
-        if (hasMediaDownloadCapability(config.instance) && config.instance.hasMediaDownloadEnabled()) {
-          logger.info(`✓ Source ${config.instance.name} supports media downloads`);
-          const mediaConfig = config.instance.mediaDownload;
+      // Find sources with media download capability
+      const mediaCapableSources = sourceConfigs.filter(config => 
+        hasMediaDownloadCapability(config.instance) && config.instance.hasMediaDownloadEnabled()
+      );
+      
+      if (mediaCapableSources.length === 0) {
+        logger.warning("No sources with media download enabled found.");
+      } else {
+        for (const sourceConfig of mediaCapableSources) {
+          logger.debug(`Checking source: ${sourceConfig.instance.name}`);
+          logger.info(`✓ Source ${sourceConfig.instance.name} supports media downloads`);
+          const mediaConfig = sourceConfig.instance.mediaDownload;
           logger.debug(`Media config: ${JSON.stringify(mediaConfig)}`);
           if (mediaConfig?.enabled) {
-            logger.info(`Downloading media for ${config.instance.name}...`);
+            logger.info(`Downloading media for ${sourceConfig.instance.name}...`);
             
             try {
-              const storage = (config.instance as any).storage;
+              const storage = (sourceConfig.instance as any).storage;
               const dbPath = storage.dbPath || './data/db.sqlite';
               const outputPath = mediaConfig.outputPath || './media';
               
@@ -275,22 +323,19 @@ Options:
                 stats = await downloader.downloadMediaInDateRange(startDate, endDate);
               } else {
                 // Single date download
-                const date = new Date(dateStr);
-                stats = await downloader.downloadMediaForDate(date);
+                stats = await downloader.downloadMediaForDate(new Date(filter.date));
               }
               
               downloader.printStats();
               await downloader.close();
-              logger.success(`Media download completed successfully for ${config.instance.name}`);
+              logger.info(`✅ Media download completed for source: ${sourceConfig.instance.name}`);
+              
             } catch (error) {
-              logger.error(`Media download failed for ${config.instance.name}: ${error instanceof Error ? error.message : String(error)}`);
-              // Continue processing other sources rather than failing completely
+              logger.error(`❌ Media download failed for source ${sourceConfig.instance.name}: ${error}`);
             }
           }
         }
       }
-      
-      logger.info("Media downloads completed.");
     }
 
     /**
@@ -371,7 +416,6 @@ Options:
     storageConfigs.forEach(async (storage : any) => {
       await storage.close();
     });
-
     process.exit(0);
   } catch (error) {
     console.error("Error initializing the content aggregator:", error);

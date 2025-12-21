@@ -45,6 +45,35 @@ export class GitHubStatsDataSource implements ContentSource {
   /** Base URL for GitHub preview images */
   private baseGithubImageUrl: string;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'statsUrl',
+        type: 'string',
+        required: true,
+        description: 'URL for stats data JSON endpoint'
+      },
+      {
+        name: 'historicalStatsUrl',
+        type: 'string',
+        required: true,
+        description: 'URL template for historical summary data (includes date placeholders)'
+      },
+      {
+        name: 'githubCompany',
+        type: 'string',
+        required: true,
+        description: 'GitHub company/organization name'
+      },
+      {
+        name: 'githubRepo',
+        type: 'string',
+        required: true,
+        description: 'GitHub repository name'
+      }
+    ]
+  };
+
   /**
    * Creates a new GitHubStatsDataSource instance
    * @param {GitHubStatsDataSourceConfig} config - Configuration object for the stats source

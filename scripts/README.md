@@ -2,6 +2,43 @@
 
 Utility scripts for the AI News aggregator.
 
+## Discord Channel Discovery & Management
+
+Automated tools for discovering and managing Discord channels in your AI News Aggregator configurations.
+
+### Overview
+
+This system provides two main scripts:
+
+1. **`discover-channels.mjs`** - Discovers all visible channels in your Discord servers and generates a markdown checklist
+2. **`update-configs-from-checklist.mjs`** - Updates your configuration files based on the checklist selections
+
+### Quick Start
+
+#### 1. Discover Channels
+
+```bash
+# Generate channel checklist
+npm run discover-channels
+
+# Test configurations without Discord API calls
+npm run discover-channels -- --test-configs
+```
+
+This creates `scripts/CHANNELS.md` with a checklist of all discoverable channels.
+
+#### 2. Update Configurations
+
+```bash
+# Preview changes without applying them
+npm run update-configs -- --dry-run
+
+# Apply changes to configuration files
+npm run update-configs
+```
+
+After checking/unchecking channels in `CHANNELS.md`, run this to automatically update your configuration files.
+
 ## Collection Scripts
 
 ### `collect-daily.sh`
@@ -45,9 +82,24 @@ export COLLECT_WEBHOOK_SECRET="your-secret"
 ./scripts/test-webhook.sh elizaos.json 2025-01-15
 ```
 
-## Other Scripts
+## Dashboard & Monitoring
 
-- `discover-channels.js` - Discord channel discovery
-- `update-configs-from-checklist.js` - Config management  
-- `generate-dashboard.js` - Project dashboard
-- `autodoc/` - Documentation generation
+### `generate-dashboard.mjs`
+Project dashboard with terminal and HTML output.
+
+```bash
+# Generate full dashboard
+npm run dashboard
+
+# Status overview only
+npm run status
+```
+
+## Integration
+
+This system is designed to work seamlessly with the broader AI News Aggregator plugin architecture. All discovered channels are automatically compatible with:
+
+- `DiscordRawDataSource` plugins
+- Historical data collection
+- Media download functionality  
+- Content enrichment and AI processing

@@ -3,9 +3,9 @@
 // Minimal webhook server for AI News collection
 // Zero external dependencies. Triggers collection scripts via HMAC-signed requests.
 
-import http from "http";
-import crypto from "crypto";
-import { execFile } from "child_process";
+const http = require("http");
+const crypto = require("crypto");
+const { execFile } = require("child_process");
 
 const PORT = process.env.PORT || 3000;
 const SECRET = process.env.COLLECT_WEBHOOK_SECRET;

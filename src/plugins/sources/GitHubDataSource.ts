@@ -53,6 +53,47 @@ export class GitHubDataSource implements ContentSource {
   /** Base URL for GitHub preview images */
   private baseGithubImageUrl: string;
 
+  static constructorInterface = {
+    parameters: [
+      {
+        name: 'contributorsUrl',
+        type: 'string',
+        required: true,
+        description: 'URL for contributors data JSON endpoint'
+      },
+      {
+        name: 'summaryUrl',
+        type: 'string',
+        required: true,
+        description: 'URL for summary data JSON endpoint'
+      },
+      {
+        name: 'historicalSummaryUrl',
+        type: 'string',
+        required: true,
+        description: 'URL template for historical summary data (includes date placeholders)'
+      },
+      {
+        name: 'historicalContributorUrl',
+        type: 'string',
+        required: true,
+        description: 'URL template for historical contributor data (includes date placeholders)'
+      },
+      {
+        name: 'githubCompany',
+        type: 'string',
+        required: true,
+        description: 'GitHub company/organization name'
+      },
+      {
+        name: 'githubRepo',
+        type: 'string',
+        required: true,
+        description: 'GitHub repository name'
+      }
+    ]
+  };
+
   /**
    * Creates a new GitHubDataSource instance
    * @param {GithubDataSourceConfig} config - Configuration object for the GitHub source

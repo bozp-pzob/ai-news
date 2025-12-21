@@ -9,13 +9,14 @@ A modular TypeScript-based news aggregator that collects, enriches, and analyzes
 
 - **Diverse Data Sources**  
   Pre-built plugins for:
-  - Discord (raw messages, user details, AI-summarized conversations)
+  - Discord (raw messages, user details, AI-summarized conversations, media download)
   - GitHub (repository statistics, contributor activity)
   - Cryptocurrency Analytics (Solana via DexScreener, general tokens via Codex API, market data via CoinGecko)
   - Generic APIs (configurable for various REST endpoints)
 
 - **AI-Powered Processing**
   - Automated content summarization (e.g., daily reports, Discord channel activity) using configurable AI providers (OpenAI, OpenRouter).
+  - Token limit resilience with automatic fallback models for large content processing.
   - Optional content enrichment (e.g., topic extraction, image generation).
 
 - **Flexible Storage & Output**
@@ -108,8 +109,8 @@ npm start -- --source=elizaos.json
 ```bash
 npm run historical -- --source=elizaos.json --output=./output
 npm run historical -- --source=hyperfy-discord.json --after=2024-01-10 --before=2024-01-16 --output=./output/hyperfy
-npm run historical -- --source=elizaos.json --after=2024-01-15 --output=./output
-npm run historical -- --source=elizaos.json --before=2024-01-10 --output=./output
+npm run historical -- --source=discord-raw.json --after=2024-01-15 --output=./output/discord
+npm run historical -- --source=discord-raw.json --before=2024-01-10 --output=./output/discord
 ```
 
 ## Channel Management
@@ -123,6 +124,17 @@ npm run discover-channels
 
 # Test mode (validate configs without Discord API)
 npm run discover-channels -- --test-configs
+
+# With media download
+npm run historical -- --source=elizaos.json --download-media=true --date=2024-01-15
+```
+
+## Media Download
+
+```bash
+npm run download-media                                    # Today's media
+npm run download-media -- --date=2024-01-15             # Specific date
+npm run download-media -- --start=2024-01-10 --end=2024-01-15  # Date range
 ```
 
 📋 **Channel Checklist**: View and edit tracked channels at [scripts/CHANNELS.md](scripts/CHANNELS.md)
