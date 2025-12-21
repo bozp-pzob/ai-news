@@ -249,18 +249,20 @@ interface MediaAnalytics {
 interface MediaManifestEntry {
   // Core identifiers
   url: string;
+  proxy_url?: string;   // Discord proxy URL for external media
   filename: string;
-  unique_name: string;  // filename_hash12.ext
-  hash: string;         // 12-char hash of URL
+  unique_name: string;  // hash12.ext
+  hash: string;         // 12-char hash of normalized URL
 
   // File metadata
   type: 'image' | 'video' | 'audio' | 'document';
+  is_spoiler?: boolean;   // filename starts with SPOILER_
+  is_animated?: boolean;  // animated content (GIF, a_ prefix)
   media_type: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
   size?: number;
   content_type?: string;
   width?: number;
   height?: number;
-  proxy_url?: string;
 
   // Discord context
   message_id: string;
@@ -790,7 +792,8 @@ class MediaDownloader {
         // Process stickers
         if (message.sticker_items) {
           for (const sticker of message.sticker_items) {
-            const extension = sticker.format_type === 1 ? 'png' : 'gif';
+            // Use proper sticker format extension (1=PNG, 2=APNG, 3=Lottie/JSON, 4=GIF)
+            const extension = this.getStickerExtension(sticker.format_type);
             const filename = `${sticker.name}.${extension}`;
             const stickerUrl = `https://media.discordapp.net/stickers/${sticker.id}.${extension}`;
             
@@ -867,11 +870,12 @@ class MediaDownloader {
     // Ensure directories exist
     fs.mkdirSync(typeDir, { recursive: true });
     
-    // Create unique filename to avoid conflicts
-    const hash = createHash('sha256').update(mediaItem.url).digest('hex').substring(0, 12);
-    const basename = path.parse(mediaItem.filename).name;
-    const extension = path.parse(mediaItem.filename).ext;
-    const uniqueFilename = `${basename}_${hash}${extension}`;
+    // Create unique filename: {hash12}.{ext}
+    // Normalize URL to strip expiring params for consistent hashing
+    const normalizedUrl = this.normalizeDiscordUrl(mediaItem.url);
+    const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 12);
+    const ext = this.getValidatedExtension(attachment.content_type, mediaItem.url, mediaItem.mediaType);
+    const uniqueFilename = `${hash}.${ext}`;
     const filePath = path.join(typeDir, uniqueFilename);
     
     // Skip if file already exists, but still add to index if not already there
@@ -1076,6 +1080,151 @@ class MediaDownloader {
   }
 
   /**
+   * Normalize Discord CDN URL for consistent hashing
+   * Strips expiring signature params (ex, is, hm) so same file gets same hash
+   */
+  private normalizeDiscordUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      if (urlObj.host === 'cdn.discordapp.com' || urlObj.host === 'media.discordapp.net') {
+        urlObj.searchParams.delete('ex');  // expiry timestamp
+        urlObj.searchParams.delete('is');  // issued timestamp
+        urlObj.searchParams.delete('hm');  // hash/signature
+        return urlObj.toString();
+      }
+    } catch {}
+    return url;
+  }
+
+  /**
+   * Check if file is a spoiler (filename starts with SPOILER_)
+   */
+  private isSpoiler(filename: string): boolean {
+    return filename.startsWith('SPOILER_');
+  }
+
+  /**
+   * Check if content is animated based on hash prefix or filename
+   * Discord uses 'a_' prefix for animated avatars/icons
+   */
+  private isAnimated(hashOrFilename: string): boolean {
+    return hashOrFilename.startsWith('a_') || hashOrFilename.toLowerCase().endsWith('.gif');
+  }
+
+  /**
+   * Sanitize reactions array to handle deleted/invalid emoji gracefully
+   * Custom emoji may be deleted from the server, resulting in null/undefined fields
+   */
+  private sanitizeReactions(reactions?: Array<{ emoji: string; count: number }>): Array<{ emoji: string; count: number }> | undefined {
+    if (!reactions || reactions.length === 0) {
+      return undefined;
+    }
+
+    return reactions
+      .filter(r => {
+        // Keep reactions that have valid emoji data
+        if (!r || typeof r.count !== 'number') return false;
+        // Emoji should be a non-empty string (either unicode or custom emoji name/id)
+        if (!r.emoji || r.emoji === 'null' || r.emoji === 'undefined') return false;
+        return true;
+      })
+      .map(r => ({
+        emoji: r.emoji || '❓', // Fallback for edge cases
+        count: r.count
+      }));
+  }
+
+  /**
+   * Get sticker format extension based on format_type
+   * Format types: 1=PNG, 2=APNG, 3=Lottie, 4=GIF
+   */
+  private getStickerExtension(formatType: number): string {
+    switch (formatType) {
+      case 1: return 'png';   // PNG
+      case 2: return 'png';   // APNG (still uses .png extension)
+      case 3: return 'json';  // Lottie animation
+      case 4: return 'gif';   // GIF
+      default: return 'png';
+    }
+  }
+
+  /**
+   * Map content-type to file extension
+   * Based on actual content types found in Discord data
+   */
+  private static CONTENT_TYPE_TO_EXT: Record<string, string> = {
+    'application/json': 'json',
+    'application/pdf': 'pdf',
+    'image/gif': 'gif',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/bmp': 'bmp',
+    'image/svg+xml': 'svg',
+    'image/avif': 'avif',
+    'text/csv': 'csv',
+    'text/markdown': 'md',
+    'text/plain': 'txt',
+    'text/x-python': 'py',
+    'video/mp2t': 'ts',
+    'video/mp4': 'mp4',
+    'video/quicktime': 'mov',
+    'video/webm': 'webm',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+    'audio/ogg': 'ogg',
+    'audio/flac': 'flac',
+  };
+
+  /**
+   * Valid file extensions that can be extracted from URLs
+   */
+  private static VALID_URL_EXTENSIONS = new Set([
+    'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif',
+    'mp4', 'webm', 'mov', 'avi', 'mkv',
+    'mp3', 'wav', 'ogg', 'flac',
+    'pdf', 'txt', 'json', 'md', 'csv', 'py', 'log',
+  ]);
+
+  /**
+   * Get validated file extension from content-type, URL, or default
+   * Priority: content_type > URL path > default based on media_type
+   */
+  private getValidatedExtension(
+    contentType: string | undefined,
+    url: string,
+    mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker'
+  ): string {
+    // 1. Try content-type (most reliable for Discord attachments)
+    if (contentType) {
+      // Handle charset suffix: "text/plain; charset=utf-8" -> "text/plain"
+      const baseType = contentType.split(';')[0].trim().toLowerCase();
+      const ext = MediaDownloader.CONTENT_TYPE_TO_EXT[baseType];
+      if (ext) return ext;
+    }
+
+    // 2. Try extracting from URL path (for embeds)
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      const match = pathname.match(/\.([a-zA-Z0-9]+)$/);
+      if (match) {
+        const ext = match[1].toLowerCase();
+        if (MediaDownloader.VALID_URL_EXTENSIONS.has(ext)) {
+          return ext;
+        }
+      }
+    } catch {}
+
+    // 3. Default based on media type
+    switch (mediaType) {
+      case 'embed_video': return 'mp4';
+      case 'sticker': return 'png';
+      default: return 'jpg'; // embed_image, embed_thumbnail, attachment fallback
+    }
+  }
+
+  /**
    * Download all media from Discord data within date range
    */
   async downloadMediaInDateRange(startDate: Date, endDate: Date): Promise<DownloadStats> {
@@ -1214,16 +1363,24 @@ class MediaDownloader {
       }
       seenUrls.add(mediaItem.url);
 
-      // Generate unique filename with hash
-      const hash = createHash('sha256').update(mediaItem.url).digest('hex').substring(0, 12);
-      const basename = path.parse(mediaItem.filename).name;
-      const extension = path.parse(mediaItem.filename).ext;
-      const uniqueName = `${basename}_${hash}${extension}`;
+      // Generate hash-based unique filename: {hash12}.{ext}
+      // Normalize URL to strip expiring params for consistent hashing
+      const normalizedUrl = this.normalizeDiscordUrl(mediaItem.url);
+      const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 12);
+      const attachment = mediaItem.originalData as DiscordAttachment;
+      const ext = this.getValidatedExtension(attachment.content_type, mediaItem.url, mediaItem.mediaType);
+      const uniqueName = `${hash}.${ext}`;
 
       // Determine file type
-      const attachment = mediaItem.originalData as DiscordAttachment;
       const fileTypeDir = await this.getFileTypeDir(attachment.content_type || '', mediaItem.filename);
       const type = fileTypeDir.replace(/s$/, '') as 'image' | 'video' | 'audio' | 'document'; // Remove trailing 's'
+
+      // Detect spoiler and animated content
+      const isSpoiler = this.isSpoiler(mediaItem.filename);
+      const isAnimated = this.isAnimated(mediaItem.filename);
+
+      // Get proxy URL if available (for embed media)
+      const proxyUrl = attachment.proxy_url || undefined;
 
       // Track stats
       byType[type] = (byType[type] || 0) + 1;
@@ -1234,18 +1391,20 @@ class MediaDownloader {
       manifestEntries.push({
         // Core identifiers
         url: mediaItem.url,
+        proxy_url: proxyUrl,
         filename: mediaItem.filename,
         unique_name: uniqueName,
         hash,
 
         // File metadata
         type,
+        is_spoiler: isSpoiler || undefined,
+        is_animated: isAnimated || undefined,
         media_type: mediaItem.mediaType,
         size: attachment.size,
         content_type: attachment.content_type,
         width: attachment.width,
         height: attachment.height,
-        proxy_url: attachment.proxy_url,
 
         // Discord context
         message_id: mediaItem.messageId,
@@ -1258,7 +1417,7 @@ class MediaDownloader {
 
         // Message context
         message_content: mediaItem.messageContent,
-        reactions: mediaItem.reactions
+        reactions: this.sanitizeReactions(mediaItem.reactions)
       });
     }
 
