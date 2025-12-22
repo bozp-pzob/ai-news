@@ -38,6 +38,49 @@ export const delay = (ms: number): Promise<void> => {
 }
 
 /**
+ * Type guard to check if an object has a specific property
+ * @param obj - Object to check
+ * @param prop - Property name to check for
+ * @returns True if object has the property
+ */
+export const hasProperty = (obj: any, prop: string): obj is Record<string, any> => {
+  return obj !== null && typeof obj === 'object' && prop in obj;
+};
+
+/**
+ * Safely parses JSON with type checking
+ * @param jsonString - JSON string to parse
+ * @param fallback - Fallback value if parsing fails
+ * @returns Parsed object or fallback
+ */
+export const safeJsonParse = <T>(jsonString: string, fallback: T): T => {
+  try {
+    const result = JSON.parse(jsonString);
+    return result !== null && typeof result === 'object' ? result : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+/**
+ * Type guard to check if value is a non-empty string
+ * @param value - Value to check
+ * @returns True if value is a non-empty string
+ */
+export const isNonEmptyString = (value: any): value is string => {
+  return typeof value === 'string' && value.length > 0;
+};
+
+/**
+ * Type guard to check if value is a valid array
+ * @param value - Value to check
+ * @returns True if value is an array
+ */
+export const isValidArray = (value: any): value is any[] => {
+  return Array.isArray(value);
+};
+
+/**
  * Creates a generic Retry Operation that resolves until it is succesful.
  * Useful for hitting an outside API with exponential backing off.
  * 

@@ -34,13 +34,16 @@ export const loadDirectoryModules = async (directory : string): Promise<Record<s
     return classes;
   }
 
-  const files = fs.readdirSync(dir).filter(file => file.endsWith(".ts"));
+  // Check if we're running in compiled JavaScript or TypeScript environment
+  const isCompiledJS = __filename.endsWith('.js');
+  const extension = isCompiledJS ? '.js' : '.ts';
+  const files = fs.readdirSync(dir).filter(file => file.endsWith(extension));
   
   for (const file of files) {
     const modulePath = path.join(dir, file);
     try {
         const moduleExports = await import(modulePath);
-        const className = file.replace(".ts", "");
+        const className = file.replace(extension, "");
         classes[className] = moduleExports.default || moduleExports[className];
     } catch (importError: any) {
          logger.error(`Failed to import module ${modulePath}: ${importError.message}`);
@@ -59,7 +62,7 @@ export const loadDirectoryModules = async (directory : string): Promise<Record<s
  * @returns A promise that resolves to an array of component instances with optional intervals
  * @throws Error if a component type is unknown
  */
-export const loadItems = async (items: ConfigItem[], mapping: Record<string, any>, category: string): Promise<InstanceConfig[]> => {
+export const loadItems = async (items: ConfigItem[], mapping: Record<string, any>, category: string, secrets: any = {}): Promise<InstanceConfig[]> => {
   if (!items) return []; // Handle case where config section is missing
   return items.map((item) => {
     const { type, name, params, interval, mediaDownload } = item;
@@ -73,7 +76,7 @@ export const loadItems = async (items: ConfigItem[], mapping: Record<string, any
     }
     try {
         const resolvedParams = Object.entries(params || {}).reduce((acc, [key, value]) => {
-          acc[key] = typeof value === "string" ? resolveParam(value) : value;
+          acc[key] = typeof value === "string" ? resolveParam(value, secrets) : value;
           return acc;
         }, {} as Record<string, any>);
 
@@ -149,7 +152,10 @@ export const loadStorage = async (instances: InstanceConfig[], storages: Instanc
 /**
  * Resolves parameter values, including environment variables.
  */
-export const resolveParam = (value: string): any => { // Ensure input is string
+export const resolveParam = (value: string, secrets: any = {}): any => { // Ensure input is string
+  if (secrets[value] || secrets[value.replace("process.env.", "")]) {
+    return secrets[value] || secrets[value.replace("process.env.", "")]
+  }
   if (value.startsWith("process.env.")) {
     const envVar = value.replace("process.env.", "");
     return process.env[envVar]; // Return undefined if not found
