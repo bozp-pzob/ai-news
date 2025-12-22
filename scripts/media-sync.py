@@ -37,7 +37,7 @@ MIN_FREE_SPACE_MB = int(os.environ.get("MIN_FREE_SPACE_MB", 500))  # Default 500
 MAX_RETRY_ATTEMPTS = 8
 MAX_RETRY_AFTER_SECONDS = 60  # Cap retry-after (Discord sometimes returns absurdly high values)
 BASE_BACKOFF_SECONDS = 1  # For exponential backoff: 2^attempt + 1
-USER_AGENT = "DiscordBot (https://github.com/M3-org/ai-news, 1.0)"
+USER_AGENT = os.environ.get("DISCORD_USER_AGENT", "DiscordBot (media-sync, 1.0)")
 
 
 def normalize_discord_url(url: str) -> str:
