@@ -160,9 +160,12 @@ def download_file_with_retry(url: str, dest: Path, max_retries: int = MAX_RETRY_
                 except (ValueError, TypeError):
                     delay = MAX_RETRY_AFTER_SECONDS
 
-                log(f"Download rate limited (attempt {attempt + 1}/{max_retries}), waiting {delay:.1f}s...", "!")
+                log(f"Download rate limited (attempt {attempt + 1}/{max_retries}), Retry-After={retry_after}, waiting {delay:.1f}s...", "!")
                 time.sleep(delay)
                 continue
+            elif e.code == 404:
+                log(f"Download failed: HTTP 404 (file not found or URL expired)", "x")
+                return False
 
             elif e.code >= 500 or e.code == 408:
                 delay = (2 ** attempt) + BASE_BACKOFF_SECONDS
@@ -593,9 +596,15 @@ def cmd_refresh(args):
                         break
 
             if not fresh_url:
+                if args.verbose:
+                    log(f"Available keys: {list(fresh_urls.keys())}", "?")
+                    log(f"Looking for: {f['filename']}", "?")
                 log(f"No fresh URL for: {f['filename']}", "x")
                 stats["failed"] += 1
                 continue
+
+            if args.verbose:
+                log(f"Fresh URL obtained for: {f['filename']}", "+")
 
             # Download with retry logic (handles rate limits, exponential backoff)
             # Try proxy_url as fallback for external embed media
