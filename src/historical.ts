@@ -21,7 +21,6 @@ import {
   validateConfiguration
 } from "./helpers/configHelper";
 import { addOneDay, parseDate, formatDate, callbackDateRangeLogic } from "./helpers/dateHelper";
-import { logger } from "./helpers/cliHelper";
 
 dotenv.config();
 
@@ -46,33 +45,6 @@ function hasMediaDownloadCapability(source: any): source is MediaDownloadCapable
      * --output/-o: Output directory path
      */
     const args = process.argv.slice(2);
-    
-    if (args.includes('--help') || args.includes('-h')) {
-      logger.info(`
-Historical Data Fetcher & Summarizer
-
-Usage:
-  npm run historical -- --source=<config_file.json> [options]
-
-Options:
-  --source=<file>       JSON configuration file (default: sources.json)
-  --date=<YYYY-MM-DD>   Specific date to fetch data for (default: today)
-  --before=<YYYY-MM-DD> End date for a range.
-  --after=<YYYY-MM-DD>  Start date for a range.
-  --during=<YYYY-MM-DD> Alias for --date.
-  --onlyFetch=<true|false>  Only fetch data, do not generate summaries.
-  --onlyGenerate=<true|false> Only generate summaries from existing data, do not fetch.
-  --download-media=<true|false> Download Discord media after data collection (default: false).
-  --output=<path>       Output directory path (default: ./)
-  -h, --help            Show this help message.
-
-Examples:
-  npm run historical -- --date=2024-01-15
-  npm run historical -- --after=2024-01-10 --before=2024-01-15
-  npm run historical -- --source=elizaos.json --download-media=true
-      `);
-      process.exit(0);
-    }
     const today = new Date();
     let sourceFile = "sources.json";
     let dateStr = today.toISOString().slice(0, 10);
@@ -85,7 +57,6 @@ Examples:
     let afterDate;
     let duringDate;
     let outputPath = './'; // Default output path
-    let downloadMedia = false;
 
     if (args.includes('--help') || args.includes('-h')) {
       logger.info(`
@@ -134,8 +105,6 @@ Options:
         duringDate = arg.split('=')[1];
       } else if (arg.startsWith('--output=') || arg.startsWith('-o=')) {
         outputPath = arg.split('=')[1];
-      } else if (arg.startsWith('--download-media=')) {
-        downloadMedia = arg.split('=')[1].toLowerCase() === 'true';
       }
     });
 

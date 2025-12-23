@@ -33,6 +33,158 @@ INSTALL_DIR = Path(os.environ.get("INSTALL_DIR", Path.home() / "ai-news-media"))
 SERVICE_NAME = "ai-news-media-sync"
 MIN_FREE_SPACE_MB = int(os.environ.get("MIN_FREE_SPACE_MB", 500))  # Default 500MB
 
+# === Rate Limiting Configuration (based on DiscordChatExporter best practices) ===
+MAX_RETRY_ATTEMPTS = 8
+MAX_RETRY_AFTER_SECONDS = 60  # Cap retry-after (Discord sometimes returns absurdly high values)
+BASE_BACKOFF_SECONDS = 1  # For exponential backoff: 2^attempt + 1
+USER_AGENT = os.environ.get("DISCORD_USER_AGENT", "DiscordBot (media-sync, 1.0)")
+
+
+def normalize_discord_url(url: str) -> str:
+    """
+    Normalize Discord CDN URL for consistent hashing.
+    Strips expiring signature params (ex, is, hm) so same file gets same hash.
+    """
+    try:
+        from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+        parsed = urlparse(url)
+        if parsed.netloc in ('cdn.discordapp.com', 'media.discordapp.net'):
+            query = parse_qs(parsed.query)
+            # Remove expiring params
+            for param in ('ex', 'is', 'hm'):
+                query.pop(param, None)
+            # Rebuild URL without expiring params
+            new_query = urlencode(query, doseq=True) if query else ''
+            return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+    except:
+        pass
+    return url
+
+
+def make_request_with_retry(url: str, headers: dict = None, max_retries: int = MAX_RETRY_ATTEMPTS):
+    """
+    Make HTTP request with exponential backoff retry logic.
+    Respects Discord's rate limit headers and caps retry-after at MAX_RETRY_AFTER_SECONDS.
+
+    Returns: (response_data, response_headers) tuple
+    Raises: Exception after max retries exhausted
+    """
+    if headers is None:
+        headers = {}
+
+    # Always include User-Agent
+    if "User-Agent" not in headers:
+        headers["User-Agent"] = USER_AGENT
+
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            req = Request(url, headers=headers)
+            with urlopen(req, timeout=60) as resp:
+                # Read advisory rate limit headers for preemptive waiting
+                remaining = resp.headers.get("X-RateLimit-Remaining")
+                reset_after = resp.headers.get("X-RateLimit-Reset-After")
+
+                data = resp.read()
+
+                # If we're about to hit the limit, wait preemptively
+                if remaining is not None and reset_after is not None:
+                    try:
+                        if int(remaining) <= 0:
+                            delay = min(float(reset_after) + 1, MAX_RETRY_AFTER_SECONDS)
+                            log(f"Rate limit approaching, waiting {delay:.1f}s...", "!")
+                            time.sleep(delay)
+                    except (ValueError, TypeError):
+                        pass
+
+                return data, dict(resp.headers)
+
+        except HTTPError as e:
+            last_error = e
+
+            if e.code == 429:
+                # Rate limited - use Retry-After header, capped at max
+                retry_after = e.headers.get('Retry-After', '5')
+                try:
+                    delay = min(float(retry_after) + 1, MAX_RETRY_AFTER_SECONDS)
+                except (ValueError, TypeError):
+                    delay = MAX_RETRY_AFTER_SECONDS
+
+                log(f"Rate limited (attempt {attempt + 1}/{max_retries}), waiting {delay:.1f}s...", "!")
+                time.sleep(delay)
+                continue
+
+            elif e.code >= 500 or e.code == 408:
+                # Server error or timeout - use exponential backoff
+                delay = (2 ** attempt) + BASE_BACKOFF_SECONDS
+                log(f"Server error {e.code} (attempt {attempt + 1}/{max_retries}), retrying in {delay}s...", "!")
+                time.sleep(delay)
+                continue
+            else:
+                # Non-retryable error (4xx except 429, 408)
+                raise
+
+        except (URLError, TimeoutError, OSError) as e:
+            last_error = e
+            # Network error - use exponential backoff
+            delay = (2 ** attempt) + BASE_BACKOFF_SECONDS
+            log(f"Network error (attempt {attempt + 1}/{max_retries}), retrying in {delay}s...", "!")
+            time.sleep(delay)
+            continue
+
+    # Max retries exhausted
+    raise last_error or Exception(f"Max retries ({max_retries}) exhausted for {url}")
+
+
+def download_file_with_retry(url: str, dest: Path, max_retries: int = MAX_RETRY_ATTEMPTS) -> bool:
+    """
+    Download file with exponential backoff retry logic.
+    Returns True on success, False on failure.
+    """
+    headers = {"User-Agent": USER_AGENT}
+
+    for attempt in range(max_retries):
+        try:
+            req = Request(url, headers=headers)
+            with urlopen(req, timeout=120) as resp:
+                with open(dest, 'wb') as out_file:
+                    out_file.write(resp.read())
+            return True
+
+        except HTTPError as e:
+            if e.code == 429:
+                retry_after = e.headers.get('Retry-After', '5')
+                try:
+                    delay = min(float(retry_after) + 1, MAX_RETRY_AFTER_SECONDS)
+                except (ValueError, TypeError):
+                    delay = MAX_RETRY_AFTER_SECONDS
+
+                log(f"Download rate limited (attempt {attempt + 1}/{max_retries}), Retry-After={retry_after}, waiting {delay:.1f}s...", "!")
+                time.sleep(delay)
+                continue
+            elif e.code == 404:
+                log(f"Download failed: HTTP 404 (file not found or URL expired)", "x")
+                return False
+
+            elif e.code >= 500 or e.code == 408:
+                delay = (2 ** attempt) + BASE_BACKOFF_SECONDS
+                log(f"Download server error {e.code} (attempt {attempt + 1}/{max_retries}), retrying in {delay}s...", "!")
+                time.sleep(delay)
+                continue
+            else:
+                log(f"Download failed: HTTP {e.code}", "x")
+                return False
+
+        except (URLError, TimeoutError, OSError) as e:
+            delay = (2 ** attempt) + BASE_BACKOFF_SECONDS
+            log(f"Download network error (attempt {attempt + 1}/{max_retries}), retrying in {delay}s...", "!")
+            time.sleep(delay)
+            continue
+
+    log(f"Download failed after {max_retries} retries", "x")
+    return False
+
 
 def log(msg: str, symbol: str = "*"):
     """Print timestamped log message."""
@@ -127,14 +279,13 @@ def cmd_sync(args):
                 stats["disk_stopped"] = True
                 break
 
-            # Download
-            try:
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                urlretrieve(url, dest)
+            # Download with retry logic
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if download_file_with_retry(url, dest):
                 log(f"Downloaded: {filename}", "+")
                 stats["downloaded"] += 1
-            except Exception as e:
-                log(f"Failed: {filename} - {e}", "x")
+            else:
+                log(f"Failed: {filename}", "x")
                 stats["failed"] += 1
 
         if stats["disk_stopped"]:
@@ -358,9 +509,9 @@ def cmd_refresh(args):
     stats = {"downloaded": 0, "failed": 0, "skipped": 0}
 
     for (channel_id, message_id), msg_files in messages.items():
-        # Check if all files already exist
+        # Check if all files already exist (in their type subdirectories)
         all_exist = all(
-            (output_dir / f.get("unique_name", f["filename"])).exists()
+            (output_dir / (f.get("type", "document") + "s") / f.get("unique_name", f["filename"])).exists()
             for f in msg_files
         )
         if all_exist and not args.force:
@@ -374,16 +525,42 @@ def cmd_refresh(args):
                 log(f"Would download: {f['filename']}", "o")
             continue
 
-        # Fetch fresh URLs from Discord API
+        # Fetch fresh URLs from Discord API with retry logic
+        # Use ?around= endpoint instead of direct message fetch (works around 403 permission issues)
         try:
-            url = f"https://discord.com/api/v10/channels/{channel_id}/messages/{message_id}"
-            req = Request(url, headers={"Authorization": f"Bot {token}"})
-            with urlopen(req, timeout=30) as resp:
-                msg_data = json.loads(resp.read().decode())
+            api_url = f"https://discord.com/api/v10/channels/{channel_id}/messages?around={message_id}&limit=1"
+            data, headers = make_request_with_retry(
+                api_url,
+                headers={"Authorization": f"Bot {token}"}
+            )
+            messages_resp = json.loads(data.decode())
+
+            # Find our target message in the response
+            msg_data = None
+            for msg in messages_resp:
+                if msg["id"] == message_id:
+                    msg_data = msg
+                    break
+            if not msg_data:
+                log(f"Message not found: {message_id}", "x")
+                stats["failed"] += len(msg_files)
+                continue
         except Exception as e:
             log(f"API error for message {message_id}: {e}", "x")
             stats["failed"] += len(msg_files)
             continue
+
+        # Check for Message Content Intent issue
+        # If content is empty/None but there are attachments, the bot may lack the intent
+        content = msg_data.get("content")
+        has_attachments = len(msg_data.get("attachments", [])) > 0 or len(msg_data.get("embeds", [])) > 0
+        if has_attachments and (content is None or content == ""):
+            # Track this but don't warn on every message - we'll check at the end
+            if not hasattr(cmd_refresh, '_empty_content_count'):
+                cmd_refresh._empty_content_count = 0
+                cmd_refresh._total_msg_count = 0
+            cmd_refresh._empty_content_count += 1
+            cmd_refresh._total_msg_count += 1
 
         # Build URL map from fresh data
         fresh_urls = {}
@@ -399,7 +576,11 @@ def cmd_refresh(args):
 
         # Download each file
         for f in msg_files:
-            dest = output_dir / f.get("unique_name", f["filename"])
+            # Organize by type: images/, videos/, audio/, documents/
+            file_type = f.get("type", "document") + "s"  # image -> images
+            type_dir = output_dir / file_type
+            type_dir.mkdir(parents=True, exist_ok=True)
+            dest = type_dir / f.get("unique_name", f["filename"])
 
             if dest.exists() and not args.force:
                 stats["skipped"] += 1
@@ -415,26 +596,53 @@ def cmd_refresh(args):
                         break
 
             if not fresh_url:
+                if args.verbose:
+                    log(f"Available keys: {list(fresh_urls.keys())}", "?")
+                    log(f"Looking for: {f['filename']}", "?")
                 log(f"No fresh URL for: {f['filename']}", "x")
                 stats["failed"] += 1
                 continue
 
-            try:
-                urlretrieve(fresh_url, dest)
+            if args.verbose:
+                log(f"Fresh URL obtained for: {f['filename']}", "+")
+
+            # Download with retry logic (handles rate limits, exponential backoff)
+            # Try proxy_url as fallback for external embed media
+            downloaded = download_file_with_retry(fresh_url, dest)
+            if not downloaded and f.get("proxy_url"):
+                log(f"Trying proxy URL for: {f['filename']}", "!")
+                downloaded = download_file_with_retry(f["proxy_url"], dest)
+
+            if downloaded:
                 log(f"Downloaded: {f['filename']}", "+")
                 stats["downloaded"] += 1
-            except Exception as e:
-                log(f"Download failed: {f['filename']} - {e}", "x")
+            else:
                 stats["failed"] += 1
 
-        # Rate limit
-        time.sleep(0.5)
+            # Small delay between downloads to be respectful
+            time.sleep(0.1)
 
     log(
         f"Complete: {stats['downloaded']} downloaded, "
         f"{stats['skipped']} skipped, {stats['failed']} failed",
         "="
     )
+
+    # Check for Message Content Intent issue
+    # If ALL messages with media have empty content, the bot likely lacks the intent
+    empty_count = getattr(cmd_refresh, '_empty_content_count', 0)
+    total_count = getattr(cmd_refresh, '_total_msg_count', 0)
+    if total_count > 0 and empty_count == total_count:
+        log(
+            "Warning: All fetched messages have empty content. "
+            "The bot may lack the Message Content Intent privilege. "
+            "See: https://discord.com/developers/docs/topics/gateway#message-content-intent",
+            "!"
+        )
+    # Reset counters for next run
+    cmd_refresh._empty_content_count = 0
+    cmd_refresh._total_msg_count = 0
+
     return 0 if stats["failed"] == 0 else 1
 
 
