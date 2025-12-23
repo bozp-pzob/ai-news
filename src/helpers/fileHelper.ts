@@ -268,3 +268,18 @@ export const extractDiscordMediaData = (item: ContentItem): MediaDownloadItem[] 
 
   return mediaItems;
 }
+
+/**
+ * Writes JSON data to a file, ensuring the directory exists.
+ * @param filePath - Full path to the output file
+ * @param data - Data to serialize as JSON
+ * @param pretty - Whether to pretty-print the JSON (default: true)
+ */
+export const writeJsonFile = (filePath: string, data: unknown, pretty: boolean = true): void => {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  const content = pretty ? JSON.stringify(data, null, 2) : JSON.stringify(data);
+  fs.writeFileSync(filePath, content);
+}

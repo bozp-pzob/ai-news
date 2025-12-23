@@ -151,7 +151,7 @@ jobs:
         run: |
           # Build command dynamically
           CMD="npm run historical -- --source=elizaos.json --output=./output"
-          
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             [ -n "${{ inputs.after_date }}" ] && CMD="$CMD --after=${{ inputs.after_date }}"
             [ -n "${{ inputs.before_date }}" ] && CMD="$CMD --before=${{ inputs.before_date }}"
@@ -160,13 +160,33 @@ jobs:
           else
             CMD="$CMD --date=${{ steps.date.outputs.YESTERDAY }}"
           fi
-          
+
           # Run historical generation (command not logged for security)
           eval $CMD
         env:
           RUN_ONCE: true
           NODE_ENV: production
           FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }}
+
+      - name: Generate media manifests
+        run: |
+          YESTERDAY=${{ steps.date.outputs.YESTERDAY }}
+
+          echo "Generating daily media manifest for $YESTERDAY..."
+          npm run generate-manifest -- \
+            --db data/elizaos.sqlite \
+            --date $YESTERDAY \
+            --source elizaos \
+            --manifest-output ./output/elizaos/media-manifest.json
+          echo "✅ Daily manifest generated"
+
+          echo "Generating full media manifest..."
+          npm run generate-manifest -- \
+            --db data/elizaos.sqlite \
+            --all \
+            --source elizaos \
+            --manifest-output ./output/elizaos/media-manifest-full.json
+          echo "✅ Full manifest generated"
 
       - name: Encrypt database
         env:
@@ -206,6 +226,7 @@ jobs:
           
           # Setup directories and copy files
           mkdir -p ./public/data ./public/elizaos/discord
+          touch ./public/.nojekyll  # Prevents Jekyll processing and silences gh-pages action warning
           copy_if_exists "data/elizaos.sqlite.enc" "./public/data/elizaos.sqlite.enc" "encrypted database"
           
           # Copy summary directories with proper error handling

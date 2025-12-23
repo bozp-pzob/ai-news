@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-12-12 06:39:05 UTC*
+*Updated: 2025-12-22 06:40:28 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -21,9 +21,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #moderator-audit-logs (1285103939007811594) **NEW**
 - [ ] #collabland-config (1300245647789916190) **NEW**
 - [ ] #waiting-room (1361911608841994402) **NEW**
-- [ ] #ticket-0103 (1439433827952099411) **NEW**
-- [ ] #ticket-0267 (1445111735890743480) **NEW**
-- [ ] #ticket-0290 (1445974746989723708) **NEW**
 
 **START HERE:**
 - [ ] #rules-and-faq (1285103549944168450) **NEW**
@@ -34,38 +31,39 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 
 **DEV:**
 - [x] #💬-coders (1300025221834739744)
-- [ ] #sapience-hackathon (1447960081948872764) **NEW**
 - [ ] #💻-tech-support (1392374405606150245) **NEW**
 - [x] #core-devs (1377726087789940836)
 - [ ] #elizaos-github (1377733240449925150) **NEW**
 - [ ] #plugins-github (1377733306594099371) **NEW**
 - [ ] #cloud (1422802977457967156) **NEW**
 - [ ] #cloud-logs (1434932532473757829) **NEW**
-- [ ] #babylon (1423188508394258522) **NEW**
 - [ ] #mini-apps (1439009937438146801) **NEW**
 - [ ] #clone-ur-crush (1440207337087307817) **NEW**
 
 **MIGRATION:**
+- [ ] #closed-0290 (1445974746989723708) **NEW**
 - [ ] #ticket-response (1438601160142618725) **NEW**
 - [ ] #open-a-ticket (1423981231300935801) **NEW**
-- [ ] #ticket-0270 (1445154405807820835) **NEW**
-- [ ] #ticket-0282 (1445783215150338182) **NEW**
-- [ ] #closed-0287 (1445885520029941791) **NEW**
-- [ ] #ticket-0309 (1446626453621047338) **NEW**
-- [ ] #ticket-0323 (1447600372616007731) **NEW**
-- [ ] #ticket-0325 (1447699565435162775) **NEW**
-- [ ] #ticket-0327 (1447784655934722241) **NEW**
-- [ ] #ticket-0328 (1447788637633904693) **NEW**
-- [ ] #ticket-0330 (1447990479739424919) **NEW**
-- [ ] #ticket-0331 (1448050267516960910) **NEW**
-- [ ] #ticket-0332 (1448230371253555335) **NEW**
-- [ ] #ticket-0335 (1448441098060959874) **NEW**
-- [ ] #ticket-0336 (1448656805554028627) **NEW**
-- [ ] #ticket-0337 (1448683833355407432) **NEW**
-- [ ] #closed-0338 (1448790205355000046) **NEW**
-- [ ] #ticket-0340 (1448806926405210253) **NEW**
 - [ ] #ticket-0341 (1448873964830195896) **NEW**
-- [ ] #ticket-0342 (1448887577116414002) **NEW**
+- [ ] #ticket-0343 (1449023000253960362) **NEW**
+- [ ] #ticket-0349 (1449796311732715572) **NEW**
+- [ ] #ticket-0358 (1450527404857626624) **NEW**
+- [ ] #ticket-0363 (1450723407044808856) **NEW**
+- [ ] #ticket-0364 (1450749118195564586) **NEW**
+- [ ] #ticket-0365 (1450873160919420971) **NEW**
+- [ ] #ticket-0366 (1450894702608912394) **NEW**
+- [ ] #ticket-0367 (1451032589413519514) **NEW**
+- [ ] #ticket-0368 (1451043523594813608) **NEW**
+- [ ] #ticket-0370 (1451127190606581822) **NEW**
+- [ ] #ticket-0371 (1451196573986980042) **NEW**
+- [ ] #ticket-0372 (1451309193394130984) **NEW**
+- [ ] #ticket-0373 (1451516425947582535) **NEW**
+- [ ] #ticket-0374 (1451526943118856349) **NEW**
+- [ ] #ticket-0377 (1451595965718069425) **NEW**
+- [ ] #ticket-0380 (1451699989821526283) **NEW**
+- [ ] #ticket-0384 (1451933234324701294) **NEW**
+- [ ] #ticket-0385 (1451986277229658284) **NEW**
+- [ ] #ticket-0386 (1452272170129559807) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
@@ -86,6 +84,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #otaku (1435049002231009423) **NEW**
 - [ ] #babylon (1441448972265984191) **NEW**
 - [ ] #elizaos-testers (1372559034384646144) **NEW**
+- [ ] #sapience-hackathon (1447960081948872764) **NEW**
 - [ ] #contributor (1408523591842267158) **NEW**
 - [ ] #contributor-dev (1379775100915810314) **NEW**
 - [ ] #eliza-cabal (1406925412780740708) **NEW**
@@ -99,6 +98,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #what-i-did (1309395998870605844) **NEW**
 
 **INTERNATIONAL:**
+- [ ] #babylon (1423188508394258522) **NEW**
 - [ ] #中文频道 (1303194468949950504) **NEW**
 - [ ] #turkish-delight (1307210646525317181) **NEW**
 - [ ] #안녕하세요 (1311068612970152026) **NEW**
@@ -108,11 +108,11 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #भारत (1400485325372919900) **NEW**
 
 **ARCHIVES:**
-- [ ] #base-agent (1405275024360996904) **NEW**
 - [ ] #dev (1379823781769646150) **NEW**
 - [ ] #fun-support (1362864274862768450) **NEW**
 - [ ] #3d-ai-tv (1313222089271939102) **NEW**
 - [ ] #ideas-feedback-rants (1300756641406521416) **NEW**
+- [ ] #base-agent (1405275024360996904) **NEW**
 - [ ] #whitepaper-workgroup (1322726527569367060) **NEW**
 - [ ] #ai16zpartners-nft (1309997512563626106) **NEW**
 - [ ] #swarms-workgroup (1317335245401362513) **NEW**
@@ -180,79 +180,10 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 **💠 ENGAGE ECOSYSTEM:**
 - [ ] #💠│engage-logs (1412406873788907560) **NEW**
 
-## Hyperfy (958209073277456457)
-**Total Channels**: 54 | **Currently Tracking**: 5 | **New Channels**: 49
+## Guild 958209073277456457 (958209073277456457)
+**Total Channels**: 0 | **Currently Tracking**: 0 | **New Channels**: 0
 
 ### Channels
-- [ ] #🤝│welcome (958210210554576896) **NEW**
-- [ ] #collabland-config (1328543980865982484) **NEW**
-- [ ] #🔗│links (1014016264252969021) **NEW**
-- [ ] #🎟│roles (1328543983776825385) **NEW**
-- [ ] #❓│faq (1336620320748212224) **NEW**
-
-**Platform:**
-- [x] #⚡│general (958209074045026327)
-- [x] #🪙│hyper (1326789867312775290)
-- [ ] #🌆│share (999870741069692958) **NEW**
-- [ ] #🐞│issues (1022421054582423562) **NEW**
-- [ ] #🐋│hyperflyers (1329878804847657112) **NEW**
-- [ ] #mod-chat (1326253137119412285) **NEW**
-
-**Creators:**
-- [x] #💻│developers (994775534733115412)
-- [x] #🧊│3d-design (1031058655581323324)
-- [x] #🤖│agents (1330373197203505185)
-- [ ] #🏗│infra (1332108186676891649) **NEW**
-
-**Worlds:**
-- [ ] #vibe (1407912856250351666) **NEW**
-- [ ] #play-world (1350288455686684807) **NEW**
-- [ ] #fallen (1359000060632760350) **NEW**
-- [ ] #roustan-xyz (1372371596777619538) **NEW**
-
-**Legacy:**
-- [ ] #🌎│world-holders (1012527849024004167) **NEW**
-
-**Workgroups:**
-- [ ] #ai-docs (1347640847268839577) **NEW**
-- [ ] #webxr (1335092220092747866) **NEW**
-- [ ] #hypkg (1341570403071561794) **NEW**
-- [ ] #core (1334009864170770462) **NEW**
-- [ ] #organization (1334557753007673354) **NEW**
-- [ ] #docs (1336174072530473070) **NEW**
-- [ ] #marketing-content (1326972552442023936) **NEW**
-- [ ] #hypercity-race (1353070357354909786) **NEW**
-
-**Guardians:**
-- [ ] #new-world-events (1119599520381153400) **NEW**
-- [ ] #admin (958212042274250763) **NEW**
-- [ ] #important (1016487103531601931) **NEW**
-- [ ] #marketing (1043605684698218676) **NEW**
-- [ ] #inspo (993016681356075018) **NEW**
-- [ ] #alerts (958209588350578758) **NEW**
-- [ ] #discord-updates (1009279255819075655) **NEW**
-- [ ] #errors (965890094248644608) **NEW**
-- [ ] #missed-airdrop (1328355364646813706) **NEW**
-- [ ] #automod (1244795824395915327) **NEW**
-
-**Archived:**
-- [ ] #homebuild (1339961989111480362) **NEW**
-- [ ] #🎨│designers (1041682911348404284) **NEW**
-- [ ] #rules (958212042274250762) **NEW**
-- [ ] #🗣│self-promo (1059912035732832336) **NEW**
-- [ ] #hyperball (1333044708771106876) **NEW**
-- [ ] #🎟│get-roles (1012534165247369246) **NEW**
-- [ ] #🐞│sdk-issues (1029934945403154532) **NEW**
-- [ ] #📈│shill (1059913501415591989) **NEW**
-- [ ] #🌈│inspiration (1016283766664212490) **NEW**
-- [ ] #🙋│feat-requests (1015456103301136435) **NEW**
-- [ ] #portal-room (1021669089124548699) **NEW**
-- [ ] #🤝│interop (1150941215584424046) **NEW**
-- [ ] #💡│ideas-archive (971612146121183282) **NEW**
-- [ ] #🎛│backstage (1011085341156986890) **NEW**
-- [ ] #💏│collabs (1031495750825279508) **NEW**
-- [ ] #🎮│sneak-peek (978565225143996436) **NEW**
-
 ## Configuration Summary
 - **elizaos.json**: discordRaw (6 channels)
 - **hyperfy-discord.json**: hyperfyDiscordRaw (5 channels)

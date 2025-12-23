@@ -7,7 +7,7 @@
  */
 
 import { HistoricalAggregator } from "./aggregator/HistoricalAggregator";
-import { MediaDownloader } from "./download-media";
+import { MediaDownloader, generateManifestToFile } from "./download-media";
 import { MediaDownloadCapable } from "./plugins/sources/DiscordRawDataSource";
 import { logger } from "./helpers/cliHelper";
 import dotenv from "dotenv";
@@ -21,7 +21,6 @@ import {
   validateConfiguration
 } from "./helpers/configHelper";
 import { addOneDay, parseDate, formatDate, callbackDateRangeLogic } from "./helpers/dateHelper";
-import { logger } from "./helpers/cliHelper";
 
 dotenv.config();
 
@@ -46,44 +45,18 @@ function hasMediaDownloadCapability(source: any): source is MediaDownloadCapable
      * --output/-o: Output directory path
      */
     const args = process.argv.slice(2);
-    
-    if (args.includes('--help') || args.includes('-h')) {
-      logger.info(`
-Historical Data Fetcher & Summarizer
-
-Usage:
-  npm run historical -- --source=<config_file.json> [options]
-
-Options:
-  --source=<file>       JSON configuration file (default: sources.json)
-  --date=<YYYY-MM-DD>   Specific date to fetch data for (default: today)
-  --before=<YYYY-MM-DD> End date for a range.
-  --after=<YYYY-MM-DD>  Start date for a range.
-  --during=<YYYY-MM-DD> Alias for --date.
-  --onlyFetch=<true|false>  Only fetch data, do not generate summaries.
-  --onlyGenerate=<true|false> Only generate summaries from existing data, do not fetch.
-  --download-media=<true|false> Download Discord media after data collection (default: false).
-  --output=<path>       Output directory path (default: ./)
-  -h, --help            Show this help message.
-
-Examples:
-  npm run historical -- --date=2024-01-15
-  npm run historical -- --after=2024-01-10 --before=2024-01-15
-  npm run historical -- --source=elizaos.json --download-media=true
-      `);
-      process.exit(0);
-    }
     const today = new Date();
     let sourceFile = "sources.json";
     let dateStr = today.toISOString().slice(0, 10);
     let onlyFetch = false;
     let onlyGenerate = false;
     let downloadMedia = false;
+    let generateManifest = false;
+    let manifestOutput: string | undefined;
     let beforeDate;
     let afterDate;
     let duringDate;
     let outputPath = './'; // Default output path
-    let downloadMedia = false;
 
     if (args.includes('--help') || args.includes('-h')) {
       logger.info(`
@@ -102,6 +75,8 @@ Options:
   --onlyFetch=<true|false>  Only fetch data, do not generate summaries.
   --onlyGenerate=<true|false> Only generate summaries from existing data, do not fetch.
   --download-media=<true|false> Download Discord media after data collection (default: false).
+  --generate-manifest=<true|false> Generate media manifest JSON for VPS downloads (default: false).
+  --manifest-output=<path> Output path for manifest file (default: <output>/media-manifest.json).
   --output=<path>       Output directory path (default: ./)
   -h, --help            Show this help message.
       `);
@@ -118,6 +93,10 @@ Options:
         onlyFetch = arg.split('=')[1].toLowerCase() == 'true';
       } else if (arg.startsWith('--download-media=')) {
         downloadMedia = arg.split('=')[1].toLowerCase() == 'true';
+      } else if (arg.startsWith('--generate-manifest=')) {
+        generateManifest = arg.split('=')[1].toLowerCase() == 'true';
+      } else if (arg.startsWith('--manifest-output=')) {
+        manifestOutput = arg.split('=')[1];
       } else if (arg.startsWith('--before=')) {
         beforeDate = arg.split('=')[1];
       } else if (arg.startsWith('--after=')) {
@@ -126,8 +105,6 @@ Options:
         duringDate = arg.split('=')[1];
       } else if (arg.startsWith('--output=') || arg.startsWith('-o=')) {
         outputPath = arg.split('=')[1];
-      } else if (arg.startsWith('--download-media=')) {
-        downloadMedia = arg.split('=')[1].toLowerCase() === 'true';
       }
     });
 
@@ -326,6 +303,47 @@ Options:
               logger.error(`❌ Media download failed for source ${sourceConfig.instance.name}: ${error}`);
             }
           }
+        }
+      }
+    }
+
+    /**
+     * Generate media manifest if requested
+     * Creates a JSON file listing all media URLs for VPS download
+     */
+    if (generateManifest && !onlyGenerate) {
+      logger.info("Generating media manifest...");
+
+      for (const config of sourceConfigs) {
+        if (hasMediaDownloadCapability(config.instance)) {
+          try {
+            const storage = (config.instance as any).storage;
+            const dbPath = storage?.dbPath || './data/db.sqlite';
+
+            // Determine source name from config
+            const sourceName = sourceFile.replace('.json', '').replace('-discord', '');
+
+            // Determine manifest output path
+            const manifestPath = manifestOutput || path.join(outputPath, sourceName, 'media-manifest.json');
+
+            // Generate manifest for date or date range
+            if (filter.filterType || (filter.after && filter.before)) {
+              // Date range - generate combined manifest
+              const startDate = filter.after || filter.date;
+              const endDate = filter.before || filter.date;
+              logger.info(`Generating manifest for date range: ${startDate} to ${endDate}`);
+              await generateManifestToFile(dbPath, startDate, sourceName, manifestPath, endDate);
+            } else {
+              // Single date
+              logger.info(`Generating manifest for date: ${dateStr}`);
+              await generateManifestToFile(dbPath, dateStr, sourceName, manifestPath);
+            }
+
+            logger.success(`Media manifest generated: ${manifestPath}`);
+          } catch (error) {
+            logger.error(`Manifest generation failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+          break; // Only generate one manifest per run
         }
       }
     }

@@ -10,6 +10,7 @@
 import { SQLiteStorage } from "./plugins/storage/SQLiteStorage";
 import { ContentItem, DiscordRawData, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig } from "./types";
 import { logger } from "./helpers/cliHelper";
+import { writeJsonFile } from "./helpers/fileHelper";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -21,7 +22,7 @@ const DOWNLOAD_TIMEOUT_MS = 30000; // 30 seconds
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_BASE_MS = 1000; // Base delay for exponential backoff
 const DEFAULT_RATE_LIMIT_MS = 500; // Increased default rate limit between downloads (was 100ms)
-const USER_AGENT = 'DiscordBot (AI-News-Aggregator, 1.0) Node.js/Discord.js'; // Discord API compliant User-Agent
+const USER_AGENT = process.env.DISCORD_USER_AGENT || 'DiscordBot (media-downloader, 1.0)'; // Configurable via env var
 
 // Discord Rate Limiting Constants
 const DISCORD_GLOBAL_RATE_LIMIT = 50; // 50 requests per second globally
@@ -182,6 +183,9 @@ interface MediaDownloadItem {
   userId: string;
   mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
   originalData: DiscordAttachment | DiscordEmbed | DiscordSticker;
+  // Additional context for manifest
+  messageContent?: string;
+  reactions?: Array<{ emoji: string; count: number }>;
 }
 
 interface MediaReference {
@@ -238,6 +242,57 @@ interface MediaAnalytics {
   averageFileSizeByType: Record<string, number>;
   totalSizeByType: Record<string, number>;
   largestFilesByType: Record<string, Array<{ filename: string; size: number; url: string; }>>;
+}
+
+/**
+ * Entry in the media manifest for VPS download
+ */
+interface MediaManifestEntry {
+  // Core identifiers
+  url: string;
+  proxy_url?: string;   // Discord proxy URL for external media
+  filename: string;
+  unique_name: string;  // hash12.ext
+  hash: string;         // 12-char hash of normalized URL
+
+  // File metadata
+  type: 'image' | 'video' | 'audio' | 'document';
+  is_spoiler?: boolean;   // filename starts with SPOILER_
+  is_animated?: boolean;  // animated content (GIF, a_ prefix)
+  media_type: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
+  size?: number;
+  content_type?: string;
+  width?: number;
+  height?: number;
+
+  // Discord context
+  message_id: string;
+  channel_id: string;
+  channel_name: string;
+  guild_id: string;
+  guild_name: string;
+  user_id: string;
+  timestamp: string;
+
+  // Message context (for search/filtering)
+  message_content?: string;
+  reactions?: Array<{ emoji: string; count: number }>;
+}
+
+/**
+ * Media manifest file structure for VPS download
+ */
+interface MediaManifest {
+  date: string;
+  source: string;       // elizaos, hyperfy
+  generated_at: string;
+  base_path: string;    // e.g., "elizaos-media"
+  files: MediaManifestEntry[];
+  stats: {
+    total_files: number;
+    by_type: Record<string, number>;
+    total_size_bytes: number;
+  };
 }
 
 class MediaDownloader {
@@ -657,7 +712,9 @@ class MediaDownloader {
               guildName: item.metadata?.guildName || 'unknown',
               userId: message.uid,
               mediaType: 'attachment',
-              originalData: attachment
+              originalData: attachment,
+              messageContent: message.content,
+              reactions: message.reactions
             });
           }
         }
@@ -678,10 +735,12 @@ class MediaDownloader {
                 guildName: item.metadata?.guildName || 'unknown',
                 userId: message.uid,
                 mediaType: 'embed_image',
-                originalData: embed
+                originalData: embed,
+                messageContent: message.content,
+                reactions: message.reactions
               });
             }
-            
+
             if (embed.thumbnail) {
               const filename = `embed-thumbnail-${message.id}.${embed.thumbnail.url.split('.').pop() || 'jpg'}`;
               mediaItems.push({
@@ -695,7 +754,9 @@ class MediaDownloader {
                 guildName: item.metadata?.guildName || 'unknown',
                 userId: message.uid,
                 mediaType: 'embed_thumbnail',
-                originalData: embed
+                originalData: embed,
+                messageContent: message.content,
+                reactions: message.reactions
               });
             }
             
@@ -712,7 +773,9 @@ class MediaDownloader {
                 guildName: item.metadata?.guildName || 'unknown',
                 userId: message.uid,
                 mediaType: 'embed_video' as const,
-                originalData: { content_type: 'video/mp4', size: undefined, ...embed }
+                originalData: { content_type: 'video/mp4', size: undefined, ...embed },
+                messageContent: message.content,
+                reactions: message.reactions
               };
               
               // Apply filtering
@@ -730,7 +793,8 @@ class MediaDownloader {
         // Process stickers
         if (message.sticker_items) {
           for (const sticker of message.sticker_items) {
-            const extension = sticker.format_type === 1 ? 'png' : 'gif';
+            // Use proper sticker format extension (1=PNG, 2=APNG, 3=Lottie/JSON, 4=GIF)
+            const extension = this.getStickerExtension(sticker.format_type);
             const filename = `${sticker.name}.${extension}`;
             const stickerUrl = `https://media.discordapp.net/stickers/${sticker.id}.${extension}`;
             
@@ -749,7 +813,9 @@ class MediaDownloader {
                 content_type: extension === 'gif' ? 'image/gif' : 'image/png',
                 size: undefined,
                 ...sticker
-              }
+              },
+              messageContent: message.content,
+              reactions: message.reactions
             };
             
             // Apply filtering
@@ -805,11 +871,12 @@ class MediaDownloader {
     // Ensure directories exist
     fs.mkdirSync(typeDir, { recursive: true });
     
-    // Create unique filename to avoid conflicts
-    const hash = createHash('sha256').update(mediaItem.url).digest('hex').substring(0, 8);
-    const basename = path.parse(mediaItem.filename).name;
-    const extension = path.parse(mediaItem.filename).ext;
-    const uniqueFilename = `${basename}_${hash}${extension}`;
+    // Create unique filename: {hash12}.{ext}
+    // Normalize URL to strip expiring params for consistent hashing
+    const normalizedUrl = this.normalizeDiscordUrl(mediaItem.url);
+    const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 12);
+    const ext = this.getValidatedExtension(attachment.content_type, mediaItem.url, mediaItem.mediaType);
+    const uniqueFilename = `${hash}.${ext}`;
     const filePath = path.join(typeDir, uniqueFilename);
     
     // Skip if file already exists, but still add to index if not already there
@@ -1014,6 +1081,151 @@ class MediaDownloader {
   }
 
   /**
+   * Normalize Discord CDN URL for consistent hashing
+   * Strips expiring signature params (ex, is, hm) so same file gets same hash
+   */
+  private normalizeDiscordUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      if (urlObj.host === 'cdn.discordapp.com' || urlObj.host === 'media.discordapp.net') {
+        urlObj.searchParams.delete('ex');  // expiry timestamp
+        urlObj.searchParams.delete('is');  // issued timestamp
+        urlObj.searchParams.delete('hm');  // hash/signature
+        return urlObj.toString();
+      }
+    } catch {}
+    return url;
+  }
+
+  /**
+   * Check if file is a spoiler (filename starts with SPOILER_)
+   */
+  private isSpoiler(filename: string): boolean {
+    return filename.startsWith('SPOILER_');
+  }
+
+  /**
+   * Check if content is animated based on hash prefix or filename
+   * Discord uses 'a_' prefix for animated avatars/icons
+   */
+  private isAnimated(hashOrFilename: string): boolean {
+    return hashOrFilename.startsWith('a_') || hashOrFilename.toLowerCase().endsWith('.gif');
+  }
+
+  /**
+   * Sanitize reactions array to handle deleted/invalid emoji gracefully
+   * Custom emoji may be deleted from the server, resulting in null/undefined fields
+   */
+  private sanitizeReactions(reactions?: Array<{ emoji: string; count: number }>): Array<{ emoji: string; count: number }> | undefined {
+    if (!reactions || reactions.length === 0) {
+      return undefined;
+    }
+
+    return reactions
+      .filter(r => {
+        // Keep reactions that have valid emoji data
+        if (!r || typeof r.count !== 'number') return false;
+        // Emoji should be a non-empty string (either unicode or custom emoji name/id)
+        if (!r.emoji || r.emoji === 'null' || r.emoji === 'undefined') return false;
+        return true;
+      })
+      .map(r => ({
+        emoji: r.emoji || '❓', // Fallback for edge cases
+        count: r.count
+      }));
+  }
+
+  /**
+   * Get sticker format extension based on format_type
+   * Format types: 1=PNG, 2=APNG, 3=Lottie, 4=GIF
+   */
+  private getStickerExtension(formatType: number): string {
+    switch (formatType) {
+      case 1: return 'png';   // PNG
+      case 2: return 'png';   // APNG (still uses .png extension)
+      case 3: return 'json';  // Lottie animation
+      case 4: return 'gif';   // GIF
+      default: return 'png';
+    }
+  }
+
+  /**
+   * Map content-type to file extension
+   * Based on actual content types found in Discord data
+   */
+  private static CONTENT_TYPE_TO_EXT: Record<string, string> = {
+    'application/json': 'json',
+    'application/pdf': 'pdf',
+    'image/gif': 'gif',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/bmp': 'bmp',
+    'image/svg+xml': 'svg',
+    'image/avif': 'avif',
+    'text/csv': 'csv',
+    'text/markdown': 'md',
+    'text/plain': 'txt',
+    'text/x-python': 'py',
+    'video/mp2t': 'ts',
+    'video/mp4': 'mp4',
+    'video/quicktime': 'mov',
+    'video/webm': 'webm',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+    'audio/ogg': 'ogg',
+    'audio/flac': 'flac',
+  };
+
+  /**
+   * Valid file extensions that can be extracted from URLs
+   */
+  private static VALID_URL_EXTENSIONS = new Set([
+    'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif',
+    'mp4', 'webm', 'mov', 'avi', 'mkv',
+    'mp3', 'wav', 'ogg', 'flac',
+    'pdf', 'txt', 'json', 'md', 'csv', 'py', 'log',
+  ]);
+
+  /**
+   * Get validated file extension from content-type, URL, or default
+   * Priority: content_type > URL path > default based on media_type
+   */
+  private getValidatedExtension(
+    contentType: string | undefined,
+    url: string,
+    mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker'
+  ): string {
+    // 1. Try content-type (most reliable for Discord attachments)
+    if (contentType) {
+      // Handle charset suffix: "text/plain; charset=utf-8" -> "text/plain"
+      const baseType = contentType.split(';')[0].trim().toLowerCase();
+      const ext = MediaDownloader.CONTENT_TYPE_TO_EXT[baseType];
+      if (ext) return ext;
+    }
+
+    // 2. Try extracting from URL path (for embeds)
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      const match = pathname.match(/\.([a-zA-Z0-9]+)$/);
+      if (match) {
+        const ext = match[1].toLowerCase();
+        if (MediaDownloader.VALID_URL_EXTENSIONS.has(ext)) {
+          return ext;
+        }
+      }
+    } catch {}
+
+    // 3. Default based on media type
+    switch (mediaType) {
+      case 'embed_video': return 'mp4';
+      case 'sticker': return 'png';
+      default: return 'jpg'; // embed_image, embed_thumbnail, attachment fallback
+    }
+  }
+
+  /**
    * Download all media from Discord data within date range
    */
   async downloadMediaInDateRange(startDate: Date, endDate: Date): Promise<DownloadStats> {
@@ -1092,6 +1304,160 @@ class MediaDownloader {
   }
 
   /**
+   * Generate a media manifest for a specific date without downloading files.
+   * The manifest contains URLs and metadata that can be used by a VPS script
+   * to download the files later.
+   *
+   * @param date - The date to generate manifest for
+   * @param sourceName - Source identifier (e.g., 'elizaos', 'hyperfy')
+   * @returns MediaManifest object
+   */
+  async generateManifestAll(sourceName: string): Promise<MediaManifest> {
+    // Query all data from epoch 0 to far future
+    const startEpoch = 0;
+    const endEpoch = Math.floor(Date.now() / 1000) + 86400; // Tomorrow
+
+    logger.info(`Generating full manifest for all data (source: ${sourceName})`);
+
+    return this.generateManifestForEpochRange(startEpoch, endEpoch, 'all', sourceName);
+  }
+
+  async generateManifest(date: Date, sourceName: string): Promise<MediaManifest> {
+    const nextDay = new Date(date);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    const startEpoch = Math.floor(date.getTime() / 1000);
+    const endEpoch = Math.floor(nextDay.getTime() / 1000);
+    const dateStr = date.toISOString().split('T')[0];
+
+    logger.info(`Generating manifest for ${dateStr} (source: ${sourceName})`);
+
+    return this.generateManifestForEpochRange(startEpoch, endEpoch, dateStr, sourceName);
+  }
+
+  private async generateManifestForEpochRange(startEpoch: number, endEpoch: number, dateStr: string, sourceName: string): Promise<MediaManifest> {
+
+    // Get all Discord raw data items in date range
+    const items = await this.storage.getContentItemsBetweenEpoch(startEpoch, endEpoch, 'discordRawData');
+
+    logger.info(`Found ${items.length} Discord data items to process`);
+
+    // Extract all media items
+    const allMediaItems: MediaDownloadItem[] = [];
+    for (const item of items) {
+      const mediaItems = this.extractMediaFromDiscordData(item);
+      allMediaItems.push(...mediaItems);
+    }
+
+    logger.info(`Found ${allMediaItems.length} media items for manifest`);
+
+    // Convert to manifest entries
+    const manifestEntries: MediaManifestEntry[] = [];
+    const seenUrls = new Set<string>();
+    const byType: Record<string, number> = {};
+    let totalSize = 0;
+
+    for (const mediaItem of allMediaItems) {
+      // Skip duplicates by URL
+      if (seenUrls.has(mediaItem.url)) {
+        continue;
+      }
+      seenUrls.add(mediaItem.url);
+
+      // Generate hash-based unique filename: {hash12}.{ext}
+      // Normalize URL to strip expiring params for consistent hashing
+      const normalizedUrl = this.normalizeDiscordUrl(mediaItem.url);
+      const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 12);
+      const attachment = mediaItem.originalData as DiscordAttachment;
+      const ext = this.getValidatedExtension(attachment.content_type, mediaItem.url, mediaItem.mediaType);
+      const uniqueName = `${hash}.${ext}`;
+
+      // Determine file type
+      const fileTypeDir = await this.getFileTypeDir(attachment.content_type || '', mediaItem.filename);
+      const type = fileTypeDir.replace(/s$/, '') as 'image' | 'video' | 'audio' | 'document'; // Remove trailing 's'
+
+      // Detect spoiler and animated content
+      const isSpoiler = this.isSpoiler(mediaItem.filename);
+      const isAnimated = this.isAnimated(mediaItem.filename);
+
+      // Get proxy URL if available (for embed media)
+      const proxyUrl = attachment.proxy_url || undefined;
+
+      // Track stats
+      byType[type] = (byType[type] || 0) + 1;
+      if (attachment.size) {
+        totalSize += attachment.size;
+      }
+
+      manifestEntries.push({
+        // Core identifiers
+        url: mediaItem.url,
+        proxy_url: proxyUrl,
+        filename: mediaItem.filename,
+        unique_name: uniqueName,
+        hash,
+
+        // File metadata
+        type,
+        is_spoiler: isSpoiler || undefined,
+        is_animated: isAnimated || undefined,
+        media_type: mediaItem.mediaType,
+        size: attachment.size,
+        content_type: attachment.content_type,
+        width: attachment.width,
+        height: attachment.height,
+
+        // Discord context
+        message_id: mediaItem.messageId,
+        channel_id: mediaItem.channelId,
+        channel_name: mediaItem.channelName,
+        guild_id: mediaItem.guildId,
+        guild_name: mediaItem.guildName,
+        user_id: mediaItem.userId,
+        timestamp: mediaItem.messageDate,
+
+        // Message context
+        message_content: mediaItem.messageContent,
+        reactions: this.sanitizeReactions(mediaItem.reactions)
+      });
+    }
+
+    const manifest: MediaManifest = {
+      date: dateStr,
+      source: sourceName,
+      generated_at: new Date().toISOString(),
+      base_path: `${sourceName}-media`,
+      files: manifestEntries,
+      stats: {
+        total_files: manifestEntries.length,
+        by_type: byType,
+        total_size_bytes: totalSize
+      }
+    };
+
+    logger.info(`Generated manifest with ${manifest.files.length} unique files (${Object.entries(byType).map(([k, v]) => `${k}: ${v}`).join(', ')})`);
+
+    return manifest;
+  }
+
+  /**
+   * Generate manifest and save to file
+   *
+   * @param date - The date to generate manifest for
+   * @param sourceName - Source identifier (e.g., 'elizaos', 'hyperfy')
+   * @param outputPath - Path to save the manifest JSON file
+   */
+  async generateManifestToFile(date: Date, sourceName: string, outputPath: string): Promise<MediaManifest> {
+    const manifest = await this.generateManifest(date, sourceName);
+
+    // Write manifest to file
+    writeJsonFile(outputPath, manifest);
+    logger.info(`Saved manifest to ${outputPath}`);
+
+    return manifest;
+  }
+
+  /**
    * Print download statistics
    */
   printStats(): void {
@@ -1155,6 +1521,70 @@ class MediaDownloader {
 }
 
 /**
+ * Standalone helper function for generating manifests
+ * Can be imported and used from other modules like historical.ts
+ */
+export async function generateManifestToFile(
+  dbPath: string,
+  dateStr: string,
+  sourceName: string,
+  outputPath: string,
+  endDateStr?: string
+): Promise<MediaManifest> {
+  const downloader = new MediaDownloader(dbPath, './media'); // outputDir not used for manifest
+  await downloader.init();
+
+  try {
+    if (endDateStr) {
+      // Date range: generate combined manifest
+      const startDate = new Date(dateStr);
+      const endDate = new Date(endDateStr);
+      const allEntries: MediaManifestEntry[] = [];
+      const seenUrls = new Set<string>();
+
+      // Iterate through each date in range
+      const currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const manifest = await downloader.generateManifest(currentDate, sourceName);
+        for (const entry of manifest.files) {
+          if (!seenUrls.has(entry.url)) {
+            seenUrls.add(entry.url);
+            allEntries.push(entry);
+          }
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // Build combined manifest
+      const combinedManifest: MediaManifest = {
+        date: `${dateStr}_to_${endDateStr}`,
+        source: sourceName,
+        generated_at: new Date().toISOString(),
+        base_path: `${sourceName}-media`,
+        files: allEntries,
+        stats: {
+          total_files: allEntries.length,
+          by_type: allEntries.reduce((acc, e) => {
+            acc[e.type] = (acc[e.type] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>),
+          total_size_bytes: allEntries.reduce((sum, e) => sum + (e.size || 0), 0),
+        },
+      };
+
+      writeJsonFile(outputPath, combinedManifest);
+      return combinedManifest;
+    } else {
+      // Single date
+      const date = new Date(dateStr);
+      return await downloader.generateManifestToFile(date, sourceName, outputPath);
+    }
+  } finally {
+    await downloader.close();
+  }
+}
+
+/**
  * Main execution function
  */
 async function main() {
@@ -1164,11 +1594,15 @@ async function main() {
   let dateStr: string | undefined;
   let startDateStr: string | undefined;
   let endDateStr: string | undefined;
+  let generateManifest = false;
+  let allData = false;
+  let manifestOutput: string | undefined;
+  let sourceName = 'default';
 
   // Parse command line arguments
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    
+
     switch (arg) {
       case '--help':
       case '-h':
@@ -1186,34 +1620,59 @@ Usage:
   npm run download-media -- --db ./custom.sqlite   # Use custom database
   npm run download-media -- --output ./downloads   # Custom output directory
 
+Manifest Generation (for VPS download - no API calls, reads from database):
+  npm run generate-manifest -- --date 2024-01-15 --source elizaos --db ./data/elizaos.sqlite
+  npm run generate-manifest -- --start 2024-01-01 --end 2024-01-15 --source elizaos --db ./data/elizaos.sqlite
+  npm run generate-manifest -- --all --source elizaos --db ./data/elizaos.sqlite
+
 Options:
-  --date YYYY-MM-DD     Download media for specific date
-  --start YYYY-MM-DD    Start date for range download
-  --end YYYY-MM-DD      End date for range download
-  --db PATH             Database file path (default: ./data/db.sqlite)
-  --output PATH         Output directory (default: ./media)
-  --help, -h            Show this help message
+  --date YYYY-MM-DD       Download/generate manifest for specific date
+  --start YYYY-MM-DD      Start date for range download
+  --end YYYY-MM-DD        End date for range download
+  --all                   Generate manifest for ALL data in database
+  --db PATH               Database file path (default: ./data/db.sqlite)
+  --output PATH           Output directory for downloads (default: ./media)
+  --generate-manifest     Generate manifest JSON instead of downloading
+  --manifest-output PATH  Output path for manifest file
+  --source NAME           Source name for manifest (default: 'default')
+  --help, -h              Show this help message
 `);
         process.exit(0);
-        
+
       case '--date':
         dateStr = args[++i];
         break;
-        
+
       case '--start':
         startDateStr = args[++i];
         break;
-        
+
       case '--end':
         endDateStr = args[++i];
         break;
-        
+
       case '--db':
         dbPath = args[++i];
         break;
-        
+
       case '--output':
         outputDir = args[++i];
+        break;
+
+      case '--generate-manifest':
+        generateManifest = true;
+        break;
+
+      case '--all':
+        allData = true;
+        break;
+
+      case '--manifest-output':
+        manifestOutput = args[++i];
+        break;
+
+      case '--source':
+        sourceName = args[++i];
         break;
     }
   }
@@ -1222,6 +1681,48 @@ Options:
     const downloader = new MediaDownloader(dbPath, outputDir);
     await downloader.init();
 
+    // Manifest generation mode
+    if (generateManifest) {
+      const outputPath = manifestOutput || `./output/${sourceName}/media-manifest.json`;
+      let manifest: MediaManifest;
+
+      if (allData) {
+        // All data manifest - single query, no date iteration
+        logger.info(`Generating full media manifest for all data`);
+        manifest = await downloader.generateManifestAll(sourceName);
+        // Save to file
+        const fs = await import('fs');
+        const path = await import('path');
+        const dir = path.dirname(outputPath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(outputPath, JSON.stringify(manifest, null, 2));
+      } else if (startDateStr && endDateStr) {
+        // Date range manifest
+        logger.info(`Generating media manifest for range: ${startDateStr} to ${endDateStr}`);
+        manifest = await generateManifestToFile(dbPath, startDateStr, sourceName, outputPath, endDateStr);
+      } else {
+        // Single date manifest
+        const date = dateStr ? new Date(dateStr) : new Date();
+        const dateStrFormatted = date.toISOString().split('T')[0];
+        logger.info(`Generating media manifest for ${dateStrFormatted}`);
+        manifest = await downloader.generateManifestToFile(date, sourceName, outputPath);
+      }
+
+      logger.info(`\nManifest Summary:`);
+      logger.info(`  Date: ${manifest.date}`);
+      logger.info(`  Source: ${manifest.source}`);
+      logger.info(`  Total files: ${manifest.stats.total_files}`);
+      logger.info(`  By type: ${Object.entries(manifest.stats.by_type).map(([k, v]) => `${k}: ${v}`).join(', ')}`);
+      logger.info(`  Total size: ${(manifest.stats.total_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+      logger.info(`  Output: ${outputPath}`);
+
+      await downloader.close();
+      process.exit(0);
+    }
+
+    // Download mode
     let stats: DownloadStats;
 
     if (startDateStr && endDateStr) {
@@ -1247,7 +1748,7 @@ Options:
     await downloader.close();
 
     process.exit(stats.failed > 0 ? 1 : 0);
-    
+
   } catch (error) {
     logger.error(`Failed to download media: ${error}`);
     process.exit(1);
@@ -1259,4 +1760,4 @@ if (require.main === module) {
   main();
 }
 
-export { MediaDownloader, MediaDownloadItem, DownloadStats };
+export { MediaDownloader, MediaDownloadItem, DownloadStats, MediaManifest, MediaManifestEntry };

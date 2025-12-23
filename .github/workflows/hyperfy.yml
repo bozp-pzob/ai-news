@@ -168,6 +168,26 @@ jobs:
           NODE_ENV: production
           FORCE_OVERWRITE: ${{ inputs.force_overwrite || 'false' }}
 
+      - name: Generate media manifests
+        run: |
+          YESTERDAY=${{ steps.date.outputs.YESTERDAY }}
+
+          echo "Generating daily media manifest for $YESTERDAY..."
+          npm run generate-manifest -- \
+            --db data/hyperfy-discord.sqlite \
+            --date $YESTERDAY \
+            --source hyperfy \
+            --manifest-output ./output/hyperfy/media-manifest.json
+          echo "✅ Daily manifest generated"
+
+          echo "Generating full media manifest..."
+          npm run generate-manifest -- \
+            --db data/hyperfy-discord.sqlite \
+            --all \
+            --source hyperfy \
+            --manifest-output ./output/hyperfy/media-manifest-full.json
+          echo "✅ Full manifest generated"
+
       - name: Encrypt database
         env:
           SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
@@ -194,10 +214,11 @@ jobs:
       - name: Prepare files for deployment
         run: |
           YESTERDAY=${{ steps.date.outputs.YESTERDAY }}
-          
+
           # Create target directories
           mkdir -p ./public/data
           mkdir -p ./public/hyperfy
+          touch ./public/.nojekyll  # Prevents Jekyll processing and silences gh-pages action warning
 
           # Copy encrypted SQLite database
           if [ -f "data/hyperfy-discord.sqlite.enc" ]; then
@@ -220,6 +241,15 @@ jobs:
             echo "ℹ️  No Hyperfy summary files found to copy"
           fi
 
+          # Copy media manifest
+          if [ -f "output/hyperfy/media-manifest.json" ]; then
+            echo "Copying media manifest to ./public/hyperfy/"
+            cp output/hyperfy/media-manifest.json ./public/hyperfy/
+            echo "✅ Successfully copied media manifest"
+          else
+            echo "ℹ️  No media manifest found to copy"
+          fi
+
           # Create daily.json
           JSON_FILE="output/hyperfy/summaries/${YESTERDAY}.json"
           if [ -f "$JSON_FILE" ]; then
@@ -228,7 +258,7 @@ jobs:
           else
             echo "Warning: Yesterday's JSON summary ($JSON_FILE) not found. Cannot create daily.json."
           fi
-          
+
           # Create daily.md
           MD_FILE="output/hyperfy/summaries/${YESTERDAY}.md"
           if [ -f "$MD_FILE" ]; then
