@@ -47,7 +47,7 @@
     "express": "^5.2.1",
     "jsdom": "^27.3.0",
     "node-fetch": "^3.3.2",
-    "openai": "^4.78.1",
+    "openai": "^6.15.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "rss-parser": "^3.12.0",
