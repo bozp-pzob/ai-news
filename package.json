@@ -55,7 +55,7 @@
     "sqlite3": "^5.1.4",
     "ts-node": "^10.9.2",
     "twitter-api-v2": "^1.19.0",
-    "uuid": "^11.1.0",
+    "uuid": "^13.0.0",
     "ws": "^8.18.2"
   },
   "devDependencies": {
