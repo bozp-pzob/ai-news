@@ -43,7 +43,7 @@
     "cheerio": "^1.0.0",
     "cors": "^2.8.5",
     "discord.js": "^14.17.3",
-    "dotenv": "^16.4.7",
+    "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "jsdom": "^27.3.0",
     "node-fetch": "^3.3.2",
