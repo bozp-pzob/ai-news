@@ -10,6 +10,7 @@
 import { SQLiteStorage } from "./plugins/storage/SQLiteStorage";
 import { ContentItem, DiscordRawData, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig } from "./types";
 import { logger } from "./helpers/cliHelper";
+import { writeJsonFile } from "./helpers/fileHelper";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -1449,12 +1450,8 @@ class MediaDownloader {
   async generateManifestToFile(date: Date, sourceName: string, outputPath: string): Promise<MediaManifest> {
     const manifest = await this.generateManifest(date, sourceName);
 
-    // Ensure output directory exists
-    const outputDir = path.dirname(outputPath);
-    fs.mkdirSync(outputDir, { recursive: true });
-
     // Write manifest to file
-    fs.writeFileSync(outputPath, JSON.stringify(manifest, null, 2));
+    writeJsonFile(outputPath, manifest);
     logger.info(`Saved manifest to ${outputPath}`);
 
     return manifest;
@@ -1575,15 +1572,7 @@ export async function generateManifestToFile(
         },
       };
 
-      // Ensure output directory exists
-      const fs = await import('fs');
-      const path = await import('path');
-      const dir = path.dirname(outputPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      fs.writeFileSync(outputPath, JSON.stringify(combinedManifest, null, 2));
+      writeJsonFile(outputPath, combinedManifest);
       return combinedManifest;
     } else {
       // Single date

@@ -326,12 +326,6 @@ Options:
             // Determine manifest output path
             const manifestPath = manifestOutput || path.join(outputPath, sourceName, 'media-manifest.json');
 
-            // Ensure output directory exists
-            const manifestDir = path.dirname(manifestPath);
-            if (!fs.existsSync(manifestDir)) {
-              fs.mkdirSync(manifestDir, { recursive: true });
-            }
-
             // Generate manifest for date or date range
             if (filter.filterType || (filter.after && filter.before)) {
               // Date range - generate combined manifest
