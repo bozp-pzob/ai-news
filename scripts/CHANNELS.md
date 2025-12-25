@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-12-24 06:39:42 UTC*
+*Updated: 2025-12-25 06:38:48 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 141 | **Currently Tracking**: 6 | **New Channels**: 135
+**Total Channels**: 139 | **Currently Tracking**: 6 | **New Channels**: 133
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -31,7 +31,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 
 **DEV:**
 - [x] #💬-coders (1300025221834739744)
-- [ ] #💻-tech-support (1392374405606150245) **NEW**
 - [x] #core-devs (1377726087789940836)
 - [ ] #elizaos-github (1377733240449925150) **NEW**
 - [ ] #plugins-github (1377733306594099371) **NEW**
@@ -41,7 +40,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #clone-ur-crush (1440207337087307817) **NEW**
 
 **MIGRATION:**
-- [ ] #closed-0290 (1445974746989723708) **NEW**
 - [ ] #ticket-response (1438601160142618725) **NEW**
 - [ ] #open-a-ticket (1423981231300935801) **NEW**
 - [ ] #ticket-0341 (1448873964830195896) **NEW**
@@ -52,7 +50,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0364 (1450749118195564586) **NEW**
 - [ ] #ticket-0365 (1450873160919420971) **NEW**
 - [ ] #ticket-0366 (1450894702608912394) **NEW**
-- [ ] #closed-0367 (1451032589413519514) **NEW**
 - [ ] #ticket-0368 (1451043523594813608) **NEW**
 - [ ] #ticket-0370 (1451127190606581822) **NEW**
 - [ ] #ticket-0371 (1451196573986980042) **NEW**
@@ -156,6 +153,7 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #core-devs-archived (1318117081215930459) **NEW**
 
 **ARCHIVES-2:**
+- [ ] #💻-tech-support (1392374405606150245) **NEW**
 - [ ] #offsite-sept (1408212848513122549) **NEW**
 - [ ] #dao-organization (1351627860351258685) **NEW**
 - [ ] #ops (1308770075389460602) **NEW**
