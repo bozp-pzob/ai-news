@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-12-25 06:38:48 UTC*
+*Updated: 2025-12-26 06:38:25 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 139 | **Currently Tracking**: 6 | **New Channels**: 133
+**Total Channels**: 141 | **Currently Tracking**: 6 | **New Channels**: 135
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -60,6 +60,8 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0388 (1452791246367101068) **NEW**
 - [ ] #ticket-0389 (1453007684658790603) **NEW**
 - [ ] #ticket-0390 (1453016594866245716) **NEW**
+- [ ] #ticket-0391 (1453767392080564244) **NEW**
+- [ ] #ticket-0392 (1453771446391410821) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
