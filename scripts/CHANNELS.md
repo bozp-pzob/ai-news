@@ -1,5 +1,5 @@
 # Discord Channel Tracking Status
-*Updated: 2025-12-28 06:37:03 UTC*
+*Updated: 2025-12-29 06:41:21 UTC*
 
 ## 📊 Analytics Reminder
 🔔 **TIME TO CHECK ANALYTICS!** It's been 28+ days since last check.
@@ -12,7 +12,7 @@
 Analytics timer will reset when you update configs (run `npm run update-configs`).
 
 ## elizaOS (1253563208833433701)
-**Total Channels**: 146 | **Currently Tracking**: 6 | **New Channels**: 140
+**Total Channels**: 145 | **Currently Tracking**: 6 | **New Channels**: 139
 
 ### Channels
 - [ ] #mod-chat (1299440237759696999) **NEW**
@@ -42,8 +42,6 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 **MIGRATION:**
 - [ ] #ticket-response (1438601160142618725) **NEW**
 - [ ] #open-a-ticket (1423981231300935801) **NEW**
-- [ ] #ticket-0341 (1448873964830195896) **NEW**
-- [ ] #ticket-0343 (1449023000253960362) **NEW**
 - [ ] #ticket-0349 (1449796311732715572) **NEW**
 - [ ] #ticket-0358 (1450527404857626624) **NEW**
 - [ ] #ticket-0363 (1450723407044808856) **NEW**
@@ -65,8 +63,9 @@ Analytics timer will reset when you update configs (run `npm run update-configs`
 - [ ] #ticket-0393 (1454023222302605322) **NEW**
 - [ ] #ticket-0394 (1454075120787394653) **NEW**
 - [ ] #ticket-0395 (1454331064813096960) **NEW**
-- [ ] #closed-0396 (1454428859083653141) **NEW**
-- [ ] #ticket-0397 (1454429652863942676) **NEW**
+- [ ] #closed-0397 (1454429652863942676) **NEW**
+- [ ] #ticket-0398 (1454827987101946010) **NEW**
+- [ ] #ticket-0399 (1454854284045713556) **NEW**
 
 **THE ARENA:**
 - [x] #💬-discussion (1253563209462448241)
