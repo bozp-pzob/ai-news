@@ -279,6 +279,7 @@ export interface MediaDownloadConfig {
   excludedTypes?: string[];
   rateLimit?: number; // milliseconds between downloads, default 100
   retryAttempts?: number; // default 3
+  organizeBy?: 'flat' | 'server' | 'channel'; // folder organization mode (default: 'flat')
 }
 
 /**
@@ -427,20 +428,6 @@ export interface DiscordSticker {
   name: string;
   format_type: number;
   description?: string;
-}
-
-/**
- * Configuration interface for media downloads
- * @interface MediaDownloadConfig
- */
-export interface MediaDownloadConfig {
-  enabled: boolean;
-  outputPath?: string;
-  maxFileSize?: number; // in bytes, default 50MB
-  allowedTypes?: string[]; // MIME types or extensions
-  excludedTypes?: string[];
-  rateLimit?: number; // milliseconds between downloads, default 100
-  retryAttempts?: number; // default 3
 }
 
 /**

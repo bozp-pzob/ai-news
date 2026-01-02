@@ -407,17 +407,63 @@ class MediaDownloader {
    * Ensure directory structure exists
    */
   private async ensureDirectoryStructure(): Promise<void> {
-    const dirs = [
-      path.join(this.baseDir, 'images'),
-      path.join(this.baseDir, 'videos'),
-      path.join(this.baseDir, 'audio'),
-      path.join(this.baseDir, 'documents'),
-      path.join(this.baseDir, 'metadata')
-    ];
-    
-    for (const dir of dirs) {
-      fs.mkdirSync(dir, { recursive: true });
+    // Just create base directory - subdirectories created on demand based on organizeBy setting
+    fs.mkdirSync(this.baseDir, { recursive: true });
+  }
+
+  /**
+   * Get the output directory for a media item based on organization mode
+   * @throws Error if guild/channel name is missing when required
+   */
+  private getOutputDir(mediaItem: MediaDownloadItem): string {
+    const organizeBy = this.config.organizeBy || 'flat';
+
+    switch (organizeBy) {
+      case 'server':
+        if (!mediaItem.guildName) {
+          throw new Error(`Missing guild name for message ${mediaItem.messageId} - cannot organize by server`);
+        }
+        const serverDir = this.sanitizeForPath(mediaItem.guildName);
+        return path.join(this.baseDir, serverDir);
+
+      case 'channel':
+        if (!mediaItem.guildName) {
+          throw new Error(`Missing guild name for message ${mediaItem.messageId} - cannot organize by channel`);
+        }
+        if (!mediaItem.channelName) {
+          throw new Error(`Missing channel name for message ${mediaItem.messageId} - cannot organize by channel`);
+        }
+        const serverDir2 = this.sanitizeForPath(mediaItem.guildName);
+        const channelDir = this.sanitizeForPath(mediaItem.channelName);
+        return path.join(this.baseDir, serverDir2, channelDir);
+
+      case 'flat':
+      default:
+        return this.baseDir;
     }
+  }
+
+  /**
+   * Sanitize a string for use in file paths (directory/file names)
+   */
+  private sanitizeForPath(name: string): string {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .substring(0, 50) || 'unnamed';
+  }
+
+  /**
+   * Generate a human-readable unique filename: {sanitized-name}_{hash8}.{ext}
+   */
+  private generateUniqueFilename(originalFilename: string, normalizedUrl: string, ext: string): string {
+    const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 8);
+    const baseName = path.basename(originalFilename, path.extname(originalFilename));
+    const sanitized = this.sanitizeForPath(baseName);
+
+    return `${sanitized}_${hash}.${ext}`;
   }
 
   /**
@@ -495,60 +541,36 @@ class MediaDownloader {
   }
 
   /**
-   * Organize downloaded file into correct directory based on actual content
+   * Process downloaded file: update index, analytics, and references
    */
-  private async organizeDownloadedFile(filePath: string, mediaItem: MediaDownloadItem, hash: string, originalFilename: string): Promise<number> {
+  private async organizeDownloadedFile(filePath: string, mediaItem: MediaDownloadItem, hash: string, uniqueFilename: string): Promise<number> {
     let actualFileSize = 0;
-    
+
     try {
       // Get actual file size
       const fileStats = fs.statSync(filePath);
       actualFileSize = fileStats.size;
-      
-      // Detect actual file type from content
+
+      // Detect actual file type from content (for analytics only, no file moving)
       const actualFileType = await this.detectActualFileType(filePath);
       const attachment = mediaItem.originalData as DiscordAttachment;
-      const expectedType = await this.getFileTypeDir(attachment.content_type || '', mediaItem.filename);
-      
-      let finalPath = filePath;
-      let finalType = expectedType;
-      
-      // If actual type differs from expected, move file to correct directory
-      if (actualFileType !== 'unknown' && actualFileType !== expectedType) {
-        const correctDir = path.join(this.baseDir, actualFileType);
-        fs.mkdirSync(correctDir, { recursive: true });
-        
-        const newPath = path.join(correctDir, originalFilename);
-        
-        // Move file to correct directory
-        if (!fs.existsSync(newPath)) {
-          fs.renameSync(filePath, newPath);
-          finalPath = newPath;
-          finalType = actualFileType;
-          
-          logger.info(`📁 Moved ${originalFilename} from ${expectedType}/ to ${actualFileType}/ (detected: ${this.getFileTypeDescription(actualFileType)})`);
-        } else {
-          // File already exists in correct location, remove duplicate
-          fs.unlinkSync(filePath);
-          logger.debug(`Removed duplicate file: ${originalFilename}`);
-          return actualFileSize;
-        }
-      }
-      
+      const fileType = actualFileType !== 'unknown' ? actualFileType :
+        await this.getFileTypeDir(attachment.content_type || '', mediaItem.filename);
+
       // Update analytics
-      this.updateAnalytics(mediaItem, actualFileSize, finalType);
-      
+      this.updateAnalytics(mediaItem, actualFileSize, fileType);
+
       // Add to media index
       const mediaIndexEntry: MediaIndexEntry = {
         hash,
         originalFilename: mediaItem.filename,
         contentType: attachment.content_type || 'unknown',
         fileSize: actualFileSize,
-        filePath: path.relative(this.baseDir, finalPath),
+        filePath: path.relative(this.baseDir, filePath),
         firstSeen: Date.now()
       };
       this.mediaIndex.set(hash, mediaIndexEntry);
-      
+
       // Add to daily references
       this.dailyReferences.push({
         hash,
@@ -566,9 +588,9 @@ class MediaDownloader {
         fileSize: actualFileSize,
         contentType: attachment.content_type
       });
-      
+
     } catch (error) {
-      logger.debug(`Failed to organize downloaded file ${filePath}: ${error}`);
+      logger.debug(`Failed to process downloaded file ${filePath}: ${error}`);
       // Fallback to original analytics logic
       const attachment = mediaItem.originalData as DiscordAttachment;
       actualFileSize = attachment.size || 0;
@@ -863,21 +885,21 @@ class MediaDownloader {
    * Single attempt to download a media file
    */
   private async downloadMediaAttempt(mediaItem: MediaDownloadItem, attempt: number, maxRetries: number = MAX_RETRY_ATTEMPTS): Promise<boolean> {
-    // Determine file type directory (initial classification)
     const attachment = mediaItem.originalData as DiscordAttachment;
-    const fileTypeDir = await this.getFileTypeDir(attachment.content_type || '', mediaItem.filename);
-    const typeDir = path.join(this.baseDir, fileTypeDir);
-    
-    // Ensure directories exist
-    fs.mkdirSync(typeDir, { recursive: true });
-    
-    // Create unique filename: {hash12}.{ext}
+
     // Normalize URL to strip expiring params for consistent hashing
     const normalizedUrl = this.normalizeDiscordUrl(mediaItem.url);
-    const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 12);
+    const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 8);
     const ext = this.getValidatedExtension(attachment.content_type, mediaItem.url, mediaItem.mediaType);
-    const uniqueFilename = `${hash}.${ext}`;
-    const filePath = path.join(typeDir, uniqueFilename);
+
+    // Generate human-readable unique filename: {sanitized-name}_{hash8}.{ext}
+    const uniqueFilename = this.generateUniqueFilename(mediaItem.filename, normalizedUrl, ext);
+
+    // Get output directory based on organization mode (flat, server, or channel)
+    const outputDir = this.getOutputDir(mediaItem);
+    fs.mkdirSync(outputDir, { recursive: true });
+
+    const filePath = path.join(outputDir, uniqueFilename);
     
     // Skip if file already exists, but still add to index if not already there
     if (fs.existsSync(filePath)) {
@@ -1364,13 +1386,13 @@ class MediaDownloader {
       }
       seenUrls.add(mediaItem.url);
 
-      // Generate hash-based unique filename: {hash12}.{ext}
+      // Generate human-readable unique filename: {sanitized-name}_{hash8}.{ext}
       // Normalize URL to strip expiring params for consistent hashing
       const normalizedUrl = this.normalizeDiscordUrl(mediaItem.url);
-      const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 12);
+      const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 8);
       const attachment = mediaItem.originalData as DiscordAttachment;
       const ext = this.getValidatedExtension(attachment.content_type, mediaItem.url, mediaItem.mediaType);
-      const uniqueName = `${hash}.${ext}`;
+      const uniqueName = this.generateUniqueFilename(mediaItem.filename, normalizedUrl, ext);
 
       // Determine file type
       const fileTypeDir = await this.getFileTypeDir(attachment.content_type || '', mediaItem.filename);
@@ -1598,6 +1620,7 @@ async function main() {
   let allData = false;
   let manifestOutput: string | undefined;
   let sourceName = 'default';
+  let organizeBy: 'flat' | 'server' | 'channel' = 'flat';
 
   // Parse command line arguments
   for (let i = 0; i < args.length; i++) {
@@ -1610,19 +1633,20 @@ async function main() {
 Discord Media Downloader
 
 Downloads media files from Discord messages stored in the database.
-Organizes files by type: media/images/, media/videos/, media/audio/, media/documents/
-Stores metadata in: media/metadata/YYYY-MM-DD.json, media/metadata/index.json
+Files are saved with human-readable names: {sanitized-name}_{hash8}.{ext}
+Manifest is stored alongside files in the output directory.
 
 Usage:
-  npm run download-media                    # Download today's media
-  npm run download-media -- --date 2024-01-15     # Download specific date
+  npm run download-media                              # Download today's media (flat folder)
+  npm run download-media -- --date 2024-01-15        # Download specific date
   npm run download-media -- --start 2024-01-10 --end 2024-01-15  # Download date range
-  npm run download-media -- --db ./custom.sqlite   # Use custom database
-  npm run download-media -- --output ./downloads   # Custom output directory
+  npm run download-media -- --by-server              # Organize by server (guild)
+  npm run download-media -- --by-channel             # Organize by server/channel
+  npm run download-media -- --db ./custom.sqlite     # Use custom database
+  npm run download-media -- --output ./downloads     # Custom output directory
 
 Manifest Generation (for VPS download - no API calls, reads from database):
   npm run generate-manifest -- --date 2024-01-15 --source elizaos --db ./data/elizaos.sqlite
-  npm run generate-manifest -- --start 2024-01-01 --end 2024-01-15 --source elizaos --db ./data/elizaos.sqlite
   npm run generate-manifest -- --all --source elizaos --db ./data/elizaos.sqlite
 
 Options:
@@ -1632,10 +1656,16 @@ Options:
   --all                   Generate manifest for ALL data in database
   --db PATH               Database file path (default: ./data/db.sqlite)
   --output PATH           Output directory for downloads (default: ./media)
+  --by-server             Organize files by server: media/{server-name}/
+  --by-channel            Organize files by channel: media/{server-name}/{channel-name}/
   --generate-manifest     Generate manifest JSON instead of downloading
-  --manifest-output PATH  Output path for manifest file
+  --manifest-output PATH  Output path for manifest file (default: {output}/manifest.json)
   --source NAME           Source name for manifest (default: 'default')
   --help, -h              Show this help message
+
+File Naming:
+  Files are saved as: {sanitized-original-name}_{hash8}.{ext}
+  Example: screen-recording-20250906_085b9cc1.mp4
 `);
         process.exit(0);
 
@@ -1659,6 +1689,14 @@ Options:
         outputDir = args[++i];
         break;
 
+      case '--by-server':
+        organizeBy = 'server';
+        break;
+
+      case '--by-channel':
+        organizeBy = 'channel';
+        break;
+
       case '--generate-manifest':
         generateManifest = true;
         break;
@@ -1678,21 +1716,20 @@ Options:
   }
 
   try {
-    const downloader = new MediaDownloader(dbPath, outputDir);
+    const downloader = new MediaDownloader(dbPath, outputDir, { enabled: true, organizeBy });
     await downloader.init();
 
     // Manifest generation mode
     if (generateManifest) {
-      const outputPath = manifestOutput || `./output/${sourceName}/media-manifest.json`;
+      // Default manifest location: alongside media files
+      const outputPath = manifestOutput || path.join(outputDir, 'manifest.json');
       let manifest: MediaManifest;
 
       if (allData) {
         // All data manifest - single query, no date iteration
         logger.info(`Generating full media manifest for all data`);
         manifest = await downloader.generateManifestAll(sourceName);
-        // Save to file
-        const fs = await import('fs');
-        const path = await import('path');
+        // Save to file (ensure directory exists)
         const dir = path.dirname(outputPath);
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true });
