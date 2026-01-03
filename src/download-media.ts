@@ -8,7 +8,7 @@
  */
 
 import { SQLiteStorage } from "./plugins/storage/SQLiteStorage";
-import { ContentItem, DiscordRawData, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig, MediaDownloadItem } from "./types";
+import { ContentItem, DiscordRawData, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig, MediaDownloadItem, MediaAnalytics, DownloadStats, MediaManifestEntry, MediaManifest } from "./types";
 import { logger } from "./helpers/cliHelper";
 import { writeJsonFile } from "./helpers/fileHelper";
 import dotenv from "dotenv";
@@ -216,73 +216,7 @@ interface DailyMediaMetadata {
   totalSize: number;
 }
 
-interface DownloadStats {
-  total: number;
-  downloaded: number;
-  skipped: number;
-  failed: number;
-  filtered: number;
-  errors: string[];
-  analytics?: MediaAnalytics;
-}
-
-interface MediaAnalytics {
-  totalFilesByType: Record<string, number>;
-  averageFileSizeByType: Record<string, number>;
-  totalSizeByType: Record<string, number>;
-  largestFilesByType: Record<string, Array<{ filename: string; size: number; url: string; }>>;
-}
-
-/**
- * Entry in the media manifest for VPS download
- */
-interface MediaManifestEntry {
-  // Core identifiers
-  url: string;
-  proxy_url?: string;   // Discord proxy URL for external media
-  filename: string;
-  unique_name: string;  // hash12.ext
-  hash: string;         // 12-char hash of normalized URL
-
-  // File metadata
-  type: 'image' | 'video' | 'audio' | 'document';
-  is_spoiler?: boolean;   // filename starts with SPOILER_
-  is_animated?: boolean;  // animated content (GIF, a_ prefix)
-  media_type: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
-  size?: number;
-  content_type?: string;
-  width?: number;
-  height?: number;
-
-  // Discord context
-  message_id: string;
-  channel_id: string;
-  channel_name: string;
-  guild_id: string;
-  guild_name: string;
-  user_id: string;
-  timestamp: string;
-
-  // Message context (for search/filtering)
-  message_content?: string;
-  reactions?: Array<{ emoji: string; count: number }>;
-}
-
-/**
- * Media manifest file structure for VPS download
- */
-interface MediaManifest {
-  date: string;
-  source: string;       // elizaos, hyperfy
-  generated_at: string;
-  base_path: string;    // e.g., "elizaos-media"
-  files: MediaManifestEntry[];
-  stats: {
-    total_files: number;
-    by_type: Record<string, number>;
-    total_size_bytes: number;
-  };
-}
+// DownloadStats, MediaAnalytics, MediaManifestEntry, MediaManifest imported from types.ts
 
 class MediaDownloader {
   private storage: SQLiteStorage;

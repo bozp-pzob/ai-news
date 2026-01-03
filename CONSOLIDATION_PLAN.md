@@ -21,6 +21,12 @@ Target: Reduce download-media.ts from 1946 lines while improving DRYness.
 - Added non-null assertions (!) where download-media.ts uses these fields
 - Verified build passes, download-media --help works
 
+### 2026-01-03 - Task 3 Complete
+- Moved DownloadStats, MediaAnalytics, MediaManifestEntry, MediaManifest to types.ts
+- Kept internal interfaces (MediaReference, MediaIndexEntry, DailyMediaMetadata) in download-media.ts
+- download-media.ts reduced from 1931 to 1865 lines (-66 lines)
+- Verified build passes, CLI works
+
 ---
 
 ## Tasks
@@ -38,7 +44,7 @@ Target: Reduce download-media.ts from 1946 lines while improving DRYness.
 - **Verification**: `npm run build` passes
 
 ### Task 3: Add manifest interfaces to types.ts
-- **Status**: `pending`
+- **Status**: `completed`
 - **Files**: `src/types.ts`, `src/download-media.ts`
 - **Description**: Move `MediaManifest`, `MediaManifestEntry`, `MediaIndexEntry`, `MediaReference`, `DailyMediaMetadata`, `DownloadStats`, `MediaAnalytics` interfaces to types.ts
 - **Verification**: `npm run build` passes
