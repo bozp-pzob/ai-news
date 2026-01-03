@@ -29,6 +29,7 @@ class ConfigUpdater {
   /**
    * Parse the markdown checklist to extract channel selections
    * Supports both old list format and new table format
+   * Also parses Recommendations section and maps to correct guilds
    */
   parseChecklist() {
     console.log('📋 Parsing channel checklist...');
@@ -41,14 +42,24 @@ class ConfigUpdater {
     const lines = content.split('\n');
 
     const guildChannels = new Map(); // guildId -> { guildName, checkedChannels, uncheckedChannels, mutedChannels }
+    const channelToGuild = new Map(); // channelId -> guildId (for recommendations lookup)
+    const pendingRecommendations = []; // Store recommendations to process after guilds
     let currentGuild = null;
     let currentGuildId = null;
+    let inRecommendations = false;
 
     for (const line of lines) {
+      // Detect Recommendations section
+      if (line.includes('## 🔥 Recommendations')) {
+        inRecommendations = true;
+        continue;
+      }
+
       // Match guild headers: ## Guild Name (new format) or ### Guild Name (old format)
       const guildMatch = line.match(/^##+ ([^*\n]+)$/);
       if (guildMatch && !line.includes('Summary') && !line.includes('Recommendations') && !line.includes('Instructions') && !line.includes('Legend')) {
         currentGuild = guildMatch[1].trim();
+        inRecommendations = false; // Exit recommendations section
         continue;
       }
 
@@ -72,16 +83,24 @@ class ConfigUpdater {
       const tableMatchNoActivity = line.match(/^\|\s*#([^|]+)\|\s*`(\d+)`\s*\|\s*\[([x ])\]\s*\|\s*\[([x ])\]\s*\|/);
 
       const tableMatch = tableMatchWithActivity || tableMatchNoActivity;
-      if (tableMatch && currentGuildId) {
+      if (tableMatch) {
         const [, channelName, channelId, trackChecked, muteChecked] = tableMatch;
-        const guildData = guildChannels.get(currentGuildId);
 
-        if (muteChecked === 'x') {
-          guildData.mutedChannels.push({ channelId, channelName: channelName.trim() });
-        } else if (trackChecked === 'x') {
-          guildData.checkedChannels.push({ channelId, channelName: channelName.trim() });
-        } else {
-          guildData.uncheckedChannels.push({ channelId, channelName: channelName.trim() });
+        if (inRecommendations) {
+          // Store for later processing after we know all guilds
+          pendingRecommendations.push({ channelId, channelName: channelName.trim(), trackChecked, muteChecked });
+        } else if (currentGuildId) {
+          const guildData = guildChannels.get(currentGuildId);
+          // Track channel -> guild mapping for recommendations
+          channelToGuild.set(channelId, currentGuildId);
+
+          if (muteChecked === 'x') {
+            guildData.mutedChannels.push({ channelId, channelName: channelName.trim() });
+          } else if (trackChecked === 'x') {
+            guildData.checkedChannels.push({ channelId, channelName: channelName.trim() });
+          } else {
+            guildData.uncheckedChannels.push({ channelId, channelName: channelName.trim() });
+          }
         }
         continue;
       }
@@ -91,11 +110,39 @@ class ConfigUpdater {
       if (listMatch && currentGuildId) {
         const [, checked, channelName, channelId] = listMatch;
         const guildData = guildChannels.get(currentGuildId);
+        channelToGuild.set(channelId, currentGuildId);
 
         if (checked === 'x') {
           guildData.checkedChannels.push({ channelId, channelName });
         } else {
           guildData.uncheckedChannels.push({ channelId, channelName });
+        }
+      }
+    }
+
+    // Process pending recommendations - find their guilds and apply changes
+    let recommendationsApplied = 0;
+    for (const rec of pendingRecommendations) {
+      const guildId = channelToGuild.get(rec.channelId);
+      if (guildId) {
+        const guildData = guildChannels.get(guildId);
+        // Only apply if Track or Mute is checked (recommendations default to unchecked)
+        if (rec.muteChecked === 'x') {
+          // Remove from other lists if present, add to muted
+          guildData.checkedChannels = guildData.checkedChannels.filter(c => c.channelId !== rec.channelId);
+          guildData.uncheckedChannels = guildData.uncheckedChannels.filter(c => c.channelId !== rec.channelId);
+          if (!guildData.mutedChannels.find(c => c.channelId === rec.channelId)) {
+            guildData.mutedChannels.push({ channelId: rec.channelId, channelName: rec.channelName });
+          }
+          recommendationsApplied++;
+        } else if (rec.trackChecked === 'x') {
+          // Remove from other lists if present, add to checked
+          guildData.mutedChannels = guildData.mutedChannels.filter(c => c.channelId !== rec.channelId);
+          guildData.uncheckedChannels = guildData.uncheckedChannels.filter(c => c.channelId !== rec.channelId);
+          if (!guildData.checkedChannels.find(c => c.channelId === rec.channelId)) {
+            guildData.checkedChannels.push({ channelId: rec.channelId, channelName: rec.channelName });
+          }
+          recommendationsApplied++;
         }
       }
     }
@@ -106,6 +153,9 @@ class ConfigUpdater {
       totalMuted += guildData.mutedChannels?.length || 0;
     }
     console.log(`✓ Parsed ${guildChannels.size} guilds from checklist`);
+    if (recommendationsApplied > 0) {
+      console.log(`📌 Applied ${recommendationsApplied} changes from Recommendations section`);
+    }
     if (totalMuted > 0) {
       console.log(`🔇 Found ${totalMuted} muted channels (will be ignored)\n`);
     } else {
