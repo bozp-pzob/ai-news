@@ -338,6 +338,18 @@ class ChannelDiscovery {
     }
 
     console.log(`\n\n✅ Sampled ${sampled} channels (${errors} inaccessible)\n`);
+
+    // Auto-mute inaccessible channels (no point recommending what we can't read)
+    let autoMuted = 0;
+    for (const [channelId, activity] of this.channelActivity) {
+      if (activity.badge === '🔒' && !this.mutedChannels.has(channelId)) {
+        this.mutedChannels.add(channelId);
+        autoMuted++;
+      }
+    }
+    if (autoMuted > 0) {
+      console.log(`🔇 Auto-muted ${autoMuted} inaccessible channels\n`);
+    }
   }
 
   /**
@@ -412,14 +424,14 @@ class ChannelDiscovery {
 
       markdown += `## 🔥 Recommendations\n\n`;
       markdown += `**${recommendations.length} active channels** not being tracked:\n\n`;
-      markdown += `| Channel | Server | Activity |\n`;
-      markdown += `|---------|--------|----------|\n`;
+      markdown += `| Channel | ID | Activity | Track | Mute |\n`;
+      markdown += `|---------|-----|----------|-------|------|\n`;
 
-      for (const rec of recommendations.slice(0, 15)) { // Show top 15
-        markdown += `| #${rec.channel.name} | ${rec.guildName} | ${rec.activity.badge} ${rec.activity.description} |\n`;
+      for (const rec of recommendations.slice(0, 20)) { // Show top 20
+        markdown += `| #${rec.channel.name} | \`${rec.channelId}\` | ${rec.activity.badge} ${rec.activity.description} | [ ] | [ ] |\n`;
       }
-      if (recommendations.length > 15) {
-        markdown += `| *...and ${recommendations.length - 15} more* | | |\n`;
+      if (recommendations.length > 20) {
+        markdown += `| *...and ${recommendations.length - 20} more* | | | | |\n`;
       }
       markdown += `\n`;
     }
