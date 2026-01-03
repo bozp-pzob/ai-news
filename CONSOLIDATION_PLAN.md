@@ -14,6 +14,13 @@ Target: Reduce download-media.ts from 1946 lines while improving DRYness.
 - Kept DiscordSticker as-is (was identical)
 - Verified build passes, download-media --help works
 
+### 2026-01-03 - Task 2 Complete
+- Extended MediaDownloadItem in types.ts with channelId, guildId, userId, originalData, messageContent, reactions
+- Kept new fields optional for mediaHelper.ts compatibility
+- Removed duplicate interface from download-media.ts (now imports from types)
+- Added non-null assertions (!) where download-media.ts uses these fields
+- Verified build passes, download-media --help works
+
 ---
 
 ## Tasks
@@ -25,7 +32,7 @@ Target: Reduce download-media.ts from 1946 lines while improving DRYness.
 - **Verification**: `npm run build` passes, no TypeScript errors
 
 ### Task 2: Extend MediaDownloadItem in types.ts
-- **Status**: `pending`
+- **Status**: `completed`
 - **Files**: `src/types.ts`, `src/download-media.ts`
 - **Description**: Add missing fields to types.ts MediaDownloadItem: `channelId`, `guildId`, `userId`, `originalData`, `messageContent`, `reactions`. Remove duplicate interface from download-media.ts.
 - **Verification**: `npm run build` passes

@@ -8,7 +8,7 @@
  */
 
 import { SQLiteStorage } from "./plugins/storage/SQLiteStorage";
-import { ContentItem, DiscordRawData, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig } from "./types";
+import { ContentItem, DiscordRawData, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig, MediaDownloadItem } from "./types";
 import { logger } from "./helpers/cliHelper";
 import { writeJsonFile } from "./helpers/fileHelper";
 import dotenv from "dotenv";
@@ -175,22 +175,7 @@ class DiscordRateLimiter {
   }
 }
 
-interface MediaDownloadItem {
-  url: string;
-  filename: string;
-  messageId: string;
-  messageDate: string;
-  channelId: string;
-  channelName: string;
-  guildId: string;
-  guildName: string;
-  userId: string;
-  mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
-  originalData: DiscordAttachment | DiscordEmbed | DiscordSticker;
-  // Additional context for manifest
-  messageContent?: string;
-  reactions?: Array<{ emoji: string; count: number }>;
-}
+// MediaDownloadItem imported from types.ts
 
 interface MediaReference {
   hash: string;
@@ -581,16 +566,16 @@ class MediaDownloader {
       };
       this.mediaIndex.set(hash, mediaIndexEntry);
 
-      // Add to daily references
+      // Add to daily references (fields are always present via createMediaItem)
       this.dailyReferences.push({
         hash,
         originalFilename: mediaItem.filename,
         messageId: mediaItem.messageId,
-        channelId: mediaItem.channelId,
+        channelId: mediaItem.channelId!,
         channelName: mediaItem.channelName,
-        guildId: mediaItem.guildId,
+        guildId: mediaItem.guildId!,
         guildName: mediaItem.guildName,
-        userId: mediaItem.userId,
+        userId: mediaItem.userId!,
         timestamp: Date.now(),
         messageDate: new Date().toISOString(),
         mediaType: mediaItem.mediaType,
@@ -664,7 +649,7 @@ class MediaDownloader {
 
       const key = `${item.channelId}:${item.messageId}`;
       if (!messageGroups.has(key)) {
-        messageGroups.set(key, { channelId: item.channelId, messageId: item.messageId, items: [] });
+        messageGroups.set(key, { channelId: item.channelId!, messageId: item.messageId, items: [] });
       }
       messageGroups.get(key)!.items.push(item);
     }
@@ -1070,11 +1055,11 @@ class MediaDownloader {
             hash,
             originalFilename: mediaItem.filename,
             messageId: mediaItem.messageId,
-            channelId: mediaItem.channelId,
+            channelId: mediaItem.channelId!,
             channelName: mediaItem.channelName,
-            guildId: mediaItem.guildId,
+            guildId: mediaItem.guildId!,
             guildName: mediaItem.guildName,
-            userId: mediaItem.userId,
+            userId: mediaItem.userId!,
             timestamp: Date.now(),
             messageDate: new Date().toISOString(),
             mediaType: mediaItem.mediaType,
@@ -1577,11 +1562,11 @@ class MediaDownloader {
 
         // Discord context
         message_id: mediaItem.messageId,
-        channel_id: mediaItem.channelId,
+        channel_id: mediaItem.channelId!,
         channel_name: mediaItem.channelName,
-        guild_id: mediaItem.guildId,
+        guild_id: mediaItem.guildId!,
         guild_name: mediaItem.guildName,
-        user_id: mediaItem.userId,
+        user_id: mediaItem.userId!,
         timestamp: mediaItem.messageDate,
 
         // Message context

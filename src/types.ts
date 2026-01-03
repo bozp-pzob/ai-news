@@ -371,15 +371,25 @@ export interface ActionItems {
 
 /**
  * Interface for media download items
+ * Used by download-media.ts and mediaHelper.ts
+ * Note: Extended fields (channelId, guildId, userId, originalData) are optional
+ * for compatibility with mediaHelper, but download-media.ts always provides them
  * @interface MediaDownloadItem
  */
 export interface MediaDownloadItem {
   url: string;
   filename: string;
-  contentType?: string;
   messageId: string;
   messageDate: string;
+  channelId?: string;
   channelName: string;
+  guildId?: string;
   guildName: string;
+  userId?: string;
   mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
+  // Extended fields - optional for mediaHelper compatibility
+  originalData?: DiscordAttachment | DiscordEmbed | DiscordSticker;
+  contentType?: string;
+  messageContent?: string;
+  reactions?: Array<{ emoji: string; count: number }>;
 }
