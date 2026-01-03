@@ -611,33 +611,6 @@ class MediaDownloader {
   }
 
   /**
-   * Get human-readable description of file type
-   */
-  private getFileTypeDescription(fileType: string): string {
-    switch (fileType) {
-      case 'images': return 'Image file';
-      case 'videos': return 'Video file';
-      case 'audio': return 'Audio file';
-      case 'documents': return 'Document/HTML file';
-      default: return 'Unknown file type';
-    }
-  }
-
-  /**
-   * Generate content hash from file data
-   */
-  private generateContentHash(data: Buffer): string {
-    return createHash('sha256').update(data).digest('hex');
-  }
-
-  /**
-   * Generate URL-based hash for deduplication before download
-   */
-  private generateUrlHash(url: string): string {
-    return createHash('sha256').update(url).digest('hex');
-  }
-
-  /**
    * Update analytics with media information
    */
   private updateAnalytics(mediaItem: MediaDownloadItem, fileSize?: number, fileType?: string): void {
@@ -897,11 +870,41 @@ class MediaDownloader {
   }
 
   /**
+   * Create a MediaDownloadItem with common context fields
+   */
+  private createMediaItem(
+    url: string,
+    filename: string,
+    mediaType: MediaDownloadItem['mediaType'],
+    originalData: DiscordAttachment | DiscordEmbed | DiscordSticker | Record<string, any>,
+    message: DiscordRawData['messages'][0],
+    discordData: DiscordRawData,
+    item: ContentItem,
+    messageDate: string
+  ): MediaDownloadItem {
+    return {
+      url,
+      filename,
+      messageId: message.id,
+      messageDate,
+      channelId: discordData.channel.id,
+      channelName: discordData.channel.name,
+      guildId: item.metadata?.guildId || 'unknown',
+      guildName: item.metadata?.guildName || 'unknown',
+      userId: message.uid,
+      mediaType,
+      originalData: originalData as DiscordAttachment | DiscordEmbed | DiscordSticker,
+      messageContent: message.content,
+      reactions: message.reactions
+    };
+  }
+
+  /**
    * Extract all media items from Discord raw data with filtering
    */
   private extractMediaFromDiscordData(item: ContentItem): MediaDownloadItem[] {
     const mediaItems: MediaDownloadItem[] = [];
-    
+
     if (item.type !== 'discordRawData' || !item.text) {
       return mediaItems;
     }
@@ -909,26 +912,15 @@ class MediaDownloader {
     try {
       const discordData: DiscordRawData = JSON.parse(item.text);
       const messageDate = new Date(item.date! * 1000).toISOString().split('T')[0]; // YYYY-MM-DD
-      
+
       for (const message of discordData.messages) {
         // Process attachments
         if (message.attachments) {
           for (const attachment of message.attachments) {
-            mediaItems.push({
-              url: attachment.url,
-              filename: attachment.filename,
-              messageId: message.id,
-              messageDate,
-              channelId: discordData.channel.id,
-              channelName: discordData.channel.name,
-              guildId: item.metadata?.guildId || 'unknown',
-              guildName: item.metadata?.guildName || 'unknown',
-              userId: message.uid,
-              mediaType: 'attachment',
-              originalData: attachment,
-              messageContent: message.content,
-              reactions: message.reactions
-            });
+            mediaItems.push(this.createMediaItem(
+              attachment.url, attachment.filename, 'attachment', attachment,
+              message, discordData, item, messageDate
+            ));
           }
         }
 
@@ -937,60 +929,28 @@ class MediaDownloader {
           for (const embed of message.embeds) {
             if (embed.image) {
               const filename = `embed-image-${message.id}.${embed.image.url.split('.').pop() || 'jpg'}`;
-              mediaItems.push({
-                url: embed.image.url,
-                filename,
-                messageId: message.id,
-                messageDate,
-                channelId: discordData.channel.id,
-                channelName: discordData.channel.name,
-                guildId: item.metadata?.guildId || 'unknown',
-                guildName: item.metadata?.guildName || 'unknown',
-                userId: message.uid,
-                mediaType: 'embed_image',
-                originalData: embed,
-                messageContent: message.content,
-                reactions: message.reactions
-              });
+              mediaItems.push(this.createMediaItem(
+                embed.image.url, filename, 'embed_image', embed,
+                message, discordData, item, messageDate
+              ));
             }
 
             if (embed.thumbnail) {
               const filename = `embed-thumbnail-${message.id}.${embed.thumbnail.url.split('.').pop() || 'jpg'}`;
-              mediaItems.push({
-                url: embed.thumbnail.url,
-                filename,
-                messageId: message.id,
-                messageDate,
-                channelId: discordData.channel.id,
-                channelName: discordData.channel.name,
-                guildId: item.metadata?.guildId || 'unknown',
-                guildName: item.metadata?.guildName || 'unknown',
-                userId: message.uid,
-                mediaType: 'embed_thumbnail',
-                originalData: embed,
-                messageContent: message.content,
-                reactions: message.reactions
-              });
+              mediaItems.push(this.createMediaItem(
+                embed.thumbnail.url, filename, 'embed_thumbnail', embed,
+                message, discordData, item, messageDate
+              ));
             }
-            
+
             if (embed.video?.url) {
               const filename = `embed-video-${message.id}.${embed.video.url.split('.').pop() || 'mp4'}`;
-              const mediaItem = {
-                url: embed.video.url,
-                filename,
-                messageId: message.id,
-                messageDate,
-                channelId: discordData.channel.id,
-                channelName: discordData.channel.name,
-                guildId: item.metadata?.guildId || 'unknown',
-                guildName: item.metadata?.guildName || 'unknown',
-                userId: message.uid,
-                mediaType: 'embed_video' as const,
-                originalData: { content_type: 'video/mp4', size: undefined, ...embed },
-                messageContent: message.content,
-                reactions: message.reactions
-              };
-              
+              const mediaItem = this.createMediaItem(
+                embed.video.url, filename, 'embed_video',
+                { content_type: 'video/mp4', size: undefined, ...embed },
+                message, discordData, item, messageDate
+              );
+
               // Apply filtering
               const filterResult = this.shouldDownloadMedia(mediaItem);
               if (filterResult.allowed) {
@@ -1010,27 +970,13 @@ class MediaDownloader {
             const extension = this.getStickerExtension(sticker.format_type);
             const filename = `${sticker.name}.${extension}`;
             const stickerUrl = `https://media.discordapp.net/stickers/${sticker.id}.${extension}`;
-            
-            const mediaItem = {
-              url: stickerUrl,
-              filename,
-              messageId: message.id,
-              messageDate,
-              channelId: discordData.channel.id,
-              channelName: discordData.channel.name,
-              guildId: item.metadata?.guildId || 'unknown',
-              guildName: item.metadata?.guildName || 'unknown',
-              userId: message.uid,
-              mediaType: 'sticker' as const,
-              originalData: {
-                content_type: extension === 'gif' ? 'image/gif' : 'image/png',
-                size: undefined,
-                ...sticker
-              },
-              messageContent: message.content,
-              reactions: message.reactions
-            };
-            
+
+            const mediaItem = this.createMediaItem(
+              stickerUrl, filename, 'sticker',
+              { content_type: extension === 'gif' ? 'image/gif' : 'image/png', size: undefined, ...sticker },
+              message, discordData, item, messageDate
+            );
+
             // Apply filtering
             const filterResult = this.shouldDownloadMedia(mediaItem);
             if (filterResult.allowed) {
@@ -1284,13 +1230,6 @@ class MediaDownloader {
         request.destroy();
       });
     });
-  }
-
-  /**
-   * Sanitize filename for filesystem
-   */
-  private sanitizeFilename(filename: string): string {
-    return filename.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
   }
 
   /**

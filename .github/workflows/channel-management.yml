@@ -2,9 +2,15 @@ name: Discord Channel Management
 
 on:
   schedule:
-    # Run daily at 6:00 AM UTC
-    - cron: '0 6 * * *'
+    # Run weekly on Sunday at 6:00 AM UTC
+    - cron: '0 6 * * 0'
   workflow_dispatch: # Allow manual triggering
+    inputs:
+      sample:
+        description: 'Include activity sampling (slower but shows channel velocity)'
+        required: false
+        default: 'true'
+        type: boolean
 
 jobs:
   manage-channels:
@@ -51,7 +57,15 @@ jobs:
         run: npm install
 
       - name: Run channel discovery
-        run: node scripts/discover-channels.mjs
+        run: |
+          # Include --sample for scheduled runs or if explicitly requested
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.sample }}" = "true" ]; then
+            echo "Running with activity sampling..."
+            node scripts/discover-channels.js --sample
+          else
+            echo "Running without activity sampling..."
+            node scripts/discover-channels.js
+          fi
         env:
           NODE_ENV: production
 
@@ -107,16 +121,22 @@ jobs:
             git add config/
           fi
           
-          # Get summary for commit message
+          # Get summary for commit message (parse new table format)
           TIMESTAMP=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
           if [ -f "scripts/CHANNELS.md" ]; then
-            TOTAL_CHANNELS=$(grep "Total Channels" scripts/CHANNELS.md | head -1 | sed 's/.*Total Channels\*\*: \([0-9]*\).*/\1/' || echo "unknown")
-            NEW_CHANNELS=$(grep "New Channels" scripts/CHANNELS.md | head -1 | sed 's/.*New Channels\*\*: \([0-9]*\).*/\1/' || echo "0")
-            
+            # Parse table format: | Total Channels | 136 |
+            TOTAL_CHANNELS=$(grep -E "^\| Total Channels \|" scripts/CHANNELS.md | sed 's/.*| \([0-9]*\) |$/\1/' || echo "unknown")
+            TRACKED=$(grep -E "^\| Currently Tracking \|" scripts/CHANNELS.md | sed 's/.*| \([0-9]*\) |$/\1/' || echo "0")
+            MUTED=$(grep -E "^\| Muted \|" scripts/CHANNELS.md | sed 's/.*| \([0-9]*\) |$/\1/' || echo "0")
+            AVAILABLE=$(grep -E "^\| Available \|" scripts/CHANNELS.md | sed 's/.*| \([0-9]*\) |$/\1/' || echo "0")
+
+            # Count hot channels from recommendations
+            HOT_COUNT=$(grep -c "🔥" scripts/CHANNELS.md 2>/dev/null || echo "0")
+
             if [ "${{ steps.config_changes.outputs.configs_changed }}" = "true" ]; then
-              COMMIT_MSG="Update Discord channels & configs - ${TOTAL_CHANNELS} total, ${NEW_CHANNELS} new channels (${TIMESTAMP})"
+              COMMIT_MSG="Update Discord channels & configs - ${TOTAL_CHANNELS} total, ${TRACKED} tracked, ${AVAILABLE} available (${TIMESTAMP})"
             else
-              COMMIT_MSG="Update Discord channel checklist - ${TOTAL_CHANNELS} total, ${NEW_CHANNELS} new channels (${TIMESTAMP})"
+              COMMIT_MSG="Update Discord channels - ${TOTAL_CHANNELS} total, ${TRACKED} tracked, ${HOT_COUNT} hot (${TIMESTAMP})"
             fi
           else
             COMMIT_MSG="Add Discord channel management (${TIMESTAMP})"
@@ -142,22 +162,28 @@ jobs:
           if [ -f "scripts/CHANNELS.md" ]; then
             echo "✅ Channel management completed successfully"
             echo "📋 Checklist available at: scripts/CHANNELS.md"
-            
-            # Extract and display summary
-            TOTAL=$(grep "Total Channels" scripts/CHANNELS.md | head -1 | sed 's/.*Total Channels\*\*: \([0-9]*\).*/\1/' || echo "unknown")
-            TRACKED=$(grep "Currently Tracking" scripts/CHANNELS.md | head -1 | sed 's/.*Currently Tracking\*\*: \([0-9]*\).*/\1/' || echo "unknown") 
-            NEW=$(grep "New Channels" scripts/CHANNELS.md | head -1 | sed 's/.*New Channels\*\*: \([0-9]*\).*/\1/' || echo "0")
-            
-            echo "📊 Summary: ${TOTAL} total channels, ${TRACKED} currently tracked, ${NEW} new channels found"
-            
+
+            # Extract and display summary (parse new table format)
+            TOTAL=$(grep -E "^\| Total Channels \|" scripts/CHANNELS.md | sed 's/.*| \([0-9]*\) |$/\1/' || echo "unknown")
+            TRACKED=$(grep -E "^\| Currently Tracking \|" scripts/CHANNELS.md | sed 's/.*| \([0-9]*\) |$/\1/' || echo "unknown")
+            MUTED=$(grep -E "^\| Muted \|" scripts/CHANNELS.md | sed 's/.*| \([0-9]*\) |$/\1/' || echo "0")
+            AVAILABLE=$(grep -E "^\| Available \|" scripts/CHANNELS.md | sed 's/.*| \([0-9]*\) |$/\1/' || echo "0")
+            HOT_COUNT=$(grep -c "🔥" scripts/CHANNELS.md 2>/dev/null || echo "0")
+
+            echo "📊 Summary: ${TOTAL} total, ${TRACKED} tracked, ${MUTED} muted, ${AVAILABLE} available"
+
+            if [ "$HOT_COUNT" != "0" ]; then
+              echo "🔥 ${HOT_COUNT} hot channels detected"
+            fi
+
             if [ "${{ steps.config_changes.outputs.configs_changed }}" = "true" ]; then
               echo "🔧 Config files updated with new channel selections"
             fi
-            
-            if [ "$NEW" != "0" ] && [ "$NEW" != "unknown" ]; then
-              echo "⚠️  Action required: ${NEW} new channels found that are not being tracked"
+
+            if [ "$AVAILABLE" != "0" ] && [ "$AVAILABLE" != "unknown" ]; then
+              echo "💡 ${AVAILABLE} channels available to track (check recommendations)"
             fi
-            
+
             if [ "${{ steps.checklist_changes.outputs.checklist_changed }}" = "true" ]; then
               echo "📊 Dashboard updated"
             fi
