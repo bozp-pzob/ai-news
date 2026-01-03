@@ -453,6 +453,11 @@ export interface MediaManifestEntry {
   // Message context
   message_content?: string;
   reactions?: Array<{ emoji: string; count: number }>;
+
+  // CDN upload fields (populated after upload)
+  cdn_url?: string;
+  cdn_path?: string;
+  cdn_uploaded_at?: string;
 }
 
 /**
@@ -470,4 +475,56 @@ export interface MediaManifest {
     by_type: Record<string, number>;
     total_size_bytes: number;
   };
+  cdn?: {
+    provider: string;
+    base_url: string;
+    uploaded_at: string;
+    upload_stats: {
+      total: number;
+      uploaded: number;
+      skipped: number;
+      failed: number;
+    };
+  };
+}
+
+// =============================================================================
+// CDN Upload Types
+// =============================================================================
+
+/**
+ * Result of a CDN upload operation
+ * @interface CDNUploadResult
+ */
+export interface CDNUploadResult {
+  localPath: string;
+  remotePath: string;
+  cdnUrl: string;
+  success: boolean;
+  message: string;
+  size?: number;
+}
+
+/**
+ * Configuration for CDN providers
+ * @interface CDNConfig
+ */
+export interface CDNConfig {
+  provider: 'bunny' | 'ipfs';
+  storageZone?: string;
+  storageHost?: string;
+  cdnUrl?: string;
+  password?: string;
+  dryRun?: boolean;
+  maxFileSize?: number;
+}
+
+/**
+ * CDN Provider interface for upload operations
+ * @interface CDNProvider
+ */
+export interface CDNProvider {
+  name: string;
+  upload(localPath: string, remotePath: string): Promise<CDNUploadResult>;
+  getPublicUrl(remotePath: string): string;
 }
