@@ -29,6 +29,10 @@ const DISCORD_GLOBAL_RATE_LIMIT = 50; // 50 requests per second globally
 const DISCORD_RATE_LIMIT_WINDOW = 1000; // 1 second window
 const MAX_CONCURRENT_DOWNLOADS = 5; // Limit concurrent downloads
 
+// URL Refresh Constants (for expired Discord CDN URLs)
+const DISCORD_404_THRESHOLD = 5; // After this many Discord 404s, trigger manifest refresh
+const DISCORD_API_BASE = 'https://discord.com/api/v10';
+
 // URL classification helpers
 const isDiscordUrl = (url: string) => url.includes('discord') || url.includes('cdn.discordapp.com') || url.includes('media.discordapp.net');
 const isTwitterUrl = (url: string) => url.includes('twitter.com') || url.includes('twimg.com');
@@ -309,6 +313,12 @@ class MediaDownloader {
     totalSizeByType: {},
     largestFilesByType: {}
   };
+
+  // URL refresh tracking
+  private discord404Count = 0; // Total Discord CDN 404s
+  private urlRefreshCache: Map<string, string> = new Map(); // old URL -> fresh URL
+  private manifestRefreshed = false;
+  private currentManifestPath?: string;
 
   constructor(dbPath: string, baseDir: string = './media', config?: MediaDownloadConfig) {
     this.storage = new SQLiteStorage({ name: 'media-downloader', dbPath });
@@ -658,6 +668,187 @@ class MediaDownloader {
     if (this.analytics.largestFilesByType[type].length > 5) {
       this.analytics.largestFilesByType[type] = this.analytics.largestFilesByType[type].slice(0, 5);
     }
+  }
+
+  /**
+   * Refresh all Discord CDN URLs in the manifest via Discord API
+   * Groups by channel to minimize API calls
+   */
+  private async refreshManifestUrls(mediaItems: MediaDownloadItem[]): Promise<void> {
+    const token = process.env.DISCORD_TOKEN;
+    if (!token) {
+      logger.error('DISCORD_TOKEN not set - cannot refresh expired URLs');
+      return;
+    }
+
+    logger.info('🔄 Refreshing expired Discord URLs...');
+
+    // Group items by channel and message for efficient API calls
+    const messageGroups = new Map<string, { channelId: string; messageId: string; items: MediaDownloadItem[] }>();
+
+    for (const item of mediaItems) {
+      if (!isDiscordUrl(item.url)) continue;
+
+      const key = `${item.channelId}:${item.messageId}`;
+      if (!messageGroups.has(key)) {
+        messageGroups.set(key, { channelId: item.channelId, messageId: item.messageId, items: [] });
+      }
+      messageGroups.get(key)!.items.push(item);
+    }
+
+    const totalMessages = messageGroups.size;
+    const etaSeconds = Math.ceil(totalMessages * 0.5); // 500ms per message
+    logger.info(`Fetching fresh URLs for ${totalMessages} messages (ETA: ~${Math.ceil(etaSeconds/60)} min)...`);
+
+    let refreshed = 0;
+    let failed = 0;
+    let processed = 0;
+    const progressInterval = Math.max(1, Math.floor(totalMessages / 10)); // Show progress every 10%
+
+    for (const [key, group] of messageGroups) {
+      try {
+        const freshMessage = await this.fetchDiscordMessage(token, group.channelId, group.messageId);
+        if (freshMessage) {
+          // Map old URLs to fresh URLs from the message
+          this.mapFreshUrls(group.items, freshMessage);
+          refreshed++;
+        } else {
+          failed++;
+        }
+
+        processed++;
+        // Show progress periodically
+        if (processed % progressInterval === 0) {
+          const pct = Math.round((processed / totalMessages) * 100);
+          logger.info(`  Refresh progress: ${processed}/${totalMessages} (${pct}%)`);
+        }
+
+        // Rate limit: 500ms between requests (2 req/sec) to avoid 429s
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error) {
+        logger.debug(`Failed to refresh message ${key}: ${error}`);
+        failed++;
+        processed++;
+      }
+    }
+
+    logger.info(`✅ Refreshed ${refreshed} messages (${failed} failed)`);
+    this.manifestRefreshed = true;
+  }
+
+  /**
+   * Fetch a Discord message via API to get fresh attachment URLs
+   */
+  private async fetchDiscordMessage(token: string, channelId: string, messageId: string): Promise<any> {
+    return new Promise((resolve) => {
+      const options = {
+        hostname: 'discord.com',
+        path: `/api/v10/channels/${channelId}/messages/${messageId}`,
+        method: 'GET',
+        headers: {
+          'Authorization': `Bot ${token}`,
+          'User-Agent': USER_AGENT
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try {
+              resolve(JSON.parse(data));
+            } catch {
+              resolve(null);
+            }
+          } else if (res.statusCode === 429) {
+            const retryAfter = parseFloat(res.headers['retry-after'] as string || '5') * 1000;
+            logger.warning(`Rate limited, waiting ${Math.round(retryAfter/1000)}s then retrying...`);
+            // Wait and retry
+            setTimeout(async () => {
+              const retry = await this.fetchDiscordMessage(token, channelId, messageId);
+              resolve(retry);
+            }, retryAfter);
+            return;
+          } else {
+            logger.debug(`Failed to fetch message ${messageId}: HTTP ${res.statusCode}`);
+            resolve(null);
+          }
+        });
+      });
+
+      req.on('error', () => resolve(null));
+      req.setTimeout(10000, () => { req.destroy(); resolve(null); });
+      req.end();
+    });
+  }
+
+  /**
+   * Map fresh URLs from Discord API response to our media items
+   */
+  private mapFreshUrls(items: MediaDownloadItem[], message: any): void {
+    // Build lookup from attachment ID to fresh URL
+    const freshAttachments = new Map<string, string>();
+    for (const att of message.attachments || []) {
+      freshAttachments.set(att.id, att.url);
+      // Also map by filename as fallback
+      freshAttachments.set(att.filename, att.url);
+    }
+
+    // Map embed URLs (thumbnails, images, videos)
+    const freshEmbeds: string[] = [];
+    for (const embed of message.embeds || []) {
+      if (embed.thumbnail?.url) freshEmbeds.push(embed.thumbnail.url);
+      if (embed.image?.url) freshEmbeds.push(embed.image.url);
+      if (embed.video?.url) freshEmbeds.push(embed.video.url);
+    }
+
+    for (const item of items) {
+      let freshUrl: string | undefined;
+
+      if (item.mediaType === 'attachment') {
+        // Try by attachment ID (extracted from URL) or filename
+        const attachmentId = this.extractAttachmentId(item.url);
+        freshUrl = freshAttachments.get(attachmentId) || freshAttachments.get(item.filename);
+      } else {
+        // For embeds, try to match by URL path (ignoring query params)
+        const oldPath = this.getUrlPath(item.url);
+        freshUrl = freshEmbeds.find(url => this.getUrlPath(url) === oldPath);
+      }
+
+      if (freshUrl && freshUrl !== item.url) {
+        this.urlRefreshCache.set(item.url, freshUrl);
+        logger.debug(`Refreshed URL for ${item.filename}`);
+      }
+    }
+  }
+
+  /**
+   * Extract attachment ID from Discord CDN URL
+   */
+  private extractAttachmentId(url: string): string {
+    // URL format: https://cdn.discordapp.com/attachments/{channel_id}/{attachment_id}/{filename}
+    const match = url.match(/attachments\/\d+\/(\d+)\//);
+    return match ? match[1] : '';
+  }
+
+  /**
+   * Get URL path without query string for comparison
+   */
+  private getUrlPath(url: string): string {
+    try {
+      const parsed = new URL(url);
+      return parsed.pathname;
+    } catch {
+      return url;
+    }
+  }
+
+  /**
+   * Get potentially refreshed URL for a media item
+   */
+  private getRefreshedUrl(item: MediaDownloadItem): string {
+    return this.urlRefreshCache.get(item.url) || item.url;
   }
 
   /**
@@ -1270,7 +1461,23 @@ class MediaDownloader {
     
     this.stats.total = allMediaItems.length;
     logger.info(`Found ${allMediaItems.length} media items to download`);
-    
+
+    // Pre-refresh Discord URLs (they expire after ~24hrs)
+    const discordItems = allMediaItems.filter(item => isDiscordUrl(item.url));
+    if (discordItems.length > 0 && process.env.DISCORD_TOKEN) {
+      logger.info(`\n🔄 Pre-refreshing ${discordItems.length} Discord URLs...`);
+      await this.refreshManifestUrls(discordItems);
+
+      // Apply refreshed URLs to items
+      for (const item of allMediaItems) {
+        const freshUrl = this.urlRefreshCache.get(item.url);
+        if (freshUrl) {
+          item.url = freshUrl;
+        }
+      }
+      logger.info(`✅ Refreshed ${this.urlRefreshCache.size} URLs\n`);
+    }
+
     // Download media with improved rate limiting and concurrency
     await this.downloadMediaConcurrently(allMediaItems);
     
@@ -1293,12 +1500,12 @@ class MediaDownloader {
     const progressInterval = Math.max(1, Math.floor(allMediaItems.length / 20)); // Show progress every 5%
 
     // Create download promises using rate limiter
-    const downloadPromises = allMediaItems.map((mediaItem, index) => {
+    const downloadPromises = allMediaItems.map((mediaItem) => {
       return this.rateLimiter.enqueue(async () => {
         try {
           await this.downloadMedia(mediaItem);
           processed++;
-          
+
           // Show progress periodically
           if (processed % progressInterval === 0 || processed === allMediaItems.length) {
             const percentage = Math.round((processed / allMediaItems.length) * 100);
