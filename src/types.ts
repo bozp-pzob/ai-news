@@ -218,7 +218,7 @@ export interface DiscordAttachment {
   content_type?: string;
   size: number;
   url: string;
-  proxy_url: string;
+  proxy_url?: string;  // Optional - may not always be present
   height?: number;
   width?: number;
   duration_secs?: number;
@@ -228,13 +228,15 @@ export interface DiscordAttachment {
 }
 
 /**
- * Interface for Discord embed objects (simplified for media-relevant fields)
+ * Interface for Discord embed objects
  * Based on Discord API message embed structure
  */
 export interface DiscordEmbed {
   title?: string;
+  type?: string;
   description?: string;
   url?: string;
+  timestamp?: string;
   color?: number;
   image?: {
     url: string;
@@ -254,6 +256,16 @@ export interface DiscordEmbed {
     height?: number;
     width?: number;
   };
+  author?: {
+    name?: string;
+    url?: string;
+    icon_url?: string;
+  };
+  fields?: Array<{
+    name: string;
+    value: string;
+    inline?: boolean;
+  }>;
 }
 
 /**
@@ -355,79 +367,6 @@ export interface ActionItems {
   type: 'Technical' | 'Documentation' | 'Feature';
   description: string;
   mentionedBy: string;
-}
-
-/**
- * Interface for Discord message attachments
- * @interface DiscordAttachment
- */
-export interface DiscordAttachment {
-  id: string;
-  filename: string;
-  title?: string;
-  description?: string;
-  content_type?: string;
-  size: number;
-  url: string;
-  proxy_url?: string;
-  height?: number;
-  width?: number;
-  duration_secs?: number;
-  waveform?: string;
-  ephemeral?: boolean;
-  flags?: number;
-}
-
-/**
- * Interface for Discord message embeds
- * @interface DiscordEmbed
- */
-export interface DiscordEmbed {
-  title?: string;
-  type?: string;
-  description?: string;
-  url?: string;
-  timestamp?: string;
-  color?: number;
-  image?: {
-    url: string;
-    proxy_url?: string;
-    width?: number;
-    height?: number;
-  };
-  thumbnail?: {
-    url: string;
-    proxy_url?: string;
-    width?: number;
-    height?: number;
-  };
-  video?: {
-    url?: string;
-    proxy_url?: string;
-    width?: number;
-    height?: number;
-  };
-  author?: {
-    name?: string;
-    url?: string;
-    icon_url?: string;
-  };
-  fields?: Array<{
-    name: string;
-    value: string;
-    inline?: boolean;
-  }>;
-}
-
-/**
- * Interface for Discord message stickers
- * @interface DiscordSticker
- */
-export interface DiscordSticker {
-  id: string;
-  name: string;
-  format_type: number;
-  description?: string;
 }
 
 /**
