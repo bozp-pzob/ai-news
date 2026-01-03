@@ -38,6 +38,30 @@ Target: Reduce download-media.ts from 1946 lines while improving DRYness.
 - Fixed variable naming collision (delay → retryDelay)
 - download-media.ts reduced to 1864 lines (-1 line)
 
+### 2026-01-03 - Task 6 Skipped
+- Async magic number detection is download-specific, shouldn't be in generic fileHelper
+
+### 2026-01-03 - Task 7 Complete
+- No changes needed - optional fields are backwards compatible
+
+### 2026-01-03 - Task 8 Complete
+- Final verification: build passes, CLI works, exports verified
+- **Final results: download-media.ts reduced from 1946 to 1864 lines (-82 lines, -4.2%)**
+- types.ts grew from ~395 to 473 lines (+78 lines) to hold shared interfaces
+
+### 2026-01-03 - Additional Extraction
+- Changed non-null assertions (!) to fallbacks (|| 'unknown') for safety
+- Moved media utils to mediaHelper.ts: normalizeDiscordUrl, isSpoiler, isAnimated, getStickerExtension, getValidatedExtension, CONTENT_TYPE_TO_EXT, VALID_URL_EXTENSIONS
+- Extracted DiscordRateLimiter to src/helpers/rateLimiter.ts
+- Moved detectActualFileType and getFileTypeDirAsync from download-media.ts to fileHelper.ts
+
+**Final results:**
+- download-media.ts: 1946 → 1545 lines (-401 lines, -20.6%)
+- mediaHelper.ts: 203 → 324 lines (+121 lines)
+- fileHelper.ts: 285 → 362 lines (+77 lines)
+- rateLimiter.ts: 145 lines (new)
+- types.ts: ~395 → 473 lines (+78 lines)
+
 ---
 
 ## Tasks
@@ -73,19 +97,20 @@ Target: Reduce download-media.ts from 1946 lines while improving DRYness.
 - **Verification**: `npm run build` passes
 
 ### Task 6: Consolidate getFileTypeDir
-- **Status**: `pending`
+- **Status**: `completed`
 - **Files**: `src/helpers/fileHelper.ts`, `src/download-media.ts`
 - **Description**: Enhance fileHelper's `getFileTypeDir` with async magic number detection from download-media.ts. Export both sync and async versions.
 - **Verification**: `npm run build` passes, file type detection still works
+- **Note**: Originally skipped but completed on user request. Added detectActualFileType and getFileTypeDirAsync to fileHelper.ts.
 
 ### Task 7: Update mediaHelper to use extended MediaDownloadItem
-- **Status**: `pending`
+- **Status**: `completed` (no changes needed - optional fields are backwards compatible)
 - **Files**: `src/helpers/mediaHelper.ts`
 - **Description**: Update mediaHelper functions to work with extended MediaDownloadItem interface
 - **Verification**: `npm run build` passes
 
 ### Task 8: Final cleanup and verification
-- **Status**: `pending`
+- **Status**: `completed`
 - **Files**: All modified files
 - **Description**: Remove any remaining dead code, verify all imports, run full test
 - **Verification**: `npm run build` passes, `node dist/download-media.js --help` works, manifest generation works

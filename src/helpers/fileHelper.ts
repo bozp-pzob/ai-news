@@ -283,3 +283,80 @@ export const writeJsonFile = (filePath: string, data: unknown, pretty: boolean =
   const content = pretty ? JSON.stringify(data, null, 2) : JSON.stringify(data);
   fs.writeFileSync(filePath, content);
 }
+
+/**
+ * Detect actual file type by examining file content (magic numbers)
+ * @param filePath - Path to file to examine
+ * @returns File type directory name ('images', 'videos', 'audio', 'documents') or 'unknown'
+ */
+export const detectActualFileType = (filePath: string): string => {
+  try {
+    const buffer = fs.readFileSync(filePath);
+    const chunk = buffer.slice(0, Math.min(buffer.length, 512));
+    const header = chunk.toString('utf8', 0, Math.min(chunk.length, 100));
+
+    // Check for HTML content
+    if (header.includes('<!DOCTYPE html') || header.includes('<html') || header.includes('<HTML')) {
+      return 'documents';
+    }
+
+    // Check magic numbers for common file types
+    const hex = chunk.toString('hex', 0, Math.min(chunk.length, 16));
+
+    // Image formats
+    if (hex.startsWith('89504e47')) return 'images'; // PNG
+    if (hex.startsWith('ffd8ff')) return 'images'; // JPEG
+    if (hex.startsWith('47494638')) return 'images'; // GIF
+    if (hex.startsWith('52494646') && buffer.toString('utf8', 8, 12) === 'WEBP') return 'images'; // WEBP
+    if (hex.startsWith('424d')) return 'images'; // BMP
+
+    // Video formats
+    if (hex.startsWith('00000000667479704d503441')) return 'videos'; // MP4
+    if (hex.startsWith('1a45dfa3')) return 'videos'; // MKV/WEBM
+    if (hex.startsWith('464c5601')) return 'videos'; // FLV
+
+    // Audio formats
+    if (hex.startsWith('494433') || hex.startsWith('fff3') || hex.startsWith('fffb')) return 'audio'; // MP3
+    if (hex.startsWith('52494646') && buffer.toString('utf8', 8, 12) === 'WAVE') return 'audio'; // WAV
+    if (hex.startsWith('4f676753')) return 'audio'; // OGG
+    if (hex.startsWith('664c6143')) return 'audio'; // FLAC
+
+  } catch {
+    // Silent fail - return unknown
+  }
+
+  return 'unknown';
+}
+
+/**
+ * Async version of getFileTypeDir that can check actual file content
+ * @param contentType - MIME content type
+ * @param filename - Original filename
+ * @param filePath - Optional path to downloaded file for magic number detection
+ * @returns File type directory name ('images', 'videos', 'audio', 'documents')
+ */
+export const getFileTypeDirAsync = async (contentType: string, filename: string, filePath?: string): Promise<string> => {
+  // If we have the downloaded file, check its actual content type
+  if (filePath && fs.existsSync(filePath)) {
+    const actualType = detectActualFileType(filePath);
+    if (actualType !== 'unknown') {
+      return actualType;
+    }
+  }
+
+  // Use provided content type if available
+  if (contentType) {
+    if (contentType.startsWith('image/')) return 'images';
+    if (contentType.startsWith('video/')) return 'videos';
+    if (contentType.startsWith('audio/')) return 'audio';
+    if (contentType.startsWith('text/html')) return 'documents';
+  }
+
+  // Fallback to extension
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return 'images';
+  if (['mp4', 'webm', 'avi', 'mov', 'mkv', 'flv'].includes(ext)) return 'videos';
+  if (['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'].includes(ext)) return 'audio';
+
+  return 'documents';
+}
