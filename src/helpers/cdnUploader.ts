@@ -396,7 +396,8 @@ export async function uploadFileToCDN(
 export async function uploadDirectoryToCDN(
   localDir: string,
   remotePrefix: string,
-  config?: Partial<CDNConfig>
+  config?: Partial<CDNConfig>,
+  onProgress?: (current: number, total: number, filename: string, status: string) => void
 ): Promise<CDNUploadResult[]> {
   const fullConfig = { ...getDefaultCDNConfig(), ...config };
   const provider = createCDNProvider(fullConfig as CDNConfig);
@@ -407,19 +408,29 @@ export async function uploadDirectoryToCDN(
     throw new Error(`Directory not found: ${localDir}`);
   }
 
-  const files = fs.readdirSync(localDir);
-  for (const file of files) {
+  const allFiles = fs.readdirSync(localDir);
+  // Filter to only files (not directories)
+  const files = allFiles.filter(file => {
     const localPath = path.join(localDir, file);
-    const stat = fs.statSync(localPath);
+    return fs.statSync(localPath).isFile();
+  });
 
-    // Skip directories and metadata folder
-    if (stat.isDirectory()) {
-      continue;
-    }
+  const total = files.length;
+  let current = 0;
+
+  for (const file of files) {
+    current++;
+    const localPath = path.join(localDir, file);
 
     const remotePath = `${remotePrefix.replace(/\/+$/, "")}/${file}`;
     const result = await provider.upload(localPath, remotePath);
     results.push(result);
+
+    // Report progress
+    if (onProgress) {
+      const status = result.success ? "✓" : "✗";
+      onProgress(current, total, file, status);
+    }
   }
 
   return results;

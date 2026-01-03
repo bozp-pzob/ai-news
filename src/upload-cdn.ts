@@ -97,7 +97,17 @@ async function uploadDirectory(
     config.password = config.password || "dry-run-password";
   }
 
-  return uploadDirectoryToCDN(dirPath, remotePrefix, config);
+  // Progress callback
+  const onProgress = (current: number, total: number, filename: string, status: string) => {
+    const pct = Math.round((current / total) * 100);
+    const truncatedName = filename.length > 40 ? filename.substring(0, 37) + "..." : filename;
+    process.stdout.write(`\r[${status}] ${current}/${total} (${pct}%) ${truncatedName.padEnd(43)}`);
+    if (current === total) {
+      process.stdout.write("\n");
+    }
+  };
+
+  return uploadDirectoryToCDN(dirPath, remotePrefix, config, onProgress);
 }
 
 /**
@@ -232,6 +242,57 @@ function calculateStats(results: CDNUploadResult[]): UploadStats {
 }
 
 /**
+ * Update manifest with CDN URLs without uploading (for already-uploaded files)
+ */
+async function updateManifestUrlsOnly(
+  manifestPath: string,
+  remotePrefix?: string
+): Promise<MediaManifest> {
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(`Manifest not found: ${manifestPath}`);
+  }
+
+  const manifest: MediaManifest = JSON.parse(
+    fs.readFileSync(manifestPath, "utf8")
+  );
+
+  const config = getDefaultCDNConfig();
+  const cdnBaseUrl = config.cdnUrl || `https://${config.storageZone || "cdn"}.b-cdn.net`;
+  const prefix = remotePrefix || `${manifest.source}-media`;
+
+  const now = new Date().toISOString();
+  let updated = 0;
+
+  for (const entry of manifest.files) {
+    const remotePath = `${prefix}/${entry.unique_name}`;
+    entry.cdn_url = `${cdnBaseUrl}/${remotePath}`;
+    entry.cdn_path = remotePath;
+    entry.cdn_uploaded_at = now;
+    updated++;
+  }
+
+  // Update manifest CDN metadata
+  manifest.cdn = {
+    provider: "bunny",
+    base_url: `${cdnBaseUrl}/${prefix}`,
+    uploaded_at: now,
+    upload_stats: {
+      total: manifest.files.length,
+      uploaded: updated,
+      skipped: 0,
+      failed: 0
+    }
+  };
+
+  // Write updated manifest
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  logger.info(`Updated ${updated} entries with CDN URLs`);
+  logger.info(`Manifest saved: ${manifestPath}`);
+
+  return manifest;
+}
+
+/**
  * Print results summary
  */
 function printSummary(results: CDNUploadResult[], jsonOutput: boolean): void {
@@ -296,6 +357,7 @@ Options:
   --manifest <path>     Manifest JSON file (reads files from manifest.files[])
   --remote <path>       Remote path/prefix on CDN
   --update-manifest     Update manifest with CDN URLs after upload
+  --update-urls-only    Just update manifest with CDN URLs (no upload)
   --dry-run             Preview uploads without actually uploading
   --json                Output results as JSON
   --help, -h            Show this help message
@@ -333,6 +395,7 @@ async function main(): Promise<void> {
   let manifestPath: string | undefined;
   let remotePath: string | undefined;
   let updateManifest = false;
+  let updateUrlsOnly = false;
   let dryRun = false;
   let jsonOutput = false;
 
@@ -358,6 +421,9 @@ async function main(): Promise<void> {
         break;
       case "--update-manifest":
         updateManifest = true;
+        break;
+      case "--update-urls-only":
+        updateUrlsOnly = true;
         break;
       case "--dry-run":
         dryRun = true;
@@ -390,6 +456,12 @@ async function main(): Promise<void> {
         `${dryRun ? "[DRY RUN] " : ""}Uploading directory: ${dirPath}`
       );
       results = await uploadDirectory(dirPath, remotePath, dryRun);
+    } else if (manifestPath && updateUrlsOnly) {
+      // Just update manifest with CDN URLs (no upload)
+      logger.info(`Updating manifest with CDN URLs: ${manifestPath}`);
+      await updateManifestUrlsOnly(manifestPath, remotePath);
+      logger.info("Done! Manifest updated with CDN URLs.");
+      process.exit(0);
     } else if (manifestPath) {
       // Manifest-based upload
       logger.info(
