@@ -18,8 +18,6 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import https from "https";
-// crypto hash moved to fileHelper.generateUrlHash
-
 // Constants for network operations
 const DOWNLOAD_TIMEOUT_MS = 30000; // 30 seconds
 const MAX_RETRY_ATTEMPTS = 3;
@@ -27,22 +25,12 @@ const RETRY_DELAY_BASE_MS = 1000; // Base delay for exponential backoff
 const DEFAULT_RATE_LIMIT_MS = 500; // Increased default rate limit between downloads (was 100ms)
 const USER_AGENT = process.env.DISCORD_USER_AGENT || 'DiscordBot (media-downloader, 1.0)'; // Configurable via env var
 
-// Discord Rate Limiting Constants
-// Rate limiting moved to helpers/rateLimiter.ts
-
-// URL Refresh Constants (for expired Discord CDN URLs)
-const DISCORD_404_THRESHOLD = 5; // After this many Discord 404s, trigger manifest refresh
-const DISCORD_API_BASE = 'https://discord.com/api/v10';
 
 // URL classification helpers
 const isDiscordUrl = (url: string) => url.includes('discord') || url.includes('cdn.discordapp.com') || url.includes('media.discordapp.net');
 const isTwitterUrl = (url: string) => url.includes('twitter.com') || url.includes('twimg.com');
 
 dotenv.config();
-
-// DiscordRateLimiter moved to helpers/rateLimiter.ts
-
-// MediaDownloadItem imported from types.ts
 
 interface MediaReference {
   hash: string;
@@ -83,8 +71,6 @@ interface DailyMediaMetadata {
   totalSize: number;
 }
 
-// DownloadStats, MediaAnalytics, MediaManifestEntry, MediaManifest imported from types.ts
-
 class MediaDownloader {
   private storage: SQLiteStorage;
   private baseDir: string;
@@ -101,7 +87,6 @@ class MediaDownloader {
   };
 
   // URL refresh tracking
-  private discord404Count = 0; // Total Discord CDN 404s
   private urlRefreshCache: Map<string, string> = new Map(); // old URL -> fresh URL
   private manifestRefreshed = false;
   private currentManifestPath?: string;
@@ -261,11 +246,6 @@ class MediaDownloader {
 
     return `${sanitized}_${hash}.${ext}`;
   }
-
-  /**
-   * Determine file type directory based on MIME type
-   */
-  // getFileTypeDir and detectActualFileType moved to fileHelper
 
   /**
    * Process downloaded file: update index, analytics, and references
@@ -949,8 +929,6 @@ class MediaDownloader {
     });
   }
 
-  // normalizeDiscordUrl, isSpoiler, isAnimated moved to mediaHelper
-
   /**
    * Sanitize reactions array to handle deleted/invalid emoji gracefully
    * Custom emoji may be deleted from the server, resulting in null/undefined fields
@@ -973,8 +951,6 @@ class MediaDownloader {
         count: r.count
       }));
   }
-
-  // getStickerExtension, CONTENT_TYPE_TO_EXT, VALID_URL_EXTENSIONS, getValidatedExtension moved to mediaHelper
 
   /**
    * Download all media from Discord data within date range
