@@ -10,12 +10,13 @@
 import { SQLiteStorage } from "./plugins/storage/SQLiteStorage";
 import { ContentItem, DiscordRawData, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig, MediaDownloadItem, MediaAnalytics, DownloadStats, MediaManifestEntry, MediaManifest } from "./types";
 import { logger } from "./helpers/cliHelper";
-import { writeJsonFile } from "./helpers/fileHelper";
+import { delay } from "./helpers/generalHelper";
+import { writeJsonFile, generateUrlHash } from "./helpers/fileHelper";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import https from "https";
-import { createHash } from "crypto";
+// crypto hash moved to fileHelper.generateUrlHash
 
 // Constants for network operations
 const DOWNLOAD_TIMEOUT_MS = 30000; // 30 seconds
@@ -83,7 +84,7 @@ class DiscordRateLimiter {
       if (now < this.globalRateLimit.resetAt && this.globalRateLimit.remaining <= 0) {
         const waitTime = this.globalRateLimit.resetAt - now;
         logger.debug(`Global rate limit hit, waiting ${waitTime}ms`);
-        await this.sleep(waitTime);
+        await delay(waitTime);
         continue;
       }
 
@@ -110,7 +111,7 @@ class DiscordRateLimiter {
       });
 
       // Small delay between requests to prevent overwhelming
-      await this.sleep(50);
+      await delay(50);
     }
 
     this.processing = false;
@@ -170,9 +171,7 @@ class DiscordRateLimiter {
     return delay;
   }
 
-  private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
+  // sleep() removed - using delay() from generalHelper
 }
 
 // MediaDownloadItem imported from types.ts
@@ -388,7 +387,7 @@ class MediaDownloader {
    * Generate a human-readable unique filename: {sanitized-name}_{hash8}.{ext}
    */
   private generateUniqueFilename(originalFilename: string, normalizedUrl: string, ext: string): string {
-    const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 8);
+    const hash = generateUrlHash(normalizedUrl).substring(0, 8);
     const baseName = path.basename(originalFilename, path.extname(originalFilename));
     const sanitized = this.sanitizeForPath(baseName);
 
@@ -616,7 +615,7 @@ class MediaDownloader {
         }
 
         // Rate limit: 500ms between requests (2 req/sec) to avoid 429s
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await delay(500);
       } catch (error) {
         logger.debug(`Failed to refresh message ${key}: ${error}`);
         failed++;
@@ -928,9 +927,9 @@ class MediaDownloader {
       
       // If not the last attempt, wait before retrying with exponential backoff
       if (attempt < maxRetries) {
-        const delay = RETRY_DELAY_BASE_MS * Math.pow(2, attempt - 1);
-        logger.debug(`Retrying download for ${mediaItem.filename} in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        const retryDelay = RETRY_DELAY_BASE_MS * Math.pow(2, attempt - 1);
+        logger.debug(`Retrying download for ${mediaItem.filename} in ${retryDelay}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await delay(retryDelay);
       }
     }
     
@@ -945,7 +944,7 @@ class MediaDownloader {
 
     // Normalize URL to strip expiring params for consistent hashing
     const normalizedUrl = this.normalizeDiscordUrl(mediaItem.url);
-    const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 8);
+    const hash = generateUrlHash(normalizedUrl).substring(0, 8);
     const ext = this.getValidatedExtension(attachment.content_type, mediaItem.url, mediaItem.mediaType);
 
     // Generate human-readable unique filename: {sanitized-name}_{hash8}.{ext}
@@ -1454,7 +1453,7 @@ class MediaDownloader {
       // Generate human-readable unique filename: {sanitized-name}_{hash8}.{ext}
       // Normalize URL to strip expiring params for consistent hashing
       const normalizedUrl = this.normalizeDiscordUrl(mediaItem.url);
-      const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 8);
+      const hash = generateUrlHash(normalizedUrl).substring(0, 8);
       const attachment = mediaItem.originalData as DiscordAttachment;
       const ext = this.getValidatedExtension(attachment.content_type, mediaItem.url, mediaItem.mediaType);
       const uniqueName = this.generateUniqueFilename(mediaItem.filename, normalizedUrl, ext);

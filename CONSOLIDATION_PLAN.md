@@ -27,6 +27,17 @@ Target: Reduce download-media.ts from 1946 lines while improving DRYness.
 - download-media.ts reduced from 1931 to 1865 lines (-66 lines)
 - Verified build passes, CLI works
 
+### 2026-01-03 - Task 4 Complete
+- Replaced 3 inline createHash calls with generateUrlHash from fileHelper
+- Removed crypto import from download-media.ts
+- Verified build passes, CLI works
+
+### 2026-01-03 - Task 5 Complete
+- Replaced 3 inline setTimeout Promises with delay() from generalHelper
+- Removed private sleep() method from DiscordRateLimiter class
+- Fixed variable naming collision (delay → retryDelay)
+- download-media.ts reduced to 1864 lines (-1 line)
+
 ---
 
 ## Tasks
@@ -50,13 +61,13 @@ Target: Reduce download-media.ts from 1946 lines while improving DRYness.
 - **Verification**: `npm run build` passes
 
 ### Task 4: Use generateUrlHash from fileHelper
-- **Status**: `pending`
+- **Status**: `completed`
 - **Files**: `src/download-media.ts`, `src/helpers/fileHelper.ts`
 - **Description**: Replace inline `createHash('sha256').update(url).digest('hex')` calls with `generateUrlHash` from fileHelper. May need to add truncation variant.
 - **Verification**: `npm run build` passes, manifest generation works
 
 ### Task 5: Use delay from generalHelper
-- **Status**: `pending`
+- **Status**: `completed`
 - **Files**: `src/download-media.ts`
 - **Description**: Replace inline `new Promise(resolve => setTimeout(resolve, ms))` with `delay` from generalHelper
 - **Verification**: `npm run build` passes
