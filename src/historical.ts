@@ -53,6 +53,7 @@ function hasMediaDownloadCapability(source: any): source is MediaDownloadCapable
     let downloadMedia = false;
     let generateManifest = false;
     let manifestOutput: string | undefined;
+    let mediaManifestPath: string | undefined;
     let beforeDate;
     let afterDate;
     let duringDate;
@@ -77,6 +78,7 @@ Options:
   --download-media=<true|false> Download Discord media after data collection (default: false).
   --generate-manifest=<true|false> Generate media manifest JSON for VPS downloads (default: false).
   --manifest-output=<path> Output path for manifest file (default: <output>/media-manifest.json).
+  --media-manifest=<path> Path to media manifest for CDN URL enrichment in summaries.
   --output=<path>       Output directory path (default: ./)
   -h, --help            Show this help message.
       `);

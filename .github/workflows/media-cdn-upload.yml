@@ -1,0 +1,289 @@
+name: Upload Media to CDN
+
+on:
+  # Run daily after the main collection workflow
+  schedule:
+    - cron: '30 7 * * *'  # 7:30 AM UTC (after elizaos workflow at 6:30 AM)
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Date to process (YYYY-MM-DD) or "yesterday"'
+        required: false
+        default: 'yesterday'
+      source:
+        description: 'Source name for CDN path'
+        required: false
+        default: 'elizaos'
+      dry_run:
+        description: 'Dry run (no actual upload)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+concurrency:
+  group: media-cdn-upload
+  cancel-in-progress: false
+
+jobs:
+  upload-media:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Determine date
+        id: date
+        run: |
+          if [ "${{ inputs.date }}" = "yesterday" ] || [ -z "${{ inputs.date }}" ]; then
+            DATE=$(date -u -d "yesterday" +%Y-%m-%d)
+          else
+            DATE="${{ inputs.date }}"
+          fi
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+          echo "Processing date: $DATE"
+
+      - name: Check and fetch database
+        run: |
+          mkdir -p data
+
+          # Try to fetch from gh-pages branch
+          if git ls-remote --heads origin gh-pages | grep -q gh-pages; then
+            if git ls-tree -r --name-only origin/gh-pages | grep -q "data/elizaos.sqlite.enc"; then
+              echo "Fetching encrypted database from gh-pages..."
+              git show origin/gh-pages:data/elizaos.sqlite.enc > data/elizaos.sqlite.enc
+              echo "Database fetched successfully"
+            else
+              echo "No encrypted database found in gh-pages"
+              exit 1
+            fi
+          else
+            echo "gh-pages branch not found"
+            exit 1
+          fi
+
+      - name: Decrypt database
+        env:
+          SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
+        run: |
+          if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
+            echo "Error: SQLITE_ENCRYPTION_KEY not set"
+            exit 1
+          fi
+
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in data/elizaos.sqlite.enc \
+            -out data/elizaos.sqlite \
+            -k "$SQLITE_ENCRYPTION_KEY"
+
+          echo "Database decrypted successfully"
+          rm data/elizaos.sqlite.enc
+
+      - name: Download media for date
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+        run: |
+          SOURCE="${{ inputs.source || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+
+          echo "Downloading media for $DATE..."
+          npm run download-media -- \
+            --db ./data/${SOURCE}.sqlite \
+            --date "$DATE" \
+            --output ./media-upload
+
+          echo "Media downloaded to ./media-upload"
+          ls -la ./media-upload/ || echo "No media directory created"
+
+      - name: Generate manifest for CDN
+        run: |
+          SOURCE="${{ inputs.source || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+
+          echo "Generating manifest..."
+          npm run generate-manifest -- \
+            --db ./data/${SOURCE}.sqlite \
+            --date "$DATE" \
+            --source "$SOURCE" \
+            --output ./media-upload
+
+          if [ -f "./media-upload/manifest.json" ]; then
+            echo "Manifest generated"
+            cat ./media-upload/manifest.json | head -50
+          else
+            echo "No manifest generated (possibly no media for this date)"
+          fi
+
+      - name: Upload media to Bunny CDN
+        if: inputs.dry_run != 'true'
+        env:
+          BUNNY_STORAGE_ZONE: ${{ secrets.BUNNY_STORAGE_ZONE }}
+          BUNNY_STORAGE_PASSWORD: ${{ secrets.BUNNY_STORAGE_PASSWORD }}
+          BUNNY_STORAGE_HOST: https://la.storage.bunnycdn.com
+        run: |
+          SOURCE="${{ inputs.source || 'elizaos' }}"
+
+          # Check if there are files to upload
+          if [ ! -d "./media-upload" ] || [ -z "$(ls -A ./media-upload/*.* 2>/dev/null)" ]; then
+            echo "No media files to upload"
+            exit 0
+          fi
+
+          echo "Uploading media files to CDN..."
+          npm run upload-cdn -- \
+            --dir ./media-upload \
+            --remote "${SOURCE}-media/"
+
+          echo "Media upload complete"
+
+      - name: Upload manifest to CDN
+        if: inputs.dry_run != 'true'
+        env:
+          BUNNY_STORAGE_ZONE: ${{ secrets.BUNNY_STORAGE_ZONE }}
+          BUNNY_STORAGE_PASSWORD: ${{ secrets.BUNNY_STORAGE_PASSWORD }}
+          BUNNY_STORAGE_HOST: https://la.storage.bunnycdn.com
+        run: |
+          SOURCE="${{ inputs.source || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+
+          if [ ! -f "./media-upload/manifest.json" ]; then
+            echo "No manifest to upload"
+            exit 0
+          fi
+
+          # Create CDN manifest with updated URLs
+          echo "Updating manifest with CDN URLs..."
+          npm run upload-cdn -- \
+            --manifest ./media-upload/manifest.json \
+            --update-manifest
+
+          # Upload the updated manifest to CDN
+          # Store as both dated and latest
+          echo "Uploading manifest to CDN..."
+          npm run upload-cdn -- \
+            --file ./media-upload/manifest.json \
+            --remote "${SOURCE}-media/manifests/${DATE}.json"
+
+          npm run upload-cdn -- \
+            --file ./media-upload/manifest.json \
+            --remote "${SOURCE}-media/manifests/latest.json"
+
+          echo "Manifest uploaded to CDN"
+
+      - name: Create CDN-enriched summary JSON
+        if: inputs.dry_run != 'true'
+        env:
+          BUNNY_STORAGE_ZONE: ${{ secrets.BUNNY_STORAGE_ZONE }}
+          BUNNY_STORAGE_PASSWORD: ${{ secrets.BUNNY_STORAGE_PASSWORD }}
+          BUNNY_STORAGE_HOST: https://la.storage.bunnycdn.com
+        run: |
+          SOURCE="${{ inputs.source || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+
+          # Check if manifest exists (needed for URL swap)
+          if [ ! -f "./media-upload/manifest.json" ]; then
+            echo "No manifest available for URL swap"
+            exit 0
+          fi
+
+          # Try to fetch summary JSON from gh-pages
+          SUMMARY_PATH="output/${SOURCE}/json/${DATE}.json"
+          if git ls-tree -r --name-only origin/gh-pages | grep -q "$SUMMARY_PATH"; then
+            echo "Fetching summary JSON from gh-pages..."
+            mkdir -p ./cdn-output
+            git show "origin/gh-pages:${SUMMARY_PATH}" > "./cdn-output/${DATE}.json"
+
+            # Swap Discord URLs for CDN URLs
+            echo "Swapping Discord URLs for CDN URLs..."
+            npm run upload-cdn -- \
+              --swap-urls "./cdn-output/${DATE}.json" \
+              --manifest ./media-upload/manifest.json
+
+            # Upload CDN-enriched JSON to CDN
+            echo "Uploading CDN-enriched summary to CDN..."
+            npm run upload-cdn -- \
+              --file "./cdn-output/${DATE}.json" \
+              --remote "${SOURCE}-media/json-cdn/${DATE}.json"
+
+            # Also upload as latest
+            npm run upload-cdn -- \
+              --file "./cdn-output/${DATE}.json" \
+              --remote "${SOURCE}-media/json-cdn/latest.json"
+
+            echo "CDN-enriched summary uploaded"
+          else
+            echo "No summary JSON found for $DATE in gh-pages"
+          fi
+
+      - name: Dry run summary
+        if: inputs.dry_run == 'true'
+        env:
+          BUNNY_STORAGE_ZONE: ${{ secrets.BUNNY_STORAGE_ZONE }}
+          BUNNY_STORAGE_PASSWORD: ${{ secrets.BUNNY_STORAGE_PASSWORD }}
+        run: |
+          SOURCE="${{ inputs.source || 'elizaos' }}"
+
+          echo "=== DRY RUN ==="
+          echo "Would upload media files to: ${SOURCE}-media/"
+
+          if [ -d "./media-upload" ]; then
+            echo ""
+            echo "Files that would be uploaded:"
+            ls -la ./media-upload/ | head -20
+
+            echo ""
+            echo "Running upload in dry-run mode..."
+            npm run upload-cdn -- \
+              --dir ./media-upload \
+              --remote "${SOURCE}-media/" \
+              --dry-run
+          fi
+
+      - name: Summary
+        run: |
+          SOURCE="${{ inputs.source || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+
+          echo "## Media CDN Upload Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Date | \`$DATE\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Source | \`$SOURCE\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dry run | ${{ inputs.dry_run || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+
+          if [ -d "./media-upload" ]; then
+            FILE_COUNT=$(ls -1 ./media-upload/*.* 2>/dev/null | wc -l || echo "0")
+            echo "| Files | $FILE_COUNT |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ inputs.dry_run }}" != "true" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### CDN URLs" >> $GITHUB_STEP_SUMMARY
+            echo "- Media: \`https://${BUNNY_STORAGE_ZONE:-your-zone}.b-cdn.net/${SOURCE}-media/\`" >> $GITHUB_STEP_SUMMARY
+            echo "- Latest manifest: \`https://${BUNNY_STORAGE_ZONE:-your-zone}.b-cdn.net/${SOURCE}-media/manifests/latest.json\`" >> $GITHUB_STEP_SUMMARY
+            echo "- Dated manifest: \`https://${BUNNY_STORAGE_ZONE:-your-zone}.b-cdn.net/${SOURCE}-media/manifests/${DATE}.json\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf ./media-upload
+          rm -f ./data/*.sqlite
+          echo "Cleanup complete"
