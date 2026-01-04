@@ -32,7 +32,7 @@ A modular TypeScript-based news aggregator that collects, enriches, and analyzes
 
 ## Prerequisites
 
-- Node.js â‰¥ 18 (v23 recommended)
+- Node.js ≥ 18 (v23 recommended)
 - TypeScript
 - SQLite3 (command-line tool required for integrity checks)
 - npm
@@ -68,7 +68,7 @@ CODEX_API_KEY=
 
 Create three repository secrets in GitHub:
 
-1. `ENV_SECRETS` â€" JSON object with credentials:
+1. `ENV_SECRETS` — JSON object with credentials:
 ```json
 {
   "OPENAI_API_KEY": "sk-...",
@@ -78,23 +78,33 @@ Create three repository secrets in GitHub:
   "DISCORD_APP_ID": "your_discord_app_id",
   "DISCORD_TOKEN": "your_discord_bot_token",
   "DISCORD_GUILD_ID": "your_discord_guild_id",
-  "CODEX_API_KEY": "your_codex_key"
+  "CODEX_API_KEY": "your_codex_key",
+  "BUNNY_STORAGE_ZONE": "your_bunny_storage_zone",
+  "BUNNY_STORAGE_PASSWORD": "your_bunny_api_password"
 }
 ```
 
-2. `SQLITE_ENCRYPTION_KEY` â€" strong password to encrypt the database.
+2. `SQLITE_ENCRYPTION_KEY` — strong password to encrypt the database.
 
 ### For Webhook Server Integration (deploy-media-collection.yml)
 
-3. `COLLECT_WEBHOOK_URL` â€" Your webhook server endpoint:
+3. `COLLECT_WEBHOOK_URL` — Your webhook server endpoint:
 ```
 https://your-server.com/run-collect
 ```
 
-4. `COLLECT_WEBHOOK_SECRET` â€" HMAC signing secret (generate with `openssl rand -hex 32`):
+4. `COLLECT_WEBHOOK_SECRET` — HMAC signing secret (generate with `openssl rand -hex 32`):
 ```
 a1b2c3d4e5f6...
 ```
+
+### For CDN Media Upload (media-cdn-upload.yml)
+
+5. `BUNNY_STORAGE_ZONE` — Storage zone name from Bunny.net dashboard (Storage → your zone name)
+
+6. `BUNNY_STORAGE_PASSWORD` — FTP & API Access password from Bunny.net (Storage → FTP & API Access → Password)
+
+**Optional:** Set `BUNNY_CDN_URL` in ENV_SECRETS if using a custom hostname (default: `https://{zone}.b-cdn.net`)
 
 ## Running the Application
 
@@ -136,6 +146,31 @@ npm run download-media                                    # Today's media
 npm run download-media -- --date=2024-01-15             # Specific date
 npm run download-media -- --start=2024-01-10 --end=2024-01-15  # Date range
 ```
+
+## CDN Upload
+
+Upload media files to Bunny CDN for permanent hosting (Discord URLs expire after 24h):
+
+```bash
+# Upload single file
+npm run upload-cdn -- --file ./media/image.png --remote elizaos-media/
+
+# Upload directory
+npm run upload-cdn -- --dir ./media/ --remote elizaos-media/
+
+# Upload and update manifest with CDN URLs
+npm run upload-cdn -- --manifest ./media/manifest.json --update-manifest
+
+# Swap Discord URLs for CDN URLs in summary JSON
+npm run upload-cdn -- --swap-urls ./output/elizaos/json/2024-01-15.json \
+  --manifest ./media/manifest.json \
+  --output ./output/elizaos/json-cdn/2024-01-15.json
+
+# Preview without uploading
+npm run upload-cdn -- --dir ./media/ --remote elizaos-media/ --dry-run
+```
+
+**Automated:** The `media-cdn-upload.yml` workflow runs daily at 7:30 AM UTC to upload media and create CDN-enriched JSON files.
 
 📋 **Channel Checklist**: View and edit tracked channels at [scripts/CHANNELS.md](scripts/CHANNELS.md)
 
