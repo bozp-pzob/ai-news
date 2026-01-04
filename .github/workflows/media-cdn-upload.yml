@@ -215,7 +215,7 @@ jobs:
           fi
 
           # Try to fetch summary JSON from gh-pages
-          SUMMARY_PATH="output/${SOURCE}/json/${DATE}.json"
+          SUMMARY_PATH="${SOURCE}/json/${DATE}.json"
           if git ls-tree -r --name-only origin/gh-pages | grep -q "$SUMMARY_PATH"; then
             echo "Fetching summary JSON from gh-pages..."
             mkdir -p ./cdn-output
