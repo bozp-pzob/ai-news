@@ -6,7 +6,12 @@
 import { OpenAIProvider } from "../ai/OpenAIProvider";
 import { SQLiteStorage } from "../storage/SQLiteStorage";
 import { ContentItem, SummaryItem } from "../../types";
-import { createJSONPromptForTopics, createMarkdownPromptForJSON } from "../../helpers/promptHelper";
+import {
+  createJSONPromptForTopics,
+  createMarkdownPromptForJSON,
+  PromptMediaOptions,
+} from "../../helpers/promptHelper";
+import { createMediaLookup, findManifestPath, MediaLookup } from "../../helpers/mediaLookup";
 import { retryOperation } from "../../helpers/generalHelper";
 import fs from "fs";
 import path from "path";
@@ -30,6 +35,8 @@ interface DailySummaryGeneratorConfig {
   outputPath?: string;
   maxGroupsToSummarize?: number;
   groupBySourceType?: boolean;
+  /** Path to media manifest for CDN URL enrichment */
+  mediaManifestPath?: string;
 }
 
 /**
@@ -53,6 +60,10 @@ export class DailySummaryGenerator {
   private maxGroupsToSummarize: number;
   /** Force Content grouping to be by Source types */
   private groupBySourceType: boolean;
+  /** Path to media manifest for CDN URL enrichment */
+  private mediaManifestPath: string | undefined;
+  /** Media lookup instance (lazy loaded) */
+  private mediaLookup: MediaLookup | null = null;
 
   static constructorInterface = {
     parameters: [
@@ -97,6 +108,12 @@ export class DailySummaryGenerator {
         type: 'boolean',
         required: false,
         description: 'Group by source type from storage, instead of topics generated from enriching.'
+      },
+      {
+        name: 'mediaManifestPath',
+        type: 'string',
+        required: false,
+        description: 'Path to media manifest JSON for CDN URL enrichment in summaries.'
       }
     ]
   };
@@ -112,7 +129,36 @@ export class DailySummaryGenerator {
     this.source = config.source;
     this.outputPath = config.outputPath || './';
     this.maxGroupsToSummarize = config.maxGroupsToSummarize || 10;
-    this.groupBySourceType = config.groupBySourceType || false
+    this.groupBySourceType = config.groupBySourceType || false;
+    this.mediaManifestPath = config.mediaManifestPath;
+  }
+
+  /**
+   * Get or initialize the MediaLookup instance
+   */
+  private async getMediaLookup(): Promise<MediaLookup | null> {
+    if (this.mediaLookup) {
+      return this.mediaLookup;
+    }
+
+    // Try configured path first, then auto-discover
+    let manifestPath = this.mediaManifestPath;
+    if (!manifestPath && this.source) {
+      manifestPath = findManifestPath(this.source, this.outputPath) || undefined;
+    }
+
+    if (manifestPath) {
+      console.log(`[DailySummaryGenerator] Loading media manifest from: ${manifestPath}`);
+      this.mediaLookup = await createMediaLookup(manifestPath);
+      if (this.mediaLookup) {
+        const stats = this.mediaLookup.getStats();
+        console.log(
+          `[DailySummaryGenerator] Media loaded: ${stats.totalImages} images, ${stats.totalVideos} videos`
+        );
+      }
+    }
+
+    return this.mediaLookup;
   }
 
   /**
@@ -176,7 +222,7 @@ export class DailySummaryGenerator {
     try {
       const currentTime = new Date(dateStr).getTime() / 1000;
       const targetTime = currentTime + (60 * 60 * 24);
-      
+
       // Fetch items based on whether a specific source type was configured
       let contentItems: ContentItem[];
       if (this.source) {
@@ -192,6 +238,17 @@ export class DailySummaryGenerator {
         return;
       }
 
+      // Load media lookup for CDN URL enrichment
+      const mediaLookup = await this.getMediaLookup();
+      const mediaOptions: PromptMediaOptions | undefined = mediaLookup
+        ? { mediaLookup, dateStr, maxImagesPerSource: 5, maxVideosPerSource: 3 }
+        : undefined;
+
+      if (mediaOptions) {
+        const mediaForDate = mediaLookup!.getMediaForDate(dateStr);
+        console.log(`[DailySummaryGenerator] Found ${mediaForDate.length} media items for ${dateStr}`);
+      }
+
       const groupedContent = this.groupObjects(contentItems);
 
       const allSummaries: any[] = [];
@@ -201,15 +258,15 @@ export class DailySummaryGenerator {
         try {
           if (!grouped) continue;
           const { topic, objects } = grouped;
-          
+
           if (!topic || !objects || objects.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) continue;
 
-          const prompt = createJSONPromptForTopics(topic, objects, dateStr);
+          const prompt = createJSONPromptForTopics(topic, objects, dateStr, mediaOptions);
           const summaryText = await retryOperation(() => this.provider.summarize(prompt));
           const summaryJSONString = summaryText.replace(/```json\n|```/g, "");
           let summaryJSON = JSON.parse(summaryJSONString);
           summaryJSON["topic"] = topic;
-  
+
           allSummaries.push(summaryJSON);
           groupsToSummarize++;
         }

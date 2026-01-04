@@ -19,6 +19,7 @@ import {
   getDefaultCDNConfig,
   uploadDirectoryToCDN
 } from "./helpers/cdnUploader";
+import { swapUrlsInJsonFile } from "./helpers/mediaLookup";
 import { CDNUploadResult, MediaManifest } from "./types";
 
 dotenv.config();
@@ -56,8 +57,8 @@ async function uploadSingleFile(
   }
 
   const provider = new BunnyCDNProvider({
-    storageZone: config.storageZone,
-    password: config.password,
+    storageZone: config.storageZone!,
+    password: config.password!,
     storageHost: config.storageHost,
     cdnUrl: config.cdnUrl,
     dryRun: config.dryRun,
@@ -350,6 +351,7 @@ Usage:
   npm run upload-cdn -- --file <path> --remote <path>   Upload single file
   npm run upload-cdn -- --dir <path> --remote <prefix>  Upload directory
   npm run upload-cdn -- --manifest <path>               Upload from manifest
+  npm run upload-cdn -- --swap-urls <json> --manifest <manifest>  Swap Discord URLs for CDN
 
 Options:
   --file <path>         Local file to upload
@@ -358,6 +360,8 @@ Options:
   --remote <path>       Remote path/prefix on CDN
   --update-manifest     Update manifest with CDN URLs after upload
   --update-urls-only    Just update manifest with CDN URLs (no upload)
+  --swap-urls <path>    Swap Discord URLs for CDN URLs in a JSON file (requires --manifest)
+  --output <path>       Output path for --swap-urls (default: overwrites input file)
   --dry-run             Preview uploads without actually uploading
   --json                Output results as JSON
   --help, -h            Show this help message
@@ -380,6 +384,12 @@ Examples:
 
   # Dry run (preview without uploading)
   npm run upload-cdn -- --dir ./media/ --remote elizaos-media/ --dry-run
+
+  # Swap Discord URLs for CDN URLs in output JSON (overwrites file)
+  npm run upload-cdn -- --swap-urls ./output/elizaos/json/2026-01-01.json --manifest ./media/manifest.json
+
+  # Swap URLs to a separate CDN-enriched directory
+  npm run upload-cdn -- --swap-urls ./output/elizaos/json/2026-01-01.json --manifest ./media/manifest.json --output ./output/elizaos/json-cdn/2026-01-01.json
 `);
 }
 
@@ -396,6 +406,8 @@ async function main(): Promise<void> {
   let remotePath: string | undefined;
   let updateManifest = false;
   let updateUrlsOnly = false;
+  let swapUrlsPath: string | undefined;
+  let outputPath: string | undefined;
   let dryRun = false;
   let jsonOutput = false;
 
@@ -425,6 +437,12 @@ async function main(): Promise<void> {
       case "--update-urls-only":
         updateUrlsOnly = true;
         break;
+      case "--swap-urls":
+        swapUrlsPath = args[++i];
+        break;
+      case "--output":
+        outputPath = args[++i];
+        break;
       case "--dry-run":
         dryRun = true;
         break;
@@ -436,6 +454,33 @@ async function main(): Promise<void> {
 
   try {
     let results: CDNUploadResult[] = [];
+
+    // Handle --swap-urls option
+    if (swapUrlsPath) {
+      if (!manifestPath) {
+        throw new Error("--manifest is required for --swap-urls");
+      }
+
+      // Create output directory if specified and doesn't exist
+      if (outputPath) {
+        const outputDir = path.dirname(outputPath);
+        if (!fs.existsSync(outputDir)) {
+          fs.mkdirSync(outputDir, { recursive: true });
+          logger.info(`Created output directory: ${outputDir}`);
+        }
+      }
+
+      const targetPath = outputPath || swapUrlsPath;
+      logger.info(`Swapping Discord URLs for CDN URLs: ${swapUrlsPath} -> ${targetPath}`);
+      const success = swapUrlsInJsonFile(swapUrlsPath, manifestPath, outputPath);
+      if (success) {
+        logger.info(`Done! URLs swapped successfully. Output: ${targetPath}`);
+      } else {
+        logger.error("Failed to swap URLs.");
+        process.exit(1);
+      }
+      process.exit(0);
+    }
 
     if (filePath) {
       // Single file upload
