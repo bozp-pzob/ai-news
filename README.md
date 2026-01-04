@@ -53,36 +53,62 @@ Use JSON files in the `config/` directory and a `.env` file for secrets.
 ### Example `.env` File
 
 ```env
-OPENAI_API_KEY=
+# OpenAI/OpenRouter Configuration
+OPENAI_API_KEY=your_openai_or_openrouter_api_key
+OPENAI_DIRECT_KEY=your_direct_openai_key_for_images
 USE_OPENROUTER=true
-SITE_URL=your_site.com
-SITE_NAME=YourAppName
+SITE_URL=https://your-domain.com/ai-news/
+SITE_NAME=AI_News
 
-DISCORD_TOKEN=
-DISCORD_GUILD_ID=
+# Discord Bot Configuration
+DISCORD_APP_ID=your_discord_app_id
+DISCORD_TOKEN=your_discord_bot_token
+DISCORD_GUILD_ID=your_main_discord_guild_id
 
-CODEX_API_KEY=
+# Optional: Additional Discord servers
+HYPERFY_DISCORD_APP_ID=your_hyperfy_discord_app_id
+HYPERFY_DISCORD_TOKEN=your_hyperfy_discord_token
+HYPERFY_DISCORD_GUILD_ID=your_hyperfy_guild_id
+
+# API Keys for Data Sources
+CODEX_API_KEY=your_codex_api_key
+BIRDEYE_API_KEY=your_birdeye_api_key
+
+# CDN Configuration (optional)
+BUNNY_STORAGE_ZONE=your_bunny_storage_zone
+BUNNY_STORAGE_PASSWORD=your_bunny_api_password
+BUNNY_CDN_URL=https://your-custom-cdn.com
 ```
+
+See `.env.example` for all available options.
 
 ## GitHub Actions Secrets
 
-Create three repository secrets in GitHub:
+Create these repository secrets in GitHub:
 
 1. `ENV_SECRETS` — JSON object with credentials:
 ```json
 {
   "OPENAI_API_KEY": "sk-...",
+  "OPENAI_DIRECT_KEY": "sk-...",
   "USE_OPENROUTER": "true",
-  "SITE_URL": "your_site.com",
-  "SITE_NAME": "YourAppName",
+  "SITE_URL": "https://your-domain.com/ai-news/",
+  "SITE_NAME": "AI_News",
   "DISCORD_APP_ID": "your_discord_app_id",
   "DISCORD_TOKEN": "your_discord_bot_token",
   "DISCORD_GUILD_ID": "your_discord_guild_id",
+  "HYPERFY_DISCORD_APP_ID": "your_hyperfy_app_id",
+  "HYPERFY_DISCORD_TOKEN": "your_hyperfy_token",
+  "HYPERFY_DISCORD_GUILD_ID": "your_hyperfy_guild_id",
   "CODEX_API_KEY": "your_codex_key",
+  "BIRDEYE_API_KEY": "your_birdeye_key",
   "BUNNY_STORAGE_ZONE": "your_bunny_storage_zone",
-  "BUNNY_STORAGE_PASSWORD": "your_bunny_api_password"
+  "BUNNY_STORAGE_PASSWORD": "your_bunny_api_password",
+  "BUNNY_CDN_URL": "https://your-custom-cdn.com"
 }
 ```
+
+**Notes:** `OPENAI_DIRECT_KEY` is required for image generation when using OpenRouter. `HYPERFY_*`, `BIRDEYE_*`, and `BUNNY_*` keys are optional depending on your configuration.
 
 2. `SQLITE_ENCRYPTION_KEY` — strong password to encrypt the database.
 
