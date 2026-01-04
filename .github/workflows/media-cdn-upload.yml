@@ -186,6 +186,51 @@ jobs:
 
           echo "Manifest uploaded to CDN"
 
+      - name: Create CDN-enriched summary JSON
+        if: inputs.dry_run != 'true'
+        env:
+          BUNNY_STORAGE_ZONE: ${{ secrets.BUNNY_STORAGE_ZONE }}
+          BUNNY_STORAGE_PASSWORD: ${{ secrets.BUNNY_STORAGE_PASSWORD }}
+          BUNNY_STORAGE_HOST: https://la.storage.bunnycdn.com
+        run: |
+          SOURCE="${{ inputs.source || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+
+          # Check if manifest exists (needed for URL swap)
+          if [ ! -f "./media-upload/manifest.json" ]; then
+            echo "No manifest available for URL swap"
+            exit 0
+          fi
+
+          # Try to fetch summary JSON from gh-pages
+          SUMMARY_PATH="output/${SOURCE}/json/${DATE}.json"
+          if git ls-tree -r --name-only origin/gh-pages | grep -q "$SUMMARY_PATH"; then
+            echo "Fetching summary JSON from gh-pages..."
+            mkdir -p ./cdn-output
+            git show "origin/gh-pages:${SUMMARY_PATH}" > "./cdn-output/${DATE}.json"
+
+            # Swap Discord URLs for CDN URLs
+            echo "Swapping Discord URLs for CDN URLs..."
+            npm run upload-cdn -- \
+              --swap-urls "./cdn-output/${DATE}.json" \
+              --manifest ./media-upload/manifest.json
+
+            # Upload CDN-enriched JSON to CDN
+            echo "Uploading CDN-enriched summary to CDN..."
+            npm run upload-cdn -- \
+              --file "./cdn-output/${DATE}.json" \
+              --remote "${SOURCE}-media/json-cdn/${DATE}.json"
+
+            # Also upload as latest
+            npm run upload-cdn -- \
+              --file "./cdn-output/${DATE}.json" \
+              --remote "${SOURCE}-media/json-cdn/latest.json"
+
+            echo "CDN-enriched summary uploaded"
+          else
+            echo "No summary JSON found for $DATE in gh-pages"
+          fi
+
       - name: Dry run summary
         if: inputs.dry_run == 'true'
         env:
