@@ -218,7 +218,7 @@ export interface DiscordAttachment {
   content_type?: string;
   size: number;
   url: string;
-  proxy_url?: string;  // Optional - may not always be present
+  proxy_url: string;
   height?: number;
   width?: number;
   duration_secs?: number;
@@ -228,15 +228,13 @@ export interface DiscordAttachment {
 }
 
 /**
- * Interface for Discord embed objects
+ * Interface for Discord embed objects (simplified for media-relevant fields)
  * Based on Discord API message embed structure
  */
 export interface DiscordEmbed {
   title?: string;
-  type?: string;
   description?: string;
   url?: string;
-  timestamp?: string;
   color?: number;
   image?: {
     url: string;
@@ -256,16 +254,6 @@ export interface DiscordEmbed {
     height?: number;
     width?: number;
   };
-  author?: {
-    name?: string;
-    url?: string;
-    icon_url?: string;
-  };
-  fields?: Array<{
-    name: string;
-    value: string;
-    inline?: boolean;
-  }>;
 }
 
 /**
@@ -371,103 +359,15 @@ export interface ActionItems {
 
 /**
  * Interface for media download items
- * Used by download-media.ts and mediaHelper.ts
- * Note: Extended fields (channelId, guildId, userId, originalData) are optional
- * for compatibility with mediaHelper, but download-media.ts always provides them
  * @interface MediaDownloadItem
  */
 export interface MediaDownloadItem {
   url: string;
   filename: string;
+  contentType?: string;
   messageId: string;
   messageDate: string;
-  channelId?: string;
   channelName: string;
-  guildId?: string;
   guildName: string;
-  userId?: string;
   mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
-  // Extended fields - optional for mediaHelper compatibility
-  originalData?: DiscordAttachment | DiscordEmbed | DiscordSticker;
-  contentType?: string;
-  messageContent?: string;
-  reactions?: Array<{ emoji: string; count: number }>;
-}
-
-/**
- * Analytics for media downloads
- * @interface MediaAnalytics
- */
-export interface MediaAnalytics {
-  totalFilesByType: Record<string, number>;
-  averageFileSizeByType: Record<string, number>;
-  totalSizeByType: Record<string, number>;
-  largestFilesByType: Record<string, Array<{ filename: string; size: number; url: string }>>;
-}
-
-/**
- * Statistics for media download operations
- * @interface DownloadStats
- */
-export interface DownloadStats {
-  total: number;
-  downloaded: number;
-  skipped: number;
-  failed: number;
-  filtered: number;
-  errors: string[];
-  analytics?: MediaAnalytics;
-}
-
-/**
- * Entry in the media manifest for VPS download
- * @interface MediaManifestEntry
- */
-export interface MediaManifestEntry {
-  // Core identifiers
-  url: string;
-  proxy_url?: string;
-  filename: string;
-  unique_name: string;
-  hash: string;
-
-  // File metadata
-  type: 'image' | 'video' | 'audio' | 'document';
-  is_spoiler?: boolean;
-  is_animated?: boolean;
-  media_type: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
-  size?: number;
-  content_type?: string;
-  width?: number;
-  height?: number;
-
-  // Discord context
-  message_id: string;
-  channel_id: string;
-  channel_name: string;
-  guild_id: string;
-  guild_name: string;
-  user_id: string;
-  timestamp: string;
-
-  // Message context
-  message_content?: string;
-  reactions?: Array<{ emoji: string; count: number }>;
-}
-
-/**
- * Media manifest file structure for VPS download
- * @interface MediaManifest
- */
-export interface MediaManifest {
-  date: string;
-  source: string;
-  generated_at: string;
-  base_path: string;
-  files: MediaManifestEntry[];
-  stats: {
-    total_files: number;
-    by_type: Record<string, number>;
-    total_size_bytes: number;
-  };
 }

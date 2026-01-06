@@ -5,6 +5,10 @@ AI News Media Sync - Downloads media files from manifest on gh-pages.
 This script fetches media manifests from GitHub Pages and downloads the files
 to a local directory. It's designed to run on a VPS via systemd timer.
 
+Files are downloaded to a flat folder structure with human-readable names:
+  {sanitized-name}_{hash8}.{ext}
+  Example: screen-recording-20250906_085b9cc1.mp4
+
 Usage:
     python media-sync.py sync              # Download media from manifests
     python media-sync.py setup             # Install systemd service and timer
@@ -253,11 +257,10 @@ def cmd_sync(args):
         for entry in files:
             url = entry["url"]
             filename = entry["unique_name"]
-            file_type = entry["type"]
             file_size = entry.get("size", 0)
 
-            # Organize by type: images/, videos/, etc.
-            dest = output_dir / f"{file_type}s" / filename
+            # Flat folder structure (all files in one directory)
+            dest = output_dir / filename
 
             # Skip if already exists
             if dest.exists():
@@ -509,9 +512,9 @@ def cmd_refresh(args):
     stats = {"downloaded": 0, "failed": 0, "skipped": 0}
 
     for (channel_id, message_id), msg_files in messages.items():
-        # Check if all files already exist (in their type subdirectories)
+        # Check if all files already exist (flat folder structure)
         all_exist = all(
-            (output_dir / (f.get("type", "document") + "s") / f.get("unique_name", f["filename"])).exists()
+            (output_dir / f.get("unique_name", f["filename"])).exists()
             for f in msg_files
         )
         if all_exist and not args.force:
@@ -576,11 +579,9 @@ def cmd_refresh(args):
 
         # Download each file
         for f in msg_files:
-            # Organize by type: images/, videos/, audio/, documents/
-            file_type = f.get("type", "document") + "s"  # image -> images
-            type_dir = output_dir / file_type
-            type_dir.mkdir(parents=True, exist_ok=True)
-            dest = type_dir / f.get("unique_name", f["filename"])
+            # Flat folder structure
+            output_dir.mkdir(parents=True, exist_ok=True)
+            dest = output_dir / f.get("unique_name", f["filename"])
 
             if dest.exists() and not args.force:
                 stats["skipped"] += 1

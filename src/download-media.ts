@@ -8,16 +8,15 @@
  */
 
 import { SQLiteStorage } from "./plugins/storage/SQLiteStorage";
-import { ContentItem, DiscordRawData, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig, MediaDownloadItem, MediaAnalytics, DownloadStats, MediaManifestEntry, MediaManifest } from "./types";
+import { ContentItem, DiscordRawData, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig } from "./types";
 import { logger } from "./helpers/cliHelper";
-import { delay } from "./helpers/generalHelper";
-import { normalizeDiscordUrl, isSpoiler, isAnimated, getStickerExtension, getValidatedExtension, CONTENT_TYPE_TO_EXT, VALID_URL_EXTENSIONS } from "./helpers/mediaHelper";
-import { DiscordRateLimiter } from "./helpers/rateLimiter";
-import { writeJsonFile, generateUrlHash, detectActualFileType, getFileTypeDirAsync } from "./helpers/fileHelper";
+import { writeJsonFile } from "./helpers/fileHelper";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import https from "https";
+import { createHash } from "crypto";
+
 // Constants for network operations
 const DOWNLOAD_TIMEOUT_MS = 30000; // 30 seconds
 const MAX_RETRY_ATTEMPTS = 3;
@@ -25,12 +24,173 @@ const RETRY_DELAY_BASE_MS = 1000; // Base delay for exponential backoff
 const DEFAULT_RATE_LIMIT_MS = 500; // Increased default rate limit between downloads (was 100ms)
 const USER_AGENT = process.env.DISCORD_USER_AGENT || 'DiscordBot (media-downloader, 1.0)'; // Configurable via env var
 
+// Discord Rate Limiting Constants
+const DISCORD_GLOBAL_RATE_LIMIT = 50; // 50 requests per second globally
+const DISCORD_RATE_LIMIT_WINDOW = 1000; // 1 second window
+const MAX_CONCURRENT_DOWNLOADS = 5; // Limit concurrent downloads
+
+// URL Refresh Constants (for expired Discord CDN URLs)
+const DISCORD_404_THRESHOLD = 5; // After this many Discord 404s, trigger manifest refresh
+const DISCORD_API_BASE = 'https://discord.com/api/v10';
 
 // URL classification helpers
 const isDiscordUrl = (url: string) => url.includes('discord') || url.includes('cdn.discordapp.com') || url.includes('media.discordapp.net');
 const isTwitterUrl = (url: string) => url.includes('twitter.com') || url.includes('twimg.com');
 
 dotenv.config();
+
+/**
+ * Discord-compliant rate limiter that respects API headers and implements proper backoff
+ */
+class DiscordRateLimiter {
+  private requestQueue: Array<() => void> = [];
+  private globalRateLimit: { resetAt: number; remaining: number } = { resetAt: 0, remaining: DISCORD_GLOBAL_RATE_LIMIT };
+  private bucketLimits: Map<string, { resetAt: number; remaining: number; limit: number }> = new Map();
+  private processing = false;
+  private activeRequests = 0;
+
+  /**
+   * Add a request to the rate-limited queue
+   */
+  async enqueue<T>(request: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.requestQueue.push(async () => {
+        try {
+          const result = await request();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
+      this.processQueue();
+    });
+  }
+
+  /**
+   * Process the request queue respecting rate limits
+   */
+  private async processQueue() {
+    if (this.processing || this.requestQueue.length === 0 || this.activeRequests >= MAX_CONCURRENT_DOWNLOADS) {
+      return;
+    }
+
+    this.processing = true;
+
+    while (this.requestQueue.length > 0 && this.activeRequests < MAX_CONCURRENT_DOWNLOADS) {
+      const now = Date.now();
+      
+      // Check global rate limit
+      if (now < this.globalRateLimit.resetAt && this.globalRateLimit.remaining <= 0) {
+        const waitTime = this.globalRateLimit.resetAt - now;
+        logger.debug(`Global rate limit hit, waiting ${waitTime}ms`);
+        await this.sleep(waitTime);
+        continue;
+      }
+
+      // Reset global rate limit if window passed
+      if (now >= this.globalRateLimit.resetAt) {
+        this.globalRateLimit = { resetAt: now + DISCORD_RATE_LIMIT_WINDOW, remaining: DISCORD_GLOBAL_RATE_LIMIT };
+      }
+
+      const request = this.requestQueue.shift()!;
+      this.activeRequests++;
+      this.globalRateLimit.remaining--;
+
+      // Execute request without blocking the queue
+      setImmediate(async () => {
+        try {
+          await request();
+        } catch (error) {
+          logger.debug(`Request failed: ${error}`);
+        } finally {
+          this.activeRequests--;
+          // Continue processing queue
+          setImmediate(() => this.processQueue());
+        }
+      });
+
+      // Small delay between requests to prevent overwhelming
+      await this.sleep(50);
+    }
+
+    this.processing = false;
+  }
+
+  /**
+   * Update rate limits based on Discord response headers
+   */
+  updateRateLimits(headers: any, bucket?: string) {
+    const now = Date.now();
+
+    // Update global rate limit from headers
+    if (headers['x-ratelimit-global']) {
+      const retryAfter = parseFloat(headers['retry-after']) * 1000;
+      this.globalRateLimit = { resetAt: now + retryAfter, remaining: 0 };
+      logger.warning(`Global rate limit hit, reset in ${retryAfter}ms`);
+    }
+
+    // Update bucket-specific rate limit
+    if (bucket && headers['x-ratelimit-limit']) {
+      const limit = parseInt(headers['x-ratelimit-limit']);
+      const remaining = parseInt(headers['x-ratelimit-remaining'] || '0');
+      const resetAfter = parseFloat(headers['x-ratelimit-reset-after'] || '1') * 1000;
+      
+      this.bucketLimits.set(bucket, {
+        resetAt: now + resetAfter,
+        remaining,
+        limit
+      });
+
+      if (remaining <= 0) {
+        logger.debug(`Bucket ${bucket} rate limit hit, reset in ${resetAfter}ms`);
+      }
+    }
+  }
+
+  /**
+   * Check if a request to a specific bucket should be delayed
+   */
+  shouldDelay(bucket?: string): number {
+    const now = Date.now();
+    let delay = 0;
+
+    // Check global rate limit
+    if (now < this.globalRateLimit.resetAt && this.globalRateLimit.remaining <= 0) {
+      delay = Math.max(delay, this.globalRateLimit.resetAt - now);
+    }
+
+    // Check bucket rate limit
+    if (bucket && this.bucketLimits.has(bucket)) {
+      const bucketLimit = this.bucketLimits.get(bucket)!;
+      if (now < bucketLimit.resetAt && bucketLimit.remaining <= 0) {
+        delay = Math.max(delay, bucketLimit.resetAt - now);
+      }
+    }
+
+    return delay;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+interface MediaDownloadItem {
+  url: string;
+  filename: string;
+  messageId: string;
+  messageDate: string;
+  channelId: string;
+  channelName: string;
+  guildId: string;
+  guildName: string;
+  userId: string;
+  mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
+  originalData: DiscordAttachment | DiscordEmbed | DiscordSticker;
+  // Additional context for manifest
+  messageContent?: string;
+  reactions?: Array<{ emoji: string; count: number }>;
+}
 
 interface MediaReference {
   hash: string;
@@ -71,6 +231,74 @@ interface DailyMediaMetadata {
   totalSize: number;
 }
 
+interface DownloadStats {
+  total: number;
+  downloaded: number;
+  skipped: number;
+  failed: number;
+  filtered: number;
+  errors: string[];
+  analytics?: MediaAnalytics;
+}
+
+interface MediaAnalytics {
+  totalFilesByType: Record<string, number>;
+  averageFileSizeByType: Record<string, number>;
+  totalSizeByType: Record<string, number>;
+  largestFilesByType: Record<string, Array<{ filename: string; size: number; url: string; }>>;
+}
+
+/**
+ * Entry in the media manifest for VPS download
+ */
+interface MediaManifestEntry {
+  // Core identifiers
+  url: string;
+  proxy_url?: string;   // Discord proxy URL for external media
+  filename: string;
+  unique_name: string;  // hash12.ext
+  hash: string;         // 12-char hash of normalized URL
+
+  // File metadata
+  type: 'image' | 'video' | 'audio' | 'document';
+  is_spoiler?: boolean;   // filename starts with SPOILER_
+  is_animated?: boolean;  // animated content (GIF, a_ prefix)
+  media_type: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker';
+  size?: number;
+  content_type?: string;
+  width?: number;
+  height?: number;
+
+  // Discord context
+  message_id: string;
+  channel_id: string;
+  channel_name: string;
+  guild_id: string;
+  guild_name: string;
+  user_id: string;
+  timestamp: string;
+
+  // Message context (for search/filtering)
+  message_content?: string;
+  reactions?: Array<{ emoji: string; count: number }>;
+}
+
+/**
+ * Media manifest file structure for VPS download
+ */
+interface MediaManifest {
+  date: string;
+  source: string;       // elizaos, hyperfy
+  generated_at: string;
+  base_path: string;    // e.g., "elizaos-media"
+  files: MediaManifestEntry[];
+  stats: {
+    total_files: number;
+    by_type: Record<string, number>;
+    total_size_bytes: number;
+  };
+}
+
 class MediaDownloader {
   private storage: SQLiteStorage;
   private baseDir: string;
@@ -87,6 +315,7 @@ class MediaDownloader {
   };
 
   // URL refresh tracking
+  private discord404Count = 0; // Total Discord CDN 404s
   private urlRefreshCache: Map<string, string> = new Map(); // old URL -> fresh URL
   private manifestRefreshed = false;
   private currentManifestPath?: string;
@@ -240,11 +469,85 @@ class MediaDownloader {
    * Generate a human-readable unique filename: {sanitized-name}_{hash8}.{ext}
    */
   private generateUniqueFilename(originalFilename: string, normalizedUrl: string, ext: string): string {
-    const hash = generateUrlHash(normalizedUrl).substring(0, 8);
+    const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 8);
     const baseName = path.basename(originalFilename, path.extname(originalFilename));
     const sanitized = this.sanitizeForPath(baseName);
 
     return `${sanitized}_${hash}.${ext}`;
+  }
+
+  /**
+   * Determine file type directory based on MIME type
+   */
+  /**
+   * Determine appropriate file type directory based on actual file content
+   */
+  private async getFileTypeDir(contentType: string, filename: string, filePath?: string): Promise<string> {
+    // If we have the downloaded file, check its actual content type
+    if (filePath && fs.existsSync(filePath)) {
+      const actualType = await this.detectActualFileType(filePath);
+      if (actualType !== 'unknown') {
+        return actualType;
+      }
+    }
+
+    // Use provided content type if available
+    if (contentType) {
+      if (contentType.startsWith('image/')) return 'images';
+      if (contentType.startsWith('video/')) return 'videos';  
+      if (contentType.startsWith('audio/')) return 'audio';
+      if (contentType.startsWith('text/html')) return 'documents'; // HTML files go to documents
+    }
+    
+    // Fallback to extension
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return 'images';
+    if (['mp4', 'webm', 'avi', 'mov', 'mkv', 'flv'].includes(ext)) return 'videos';
+    if (['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'].includes(ext)) return 'audio';
+    
+    return 'documents';
+  }
+
+  /**
+   * Detect actual file type by examining file content
+   */
+  private async detectActualFileType(filePath: string): Promise<string> {
+    try {
+      const buffer = fs.readFileSync(filePath); // Read file
+      const chunk = buffer.slice(0, Math.min(buffer.length, 512)); // Use first 512 bytes
+      const header = chunk.toString('utf8', 0, Math.min(chunk.length, 100));
+      
+      // Check for HTML content
+      if (header.includes('<!DOCTYPE html') || header.includes('<html') || header.includes('<HTML')) {
+        return 'documents';
+      }
+      
+      // Check magic numbers for common file types
+      const hex = chunk.toString('hex', 0, Math.min(chunk.length, 16));
+      
+      // Image formats
+      if (hex.startsWith('89504e47')) return 'images'; // PNG
+      if (hex.startsWith('ffd8ff')) return 'images'; // JPEG
+      if (hex.startsWith('47494638')) return 'images'; // GIF
+      if (hex.startsWith('52494646') && buffer.toString('utf8', 8, 12) === 'WEBP') return 'images'; // WEBP
+      if (hex.startsWith('424d')) return 'images'; // BMP
+      
+      // Video formats
+      if (hex.startsWith('00000000667479704d503441')) return 'videos'; // MP4
+      if (hex.startsWith('1a45dfa3')) return 'videos'; // MKV/WEBM
+      if (hex.startsWith('464c5601')) return 'videos'; // FLV
+      
+      // Audio formats  
+      if (hex.startsWith('494433') || hex.startsWith('fff3') || hex.startsWith('fffb')) return 'audio'; // MP3
+      if (hex.startsWith('52494646') && buffer.toString('utf8', 8, 12) === 'WAVE') return 'audio'; // WAV
+      if (hex.startsWith('4f676753')) return 'audio'; // OGG
+      if (hex.startsWith('664c6143')) return 'audio'; // FLAC
+      
+    } catch (error) {
+      logger.debug(`Failed to detect file type for ${filePath}: ${error}`);
+    }
+    
+    return 'unknown';
   }
 
   /**
@@ -259,10 +562,10 @@ class MediaDownloader {
       actualFileSize = fileStats.size;
 
       // Detect actual file type from content (for analytics only, no file moving)
-      const actualFileType = await detectActualFileType(filePath);
+      const actualFileType = await this.detectActualFileType(filePath);
       const attachment = mediaItem.originalData as DiscordAttachment;
       const fileType = actualFileType !== 'unknown' ? actualFileType :
-        await getFileTypeDirAsync(attachment.content_type || '', mediaItem.filename);
+        await this.getFileTypeDir(attachment.content_type || '', mediaItem.filename);
 
       // Update analytics
       this.updateAnalytics(mediaItem, actualFileSize, fileType);
@@ -278,16 +581,16 @@ class MediaDownloader {
       };
       this.mediaIndex.set(hash, mediaIndexEntry);
 
-      // Add to daily references (fields are always present via createMediaItem)
+      // Add to daily references
       this.dailyReferences.push({
         hash,
         originalFilename: mediaItem.filename,
         messageId: mediaItem.messageId,
-        channelId: mediaItem.channelId || 'unknown',
+        channelId: mediaItem.channelId,
         channelName: mediaItem.channelName,
-        guildId: mediaItem.guildId || 'unknown',
+        guildId: mediaItem.guildId,
         guildName: mediaItem.guildName,
-        userId: mediaItem.userId || 'unknown',
+        userId: mediaItem.userId,
         timestamp: Date.now(),
         messageDate: new Date().toISOString(),
         mediaType: mediaItem.mediaType,
@@ -305,6 +608,33 @@ class MediaDownloader {
     }
     
     return actualFileSize;
+  }
+
+  /**
+   * Get human-readable description of file type
+   */
+  private getFileTypeDescription(fileType: string): string {
+    switch (fileType) {
+      case 'images': return 'Image file';
+      case 'videos': return 'Video file';
+      case 'audio': return 'Audio file';
+      case 'documents': return 'Document/HTML file';
+      default: return 'Unknown file type';
+    }
+  }
+
+  /**
+   * Generate content hash from file data
+   */
+  private generateContentHash(data: Buffer): string {
+    return createHash('sha256').update(data).digest('hex');
+  }
+
+  /**
+   * Generate URL-based hash for deduplication before download
+   */
+  private generateUrlHash(url: string): string {
+    return createHash('sha256').update(url).digest('hex');
   }
 
   /**
@@ -361,7 +691,7 @@ class MediaDownloader {
 
       const key = `${item.channelId}:${item.messageId}`;
       if (!messageGroups.has(key)) {
-        messageGroups.set(key, { channelId: item.channelId || 'unknown', messageId: item.messageId, items: [] });
+        messageGroups.set(key, { channelId: item.channelId, messageId: item.messageId, items: [] });
       }
       messageGroups.get(key)!.items.push(item);
     }
@@ -394,7 +724,7 @@ class MediaDownloader {
         }
 
         // Rate limit: 500ms between requests (2 req/sec) to avoid 429s
-        await delay(500);
+        await new Promise(resolve => setTimeout(resolve, 500));
       } catch (error) {
         logger.debug(`Failed to refresh message ${key}: ${error}`);
         failed++;
@@ -567,41 +897,11 @@ class MediaDownloader {
   }
 
   /**
-   * Create a MediaDownloadItem with common context fields
-   */
-  private createMediaItem(
-    url: string,
-    filename: string,
-    mediaType: MediaDownloadItem['mediaType'],
-    originalData: DiscordAttachment | DiscordEmbed | DiscordSticker | Record<string, any>,
-    message: DiscordRawData['messages'][0],
-    discordData: DiscordRawData,
-    item: ContentItem,
-    messageDate: string
-  ): MediaDownloadItem {
-    return {
-      url,
-      filename,
-      messageId: message.id,
-      messageDate,
-      channelId: discordData.channel.id,
-      channelName: discordData.channel.name,
-      guildId: item.metadata?.guildId || 'unknown',
-      guildName: item.metadata?.guildName || 'unknown',
-      userId: message.uid,
-      mediaType,
-      originalData: originalData as DiscordAttachment | DiscordEmbed | DiscordSticker,
-      messageContent: message.content,
-      reactions: message.reactions
-    };
-  }
-
-  /**
    * Extract all media items from Discord raw data with filtering
    */
   private extractMediaFromDiscordData(item: ContentItem): MediaDownloadItem[] {
     const mediaItems: MediaDownloadItem[] = [];
-
+    
     if (item.type !== 'discordRawData' || !item.text) {
       return mediaItems;
     }
@@ -609,15 +909,26 @@ class MediaDownloader {
     try {
       const discordData: DiscordRawData = JSON.parse(item.text);
       const messageDate = new Date(item.date! * 1000).toISOString().split('T')[0]; // YYYY-MM-DD
-
+      
       for (const message of discordData.messages) {
         // Process attachments
         if (message.attachments) {
           for (const attachment of message.attachments) {
-            mediaItems.push(this.createMediaItem(
-              attachment.url, attachment.filename, 'attachment', attachment,
-              message, discordData, item, messageDate
-            ));
+            mediaItems.push({
+              url: attachment.url,
+              filename: attachment.filename,
+              messageId: message.id,
+              messageDate,
+              channelId: discordData.channel.id,
+              channelName: discordData.channel.name,
+              guildId: item.metadata?.guildId || 'unknown',
+              guildName: item.metadata?.guildName || 'unknown',
+              userId: message.uid,
+              mediaType: 'attachment',
+              originalData: attachment,
+              messageContent: message.content,
+              reactions: message.reactions
+            });
           }
         }
 
@@ -626,28 +937,60 @@ class MediaDownloader {
           for (const embed of message.embeds) {
             if (embed.image) {
               const filename = `embed-image-${message.id}.${embed.image.url.split('.').pop() || 'jpg'}`;
-              mediaItems.push(this.createMediaItem(
-                embed.image.url, filename, 'embed_image', embed,
-                message, discordData, item, messageDate
-              ));
+              mediaItems.push({
+                url: embed.image.url,
+                filename,
+                messageId: message.id,
+                messageDate,
+                channelId: discordData.channel.id,
+                channelName: discordData.channel.name,
+                guildId: item.metadata?.guildId || 'unknown',
+                guildName: item.metadata?.guildName || 'unknown',
+                userId: message.uid,
+                mediaType: 'embed_image',
+                originalData: embed,
+                messageContent: message.content,
+                reactions: message.reactions
+              });
             }
 
             if (embed.thumbnail) {
               const filename = `embed-thumbnail-${message.id}.${embed.thumbnail.url.split('.').pop() || 'jpg'}`;
-              mediaItems.push(this.createMediaItem(
-                embed.thumbnail.url, filename, 'embed_thumbnail', embed,
-                message, discordData, item, messageDate
-              ));
+              mediaItems.push({
+                url: embed.thumbnail.url,
+                filename,
+                messageId: message.id,
+                messageDate,
+                channelId: discordData.channel.id,
+                channelName: discordData.channel.name,
+                guildId: item.metadata?.guildId || 'unknown',
+                guildName: item.metadata?.guildName || 'unknown',
+                userId: message.uid,
+                mediaType: 'embed_thumbnail',
+                originalData: embed,
+                messageContent: message.content,
+                reactions: message.reactions
+              });
             }
-
+            
             if (embed.video?.url) {
               const filename = `embed-video-${message.id}.${embed.video.url.split('.').pop() || 'mp4'}`;
-              const mediaItem = this.createMediaItem(
-                embed.video.url, filename, 'embed_video',
-                { content_type: 'video/mp4', size: undefined, ...embed },
-                message, discordData, item, messageDate
-              );
-
+              const mediaItem = {
+                url: embed.video.url,
+                filename,
+                messageId: message.id,
+                messageDate,
+                channelId: discordData.channel.id,
+                channelName: discordData.channel.name,
+                guildId: item.metadata?.guildId || 'unknown',
+                guildName: item.metadata?.guildName || 'unknown',
+                userId: message.uid,
+                mediaType: 'embed_video' as const,
+                originalData: { content_type: 'video/mp4', size: undefined, ...embed },
+                messageContent: message.content,
+                reactions: message.reactions
+              };
+              
               // Apply filtering
               const filterResult = this.shouldDownloadMedia(mediaItem);
               if (filterResult.allowed) {
@@ -664,16 +1007,30 @@ class MediaDownloader {
         if (message.sticker_items) {
           for (const sticker of message.sticker_items) {
             // Use proper sticker format extension (1=PNG, 2=APNG, 3=Lottie/JSON, 4=GIF)
-            const extension = getStickerExtension(sticker.format_type);
+            const extension = this.getStickerExtension(sticker.format_type);
             const filename = `${sticker.name}.${extension}`;
             const stickerUrl = `https://media.discordapp.net/stickers/${sticker.id}.${extension}`;
-
-            const mediaItem = this.createMediaItem(
-              stickerUrl, filename, 'sticker',
-              { content_type: extension === 'gif' ? 'image/gif' : 'image/png', size: undefined, ...sticker },
-              message, discordData, item, messageDate
-            );
-
+            
+            const mediaItem = {
+              url: stickerUrl,
+              filename,
+              messageId: message.id,
+              messageDate,
+              channelId: discordData.channel.id,
+              channelName: discordData.channel.name,
+              guildId: item.metadata?.guildId || 'unknown',
+              guildName: item.metadata?.guildName || 'unknown',
+              userId: message.uid,
+              mediaType: 'sticker' as const,
+              originalData: {
+                content_type: extension === 'gif' ? 'image/gif' : 'image/png',
+                size: undefined,
+                ...sticker
+              },
+              messageContent: message.content,
+              reactions: message.reactions
+            };
+            
             // Apply filtering
             const filterResult = this.shouldDownloadMedia(mediaItem);
             if (filterResult.allowed) {
@@ -706,9 +1063,9 @@ class MediaDownloader {
       
       // If not the last attempt, wait before retrying with exponential backoff
       if (attempt < maxRetries) {
-        const retryDelay = RETRY_DELAY_BASE_MS * Math.pow(2, attempt - 1);
-        logger.debug(`Retrying download for ${mediaItem.filename} in ${retryDelay}ms (attempt ${attempt + 1}/${maxRetries})`);
-        await delay(retryDelay);
+        const delay = RETRY_DELAY_BASE_MS * Math.pow(2, attempt - 1);
+        logger.debug(`Retrying download for ${mediaItem.filename} in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
     
@@ -722,9 +1079,9 @@ class MediaDownloader {
     const attachment = mediaItem.originalData as DiscordAttachment;
 
     // Normalize URL to strip expiring params for consistent hashing
-    const normalizedUrl = normalizeDiscordUrl(mediaItem.url);
-    const hash = generateUrlHash(normalizedUrl).substring(0, 8);
-    const ext = getValidatedExtension(attachment.content_type, mediaItem.url, mediaItem.mediaType);
+    const normalizedUrl = this.normalizeDiscordUrl(mediaItem.url);
+    const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 8);
+    const ext = this.getValidatedExtension(attachment.content_type, mediaItem.url, mediaItem.mediaType);
 
     // Generate human-readable unique filename: {sanitized-name}_{hash8}.{ext}
     const uniqueFilename = this.generateUniqueFilename(mediaItem.filename, normalizedUrl, ext);
@@ -767,11 +1124,11 @@ class MediaDownloader {
             hash,
             originalFilename: mediaItem.filename,
             messageId: mediaItem.messageId,
-            channelId: mediaItem.channelId || 'unknown',
+            channelId: mediaItem.channelId,
             channelName: mediaItem.channelName,
-            guildId: mediaItem.guildId || 'unknown',
+            guildId: mediaItem.guildId,
             guildName: mediaItem.guildName,
-            userId: mediaItem.userId || 'unknown',
+            userId: mediaItem.userId,
             timestamp: Date.now(),
             messageDate: new Date().toISOString(),
             mediaType: mediaItem.mediaType,
@@ -930,6 +1287,45 @@ class MediaDownloader {
   }
 
   /**
+   * Sanitize filename for filesystem
+   */
+  private sanitizeFilename(filename: string): string {
+    return filename.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
+  }
+
+  /**
+   * Normalize Discord CDN URL for consistent hashing
+   * Strips expiring signature params (ex, is, hm) so same file gets same hash
+   */
+  private normalizeDiscordUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      if (urlObj.host === 'cdn.discordapp.com' || urlObj.host === 'media.discordapp.net') {
+        urlObj.searchParams.delete('ex');  // expiry timestamp
+        urlObj.searchParams.delete('is');  // issued timestamp
+        urlObj.searchParams.delete('hm');  // hash/signature
+        return urlObj.toString();
+      }
+    } catch {}
+    return url;
+  }
+
+  /**
+   * Check if file is a spoiler (filename starts with SPOILER_)
+   */
+  private isSpoiler(filename: string): boolean {
+    return filename.startsWith('SPOILER_');
+  }
+
+  /**
+   * Check if content is animated based on hash prefix or filename
+   * Discord uses 'a_' prefix for animated avatars/icons
+   */
+  private isAnimated(hashOrFilename: string): boolean {
+    return hashOrFilename.startsWith('a_') || hashOrFilename.toLowerCase().endsWith('.gif');
+  }
+
+  /**
    * Sanitize reactions array to handle deleted/invalid emoji gracefully
    * Custom emoji may be deleted from the server, resulting in null/undefined fields
    */
@@ -950,6 +1346,96 @@ class MediaDownloader {
         emoji: r.emoji || '❓', // Fallback for edge cases
         count: r.count
       }));
+  }
+
+  /**
+   * Get sticker format extension based on format_type
+   * Format types: 1=PNG, 2=APNG, 3=Lottie, 4=GIF
+   */
+  private getStickerExtension(formatType: number): string {
+    switch (formatType) {
+      case 1: return 'png';   // PNG
+      case 2: return 'png';   // APNG (still uses .png extension)
+      case 3: return 'json';  // Lottie animation
+      case 4: return 'gif';   // GIF
+      default: return 'png';
+    }
+  }
+
+  /**
+   * Map content-type to file extension
+   * Based on actual content types found in Discord data
+   */
+  private static CONTENT_TYPE_TO_EXT: Record<string, string> = {
+    'application/json': 'json',
+    'application/pdf': 'pdf',
+    'image/gif': 'gif',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/bmp': 'bmp',
+    'image/svg+xml': 'svg',
+    'image/avif': 'avif',
+    'text/csv': 'csv',
+    'text/markdown': 'md',
+    'text/plain': 'txt',
+    'text/x-python': 'py',
+    'video/mp2t': 'ts',
+    'video/mp4': 'mp4',
+    'video/quicktime': 'mov',
+    'video/webm': 'webm',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+    'audio/ogg': 'ogg',
+    'audio/flac': 'flac',
+  };
+
+  /**
+   * Valid file extensions that can be extracted from URLs
+   */
+  private static VALID_URL_EXTENSIONS = new Set([
+    'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif',
+    'mp4', 'webm', 'mov', 'avi', 'mkv',
+    'mp3', 'wav', 'ogg', 'flac',
+    'pdf', 'txt', 'json', 'md', 'csv', 'py', 'log',
+  ]);
+
+  /**
+   * Get validated file extension from content-type, URL, or default
+   * Priority: content_type > URL path > default based on media_type
+   */
+  private getValidatedExtension(
+    contentType: string | undefined,
+    url: string,
+    mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker'
+  ): string {
+    // 1. Try content-type (most reliable for Discord attachments)
+    if (contentType) {
+      // Handle charset suffix: "text/plain; charset=utf-8" -> "text/plain"
+      const baseType = contentType.split(';')[0].trim().toLowerCase();
+      const ext = MediaDownloader.CONTENT_TYPE_TO_EXT[baseType];
+      if (ext) return ext;
+    }
+
+    // 2. Try extracting from URL path (for embeds)
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      const match = pathname.match(/\.([a-zA-Z0-9]+)$/);
+      if (match) {
+        const ext = match[1].toLowerCase();
+        if (MediaDownloader.VALID_URL_EXTENSIONS.has(ext)) {
+          return ext;
+        }
+      }
+    } catch {}
+
+    // 3. Default based on media type
+    switch (mediaType) {
+      case 'embed_video': return 'mp4';
+      case 'sticker': return 'png';
+      default: return 'jpg'; // embed_image, embed_thumbnail, attachment fallback
+    }
   }
 
   /**
@@ -1109,19 +1595,19 @@ class MediaDownloader {
 
       // Generate human-readable unique filename: {sanitized-name}_{hash8}.{ext}
       // Normalize URL to strip expiring params for consistent hashing
-      const normalizedUrl = normalizeDiscordUrl(mediaItem.url);
-      const hash = generateUrlHash(normalizedUrl).substring(0, 8);
+      const normalizedUrl = this.normalizeDiscordUrl(mediaItem.url);
+      const hash = createHash('sha256').update(normalizedUrl).digest('hex').substring(0, 8);
       const attachment = mediaItem.originalData as DiscordAttachment;
-      const ext = getValidatedExtension(attachment.content_type, mediaItem.url, mediaItem.mediaType);
+      const ext = this.getValidatedExtension(attachment.content_type, mediaItem.url, mediaItem.mediaType);
       const uniqueName = this.generateUniqueFilename(mediaItem.filename, normalizedUrl, ext);
 
       // Determine file type
-      const fileTypeDir = await getFileTypeDirAsync(attachment.content_type || '', mediaItem.filename);
+      const fileTypeDir = await this.getFileTypeDir(attachment.content_type || '', mediaItem.filename);
       const type = fileTypeDir.replace(/s$/, '') as 'image' | 'video' | 'audio' | 'document'; // Remove trailing 's'
 
       // Detect spoiler and animated content
-      const isSpoilerFile = isSpoiler(mediaItem.filename);
-      const isAnimatedFile = isAnimated(mediaItem.filename);
+      const isSpoiler = this.isSpoiler(mediaItem.filename);
+      const isAnimated = this.isAnimated(mediaItem.filename);
 
       // Get proxy URL if available (for embed media)
       const proxyUrl = attachment.proxy_url || undefined;
@@ -1142,8 +1628,8 @@ class MediaDownloader {
 
         // File metadata
         type,
-        is_spoiler: isSpoilerFile || undefined,
-        is_animated: isAnimatedFile || undefined,
+        is_spoiler: isSpoiler || undefined,
+        is_animated: isAnimated || undefined,
         media_type: mediaItem.mediaType,
         size: attachment.size,
         content_type: attachment.content_type,
@@ -1152,11 +1638,11 @@ class MediaDownloader {
 
         // Discord context
         message_id: mediaItem.messageId,
-        channel_id: mediaItem.channelId || 'unknown',
+        channel_id: mediaItem.channelId,
         channel_name: mediaItem.channelName,
-        guild_id: mediaItem.guildId || 'unknown',
+        guild_id: mediaItem.guildId,
         guild_name: mediaItem.guildName,
-        user_id: mediaItem.userId || 'unknown',
+        user_id: mediaItem.userId,
         timestamp: mediaItem.messageDate,
 
         // Message context
