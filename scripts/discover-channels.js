@@ -111,14 +111,14 @@ class ChannelDiscovery {
 
     try {
       const content = fs.readFileSync(OUTPUT_FILE, 'utf8');
-      // Parse table rows looking for muted channels (last column has [x])
+      // Parse table rows looking for muted channels (last column has ✅ or [x])
       // Handles both formats:
-      // With activity:    | #channel | `id` | activity | [x] | [x] |
-      // Without activity: | #channel | `id` | [x] | [x] |
+      // New format:       | #channel | `id` | activity | ✅ | ✅ |
+      // Old format:       | #channel | `id` | activity | [x] | [x] |
       const lines = content.split('\n');
       for (const line of lines) {
-        // Match any table row ending with | [x] | (mute column)
-        const match = line.match(/\|\s*#[^|]+\|\s*`(\d+)`.*\|\s*\[x\]\s*\|$/);
+        // Match any table row ending with | ✅ | or | [x] | (mute column)
+        const match = line.match(/\|\s*#[^|]+\|\s*`(\d+)`.*\|\s*(?:✅|\[x\])\s*\|$/);
         if (match) {
           this.mutedChannels.add(match[1]);
         }
@@ -428,7 +428,7 @@ class ChannelDiscovery {
       markdown += `|---------|-----|----------|-------|------|\n`;
 
       for (const rec of recommendations.slice(0, 20)) { // Show top 20
-        markdown += `| #${rec.channel.name} | \`${rec.channelId}\` | ${rec.activity.badge} ${rec.activity.description} | [ ] | [ ] |\n`;
+        markdown += `| #${rec.channel.name} | \`${rec.channelId}\` | ${rec.activity.badge} ${rec.activity.description} | ⬜ | ⬜ |\n`;
       }
       if (recommendations.length > 20) {
         markdown += `| *...and ${recommendations.length - 20} more* | | | | |\n`;
@@ -438,8 +438,8 @@ class ChannelDiscovery {
 
     // Instructions
     markdown += `## Instructions\n\n`;
-    markdown += `1. **Track**: Check \`[x]\` to add channel to config\n`;
-    markdown += `2. **Mute**: Check \`[x]\` to hide from recommendations (won't track)\n`;
+    markdown += `1. **Track**: Change ⬜ to ✅ to add channel to config\n`;
+    markdown += `2. **Mute**: Change ⬜ to ✅ to hide from recommendations (won't track)\n`;
     markdown += `3. Run \`npm run update-configs\` to apply changes\n`;
     if (!includeSampling) {
       markdown += `4. Run with \`--sample\` flag to get activity data\n`;
@@ -480,6 +480,19 @@ class ChannelDiscovery {
 
       // Output channels by category
       for (const [categoryName, categoryChannels] of channelsByCategory) {
+        // When sampling, filter out locked channels first to check if category is empty
+        let visibleChannels = categoryChannels;
+        if (includeSampling) {
+          visibleChannels = categoryChannels.filter(({ channelId }) => {
+            const activity = this.getActivityInfo(channelId);
+            return activity.badge !== '🔒';
+          });
+          // Skip empty categories (all channels locked)
+          if (visibleChannels.length === 0) {
+            continue;
+          }
+        }
+
         markdown += `### ${categoryName}\n\n`;
 
         // Table header
@@ -491,11 +504,11 @@ class ChannelDiscovery {
           markdown += `|---------|-----|-------|------|\n`;
         }
 
-        for (const { channelId, channel } of categoryChannels) {
+        for (const { channelId, channel } of visibleChannels) {
           const isTracked = tracked.has(channelId);
           const isMuted = this.mutedChannels.has(channelId);
-          const trackBox = isTracked ? '[x]' : '[ ]';
-          const muteBox = isMuted ? '[x]' : '[ ]';
+          const trackBox = isTracked ? '✅' : '⬜';
+          const muteBox = isMuted ? '✅' : '⬜';
 
           if (includeSampling) {
             const activity = this.getActivityInfo(channelId);

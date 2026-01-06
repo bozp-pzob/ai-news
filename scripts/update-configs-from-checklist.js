@@ -76,27 +76,30 @@ class ConfigUpdater {
         continue;
       }
 
-      // NEW FORMAT: Match table rows
-      // Format with activity: | #channel-name | `channelId` | 🔥 45/day | [x] | [ ] |
-      // Format without activity: | #channel-name | `channelId` | [x] | [ ] |
-      const tableMatchWithActivity = line.match(/^\|\s*#([^|]+)\|\s*`(\d+)`\s*\|[^|]*\|\s*\[([x ])\]\s*\|\s*\[([x ])\]\s*\|/);
-      const tableMatchNoActivity = line.match(/^\|\s*#([^|]+)\|\s*`(\d+)`\s*\|\s*\[([x ])\]\s*\|\s*\[([x ])\]\s*\|/);
+      // NEW FORMAT: Match table rows with emoji checkboxes (✅/⬜) or old format ([x]/[ ])
+      // Format with activity: | #channel-name | `channelId` | 🔥 45/day | ✅ | ⬜ |
+      // Format without activity: | #channel-name | `channelId` | ✅ | ⬜ |
+      const tableMatchWithActivity = line.match(/^\|\s*#([^|]+)\|\s*`(\d+)`\s*\|[^|]*\|\s*(✅|⬜|\[[x ]\])\s*\|\s*(✅|⬜|\[[x ]\])\s*\|/);
+      const tableMatchNoActivity = line.match(/^\|\s*#([^|]+)\|\s*`(\d+)`\s*\|\s*(✅|⬜|\[[x ]\])\s*\|\s*(✅|⬜|\[[x ]\])\s*\|/);
 
       const tableMatch = tableMatchWithActivity || tableMatchNoActivity;
       if (tableMatch) {
         const [, channelName, channelId, trackChecked, muteChecked] = tableMatch;
+        // Normalize: ✅ or [x] means checked
+        const isTrackChecked = trackChecked === '✅' || trackChecked === '[x]';
+        const isMuteChecked = muteChecked === '✅' || muteChecked === '[x]';
 
         if (inRecommendations) {
           // Store for later processing after we know all guilds
-          pendingRecommendations.push({ channelId, channelName: channelName.trim(), trackChecked, muteChecked });
+          pendingRecommendations.push({ channelId, channelName: channelName.trim(), isTrackChecked, isMuteChecked });
         } else if (currentGuildId) {
           const guildData = guildChannels.get(currentGuildId);
           // Track channel -> guild mapping for recommendations
           channelToGuild.set(channelId, currentGuildId);
 
-          if (muteChecked === 'x') {
+          if (isMuteChecked) {
             guildData.mutedChannels.push({ channelId, channelName: channelName.trim() });
-          } else if (trackChecked === 'x') {
+          } else if (isTrackChecked) {
             guildData.checkedChannels.push({ channelId, channelName: channelName.trim() });
           } else {
             guildData.uncheckedChannels.push({ channelId, channelName: channelName.trim() });
@@ -127,7 +130,7 @@ class ConfigUpdater {
       if (guildId) {
         const guildData = guildChannels.get(guildId);
         // Only apply if Track or Mute is checked (recommendations default to unchecked)
-        if (rec.muteChecked === 'x') {
+        if (rec.isMuteChecked) {
           // Remove from other lists if present, add to muted
           guildData.checkedChannels = guildData.checkedChannels.filter(c => c.channelId !== rec.channelId);
           guildData.uncheckedChannels = guildData.uncheckedChannels.filter(c => c.channelId !== rec.channelId);
@@ -135,7 +138,7 @@ class ConfigUpdater {
             guildData.mutedChannels.push({ channelId: rec.channelId, channelName: rec.channelName });
           }
           recommendationsApplied++;
-        } else if (rec.trackChecked === 'x') {
+        } else if (rec.isTrackChecked) {
           // Remove from other lists if present, add to checked
           guildData.mutedChannels = guildData.mutedChannels.filter(c => c.channelId !== rec.channelId);
           guildData.uncheckedChannels = guildData.uncheckedChannels.filter(c => c.channelId !== rec.channelId);
