@@ -15,8 +15,8 @@
     "generate-manifest": "ts-node --transpile-only src/download-media.ts --generate-manifest",
     "upload-cdn": "ts-node --transpile-only src/upload-cdn.ts",
     "api": "ts-node src/api.ts",
-    "discover-channels": "node scripts/discover-channels.mjs",
-    "update-configs": "node scripts/update-configs-from-checklist.mjs",
+    "discover-channels": "node scripts/discover-channels.js --sample",
+    "update-configs": "node scripts/update-configs-from-checklist.js",
     "dashboard": "node scripts/generate-dashboard.mjs",
     "status": "node scripts/generate-dashboard.mjs --dry-run",
     "webhook": "node scripts/server.js"
