@@ -201,3 +201,125 @@ export const extractStickerMedia = (
     mediaType: 'sticker'
   };
 };
+
+/**
+ * Normalize Discord CDN URL for consistent hashing
+ * Strips expiring signature params (ex, is, hm) so same file gets same hash
+ */
+export const normalizeDiscordUrl = (url: string): string => {
+  try {
+    const urlObj = new URL(url);
+    if (urlObj.host === 'cdn.discordapp.com' || urlObj.host === 'media.discordapp.net') {
+      urlObj.searchParams.delete('ex');  // expiry timestamp
+      urlObj.searchParams.delete('is');  // issued timestamp
+      urlObj.searchParams.delete('hm');  // hash/signature
+      return urlObj.toString();
+    }
+  } catch {}
+  return url;
+};
+
+/**
+ * Check if file is a spoiler (filename starts with SPOILER_)
+ */
+export const isSpoiler = (filename: string): boolean => {
+  return filename.startsWith('SPOILER_');
+};
+
+/**
+ * Check if content is animated based on hash prefix or filename
+ * Discord uses 'a_' prefix for animated avatars/icons
+ */
+export const isAnimated = (hashOrFilename: string): boolean => {
+  return hashOrFilename.startsWith('a_') || hashOrFilename.toLowerCase().endsWith('.gif');
+};
+
+/**
+ * Get sticker format extension based on format_type
+ * Format types: 1=PNG, 2=APNG, 3=Lottie, 4=GIF
+ */
+export const getStickerExtension = (formatType: number): string => {
+  switch (formatType) {
+    case 1: return 'png';   // PNG
+    case 2: return 'png';   // APNG (still uses .png extension)
+    case 3: return 'json';  // Lottie animation
+    case 4: return 'gif';   // GIF
+    default: return 'png';
+  }
+};
+
+/**
+ * Map content-type to file extension
+ * Based on actual content types found in Discord data
+ */
+export const CONTENT_TYPE_TO_EXT: Record<string, string> = {
+  'application/json': 'json',
+  'application/pdf': 'pdf',
+  'image/gif': 'gif',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/bmp': 'bmp',
+  'image/svg+xml': 'svg',
+  'image/avif': 'avif',
+  'text/csv': 'csv',
+  'text/markdown': 'md',
+  'text/plain': 'txt',
+  'text/x-python': 'py',
+  'video/mp2t': 'ts',
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'video/webm': 'webm',
+  'audio/mpeg': 'mp3',
+  'audio/wav': 'wav',
+  'audio/ogg': 'ogg',
+  'audio/flac': 'flac',
+};
+
+/**
+ * Valid file extensions that can be extracted from URLs
+ */
+export const VALID_URL_EXTENSIONS = new Set([
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif',
+  'mp4', 'webm', 'mov', 'avi', 'mkv',
+  'mp3', 'wav', 'ogg', 'flac',
+  'pdf', 'txt', 'json', 'md', 'csv', 'py', 'log',
+]);
+
+/**
+ * Get validated file extension from content-type, URL, or default
+ * Priority: content_type > URL path > default based on media_type
+ */
+export const getValidatedExtension = (
+  contentType: string | undefined,
+  url: string,
+  mediaType: 'attachment' | 'embed_image' | 'embed_thumbnail' | 'embed_video' | 'sticker'
+): string => {
+  // 1. Try content-type (most reliable for Discord attachments)
+  if (contentType) {
+    // Handle charset suffix: "text/plain; charset=utf-8" -> "text/plain"
+    const baseType = contentType.split(';')[0].trim().toLowerCase();
+    const ext = CONTENT_TYPE_TO_EXT[baseType];
+    if (ext) return ext;
+  }
+
+  // 2. Try extracting from URL path (for embeds)
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    const match = pathname.match(/\.([a-zA-Z0-9]+)$/);
+    if (match) {
+      const ext = match[1].toLowerCase();
+      if (VALID_URL_EXTENSIONS.has(ext)) {
+        return ext;
+      }
+    }
+  } catch {}
+
+  // 3. Default based on media type
+  switch (mediaType) {
+    case 'embed_video': return 'mp4';
+    case 'sticker': return 'png';
+    default: return 'jpg'; // embed_image, embed_thumbnail, attachment fallback
+  }
+};
