@@ -213,8 +213,8 @@ export class OpenAIProvider implements AiProvider {
     // Random rotation - pick one prompt from the array
     const template = prompts[Math.floor(Math.random() * prompts.length)];
 
-    // Use AI to create a concise summary for the image prompt
-    const summaryPrompt = `Summarize this in 1-2 sentences suitable for an image generation prompt. Be concise and focus on visual elements:\n\n${text.substring(0, 1500)}`;
+    // Ask for the vibe/feeling rather than literal description - makes better visuals
+    const summaryPrompt = `What's the vibe of this? Reply with only 3-6 words capturing the mood or feeling:\n\n${text.substring(0, 1500)}`;
 
     try {
       const summary = await this.summarize(summaryPrompt);
@@ -249,7 +249,8 @@ export class OpenAIProvider implements AiProvider {
     try {
       // Generate optimized prompt using templates
       const imagePrompt = await this.generateImagePrompt(text, category);
-      logger.debug(`Generated image prompt (category=${category || "default"}): ${imagePrompt.substring(0, 100)}...`);
+      console.log(`Generated Prompt:\n"${imagePrompt}"\n`);
+      logger.debug(`Image prompt (category=${category || "default"}): ${imagePrompt.substring(0, 100)}...`);
 
       // Build content array with text prompt first, then any reference images
       const content: Array<{ type: string; text?: string; image_url?: { url: string } }> = [

@@ -269,12 +269,14 @@ async function testImageGeneration() {
   // Test each category (with optional limit)
   const categoriesToProcess = limit ? data.categories.slice(0, limit) : data.categories;
 
-  for (const category of categoriesToProcess) {
-    const topic = categoryOverride || category.topic;
+  for (let i = 0; i < categoriesToProcess.length; i++) {
+    const category = categoriesToProcess[i];
+    const originalTopic = category.topic;
+    const topic = categoryOverride || originalTopic;
     const title = category.title;
 
-    console.log(`\n--- Category: ${title} ---`);
-    console.log(`Topic: ${topic}`);
+    console.log(`\n--- [${i}] Category: ${title} ---`);
+    console.log(`Topic: ${originalTopic}${categoryOverride ? ` (using templates for: ${topic})` : ''}`);
 
     // Get first content item for testing
     const content = category.content[0];
@@ -284,6 +286,12 @@ async function testImageGeneration() {
     }
 
     console.log(`\nContent Text:\n${content.text}\n`);
+
+    // Show which template pool will be used
+    const templates = imageConfig.promptTemplates?.[topic] || imageConfig.defaultPrompts || [];
+    console.log(`Template Pool (${templates.length} options):`);
+    templates.forEach((t, i) => console.log(`  ${i + 1}. "${t}"`));
+    console.log("");
 
     // Combine CLI reference images with content images
     const contentImages = content.images?.length > 0 ? content.images : [];
@@ -312,9 +320,8 @@ async function testImageGeneration() {
           if (matches) {
             const [, ext, base64Data] = matches;
 
-            // Create descriptive filename
-            const titleSlug = slugify(title);
-            const filename = `${topic}-${titleSlug}.${ext}`;
+            // Create filename: {topic}.{ext} - maps to category by topic name
+            const filename = `${originalTopic}.${ext}`;
             const outputPath = path.join(outputDir, filename);
 
             fs.writeFileSync(outputPath, Buffer.from(base64Data, "base64"));
