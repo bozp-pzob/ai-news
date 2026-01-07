@@ -47,7 +47,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
+
+      - name: Fetch gh-pages branch
+        run: |
+          git fetch origin gh-pages:gh-pages --depth=1
+          echo "Fetched gh-pages branch"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
