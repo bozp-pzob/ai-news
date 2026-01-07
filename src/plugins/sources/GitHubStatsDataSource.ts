@@ -8,6 +8,26 @@ import { ContentItem } from "../../types";
 import fetch from "node-fetch";
 
 /**
+ * Calculate days between two ISO timestamps.
+ * Returns days from creation to close/merge, or days since creation if still open.
+ */
+function calculateDaysOpen(createdAt: string, closedAt?: string | null): number {
+  const created = new Date(createdAt).getTime();
+  const closed = closedAt ? new Date(closedAt).getTime() : Date.now();
+  return Math.floor((closed - created) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Format duration as human-readable string, only if notable (>7 days).
+ */
+function formatDuration(days: number | undefined): string {
+  if (!days || days <= 7) return "";
+  if (days > 365) return `, open ${Math.floor(days / 365)}+ years`;
+  if (days > 30) return `, open ${Math.floor(days / 30)} months`;
+  return `, open ${days} days`;
+}
+
+/**
  * Configuration interface for GitHubStatsDataSource
  * @interface GitHubStatsDataSourceConfig
  * @property {string} name - The name identifier for this stats source
@@ -179,12 +199,14 @@ export class GitHubStatsDataSource implements ContentSource {
     if (statsData.topIssues && Array.isArray(statsData.topIssues)) {
       statsData.topIssues.forEach((issue: any) => {
         const issueUrl = `${this.baseGithubUrl}issues/${issue.number}`;
+        const daysOpen = issue.createdAt ? calculateDaysOpen(issue.createdAt, issue.closedAt) : undefined;
+        const duration = formatDuration(daysOpen);
         const issueItem: ContentItem = {
           type: "githubIssue",
           cid: `github-issue-${issue.number}`,
           source: issueUrl,
           title: issue.title,
-          text: `Issue #${issue.number}: ${issue.title} (by ${issue.author})`,
+          text: `Issue #${issue.number}: ${issue.title} (by ${issue.author}${duration})`,
           link: issueUrl,
           date: timestamp,
           metadata: {
@@ -194,6 +216,7 @@ export class GitHubStatsDataSource implements ContentSource {
             repository: issue.repository,
             createdAt: issue.createdAt,
             closedAt: issue.closedAt,
+            daysOpen,
             state: issue.state,
             commentCount: issue.commentCount,
             photos: [`${this.baseGithubImageUrl}issues/${issue.number}`]
@@ -207,12 +230,14 @@ export class GitHubStatsDataSource implements ContentSource {
     if (statsData.topPRs && Array.isArray(statsData.topPRs)) {
       statsData.topPRs.forEach((pr: any) => {
         const prUrl = `${this.baseGithubUrl}pull/${pr.number}`;
+        const daysOpen = pr.createdAt ? calculateDaysOpen(pr.createdAt, pr.mergedAt) : undefined;
+        const duration = formatDuration(daysOpen);
         const prItem: ContentItem = {
           type: "githubPullRequest",
           cid: `github-pr-${pr.number}`,
           source: prUrl,
           title: pr.title,
-          text: `PR #${pr.number}: ${pr.title} (by ${pr.author})`,
+          text: `PR #${pr.number}: ${pr.title} (by ${pr.author}${duration})`,
           link: prUrl,
           date: timestamp,
           metadata: {
@@ -222,6 +247,7 @@ export class GitHubStatsDataSource implements ContentSource {
             repository: pr.repository,
             createdAt: pr.createdAt,
             mergedAt: pr.mergedAt,
+            daysOpen,
             additions: pr.additions,
             deletions: pr.deletions,
             photos: [`${this.baseGithubImageUrl}pull/${pr.number}`]
