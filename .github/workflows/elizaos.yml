@@ -254,10 +254,10 @@ jobs:
             echo "ℹ️  No ElizaOS summary files found to copy"
           fi
           
-          # Create daily files
-          copy_if_exists "output/discord/summaries/${YESTERDAY}.json" "./public/elizaos/discord/daily.json" "Discord daily JSON"
-          copy_if_exists "output/discord/summaries/${YESTERDAY}.md" "./public/elizaos/discord/daily.md" "Discord daily MD"
-          copy_if_exists "output/elizaos/${YESTERDAY}.json" "./public/elizaos/json/daily.json" "ElizaOS daily JSON"
+          # Create daily files (generators write to json/ and md/ subdirectories)
+          copy_if_exists "output/discord/summaries/json/${YESTERDAY}.json" "./public/elizaos/discord/daily.json" "Discord daily JSON"
+          copy_if_exists "output/discord/summaries/md/${YESTERDAY}.md" "./public/elizaos/discord/daily.md" "Discord daily MD"
+          copy_if_exists "output/elizaos/json/${YESTERDAY}.json" "./public/elizaos/json/daily.json" "ElizaOS daily JSON"
 
       - name: Validate JSON files
         run: find ./public/elizaos -name "*.json" -type f -exec jq empty {} \; || { echo "Invalid JSON detected"; exit 1; }
