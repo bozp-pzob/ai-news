@@ -68,8 +68,14 @@ export class AiImageEnricher implements EnricherPlugin {
       }
 
       try {
-        const image = await this.provider.image(contentItem.text);
-        
+        // Pass source as category for prompt template selection
+        // Existing images in metadata can be used as references
+        const existingImages = contentItem.metadata?.images || [];
+        const image = await this.provider.image(contentItem.text, {
+          category: contentItem.source || undefined,
+          referenceImages: existingImages.length > 0 ? existingImages : undefined,
+        });
+
         enrichedContent.push({
           ...contentItem,
           metadata: {
@@ -78,7 +84,7 @@ export class AiImageEnricher implements EnricherPlugin {
           }
         });
       } catch (error) {
-        console.error("Error creating topics: ", error);
+        console.error("Error generating image: ", error);
         enrichedContent.push(contentItem);
       }
     }
