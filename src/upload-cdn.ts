@@ -28,6 +28,7 @@ interface UploadStats {
   total: number;
   uploaded: number;
   skipped: number;
+  skippedExists: number;
   failed: number;
   totalSize: number;
 }
@@ -222,6 +223,7 @@ function calculateStats(results: CDNUploadResult[]): UploadStats {
     total: results.length,
     uploaded: 0,
     skipped: 0,
+    skippedExists: 0,
     failed: 0,
     totalSize: 0
   };
@@ -230,6 +232,8 @@ function calculateStats(results: CDNUploadResult[]): UploadStats {
     if (result.success) {
       if (result.message === "dry-run") {
         stats.skipped++;
+      } else if (result.message === "skipped-exists") {
+        stats.skippedExists++;
       } else {
         stats.uploaded++;
       }
@@ -307,6 +311,9 @@ function printSummary(results: CDNUploadResult[], jsonOutput: boolean): void {
   logger.info("\n📊 Upload Statistics:");
   logger.info(`Total files: ${stats.total}`);
   logger.info(`✅ Uploaded: ${stats.uploaded}`);
+  if (stats.skippedExists > 0) {
+    logger.info(`⏭️  Skipped (already on CDN): ${stats.skippedExists}`);
+  }
   if (stats.skipped > 0) {
     logger.info(`⏭️  Skipped (dry-run): ${stats.skipped}`);
   }

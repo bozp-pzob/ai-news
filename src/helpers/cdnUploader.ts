@@ -94,6 +94,7 @@ export class BunnyCDNProvider implements CDNProvider {
   private cdnUrl: string;
   private dryRun: boolean;
   private maxFileSize: number;
+  private skipExisting: boolean;
 
   constructor(config: {
     storageZone: string;
@@ -102,6 +103,7 @@ export class BunnyCDNProvider implements CDNProvider {
     cdnUrl?: string;
     dryRun?: boolean;
     maxFileSize?: number;
+    skipExisting?: boolean;
   }) {
     this.storageZone = config.storageZone;
     this.password = config.password;
@@ -109,6 +111,7 @@ export class BunnyCDNProvider implements CDNProvider {
     this.cdnUrl = config.cdnUrl || `https://${config.storageZone}.b-cdn.net`;
     this.dryRun = config.dryRun || false;
     this.maxFileSize = config.maxFileSize || MAX_FILE_SIZE_BYTES;
+    this.skipExisting = config.skipExisting ?? true; // Default to skip existing
   }
 
   /**
@@ -117,6 +120,43 @@ export class BunnyCDNProvider implements CDNProvider {
   getPublicUrl(remotePath: string): string {
     const cleanPath = remotePath.replace(/^\/+/, "");
     return `${this.cdnUrl.replace(/\/+$/, "")}/${cleanPath}`;
+  }
+
+  /**
+   * Check if a file exists on CDN using HEAD request
+   */
+  async checkExists(remotePath: string): Promise<boolean> {
+    const validation = validateRemotePath(remotePath);
+    if (!validation.isValid) return false;
+
+    const cleanRemotePath = validation.result;
+
+    return new Promise((resolve) => {
+      const url = new URL(`${this.storageHost}/${this.storageZone}/${cleanRemotePath}`);
+
+      const options = {
+        hostname: url.hostname,
+        port: url.port || 443,
+        path: url.pathname,
+        method: "HEAD",
+        headers: {
+          "AccessKey": this.password
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        // 200 = exists, 404 = doesn't exist
+        resolve(res.statusCode === 200);
+      });
+
+      req.on("error", () => resolve(false));
+      req.setTimeout(10000, () => {
+        req.destroy();
+        resolve(false);
+      });
+
+      req.end();
+    });
   }
 
   /**
@@ -136,7 +176,21 @@ export class BunnyCDNProvider implements CDNProvider {
     }
     const cleanRemotePath = validation.result;
 
-    // Check file exists
+    // Check if file already exists on CDN (skip re-upload)
+    if (this.skipExisting) {
+      const exists = await this.checkExists(cleanRemotePath);
+      if (exists) {
+        return {
+          localPath,
+          remotePath: cleanRemotePath,
+          cdnUrl: this.getPublicUrl(cleanRemotePath),
+          success: true,
+          message: "skipped-exists"
+        };
+      }
+    }
+
+    // Check file exists locally
     if (!fs.existsSync(localPath)) {
       return {
         localPath,
@@ -353,7 +407,8 @@ export function createCDNProvider(config: CDNConfig): CDNProvider {
       storageHost: config.storageHost,
       cdnUrl: config.cdnUrl,
       dryRun: config.dryRun,
-      maxFileSize: config.maxFileSize
+      maxFileSize: config.maxFileSize,
+      skipExisting: config.skipExisting
     });
   }
 

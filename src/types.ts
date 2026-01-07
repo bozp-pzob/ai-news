@@ -542,6 +542,8 @@ export interface CDNConfig {
   password?: string;
   dryRun?: boolean;
   maxFileSize?: number;
+  /** Skip upload if file already exists on CDN (default: true) */
+  skipExisting?: boolean;
 }
 
 /**
