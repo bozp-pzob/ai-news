@@ -84,7 +84,8 @@ export class MemeEnricher implements EnricherPlugin {
     if (!item.text || item.text.length < this.thresholdLength) return false;
 
     // Skip if category filter set and item doesn't match
-    if (this.categories.size > 0 && item.source && !this.categories.has(item.source)) {
+    // Check item.type (e.g., "discordRawData") not item.source (e.g., "elizaOS - #channel")
+    if (this.categories.size > 0 && item.type && !this.categories.has(item.type)) {
       return false;
     }
 
