@@ -328,15 +328,16 @@ function injectMediaIntoJson(
     const categoryPosters = postersByTopic.get(categoryTopic) || [];
 
     // Add to first content item (matching the category's topic)
+    // Limit to 1 meme and 1 poster per category for cleaner output
     if (categoryMemes.length > 0) {
-      category.content[0].memes = categoryMemes.map(m => ({
+      category.content[0].memes = [categoryMemes[0]].map(m => ({
         url: m.url,
         template: m.template,
         summary: m.summary,
       }));
     }
     if (categoryPosters.length > 0) {
-      category.content[0].posters = categoryPosters.map(p => p.url);
+      category.content[0].posters = [categoryPosters[0].url];
     }
   }
 
