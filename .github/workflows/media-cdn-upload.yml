@@ -124,20 +124,20 @@ jobs:
           rm data/elizaos.sqlite.enc
 
       - name: Download media for date
-        env:
-          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+        # DISCORD_TOKEN comes from ENV_SECRETS (processed earlier)
         run: |
           SOURCE="${{ inputs.source || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
 
           echo "Downloading media for $DATE..."
+          # Allow partial failures - some Discord URLs may have expired
           npm run download-media -- \
             --db ./data/${SOURCE}.sqlite \
             --date "$DATE" \
-            --output ./media-upload
+            --output ./media-upload || echo "⚠️ Some downloads failed (expected for expired URLs)"
 
           echo "Media downloaded to ./media-upload"
-          ls -la ./media-upload/ || echo "No media directory created"
+          ls -la ./media-upload/ 2>/dev/null | head -20 || echo "No media directory created"
 
       - name: Generate manifest for CDN
         run: |
