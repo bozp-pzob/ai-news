@@ -326,9 +326,13 @@ export class OpenAIProvider implements AiProvider {
 
       if (!imageUrl) {
         // Debug: log what we actually got
-        logger.warning(`No image returned from OpenRouter. Response keys: ${Object.keys(message || {}).join(", ")}`);
+        logger.error(`No image returned from OpenRouter (model: ${this.imageModel})`);
+        logger.error(`Response keys: ${Object.keys(message || {}).join(", ")}`);
         if (message?.content) {
-          logger.debug(`Response content (truncated): ${String(message.content).substring(0, 200)}`);
+          logger.error(`Response content: ${String(message.content)}`);
+        }
+        if (message?.refusal) {
+          logger.error(`Model refusal: ${message.refusal}`);
         }
         return [];
       }

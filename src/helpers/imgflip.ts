@@ -46,6 +46,10 @@ export async function automeme(text: string, noWatermark = true): Promise<MemeRe
 
   const data = await response.json();
 
+  if (process.env.DEBUG_ENRICHERS === 'true') {
+    console.log('Imgflip automeme response:', JSON.stringify(data, null, 2));
+  }
+
   if (!data.success) {
     return { success: false, error: data.error_message || "Automeme failed" };
   }
@@ -54,8 +58,8 @@ export async function automeme(text: string, noWatermark = true): Promise<MemeRe
     success: true,
     url: data.data.url,
     pageUrl: data.data.page_url,
-    templateName: data.data.template?.name,
-    templateId: data.data.template?.id,
+    templateName: data.data.template_name || data.data.template?.name,
+    templateId: data.data.template_id || data.data.template?.id,
   };
 }
 
