@@ -204,11 +204,41 @@ export class OpenAIProvider implements AiProvider {
    * @param category - Optional category for template selection
    * @returns Promise<string> Optimized image prompt
    */
+  /**
+   * Map item types to template keys
+   */
+  private mapTypeToTemplateKey(type: string): string {
+    const mapping: Record<string, string> = {
+      discordRawData: "discordrawdata",
+      githubIssue: "issue",
+      githubPullRequest: "pull_request",
+      githubStatsSummary: "github_summary",
+      githubTopContributors: "contributors",
+      githubCompletedItem: "completed_items",
+    };
+    return mapping[type] || type.toLowerCase();
+  }
+
   private async generateImagePrompt(text: string, category?: string): Promise<string> {
-    // Get prompt array for category, falling back to defaults
-    const prompts = this.imageConfig?.promptTemplates?.[category || ""]
-      || this.imageConfig?.defaultPrompts
-      || ["Create a visually striking illustration that captures: {summary}"];
+    // Map item type to template key (e.g., "discordRawData" -> "discordrawdata")
+    const templateKey = category ? this.mapTypeToTemplateKey(category) : "";
+
+    // Check for category-specific prompts first
+    let prompts = this.imageConfig?.promptTemplates?.[templateKey];
+
+    if (!prompts && templateKey) {
+      logger.warning(`No promptTemplate found for category "${category}" (mapped to "${templateKey}"). Using defaultPrompts.`);
+    }
+
+    // Fall back to defaults if no category match
+    if (!prompts) {
+      prompts = this.imageConfig?.defaultPrompts;
+    }
+
+    // If still no prompts, fail explicitly
+    if (!prompts || prompts.length === 0) {
+      throw new Error(`No image prompts configured for category "${category}" and no defaultPrompts set`);
+    }
 
     // Random rotation - pick one prompt from the array
     const template = prompts[Math.floor(Math.random() * prompts.length)];
@@ -295,7 +325,11 @@ export class OpenAIProvider implements AiProvider {
       }
 
       if (!imageUrl) {
-        logger.warning("No image returned from OpenRouter");
+        // Debug: log what we actually got
+        logger.warning(`No image returned from OpenRouter. Response keys: ${Object.keys(message || {}).join(", ")}`);
+        if (message?.content) {
+          logger.debug(`Response content (truncated): ${String(message.content).substring(0, 200)}`);
+        }
         return [];
       }
 

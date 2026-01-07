@@ -56,35 +56,52 @@ export class AiImageEnricher implements EnricherPlugin {
 
     for (const contentItem of contentItems) {
       let images = contentItem?.metadata?.images || [];
+      const itemId = contentItem?.title?.substring(0, 30) || contentItem?.type || "unknown";
 
-      if (!contentItem || !contentItem.text || images.length > 0) {
+      if (!contentItem || !contentItem.text) {
+        console.log(`AiImageEnricher: [skip] ${itemId} - no text`);
+        enrichedContent.push(contentItem);
+        continue;
+      }
+
+      if (images.length > 0) {
+        console.log(`AiImageEnricher: [skip] ${itemId} - already has ${images.length} image(s)`);
         enrichedContent.push(contentItem);
         continue;
       }
 
       if (contentItem.text.length < thresholdLength) {
+        console.log(`AiImageEnricher: [skip] ${itemId} - text too short (${contentItem.text.length}/${thresholdLength})`);
         enrichedContent.push(contentItem);
         continue;
       }
 
+      console.log(`AiImageEnricher: [generate] ${itemId} (${contentItem.text.length} chars)`);
+
       try {
-        // Pass source as category for prompt template selection
-        // Existing images in metadata can be used as references
+        // Pass type as category for prompt template selection (matches promptTemplates keys)
+        // e.g., "discordRawData" -> "discordrawdata", "githubIssue" -> "issue"
         const existingImages = contentItem.metadata?.images || [];
         const image = await this.provider.image(contentItem.text, {
-          category: contentItem.source || undefined,
+          category: contentItem.type || undefined,
           referenceImages: existingImages.length > 0 ? existingImages : undefined,
         });
 
-        enrichedContent.push({
-          ...contentItem,
-          metadata: {
-            ...contentItem.metadata,
-            images: image,
-          }
-        });
+        if (image && image.length > 0) {
+          console.log(`AiImageEnricher: [success] ${itemId} - generated ${image.length} image(s)`);
+          enrichedContent.push({
+            ...contentItem,
+            metadata: {
+              ...contentItem.metadata,
+              images: image,
+            }
+          });
+        } else {
+          console.log(`AiImageEnricher: [failed] ${itemId} - no image returned`);
+          enrichedContent.push(contentItem);
+        }
       } catch (error) {
-        console.error("Error generating image: ", error);
+        console.error(`AiImageEnricher: [error] ${itemId} - ${error}`);
         enrichedContent.push(contentItem);
       }
     }
