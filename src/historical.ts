@@ -9,6 +9,7 @@
 import { HistoricalAggregator } from "./aggregator/HistoricalAggregator";
 import { MediaDownloader, generateManifestToFile } from "./download-media";
 import { MediaDownloadCapable } from "./plugins/sources/DiscordRawDataSource";
+import { SummaryEnricher } from "./plugins/enrichers/SummaryEnricher";
 import { logger } from "./helpers/cliHelper";
 import dotenv from "dotenv";
 import fs from "fs";
@@ -210,10 +211,9 @@ Options:
     });
 
     /**
-     * Register enrichers and storage plugins
-     * These will process the historical data as it's collected
+     * Register storage plugins with aggregator
+     * Note: Enrichers are NOT registered here - they run after generators produce summaries
      */
-    enricherConfigs.forEach((config) => aggregator.registerEnricher(config.instance));
     storageConfigs.forEach(async (storage : any) => {
       await storage.instance.init();
       aggregator.registerStorage(storage.instance);
@@ -366,6 +366,31 @@ Options:
         for (const generator of generatorConfigs) {
           await generator.instance.storage.init();
           await generator.instance.generateAndStoreSummary(dateStr);
+        }
+      }
+
+      /**
+       * Enrich summaries with memes and posters AFTER generation
+       * This runs enrichers on the AI-generated summaries, not raw data
+       */
+      if (enricherConfigs.length > 0) {
+        logger.info("Enriching generated summaries with memes and posters...");
+        const summaryEnricher = new SummaryEnricher({
+          enrichers: enricherConfigs.map(c => c.instance),
+          outputPath: outputPath,
+        });
+
+        // Determine JSON subpath from generator config (typically "elizaos/json")
+        const jsonSubpath = generatorConfigs.length > 0
+          ? path.join(generatorConfigs[0].instance.source || "elizaos", "json")
+          : "elizaos/json";
+
+        if (filter.filterType || (filter.after && filter.before)) {
+          await callbackDateRangeLogic(filter, (dateStr: string) =>
+            summaryEnricher.enrichSummary(dateStr, jsonSubpath)
+          );
+        } else {
+          await summaryEnricher.enrichSummary(dateStr, jsonSubpath);
         }
       }
     }
