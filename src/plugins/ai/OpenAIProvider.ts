@@ -1,8 +1,9 @@
 // src/plugins/ai/OpenAIProvider.ts
 
-import { AiProvider } from "../../types";
+import { AiProvider, ImageGenerationConfig, ImageGenerationOptions, CDNConfig } from "../../types";
 import OpenAI from "openai";
 import { logger } from "../../helpers/cliHelper";
+import { uploadBase64ImageToCDN, getDefaultCDNConfig } from "../../helpers/cdnUploader";
 
 /**
  * Configuration interface for OpenAIProvider.
@@ -17,6 +18,7 @@ interface OpenAIProviderConfig {
   siteUrl?: string;       // Optional site URL for OpenRouter
   siteName?: string;      // Optional site name for OpenRouter
   fallbackModel?: string; // Optional large context model for fallback when token limits exceeded
+  imageConfig?: ImageGenerationConfig; // Optional image generation configuration
 }
 
 /**
@@ -27,12 +29,12 @@ interface OpenAIProviderConfig {
 export class OpenAIProvider implements AiProvider {
   public name: string;
   private openai: OpenAI;
-  private openaiDirect: OpenAI | null = null;  // For image generation
-  private canGenerateImages: boolean = false;
   private model: string;
   private temperature: number;
   private useOpenRouter: boolean;
   private fallbackModel?: string;
+  private imageConfig?: ImageGenerationConfig;
+  private imageModel: string;
 
   static constructorInterface = {
     parameters: [
@@ -92,8 +94,10 @@ export class OpenAIProvider implements AiProvider {
     this.name = config.name;
     this.useOpenRouter = config.useOpenRouter || false;
     this.fallbackModel = config.fallbackModel;
-    
-    // Initialize main client (OpenRouter or OpenAI)
+    this.imageConfig = config.imageConfig;
+    this.imageModel = config.imageConfig?.model || "google/gemini-3-pro-image-preview";
+
+    // Initialize OpenAI client (direct or via OpenRouter)
     const openAIConfig: any = {
       apiKey: config.apiKey
     };
@@ -105,18 +109,8 @@ export class OpenAIProvider implements AiProvider {
         "X-Title": config.siteName || "",
       };
       this.model = config.model?.includes("/") ? config.model : `openai/${config.model || "gpt-4o-mini"}`;
-      
-      // Create separate OpenAI client for image generation if OpenAI key is provided
-      const openaiKey = process.env.OPENAI_DIRECT_KEY;
-      if (openaiKey) {
-        this.openaiDirect = new OpenAI({
-          apiKey: openaiKey
-        });
-        this.canGenerateImages = true;
-      }
     } else {
       this.model = config.model || "gpt-4o-mini";
-      this.canGenerateImages = true;
     }
 
     this.openai = new OpenAI(openAIConfig);
@@ -204,39 +198,130 @@ export class OpenAIProvider implements AiProvider {
   }
 
   /**
-   * Generates an image based on the provided text description.
-   * Uses DALL-E 3 model to create a 1024x1024 image.
-   * Note: Requires direct OpenAI API key when using OpenRouter.
-   * @param text - Text description for image generation
-   * @returns Promise<string[]> Array containing the generated image URL
+   * Generates an optimized prompt for image generation based on content and category.
+   * Uses prompt templates with random rotation for variety.
+   * @param text - Content text to base the image on
+   * @param category - Optional category for template selection
+   * @returns Promise<string> Optimized image prompt
    */
-  public async image(text: string): Promise<string[]> {
-    if (!this.canGenerateImages) {
-      logger.warning("Image generation is not available. When using OpenRouter, set OPENAI_DIRECT_KEY for image generation.");
+  private async generateImagePrompt(text: string, category?: string): Promise<string> {
+    // Get prompt array for category, falling back to defaults
+    const prompts = this.imageConfig?.promptTemplates?.[category || ""]
+      || this.imageConfig?.defaultPrompts
+      || ["Create a visually striking illustration that captures: {summary}"];
+
+    // Random rotation - pick one prompt from the array
+    const template = prompts[Math.floor(Math.random() * prompts.length)];
+
+    // Ask for the vibe/feeling rather than literal description - makes better visuals
+    const summaryPrompt = `What's the vibe of this? Reply with only 3-6 words capturing the mood or feeling:\n\n${text.substring(0, 1500)}`;
+
+    try {
+      const summary = await this.summarize(summaryPrompt);
+      return template.replace("{summary}", summary.trim());
+    } catch (error) {
+      logger.warning(`Failed to generate summary for image prompt, using truncated text: ${error}`);
+      // Fallback: use truncated text directly
+      return template.replace("{summary}", text.substring(0, 200));
+    }
+  }
+
+  /**
+   * Generates an image based on the provided text description.
+   * Uses OpenRouter with Gemini (Nano Banana Pro) for image generation.
+   * Supports reference images for style transfer, composition, or editing.
+   *
+   * @param text - Text description for image generation
+   * @param options - Optional settings: category, referenceImages, aspectRatio, imageSize
+   * @returns Promise<string[]> Array containing the generated image URL or data URL
+   */
+  public async image(text: string, options?: ImageGenerationOptions): Promise<string[]> {
+    if (!this.useOpenRouter) {
+      logger.warning("Image generation requires OpenRouter. Set useOpenRouter: true in config.");
       return [];
     }
 
+    const category = options?.category;
+    const referenceImages = options?.referenceImages || [];
+    const aspectRatio = options?.aspectRatio || this.imageConfig?.aspectRatio || "16:9";
+    const imageSize = options?.imageSize || this.imageConfig?.imageSize || "1K";
+
     try {
-      // Use direct OpenAI client for image generation
-      const client = this.useOpenRouter ? this.openaiDirect! : this.openai;
-      
-      const prompt = `Create an image that depicts the following text:\n\n"${text}.\n\n Response format MUST be formatted in this way, the words must be strings:\n\n{ \"images\": \"<image_url>\"}\n`;
-      
-      const params: OpenAI.Images.ImageGenerateParams = {
-        model: "dall-e-3",
-        prompt: text,
-        n: 1,
-        size: "1024x1024",
-      };
-  
-      const image = await client.images.generate(params);
-      if (image.data && image.data.length > 0 && image.data[0].url) {
-        logger.debug(`Generated image URL: ${image.data[0].url}`);
-        return [image.data[0].url];
+      // Generate optimized prompt using templates
+      const imagePrompt = await this.generateImagePrompt(text, category);
+      console.log(`Generated Prompt:\n"${imagePrompt}"\n`);
+      logger.debug(`Image prompt (category=${category || "default"}): ${imagePrompt.substring(0, 100)}...`);
+
+      // Build content array with text prompt first, then any reference images
+      const content: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
+        { type: "text", text: imagePrompt }
+      ];
+
+      // Add reference images if provided
+      for (const refImage of referenceImages) {
+        content.push({
+          type: "image_url",
+          image_url: { url: refImage }
+        });
       }
-      return [];
-    } catch (e) {
-      logger.error(`Error in image generation: ${e}`);
+
+      if (referenceImages.length > 0) {
+        logger.debug(`Including ${referenceImages.length} reference image(s) in request`);
+      }
+
+      // Build request with image_config
+      const requestBody: any = {
+        model: this.imageModel,
+        messages: [{ role: "user", content }],
+        modalities: ["image", "text"],
+        image_config: {
+          aspect_ratio: aspectRatio,
+          image_size: imageSize
+        }
+      };
+
+      logger.debug(`Image config: aspect_ratio=${aspectRatio}, image_size=${imageSize}`);
+
+      // Call OpenRouter with Gemini for image generation
+      const response = await this.openai.chat.completions.create(requestBody);
+
+      // Extract base64 image from OpenRouter response
+      // Response format: message.images[].image_url.url = "data:image/png;base64,..."
+      const message = response.choices[0]?.message as any;
+      let imageUrl: string | undefined;
+
+      if (message?.images && message.images.length > 0) {
+        imageUrl = message.images[0]?.image_url?.url;
+      }
+
+      if (!imageUrl) {
+        logger.warning("No image returned from OpenRouter");
+        return [];
+      }
+
+      logger.debug(`Generated base64 image via OpenRouter (${this.imageModel})`);
+
+      // Upload to CDN if configured
+      if (this.imageConfig?.uploadToCDN && imageUrl.startsWith("data:image/")) {
+        const cdnPath = this.imageConfig.cdnPath || "generated-images";
+        const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        const remotePath = `${cdnPath}/${filename}`;
+
+        const cdnConfig: Partial<CDNConfig> = getDefaultCDNConfig();
+        const result = await uploadBase64ImageToCDN(imageUrl, remotePath, cdnConfig);
+
+        if (result.success) {
+          logger.debug(`Uploaded to CDN: ${result.cdnUrl}`);
+          return [result.cdnUrl];
+        } else {
+          logger.warning(`CDN upload failed: ${result.message}, returning base64`);
+        }
+      }
+
+      return imageUrl ? [imageUrl] : [];
+
+    } catch (error) {
+      logger.error(`Error in image generation: ${error}`);
       return [];
     }
   }

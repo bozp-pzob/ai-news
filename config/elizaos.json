@@ -46,7 +46,7 @@
       "name": "summaryOpenAiProvider",
       "params": {
         "apiKey": "process.env.OPENAI_API_KEY",
-        "model": "anthropic/claude-3.7-sonnet",
+        "model": "anthropic/claude-sonnet-4-5",
         "temperature": 0,
         "useOpenRouter": true,
         "siteUrl": "process.env.SITE_URL",
@@ -59,12 +59,74 @@
       "name": "discordOpenAiProvider",
       "params": {
         "apiKey": "process.env.OPENAI_API_KEY",
-        "model": "anthropic/claude-3.7-sonnet",
+        "model": "anthropic/claude-sonnet-4-5",
         "temperature": 0,
         "useOpenRouter": true,
         "siteUrl": "process.env.SITE_URL",
         "siteName": "process.env.SITE_NAME",
         "fallbackModel": "openrouter/sonoma-sky-alpha"
+      }
+    },
+    {
+      "type": "OpenAIProvider",
+      "name": "imageProvider",
+      "params": {
+        "apiKey": "process.env.OPENAI_API_KEY",
+        "model": "openai/gpt-4o-mini",
+        "useOpenRouter": true,
+        "siteUrl": "process.env.SITE_URL",
+        "siteName": "process.env.SITE_NAME",
+        "imageConfig": {
+          "model": "google/gemini-3-pro-image-preview",
+          "aspectRatio": "4:3",
+          "imageSize": "1K",
+          "uploadToCDN": false,
+          "cdnPath": "generated-images",
+          "defaultPrompts": [
+            "Stock photo misunderstanding of {summary}",
+            "90s anime screenshot of {summary}",
+            "Idiomatic literal interpretation of {summary}",
+            "Literal but wrong interpretation of {summary}"
+          ],
+          "promptTemplates": {
+            "discordrawdata": [
+              "A warm, inviting illustration of a virtual community gathering discussing {summary}. Stylized figures in a cozy digital lounge space, with speech bubbles and glowing idea orbs floating between them. Soft rounded shapes, friendly atmosphere. Palette: Discord blurple (#5865F2), soft purple gradients, warm peach accents.",
+              "90s anime screenshot of {summary}",
+              "Bulletin board flyer announcing {summary}",
+              "Newspaper gossip column about {summary}"
+            ],
+            "issue": [
+              "Tavern bounty board illustration: {summary}. Weathered wooden board with pinned quest cards and wanted posters, wax seals, torn edges. Warm candlelight glow, fantasy RPG aesthetic. Parchment textures, hand-drawn quest icons. Adventurer's guild vibe.",
+              "Wanted poster featuring {summary}",
+              "Newspaper classifieds listing {summary}",
+              "Literal but wrong interpretation of {summary}"
+            ],
+            "pull_request": [
+              "Bauhaus constructivist illustration: {summary}. Two geometric streams converging into unified form. Primary colors only: red and blue merging to purple at junction. Dynamic diagonal composition, El Lissitzky inspired. Purely geometric, abstract code merge.",
+              "Blueprint schematic showing {summary}",
+              "90s anime screenshot of {summary}",
+              "Newspaper announcement about {summary}"
+            ],
+            "github_summary": [
+              "Isometric miniature diorama: {summary}. Repository activity as tiny city, building heights showing commit frequency. Soft shadows, glowing paths between structures. Tilt-shift photography feel, warm afternoon lighting. Cozy tech village aesthetic.",
+              "Newspaper front page about {summary}",
+              "Retro propaganda poster promoting {summary}",
+              "Idiomatic literal interpretation of {summary}"
+            ],
+            "contributors": [
+              "Paper cutout collage: {summary}. Contributor figures as layered cut paper shapes with torn edges, soft shadows between layers. Bold colors, Matisse inspired, tactile handmade feel. Celebratory group composition.",
+              "Yearbook photo page featuring {summary}",
+              "Movie credits scene honoring {summary}",
+              "Retro propaganda hero poster for {summary}"
+            ],
+            "completed_items": [
+              "Pixel art 16-bit victory screen: {summary}. Retro game completion scene with glowing achievement items and sparkle effects. Visible pixels, dithering gradients, indie game aesthetic. Warm celebratory palette, nostalgic triumph.",
+              "Trophy display case showing {summary}",
+              "Newspaper victory headline about {summary}",
+              "Video game achievement screen for {summary}"
+            ]
+          }
+        }
       }
     }
   ],

@@ -435,3 +435,87 @@ export async function uploadDirectoryToCDN(
 
   return results;
 }
+
+/**
+ * Upload a base64-encoded image to CDN
+ * Handles data URLs like "data:image/png;base64,..."
+ *
+ * @param base64Data - Base64 data URL (e.g., "data:image/png;base64,...")
+ * @param remotePath - Remote path on CDN (without extension, will be added based on image type)
+ * @param config - Optional CDN config overrides
+ * @returns CDN upload result with public URL
+ */
+export async function uploadBase64ImageToCDN(
+  base64Data: string,
+  remotePath: string,
+  config?: Partial<CDNConfig>
+): Promise<CDNUploadResult> {
+  // Parse the data URL to extract mime type and base64 content
+  const matches = base64Data.match(/^data:image\/(\w+);base64,(.+)$/);
+  if (!matches) {
+    return {
+      localPath: "",
+      remotePath,
+      cdnUrl: "",
+      success: false,
+      message: "Invalid base64 image data format. Expected: data:image/<type>;base64,<data>"
+    };
+  }
+
+  const [, imageType, data] = matches;
+
+  // Map image type to extension
+  const extMap: Record<string, string> = {
+    "jpeg": "jpg",
+    "png": "png",
+    "gif": "gif",
+    "webp": "webp",
+    "svg+xml": "svg"
+  };
+  const ext = extMap[imageType] || imageType;
+
+  // Decode base64 to buffer
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(data, "base64");
+  } catch (error) {
+    return {
+      localPath: "",
+      remotePath,
+      cdnUrl: "",
+      success: false,
+      message: `Failed to decode base64: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+
+  // Write to temp file
+  const tempPath = `/tmp/ai-image-${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
+  try {
+    fs.writeFileSync(tempPath, buffer);
+  } catch (error) {
+    return {
+      localPath: tempPath,
+      remotePath,
+      cdnUrl: "",
+      success: false,
+      message: `Failed to write temp file: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+
+  // Ensure remote path has correct extension
+  const finalRemotePath = remotePath.endsWith(`.${ext}`)
+    ? remotePath
+    : `${remotePath.replace(/\.[^.]+$/, "")}.${ext}`;
+
+  // Upload to CDN
+  const result = await uploadFileToCDN(tempPath, finalRemotePath, config);
+
+  // Clean up temp file
+  try {
+    fs.unlinkSync(tempPath);
+  } catch {
+    // Ignore cleanup errors
+  }
+
+  return result;
+}
