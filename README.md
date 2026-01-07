@@ -17,7 +17,7 @@ A modular TypeScript-based news aggregator that collects, enriches, and analyzes
 - **AI-Powered Processing**
   - Automated content summarization (e.g., daily reports, Discord channel activity) using configurable AI providers (OpenAI, OpenRouter).
   - Token limit resilience with automatic fallback models for large content processing.
-  - Optional content enrichment (e.g., topic extraction, image generation).
+  - Optional content enrichment (e.g., topic extraction, image generation, meme generation via Imgflip API).
 
 - **Flexible Storage & Output**
   - SQLite for persistent storage of fetched content and generated summaries.
@@ -102,13 +102,15 @@ Create these repository secrets in GitHub:
   "HYPERFY_DISCORD_GUILD_ID": "your_hyperfy_guild_id",
   "CODEX_API_KEY": "your_codex_key",
   "BIRDEYE_API_KEY": "your_birdeye_key",
+  "IMGFLIP_USERNAME": "your_imgflip_username",
+  "IMGFLIP_PASSWORD": "your_imgflip_password",
   "BUNNY_STORAGE_ZONE": "your_bunny_storage_zone",
   "BUNNY_STORAGE_PASSWORD": "your_bunny_api_password",
   "BUNNY_CDN_URL": "https://your-custom-cdn.com"
 }
 ```
 
-**Notes:** `OPENAI_DIRECT_KEY` is required for image generation when using OpenRouter. `HYPERFY_*`, `BIRDEYE_*`, and `BUNNY_*` keys are optional depending on your configuration.
+**Notes:** `OPENAI_DIRECT_KEY` is required for image generation when using OpenRouter. `IMGFLIP_*` credentials are required for meme generation (sign up at imgflip.com). `HYPERFY_*`, `BIRDEYE_*`, and `BUNNY_*` keys are optional depending on your configuration.
 
 2. `SQLITE_ENCRYPTION_KEY` — strong password to encrypt the database.
 

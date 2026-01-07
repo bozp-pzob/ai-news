@@ -87,6 +87,11 @@ export const createJSONPromptForTopics = (
     // Get media from metadata (existing behavior)
     let photos = item.metadata?.photos || [];
     let videos = item.metadata?.videos || [];
+    // Get enricher-generated media
+    const posters = item.metadata?.images || [];
+    const memes = (item.metadata?.memes || []).map((m: any) =>
+      typeof m === 'string' ? m : m.url
+    ).filter(Boolean);
 
     // Always extract media from Discord raw data
     // If MediaLookup available, will use CDN URLs; otherwise Discord URLs
@@ -112,16 +117,24 @@ export const createJSONPromptForTopics = (
       prompt += `videos: ${videos.slice(0, maxVideos).join(", ")}\n`;
       hasMedia = true;
     }
+    if (posters.length > 0) {
+      prompt += `posters: ${posters.join(", ")}\n`;
+      hasMedia = true;
+    }
+    if (memes.length > 0) {
+      prompt += `memes: ${memes.join(", ")}\n`;
+      hasMedia = true;
+    }
     prompt += `\n***source_end***\n\n`;
   });
 
   prompt += `Provide a clear and concise summary based on the ***sources*** above for the topic. DO NOT PULL DATA FROM OUTSIDE SOURCES'${topic}'. Combine similar sources into a longer summary if it makes sense.\n\n`;
 
-  prompt += `Response MUST be a valid JSON object containing:\n- 'title': The title of the topic.\n- 'content': A list of messages with keys 'text', 'sources', 'images', and 'videos'.\n\n`;
+  prompt += `Response MUST be a valid JSON object containing:\n- 'title': The title of the topic.\n- 'content': A list of messages with keys 'text', 'sources', 'images', 'videos', 'posters', and 'memes'.\n\n`;
 
   // Add instruction about using provided media URLs
   if (hasMedia) {
-    prompt += `IMPORTANT: When including images or videos in your response, use the exact URLs provided in the 'photos' and 'videos' fields above.\n\n`;
+    prompt += `IMPORTANT: When including images, videos, posters, or memes in your response, use the exact URLs provided above.\n\n`;
   }
 
   return prompt;

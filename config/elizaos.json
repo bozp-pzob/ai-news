@@ -69,6 +69,18 @@
     },
     {
       "type": "OpenAIProvider",
+      "name": "memeProvider",
+      "params": {
+        "apiKey": "process.env.OPENAI_API_KEY",
+        "model": "x-ai/grok-4.1-fast",
+        "temperature": 0.7,
+        "useOpenRouter": true,
+        "siteUrl": "process.env.SITE_URL",
+        "siteName": "process.env.SITE_NAME"
+      }
+    },
+    {
+      "type": "OpenAIProvider",
       "name": "imageProvider",
       "params": {
         "apiKey": "process.env.OPENAI_API_KEY",
@@ -130,7 +142,18 @@
       }
     }
   ],
-  "enrichers": [],
+  "enrichers": [
+    {
+      "type": "MemeEnricher",
+      "name": "memeEnricher",
+      "params": {
+        "provider": "memeProvider",
+        "categories": ["discordRawData"],
+        "thresholdLength": 200,
+        "maxPerBatch": 3
+      }
+    }
+  ],
   "storage": [
     {
       "type": "SQLiteStorage",
