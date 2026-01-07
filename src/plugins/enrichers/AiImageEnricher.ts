@@ -1,16 +1,23 @@
-// src/plugins/enrichers/AiTopicEnricher.ts
+// src/plugins/enrichers/AiImageEnricher.ts
 
 import { EnricherPlugin, ContentItem, AiEnricherConfig, AiProvider } from "../../types";
+
+export interface AiImageEnricherConfig extends AiEnricherConfig {
+  /** Maximum posters to generate per batch (default: 5) */
+  maxPerBatch?: number;
+}
 
 /**
  * AiImageEnricher class implements the EnricherPlugin interface to add AI-generated images
  * to content items. This enricher uses an AI provider to generate images based on the
  * content text and adds them to the item's metadata.
+ *
+ * Uses two-pass approach: distribute posters across category types, not just first N items.
  */
 export class AiImageEnricher implements EnricherPlugin {
   private provider: AiProvider;
   private maxTokens?: number;
-  private thresholdLength?: number;
+  private maxPerBatch: number;
 
   static constructorInterface = {
     parameters: [
@@ -27,10 +34,10 @@ export class AiImageEnricher implements EnricherPlugin {
         description: 'Maximum number of tokens to use for image generation'
       },
       {
-        name: 'thresholdLength',
+        name: 'maxPerBatch',
         type: 'number',
         required: false,
-        description: 'Minimum text length required for image generation (default: 300)'
+        description: 'Maximum posters to generate per batch (default: 5)'
       }
     ]
   };
@@ -39,73 +46,92 @@ export class AiImageEnricher implements EnricherPlugin {
    * Creates a new instance of AiImageEnricher.
    * @param config - Configuration object containing the AI provider and optional parameters
    */
-  constructor(config: AiEnricherConfig) {
+  constructor(config: AiImageEnricherConfig) {
     this.provider = config.provider;
     this.maxTokens = config.maxTokens;
+    this.maxPerBatch = config.maxPerBatch || 5;
   }
 
   /**
-   * Enriches content items by generating and adding AI-created images.
-   * Only processes items that meet the length threshold and don't already have images.
+   * Two-pass approach: distribute posters across category types, not just first N items.
+   * Pass 1: Group by type, find best candidate per type (no existing images, longest text)
+   * Pass 2: Generate 1 poster per type (up to maxPerBatch types)
+   *
    * @param contentItems - Array of content items to enrich
    * @returns Promise<ContentItem[]> Array of enriched content items
    */
   public async enrich(contentItems: ContentItem[]): Promise<ContentItem[]> {
-    const enrichedContent: ContentItem[] = [];
-    const thresholdLength = this.thresholdLength || 300;
+    // === PASS 1: Group items by type and find best candidate per type ===
+    const itemsByType = new Map<string, ContentItem[]>();
+    for (const item of contentItems) {
+      // Basic check: must have some text (no minimum length - user confirmed "generate anyway")
+      if (!item.text) continue;
+      const type = item.type || "unknown";
+      const list = itemsByType.get(type) || [];
+      list.push(item);
+      itemsByType.set(type, list);
+    }
 
-    for (const contentItem of contentItems) {
-      let images = contentItem?.metadata?.images || [];
-      const itemId = contentItem?.title?.substring(0, 30) || contentItem?.type || "unknown";
+    // Select best candidate per type (prefer items without images, then longest text)
+    const candidates = new Map<string, ContentItem>();
+    for (const [type, items] of itemsByType) {
+      items.sort((a, b) => {
+        const aHasImages = (a.metadata?.images?.length || 0) > 0 ? 1 : 0;
+        const bHasImages = (b.metadata?.images?.length || 0) > 0 ? 1 : 0;
+        if (aHasImages !== bHasImages) return aHasImages - bHasImages; // no images first
+        // Tie-breaker: longer text
+        return (b.text?.length || 0) - (a.text?.length || 0);
+      });
+      candidates.set(type, items[0]);
+    }
 
-      if (!contentItem || !contentItem.text) {
-        console.log(`AiImageEnricher: [skip] ${itemId} - no text`);
-        enrichedContent.push(contentItem);
+    console.log(`AiImageEnricher: Found ${candidates.size} category types to cover: ${Array.from(candidates.keys()).join(", ")}`);
+
+    // === PASS 2: Generate posters for candidates (1 per type) ===
+    let generated = 0;
+    for (const [type, item] of candidates) {
+      if (generated >= this.maxPerBatch) {
+        console.log(`AiImageEnricher: Hit batch limit (${this.maxPerBatch}), stopping`);
+        break;
+      }
+
+      const itemId = item.title?.substring(0, 30) || type;
+      const hasExistingImages = (item.metadata?.images?.length || 0) > 0;
+
+      if (hasExistingImages) {
+        console.log(`AiImageEnricher: [${type}] Skipping ${itemId} - already has images`);
         continue;
       }
 
-      if (images.length > 0) {
-        console.log(`AiImageEnricher: [skip] ${itemId} - already has ${images.length} image(s)`);
-        enrichedContent.push(contentItem);
-        continue;
-      }
-
-      if (contentItem.text.length < thresholdLength) {
-        console.log(`AiImageEnricher: [skip] ${itemId} - text too short (${contentItem.text.length}/${thresholdLength})`);
-        enrichedContent.push(contentItem);
-        continue;
-      }
-
-      console.log(`AiImageEnricher: [generate] ${itemId} (${contentItem.text.length} chars)`);
+      console.log(`AiImageEnricher: [${type}] Generating poster for ${itemId} (${item.text?.length || 0} chars)`);
 
       try {
         // Pass type as category for prompt template selection (matches promptTemplates keys)
-        // e.g., "discordRawData" -> "discordrawdata", "githubIssue" -> "issue"
-        const existingImages = contentItem.metadata?.images || [];
-        const image = await this.provider.image(contentItem.text, {
-          category: contentItem.type || undefined,
+        const existingImages = item.metadata?.images || [];
+        const image = await this.provider.image(item.text!, {
+          category: item.type || undefined,
           referenceImages: existingImages.length > 0 ? existingImages : undefined,
         });
 
         if (image && image.length > 0) {
-          console.log(`AiImageEnricher: [success] ${itemId} - generated ${image.length} image(s)`);
-          enrichedContent.push({
-            ...contentItem,
-            metadata: {
-              ...contentItem.metadata,
-              images: image,
-            }
-          });
+          generated++;
+          // Update item metadata in place
+          item.metadata = {
+            ...item.metadata,
+            images: image,
+          };
+          console.log(`AiImageEnricher: [${type}] Generated poster for ${itemId}`);
         } else {
-          console.log(`AiImageEnricher: [failed] ${itemId} - no image returned`);
-          enrichedContent.push(contentItem);
+          console.log(`AiImageEnricher: [${type}] No image returned for ${itemId}`);
         }
       } catch (error) {
-        console.error(`AiImageEnricher: [error] ${itemId} - ${error}`);
-        enrichedContent.push(contentItem);
+        console.error(`AiImageEnricher: [${type}] Error for ${itemId}:`, error);
       }
     }
 
-    return enrichedContent;
+    console.log(`AiImageEnricher: Generated ${generated} posters across ${candidates.size} category types`);
+
+    // Return all items (items with posters already have metadata updated in place)
+    return contentItems;
   }
 }

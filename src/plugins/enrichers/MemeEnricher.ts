@@ -76,25 +76,6 @@ export class MemeEnricher implements EnricherPlugin {
     this.maxPerBatch = config.maxPerBatch || 3;
   }
 
-  private shouldProcess(item: ContentItem): boolean {
-    // Skip if already has memes
-    if (item.metadata?.memes?.length > 0) return false;
-
-    // Skip if text too short
-    if (!item.text || item.text.length < this.thresholdLength) return false;
-
-    // Skip if category filter set and item doesn't match
-    // Check item.type (e.g., "discordRawData") not item.source (e.g., "elizaOS - #channel")
-    if (this.categories.size > 0 && item.type && !this.categories.has(item.type)) {
-      return false;
-    }
-
-    // Rate limit check
-    if (this.generated >= this.maxPerBatch) return false;
-
-    return true;
-  }
-
   private async createMemeSummary(text: string, recentMemes: MemeHistoryEntry[]): Promise<string> {
     const avoidList = recentMemes.slice(-10).map(m => `- ${m.summary}`).join("\n");
     const avoidClause = avoidList ? `\n\nAvoid these angles:\n${avoidList}` : "";
@@ -112,6 +93,29 @@ ${text.slice(0, 1000)}`;
     }
   }
 
+  /**
+   * Check if an item meets basic criteria for meme generation (excluding rate limit).
+   */
+  private meetsBasicCriteria(item: ContentItem): boolean {
+    // Skip if already has memes
+    if (item.metadata?.memes?.length > 0) return false;
+
+    // Skip if text too short
+    if (!item.text || item.text.length < this.thresholdLength) return false;
+
+    // Skip if category filter set and item doesn't match
+    if (this.categories.size > 0 && item.type && !this.categories.has(item.type)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Two-pass approach: distribute memes across category types, not just first N items.
+   * Pass 1: Group by type, find best candidate per type (least existing media)
+   * Pass 2: Generate 1 meme per type (up to maxPerBatch types)
+   */
   public async enrich(contentItems: ContentItem[]): Promise<ContentItem[]> {
     // Check if credentials are available
     if (!process.env.IMGFLIP_USERNAME || !process.env.IMGFLIP_PASSWORD) {
@@ -122,19 +126,44 @@ ${text.slice(0, 1000)}`;
     // Load recent meme history to avoid repetition
     const memeHistory = loadMemeHistory();
     const newEntries: MemeHistoryEntry[] = [];
-
-    const enrichedContent: ContentItem[] = [];
     this.generated = 0;
 
+    // === PASS 1: Group items by type and find best candidate per type ===
+    const itemsByType = new Map<string, ContentItem[]>();
     for (const item of contentItems) {
-      if (!this.shouldProcess(item)) {
-        enrichedContent.push(item);
-        continue;
+      if (!this.meetsBasicCriteria(item)) continue;
+      const type = item.type || "unknown";
+      const list = itemsByType.get(type) || [];
+      list.push(item);
+      itemsByType.set(type, list);
+    }
+
+    // Select best candidate per type (prefer items with least existing media)
+    const candidates = new Map<string, ContentItem>();
+    for (const [type, items] of itemsByType) {
+      items.sort((a, b) => {
+        const aMedia = (a.metadata?.images?.length || 0) + (a.metadata?.videos?.length || 0);
+        const bMedia = (b.metadata?.images?.length || 0) + (b.metadata?.videos?.length || 0);
+        if (aMedia !== bMedia) return aMedia - bMedia; // least media first
+        // Tie-breaker: longer text
+        return (b.text?.length || 0) - (a.text?.length || 0);
+      });
+      candidates.set(type, items[0]);
+    }
+
+    console.log(`MemeEnricher: Found ${candidates.size} category types to cover: ${Array.from(candidates.keys()).join(", ")}`);
+
+    // === PASS 2: Generate memes for candidates (1 per type) ===
+    const itemsWithMemes = new Set<ContentItem>();
+    for (const [type, item] of candidates) {
+      if (this.generated >= this.maxPerBatch) {
+        console.log(`MemeEnricher: Hit batch limit (${this.maxPerBatch}), stopping`);
+        break;
       }
 
       try {
         const memeSummary = await this.createMemeSummary(item.text!, [...memeHistory, ...newEntries]);
-        console.log(`MemeEnricher: Generating meme for "${memeSummary}"`);
+        console.log(`MemeEnricher: [${type}] Generating meme for "${memeSummary}"`);
 
         const result: MemeResult = await generateMeme(memeSummary);
 
@@ -148,27 +177,24 @@ ${text.slice(0, 1000)}`;
             template: result.templateName,
           });
 
-          enrichedContent.push({
-            ...item,
-            metadata: {
-              ...item.metadata,
-              memes: [
-                {
-                  url: result.url,
-                  template: result.templateName,
-                  summary: memeSummary,
-                },
-              ],
-            },
-          });
-          console.log(`MemeEnricher: Generated meme using "${result.templateName}"`);
+          // Mark this item as having a meme
+          item.metadata = {
+            ...item.metadata,
+            memes: [
+              {
+                url: result.url,
+                template: result.templateName,
+                summary: memeSummary,
+              },
+            ],
+          };
+          itemsWithMemes.add(item);
+          console.log(`MemeEnricher: [${type}] Generated meme using "${result.templateName}"`);
         } else {
-          console.log(`MemeEnricher: Failed - ${result.error}`);
-          enrichedContent.push(item);
+          console.log(`MemeEnricher: [${type}] Failed - ${result.error}`);
         }
       } catch (error) {
-        console.error("MemeEnricher error:", error);
-        enrichedContent.push(item);
+        console.error(`MemeEnricher: [${type}] Error:`, error);
       }
     }
 
@@ -177,7 +203,9 @@ ${text.slice(0, 1000)}`;
       saveMemeHistory([...memeHistory, ...newEntries]);
     }
 
-    console.log(`MemeEnricher: Generated ${this.generated}/${this.maxPerBatch} memes this batch`);
-    return enrichedContent;
+    console.log(`MemeEnricher: Generated ${this.generated} memes across ${candidates.size} category types`);
+
+    // Return all items (items with memes already have metadata updated in place)
+    return contentItems;
   }
 }
