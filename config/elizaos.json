@@ -147,18 +147,14 @@
       "type": "MemeEnricher",
       "name": "memeEnricher",
       "params": {
-        "provider": "memeProvider",
-        "categories": ["discordRawData"],
-        "thresholdLength": 200,
-        "maxPerBatch": 3
+        "provider": "memeProvider"
       }
     },
     {
       "type": "AiImageEnricher",
       "name": "posterEnricher",
       "params": {
-        "provider": "imageProvider",
-        "thresholdLength": 300
+        "provider": "imageProvider"
       }
     }
   ],
