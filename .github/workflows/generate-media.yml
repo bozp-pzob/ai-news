@@ -1,0 +1,128 @@
+name: Generate Media (Memes & Posters)
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Date to process (YYYY-MM-DD)'
+        required: true
+        type: string
+      config_name:
+        description: 'Config name (without .json)'
+        required: false
+        default: 'elizaos'
+        type: string
+      source_name:
+        description: 'Source name for JSON path'
+        required: false
+        default: 'elizaos'
+        type: string
+
+jobs:
+  generate-media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fetch gh-pages branch
+        run: |
+          git fetch origin gh-pages:gh-pages --depth=1
+          echo "Fetched gh-pages branch"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Process secrets
+        run: |
+          echo '${{ secrets.ENV_SECRETS }}' > env_secrets.json
+          chmod 600 env_secrets.json
+
+          # Mask values
+          jq -r 'to_entries[] | select(.key != "BUNNY_CDN_URL" and .key != "SITE_URL") | .value' env_secrets.json | while read -r value; do
+            if [ -n "$value" ]; then
+              echo "::add-mask::$value"
+            fi
+          done
+
+          # Set environment variables
+          jq -r 'to_entries[] | "\(.key)=\(.value)"' env_secrets.json >> $GITHUB_ENV
+
+          rm -f env_secrets.json
+
+      - name: Extract JSON from gh-pages
+        run: |
+          SOURCE="${{ inputs.source_name }}"
+          DATE="${{ inputs.date }}"
+
+          mkdir -p ./output/${SOURCE}/json
+
+          JSON_PATH="${SOURCE}/json/${DATE}.json"
+          if git ls-tree -r --name-only origin/gh-pages | grep -q "^${JSON_PATH}$"; then
+            echo "Extracting ${JSON_PATH} from gh-pages..."
+            git show "origin/gh-pages:${JSON_PATH}" > "./output/${JSON_PATH}"
+            echo "✅ Extracted JSON file"
+            cat "./output/${JSON_PATH}" | head -50
+          else
+            echo "❌ JSON file not found: ${JSON_PATH}"
+            echo "Available files:"
+            git ls-tree -r --name-only origin/gh-pages | grep "${SOURCE}/json" | head -10
+            exit 1
+          fi
+
+      - name: Generate memes and posters
+        run: |
+          SOURCE="${{ inputs.source_name }}"
+          DATE="${{ inputs.date }}"
+          CONFIG="${{ inputs.config_name }}"
+
+          echo "Enriching JSON with memes and posters..."
+          npm run enrich-json -- \
+            --json "./output/${SOURCE}/json/${DATE}.json" \
+            --config "${CONFIG}.json"
+
+      - name: Prepare files for deployment
+        run: |
+          SOURCE="${{ inputs.source_name }}"
+          DATE="${{ inputs.date }}"
+
+          mkdir -p ./public/${SOURCE}/json
+          cp "./output/${SOURCE}/json/${DATE}.json" "./public/${SOURCE}/json/${DATE}.json"
+          touch ./public/.nojekyll
+
+          echo "Updated JSON ready for deployment:"
+          cat "./public/${SOURCE}/json/${DATE}.json" | head -100
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          publish_branch: gh-pages
+          keep_files: true
+          commit_message: "Add media to ${{ inputs.source_name }}/json/${{ inputs.date }}.json"
+
+      - name: Summary
+        run: |
+          SOURCE="${{ inputs.source_name }}"
+          DATE="${{ inputs.date }}"
+
+          echo "## Media Generation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Date | \`$DATE\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Source | \`$SOURCE\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Config | \`${{ inputs.config_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Memes and posters added to JSON summary" >> $GITHUB_STEP_SUMMARY

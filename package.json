@@ -11,6 +11,7 @@
     "start": "node dist/index.js",
     "dev": "ts-node --transpile-only src/index.ts",
     "historical": "ts-node --transpile-only src/historical.ts",
+    "enrich-json": "ts-node --transpile-only src/enrich-json.ts",
     "download-media": "ts-node --transpile-only src/download-media.ts",
     "generate-manifest": "ts-node --transpile-only src/download-media.ts --generate-manifest",
     "upload-cdn": "ts-node --transpile-only src/helpers/cdnUploader.ts",
