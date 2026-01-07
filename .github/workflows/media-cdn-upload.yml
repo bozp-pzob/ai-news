@@ -63,8 +63,8 @@ jobs:
           echo '${{ secrets.ENV_SECRETS }}' > env_secrets.json
           chmod 600 env_secrets.json
 
-          # Mask values
-          jq -r 'to_entries[] | .value' env_secrets.json | while read -r value; do
+          # Mask values (except public URLs like BUNNY_CDN_URL)
+          jq -r 'to_entries[] | select(.key != "BUNNY_CDN_URL" and .key != "SITE_URL") | .value' env_secrets.json | while read -r value; do
             if [ -n "$value" ]; then
               echo "::add-mask::$value"
             fi
@@ -249,6 +249,11 @@ jobs:
               --remote "${SOURCE}-media/json-cdn/latest.json"
 
             echo "CDN-enriched summary uploaded"
+
+            # Prepare json-cdn for gh-pages commit
+            mkdir -p ./public/${SOURCE}/json-cdn
+            cp "./cdn-output/${DATE}.json" "./public/${SOURCE}/json-cdn/${DATE}.json"
+            echo "Prepared json-cdn for gh-pages deployment"
           else
             echo "No summary JSON found for $DATE in gh-pages"
           fi
@@ -293,12 +298,24 @@ jobs:
           fi
 
           if [ "${{ inputs.dry_run }}" != "true" ]; then
+            # Use BUNNY_CDN_URL (public, not secret) for readable summary
+            CDN_BASE="${BUNNY_CDN_URL:-https://your-cdn.b-cdn.net}"
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### CDN URLs" >> $GITHUB_STEP_SUMMARY
-            echo "- Media: \`https://${BUNNY_STORAGE_ZONE:-your-zone}.b-cdn.net/${SOURCE}-media/\`" >> $GITHUB_STEP_SUMMARY
-            echo "- Latest manifest: \`https://${BUNNY_STORAGE_ZONE:-your-zone}.b-cdn.net/${SOURCE}-media/manifests/latest.json\`" >> $GITHUB_STEP_SUMMARY
-            echo "- Dated manifest: \`https://${BUNNY_STORAGE_ZONE:-your-zone}.b-cdn.net/${SOURCE}-media/manifests/${DATE}.json\`" >> $GITHUB_STEP_SUMMARY
+            echo "- Media: ${CDN_BASE}/${SOURCE}-media/" >> $GITHUB_STEP_SUMMARY
+            echo "- Latest manifest: ${CDN_BASE}/${SOURCE}-media/manifests/latest.json" >> $GITHUB_STEP_SUMMARY
+            echo "- Dated manifest: ${CDN_BASE}/${SOURCE}-media/manifests/${DATE}.json" >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Deploy json-cdn to gh-pages
+        if: inputs.dry_run != 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          publish_branch: gh-pages
+          keep_files: true
+          commit_message: "Update json-cdn for ${{ steps.date.outputs.date }}"
 
       - name: Cleanup
         if: always()
