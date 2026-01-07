@@ -218,24 +218,28 @@ jobs:
           SOURCE="${{ inputs.source || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
 
-          # Check if manifest exists (needed for URL swap)
-          if [ ! -f "./media-upload/manifest.json" ]; then
-            echo "No manifest available for URL swap"
-            exit 0
-          fi
-
           # Try to fetch summary JSON from gh-pages
           SUMMARY_PATH="${SOURCE}/json/${DATE}.json"
           if git ls-tree -r --name-only origin/gh-pages | grep -q "$SUMMARY_PATH"; then
             echo "Fetching summary JSON from gh-pages..."
             mkdir -p ./cdn-output
-            git show "origin/gh-pages:${SUMMARY_PATH}" > "./cdn-output/${DATE}.json"
+            git show "origin/gh-pages:${SUMMARY_PATH}" > "./cdn-output/${DATE}-input.json"
 
-            # Swap Discord URLs for CDN URLs
-            echo "Swapping Discord URLs for CDN URLs..."
-            npm run upload-cdn -- \
-              --swap-urls "./cdn-output/${DATE}.json" \
-              --manifest ./media-upload/manifest.json
+            # Use inject-cdn-media to:
+            # 1. Read memes/posters from database
+            # 2. Inject them into the JSON
+            # 3. Swap Discord URLs for CDN URLs (if manifest exists)
+            echo "Injecting CDN media into JSON..."
+            MANIFEST_ARG=""
+            if [ -f "./media-upload/manifest.json" ]; then
+              MANIFEST_ARG="--manifest ./media-upload/manifest.json"
+            fi
+
+            npm run inject-cdn-media -- \
+              --json "./cdn-output/${DATE}-input.json" \
+              --db "./data/${SOURCE}.sqlite" \
+              --output "./cdn-output/${DATE}.json" \
+              $MANIFEST_ARG
 
             # Upload CDN-enriched JSON to CDN
             echo "Uploading CDN-enriched summary to CDN..."

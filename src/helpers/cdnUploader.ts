@@ -574,3 +574,124 @@ export async function uploadBase64ImageToCDN(
 
   return result;
 }
+
+/**
+ * Download an image from URL and upload to CDN
+ * Preserves original filename for easy URL base swapping
+ * e.g., https://i.imgflip.com/abc123.jpg -> https://cdn.example.com/imgflip/abc123.jpg
+ *
+ * @param sourceUrl - URL to download from
+ * @param cdnFolder - Folder on CDN (e.g., "imgflip")
+ * @param config - Optional CDN config overrides
+ * @returns CDN upload result with public URL
+ */
+export async function downloadAndUploadToCDN(
+  sourceUrl: string,
+  cdnFolder: string,
+  config?: Partial<CDNConfig>
+): Promise<CDNUploadResult> {
+  // Extract filename from source URL (e.g., "abc123.jpg" from "https://i.imgflip.com/abc123.jpg")
+  const urlPath = new URL(sourceUrl).pathname;
+  const filename = path.basename(urlPath);
+  const ext = path.extname(filename).toLowerCase();
+
+  // Validate extension
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    return {
+      localPath: sourceUrl,
+      remotePath: `${cdnFolder}/${filename}`,
+      cdnUrl: "",
+      success: false,
+      message: `File type not allowed: ${ext}`
+    };
+  }
+
+  const remotePath = `${cdnFolder.replace(/\/+$/, "")}/${filename}`;
+
+  // Download to temp file
+  const tempPath = `/tmp/cdn-download-${Date.now()}-${filename}`;
+
+  try {
+    const response = await fetch(sourceUrl);
+    if (!response.ok) {
+      return {
+        localPath: sourceUrl,
+        remotePath,
+        cdnUrl: "",
+        success: false,
+        message: `Download failed: HTTP ${response.status}`
+      };
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    // Check file size
+    const maxFileSize = config?.maxFileSize || MAX_FILE_SIZE_BYTES;
+    if (buffer.length > maxFileSize) {
+      const sizeMB = (buffer.length / 1024 / 1024).toFixed(1);
+      const maxMB = (maxFileSize / 1024 / 1024).toFixed(0);
+      return {
+        localPath: sourceUrl,
+        remotePath,
+        cdnUrl: "",
+        success: false,
+        message: `File too large: ${sizeMB}MB (max ${maxMB}MB)`
+      };
+    }
+
+    fs.writeFileSync(tempPath, buffer);
+  } catch (error) {
+    return {
+      localPath: sourceUrl,
+      remotePath,
+      cdnUrl: "",
+      success: false,
+      message: `Download error: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+
+  // Upload to CDN
+  const result = await uploadFileToCDN(tempPath, remotePath, config);
+
+  // Clean up temp file
+  try {
+    fs.unlinkSync(tempPath);
+  } catch {
+    // Ignore cleanup errors
+  }
+
+  return {
+    ...result,
+    localPath: sourceUrl // Show source URL instead of temp path
+  };
+}
+
+/**
+ * Download and upload multiple URLs to CDN
+ * Returns map of original URL -> CDN URL for easy swapping
+ */
+export async function mirrorUrlsToCDN(
+  sourceUrls: string[],
+  cdnFolder: string,
+  config?: Partial<CDNConfig>,
+  onProgress?: (current: number, total: number, url: string, status: string) => void
+): Promise<Map<string, string>> {
+  const urlMap = new Map<string, string>();
+  const total = sourceUrls.length;
+
+  for (let i = 0; i < sourceUrls.length; i++) {
+    const url = sourceUrls[i];
+    const result = await downloadAndUploadToCDN(url, cdnFolder, config);
+
+    if (result.success && result.cdnUrl) {
+      urlMap.set(url, result.cdnUrl);
+    }
+
+    if (onProgress) {
+      const status = result.success ? "✓" : "✗";
+      onProgress(i + 1, total, url, status);
+    }
+  }
+
+  return urlMap;
+}

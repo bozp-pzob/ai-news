@@ -152,6 +152,14 @@
         "thresholdLength": 200,
         "maxPerBatch": 3
       }
+    },
+    {
+      "type": "AiImageEnricher",
+      "name": "posterEnricher",
+      "params": {
+        "provider": "imageProvider",
+        "thresholdLength": 300
+      }
     }
   ],
   "storage": [
