@@ -77,12 +77,18 @@ export class MemeEnricher implements EnricherPlugin {
   }
 
   private async createMemeSummary(text: string, recentMemes: MemeHistoryEntry[]): Promise<string> {
+    const DEBUG = process.env.DEBUG_ENRICHERS === 'true';
     const avoidList = recentMemes.slice(-10).map(m => `- ${m.summary}`).join("\n");
     const avoidClause = avoidList ? `\n\nAvoid these angles:\n${avoidList}` : "";
 
     const prompt = `What's the most absurd fact here? 3-8 words, deadpan. No cleverness, just state it.${avoidClause}
 
 ${text.slice(0, 1000)}`;
+
+    if (DEBUG) {
+      console.log(`\nMeme Summary Prompt:`);
+      console.log(prompt);
+    }
 
     try {
       const summary = await this.provider.summarize(prompt);
@@ -117,6 +123,14 @@ ${text.slice(0, 1000)}`;
    * Pass 2: Generate 1 meme per type (up to maxPerBatch types)
    */
   public async enrich(contentItems: ContentItem[]): Promise<ContentItem[]> {
+    const DEBUG = process.env.DEBUG_ENRICHERS === 'true';
+
+    // === CONFIG DEBUG ===
+    console.log(`\n=== MemeEnricher ===`);
+    console.log(`Config: thresholdLength=${this.thresholdLength}, maxPerBatch=${this.maxPerBatch}`);
+    console.log(`Categories filter: ${this.categories.size > 0 ? Array.from(this.categories).join(", ") : "(all)"}`);
+    console.log(`Input: ${contentItems.length} items`);
+
     // Check if credentials are available
     if (!process.env.IMGFLIP_USERNAME || !process.env.IMGFLIP_PASSWORD) {
       console.log("MemeEnricher: Skipping - IMGFLIP credentials not set");
@@ -130,12 +144,40 @@ ${text.slice(0, 1000)}`;
 
     // === PASS 1: Group items by type and find best candidate per type ===
     const itemsByType = new Map<string, ContentItem[]>();
+    const skipReasons: Record<string, number> = {};
+
     for (const item of contentItems) {
-      if (!this.meetsBasicCriteria(item)) continue;
       const type = item.type || "unknown";
+
+      // Detailed skip logging
+      if (item.metadata?.memes?.length > 0) {
+        skipReasons["already has memes"] = (skipReasons["already has memes"] || 0) + 1;
+        continue;
+      }
+      if (!item.text) {
+        skipReasons["no text"] = (skipReasons["no text"] || 0) + 1;
+        continue;
+      }
+      if (item.text.length < this.thresholdLength) {
+        skipReasons[`text too short (<${this.thresholdLength})`] = (skipReasons[`text too short (<${this.thresholdLength})`] || 0) + 1;
+        continue;
+      }
+      if (this.categories.size > 0 && item.type && !this.categories.has(item.type)) {
+        skipReasons["category filtered out"] = (skipReasons["category filtered out"] || 0) + 1;
+        continue;
+      }
+
       const list = itemsByType.get(type) || [];
       list.push(item);
       itemsByType.set(type, list);
+    }
+
+    // Log skip reasons
+    if (Object.keys(skipReasons).length > 0) {
+      console.log(`Skipped items:`);
+      for (const [reason, count] of Object.entries(skipReasons)) {
+        console.log(`  - ${reason}: ${count}`);
+      }
     }
 
     // Select best candidate per type (prefer items with least existing media)
@@ -151,10 +193,9 @@ ${text.slice(0, 1000)}`;
       candidates.set(type, items[0]);
     }
 
-    console.log(`MemeEnricher: Found ${candidates.size} category types to cover: ${Array.from(candidates.keys()).join(", ")}`);
+    console.log(`MemeEnricher: Found ${candidates.size} category types to cover: ${Array.from(candidates.keys()).join(", ") || "(none)"}`);
 
     // === PASS 2: Generate memes for candidates (1 per type) ===
-    const itemsWithMemes = new Set<ContentItem>();
     for (const [type, item] of candidates) {
       if (this.generated >= this.maxPerBatch) {
         console.log(`MemeEnricher: Hit batch limit (${this.maxPerBatch}), stopping`);
@@ -162,8 +203,15 @@ ${text.slice(0, 1000)}`;
       }
 
       try {
+        // Debug: show full content being processed
+        if (DEBUG) {
+          console.log(`\n--- [${type}] Processing ---`);
+          console.log(`Content text (${item.text!.length} chars):`);
+          console.log(item.text!);
+        }
+
         const memeSummary = await this.createMemeSummary(item.text!, [...memeHistory, ...newEntries]);
-        console.log(`MemeEnricher: [${type}] Generating meme for "${memeSummary}"`);
+        console.log(`MemeEnricher: [${type}] Summary: "${memeSummary}"`);
 
         const result: MemeResult = await generateMeme(memeSummary);
 
@@ -188,10 +236,10 @@ ${text.slice(0, 1000)}`;
               },
             ],
           };
-          itemsWithMemes.add(item);
-          console.log(`MemeEnricher: [${type}] Generated meme using "${result.templateName}"`);
+          console.log(`MemeEnricher: [${type}] ✅ Generated meme using "${result.templateName}"`);
+          console.log(`  URL: ${result.url}`);
         } else {
-          console.log(`MemeEnricher: [${type}] Failed - ${result.error}`);
+          console.log(`MemeEnricher: [${type}] ❌ Failed - ${result.error}`);
         }
       } catch (error) {
         console.error(`MemeEnricher: [${type}] Error:`, error);
@@ -203,7 +251,7 @@ ${text.slice(0, 1000)}`;
       saveMemeHistory([...memeHistory, ...newEntries]);
     }
 
-    console.log(`MemeEnricher: Generated ${this.generated} memes across ${candidates.size} category types`);
+    console.log(`MemeEnricher: Generated ${this.generated} memes across ${candidates.size} category types\n`);
 
     // Return all items (items with memes already have metadata updated in place)
     return contentItems;

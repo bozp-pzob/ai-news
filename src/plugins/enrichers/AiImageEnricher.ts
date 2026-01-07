@@ -61,15 +61,43 @@ export class AiImageEnricher implements EnricherPlugin {
    * @returns Promise<ContentItem[]> Array of enriched content items
    */
   public async enrich(contentItems: ContentItem[]): Promise<ContentItem[]> {
+    const DEBUG = process.env.DEBUG_ENRICHERS === 'true';
+
+    // === CONFIG DEBUG ===
+    console.log(`\n=== AiImageEnricher ===`);
+    console.log(`Config: maxPerBatch=${this.maxPerBatch}`);
+    console.log(`Input: ${contentItems.length} items`);
+
     // === PASS 1: Group items by type and find best candidate per type ===
     const itemsByType = new Map<string, ContentItem[]>();
+    const skipReasons: Record<string, number> = {};
+
     for (const item of contentItems) {
-      // Basic check: must have some text (no minimum length - user confirmed "generate anyway")
-      if (!item.text) continue;
       const type = item.type || "unknown";
+
+      // Basic check: must have some text
+      if (!item.text) {
+        skipReasons["no text"] = (skipReasons["no text"] || 0) + 1;
+        continue;
+      }
+
       const list = itemsByType.get(type) || [];
       list.push(item);
       itemsByType.set(type, list);
+    }
+
+    // Log skip reasons
+    if (Object.keys(skipReasons).length > 0) {
+      console.log(`Skipped items:`);
+      for (const [reason, count] of Object.entries(skipReasons)) {
+        console.log(`  - ${reason}: ${count}`);
+      }
+    }
+
+    // Log items by type
+    console.log(`Items by type:`);
+    for (const [type, items] of itemsByType) {
+      console.log(`  - ${type}: ${items.length} items`);
     }
 
     // Select best candidate per type (prefer items without images, then longest text)
@@ -85,7 +113,7 @@ export class AiImageEnricher implements EnricherPlugin {
       candidates.set(type, items[0]);
     }
 
-    console.log(`AiImageEnricher: Found ${candidates.size} category types to cover: ${Array.from(candidates.keys()).join(", ")}`);
+    console.log(`AiImageEnricher: Found ${candidates.size} category types to cover: ${Array.from(candidates.keys()).join(", ") || "(none)"}`);
 
     // === PASS 2: Generate posters for candidates (1 per type) ===
     let generated = 0;
@@ -101,6 +129,13 @@ export class AiImageEnricher implements EnricherPlugin {
       if (hasExistingImages) {
         console.log(`AiImageEnricher: [${type}] Skipping ${itemId} - already has images`);
         continue;
+      }
+
+      // Debug: show full content being processed
+      if (DEBUG) {
+        console.log(`\n--- [${type}] Processing ---`);
+        console.log(`Content text (${item.text?.length || 0} chars):`);
+        console.log(item.text!);
       }
 
       console.log(`AiImageEnricher: [${type}] Generating poster for ${itemId} (${item.text?.length || 0} chars)`);
@@ -120,16 +155,16 @@ export class AiImageEnricher implements EnricherPlugin {
             ...item.metadata,
             images: image,
           };
-          console.log(`AiImageEnricher: [${type}] Generated poster for ${itemId}`);
+          console.log(`AiImageEnricher: [${type}] ✅ Generated poster for ${itemId}`);
         } else {
-          console.log(`AiImageEnricher: [${type}] No image returned for ${itemId}`);
+          console.log(`AiImageEnricher: [${type}] ❌ No image returned for ${itemId}`);
         }
       } catch (error) {
         console.error(`AiImageEnricher: [${type}] Error for ${itemId}:`, error);
       }
     }
 
-    console.log(`AiImageEnricher: Generated ${generated} posters across ${candidates.size} category types`);
+    console.log(`AiImageEnricher: Generated ${generated} posters across ${candidates.size} category types\n`);
 
     // Return all items (items with posters already have metadata updated in place)
     return contentItems;
