@@ -56,10 +56,44 @@ interface MemeData {
   url: string;
   template?: string;
   summary?: string;
+  sourceType?: string; // e.g., "discordRawData", "githubIssue"
 }
 
 interface PosterData {
   url: string;
+  sourceType?: string; // e.g., "discordRawData", "githubIssue"
+  topic?: string; // Category topic for filename mapping
+}
+
+/**
+ * Map database item types to JSON category topics
+ * These topics match the promptTemplates keys in config
+ */
+function sourceTypeToTopic(sourceType: string): string {
+  const mapping: Record<string, string> = {
+    discordRawData: "discordrawdata",
+    githubIssue: "issue",
+    githubPullRequest: "pull_request",
+    githubStatsSummary: "github_summary",
+    githubTopContributors: "contributors",
+    githubCompletedItem: "completed_items",
+  };
+  return mapping[sourceType] || sourceType.toLowerCase();
+}
+
+/**
+ * Map JSON category topics back to source types (for matching)
+ */
+function topicToSourceTypes(topic: string): string[] {
+  const mapping: Record<string, string[]> = {
+    discordrawdata: ["discordRawData"],
+    issue: ["githubIssue"],
+    pull_request: ["githubPullRequest"],
+    github_summary: ["githubStatsSummary"],
+    contributors: ["githubTopContributors"],
+    completed_items: ["githubCompletedItem"],
+  };
+  return mapping[topic.toLowerCase()] || [topic];
 }
 
 /**
@@ -86,17 +120,18 @@ async function getMediaFromDb(
   try {
     db = await open({ filename: dbPath, driver: sqlite3.Database });
 
-    // Query items with memes or images in metadata
+    // Query items with memes or images in metadata, including type for source tracking
     const rows = await db.all(
-      `SELECT metadata FROM items WHERE date >= ? AND date <= ? AND metadata IS NOT NULL`,
+      `SELECT type, metadata FROM items WHERE date >= ? AND date <= ? AND metadata IS NOT NULL`,
       [startEpoch, endEpoch]
     );
 
     for (const row of rows) {
       try {
         const metadata = JSON.parse(row.metadata);
+        const sourceType = row.type as string;
 
-        // Extract memes
+        // Extract memes (with source type for category matching)
         if (metadata.memes && Array.isArray(metadata.memes)) {
           for (const meme of metadata.memes) {
             if (meme.url) {
@@ -104,18 +139,21 @@ async function getMediaFromDb(
                 url: meme.url,
                 template: meme.template,
                 summary: meme.summary,
+                sourceType,
               });
             }
           }
         }
 
-        // Extract AI-generated images (posters)
+        // Extract AI-generated images (posters) with source type and topic
         if (metadata.images && Array.isArray(metadata.images)) {
+          // Derive topic from source type for consistent filename mapping
+          const topic = sourceTypeToTopic(sourceType);
           for (const img of metadata.images) {
             if (typeof img === "string") {
-              posters.push({ url: img });
+              posters.push({ url: img, sourceType, topic });
             } else if (img.url) {
-              posters.push({ url: img.url });
+              posters.push({ url: img.url, sourceType, topic });
             }
           }
         }
@@ -186,6 +224,7 @@ async function mirrorMemesToCDN(memes: MemeData[]): Promise<MemeData[]> {
 /**
  * Upload posters to CDN
  * Handles both base64 data URLs and regular URLs
+ * Uses category-based filenames like {topic}.{ext} for consistent mapping
  */
 async function uploadPostersToCDN(
   posters: PosterData[],
@@ -202,18 +241,29 @@ async function uploadPostersToCDN(
   logger.info(`Uploading ${posters.length} posters to CDN...`);
   const results: PosterData[] = [];
 
-  for (let i = 0; i < posters.length; i++) {
-    const poster = posters[i];
+  // Track already uploaded topics to avoid duplicates
+  const uploadedTopics = new Set<string>();
 
+  for (const poster of posters) {
     // Handle base64 data URLs
     if (poster.url.startsWith("data:image/")) {
-      const remotePath = `${POSTERS_CDN_FOLDER}/${dateStr}/poster-${i + 1}`;
+      // Use topic-based filename like test-image-gen.ts
+      const topic = poster.topic || "unknown";
+
+      // Skip if already uploaded a poster for this topic
+      if (uploadedTopics.has(topic)) {
+        logger.info(`  [skip] ${topic} (already uploaded)`);
+        continue;
+      }
+
+      const remotePath = `${POSTERS_CDN_FOLDER}/${dateStr}/${topic}`;
       const result = await uploadBase64ImageToCDN(poster.url, remotePath, config);
       if (result.success && result.cdnUrl) {
-        results.push({ url: result.cdnUrl });
-        logger.info(`  [✓] Uploaded poster ${i + 1}`);
+        uploadedTopics.add(topic);
+        results.push({ url: result.cdnUrl, sourceType: poster.sourceType, topic });
+        logger.info(`  [✓] Uploaded ${topic}`);
       } else {
-        logger.info(`  [✗] Failed poster ${i + 1}: ${result.message}`);
+        logger.info(`  [✗] Failed ${topic}: ${result.message}`);
         results.push(poster); // Keep original
       }
     } else {
@@ -227,6 +277,7 @@ async function uploadPostersToCDN(
 
 /**
  * Inject memes and posters into JSON categories
+ * Matches media to categories based on source type to keep context
  */
 function injectMediaIntoJson(
   data: SummaryJson,
@@ -237,42 +288,55 @@ function injectMediaIntoJson(
     return data;
   }
 
-  // Distribute memes and posters across categories
-  // Strategy: Add memes/posters to first content item of each category
-  const numCategories = data.categories.length;
+  // Group memes by source type for matching
+  const memesBySource = new Map<string, MemeData[]>();
+  for (const meme of memes) {
+    const sourceType = meme.sourceType || "unknown";
+    if (!memesBySource.has(sourceType)) {
+      memesBySource.set(sourceType, []);
+    }
+    memesBySource.get(sourceType)!.push(meme);
+  }
 
-  // Calculate distribution
-  const memesPerCategory = Math.ceil(memes.length / Math.max(numCategories, 1));
-  const postersPerCategory = Math.ceil(posters.length / Math.max(numCategories, 1));
+  // Group posters by topic for matching
+  const postersByTopic = new Map<string, PosterData[]>();
+  for (const poster of posters) {
+    const topic = poster.topic || "unknown";
+    if (!postersByTopic.has(topic)) {
+      postersByTopic.set(topic, []);
+    }
+    postersByTopic.get(topic)!.push(poster);
+  }
 
-  let memeIndex = 0;
-  let posterIndex = 0;
-
+  // Match media to categories based on topic
   for (const category of data.categories) {
-    if (!category.content || !Array.isArray(category.content)) {
+    if (!category.content || !Array.isArray(category.content) || category.content.length === 0) {
       continue;
     }
 
-    // Collect memes for this category
+    const categoryTopic = (category.topic || "").toLowerCase();
+
+    // Find matching memes - convert topic to source types
+    const matchingSourceTypes = topicToSourceTypes(categoryTopic);
     const categoryMemes: MemeData[] = [];
-    for (let i = 0; i < memesPerCategory && memeIndex < memes.length; i++) {
-      categoryMemes.push(memes[memeIndex++]);
+    for (const sourceType of matchingSourceTypes) {
+      const memesForSource = memesBySource.get(sourceType) || [];
+      categoryMemes.push(...memesForSource);
     }
 
-    // Collect posters for this category
-    const categoryPosters: string[] = [];
-    for (let i = 0; i < postersPerCategory && posterIndex < posters.length; i++) {
-      categoryPosters.push(posters[posterIndex++].url);
-    }
+    // Find matching posters by topic
+    const categoryPosters = postersByTopic.get(categoryTopic) || [];
 
-    // Add to first content item
-    if (category.content.length > 0) {
-      if (categoryMemes.length > 0) {
-        category.content[0].memes = categoryMemes;
-      }
-      if (categoryPosters.length > 0) {
-        category.content[0].posters = categoryPosters;
-      }
+    // Add to first content item (matching the category's topic)
+    if (categoryMemes.length > 0) {
+      category.content[0].memes = categoryMemes.map(m => ({
+        url: m.url,
+        template: m.template,
+        summary: m.summary,
+      }));
+    }
+    if (categoryPosters.length > 0) {
+      category.content[0].posters = categoryPosters.map(p => p.url);
     }
   }
 
