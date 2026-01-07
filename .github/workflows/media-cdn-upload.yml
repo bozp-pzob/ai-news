@@ -1,9 +1,14 @@
 name: Upload Media to CDN
 
 on:
-  # Run daily after the main collection workflow
+  # Auto-trigger after elizaos workflow completes
+  workflow_run:
+    workflows: ["ElizaOS Daily Data Collection"]
+    types: [completed]
+
+  # Backup schedule in case workflow_run doesn't trigger
   schedule:
-    - cron: '30 7 * * *'  # 7:30 AM UTC (after elizaos workflow at 6:30 AM)
+    - cron: '30 7 * * *'  # 7:30 AM UTC
 
   # Manual trigger
   workflow_dispatch:
@@ -32,6 +37,11 @@ concurrency:
 jobs:
   upload-media:
     runs-on: ubuntu-latest
+    # Only run if triggered manually, on schedule, or if the triggering workflow succeeded
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
 
     steps:
       - name: Checkout repository
