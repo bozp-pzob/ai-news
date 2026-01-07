@@ -199,16 +199,18 @@ export class HistoricalAggregator {
       throw("Storage Plugin is not set for Aggregator.")
     }
 
+    const forceOverwrite = process.env.FORCE_OVERWRITE === 'true';
+
     let allItems: ContentItem[] = [];
     for (const item of items) {
       if ( item && item.cid ) {
         const exists = await this.storage.getContentItem(item.cid);
-        if (! exists) {
+        if (!exists || forceOverwrite) {
           allItems.push(item)
         }
       }
     }
-    
+
     return allItems;
   };
 }
