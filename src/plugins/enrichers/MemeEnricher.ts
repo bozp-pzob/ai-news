@@ -149,7 +149,11 @@ ${text.slice(0, 1000)}`;
     for (const item of contentItems) {
       const type = item.type || "unknown";
 
-      // Detailed skip logging
+      // Detailed skip logging - check category filter FIRST (most specific)
+      if (this.categories.size > 0 && item.type && !this.categories.has(item.type)) {
+        skipReasons["category filtered out"] = (skipReasons["category filtered out"] || 0) + 1;
+        continue;
+      }
       if (item.metadata?.memes?.length > 0) {
         skipReasons["already has memes"] = (skipReasons["already has memes"] || 0) + 1;
         continue;
@@ -160,10 +164,6 @@ ${text.slice(0, 1000)}`;
       }
       if (item.text.length < this.thresholdLength) {
         skipReasons[`text too short (<${this.thresholdLength})`] = (skipReasons[`text too short (<${this.thresholdLength})`] || 0) + 1;
-        continue;
-      }
-      if (this.categories.size > 0 && item.type && !this.categories.has(item.type)) {
-        skipReasons["category filtered out"] = (skipReasons["category filtered out"] || 0) + 1;
         continue;
       }
 
