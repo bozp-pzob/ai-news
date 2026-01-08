@@ -92,8 +92,8 @@
           "model": "google/gemini-3-pro-image-preview",
           "aspectRatio": "4:3",
           "imageSize": "1K",
-          "uploadToCDN": false,
-          "cdnPath": "generated-images",
+          "uploadToCDN": true,
+          "cdnPath": "posters",
           "defaultPrompts": [
             "Stock photo misunderstanding of {summary}",
             "90s anime screenshot of {summary}",
