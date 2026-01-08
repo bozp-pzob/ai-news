@@ -110,27 +110,25 @@ export interface AiEnricherConfig {
 
 /**
  * Configuration for AI image generation.
- * Defines settings for generating images via AI providers.
  */
 export interface ImageGenerationConfig {
-  model?: string;                              // Default: google/gemini-3-pro-image-preview
-  promptTemplates?: Record<string, string[]>;  // Category -> array of prompts (random rotation)
-  defaultPrompts?: string[];                   // Fallback prompt templates array
-  aspectRatio?: string;                        // e.g., "16:9", "1:1", "9:16", "21:9"
-  imageSize?: '1K' | '2K' | '4K';              // Output resolution (Gemini only)
-  uploadToCDN?: boolean;                       // Upload to Bunny CDN
-  cdnPath?: string;                            // CDN path prefix for uploads
+  model?: string;
+  promptTemplates?: Record<string, string[]>;
+  defaultPrompts?: string[];
+  aspectRatio?: string;
+  imageSize?: '1K' | '2K' | '4K';
+  uploadToCDN?: boolean;
+  cdnPath?: string;
 }
 
 /**
  * Options for a single image generation request.
- * Allows per-request overrides of config settings.
  */
 export interface ImageGenerationOptions {
-  category?: string;                           // Category for prompt template selection
-  referenceImages?: string[];                  // URLs or base64 data URLs of reference images
-  aspectRatio?: string;                        // Override aspect ratio for this request
-  imageSize?: '1K' | '2K' | '4K';              // Override image size for this request
+  category?: string;
+  referenceImages?: string[];
+  aspectRatio?: string;
+  imageSize?: '1K' | '2K' | '4K';
 }
 
 /**
