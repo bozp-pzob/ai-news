@@ -142,10 +142,8 @@ jobs:
 
           JSON_PATH="${SOURCE}/json/${DATE}.json"
           if git ls-tree -r --name-only origin/gh-pages | grep -q "^${JSON_PATH}$"; then
-            echo "Extracting ${JSON_PATH} from gh-pages..."
             git show "origin/gh-pages:${JSON_PATH}" > "./output/${JSON_PATH}"
-            echo "✅ Extracted JSON file"
-            jq -C '.' "./output/${JSON_PATH}" | head -50
+            echo "✅ Extracted ${JSON_PATH}"
           else
             echo "❌ JSON file not found: ${JSON_PATH}"
             echo "Available files:"
@@ -159,7 +157,6 @@ jobs:
           SOURCE="${{ inputs.source_name || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
 
-          echo "Downloading Discord media for $DATE..."
           mkdir -p ./media-upload
 
           # Allow partial failures - some Discord URLs may have expired
@@ -169,8 +166,8 @@ jobs:
             --output ./media-upload || echo "⚠️ Some downloads failed (expected for expired URLs)"
 
           if [ -d "./media-upload" ] && [ -n "$(ls -A ./media-upload/*.* 2>/dev/null)" ]; then
-            echo "✅ Discord media downloaded"
-            ls -la ./media-upload/ | head -20
+            FILE_COUNT=$(ls -1 ./media-upload/*.* 2>/dev/null | wc -l)
+            echo "✅ Downloaded $FILE_COUNT Discord media files"
           else
             echo "ℹ️ No Discord media downloaded"
           fi
@@ -181,7 +178,6 @@ jobs:
           SOURCE="${{ inputs.source_name || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
 
-          echo "Generating manifest for Discord media..."
           npm run generate-manifest -- \
             --db ./data/${SOURCE}.sqlite \
             --date "$DATE" \
@@ -189,8 +185,8 @@ jobs:
             --output ./media-upload
 
           if [ -f "./media-upload/manifest.json" ]; then
-            echo "✅ Manifest generated"
-            jq -C '.' ./media-upload/manifest.json | head -50
+            FILE_COUNT=$(jq '.files | length' ./media-upload/manifest.json)
+            echo "✅ Manifest generated: $FILE_COUNT Discord media files"
           else
             echo "ℹ️ No manifest generated (no Discord media for this date)"
           fi
@@ -207,12 +203,9 @@ jobs:
             exit 0
           fi
 
-          echo "Uploading Discord media to CDN..."
           npm run upload-cdn -- \
             --dir ./media-upload \
             --remote "${SOURCE}-media/"
-
-          echo "✅ Discord media uploaded to CDN"
 
       - name: Update manifest with CDN URLs
         if: inputs.dry_run != 'true' && hashFiles('media-upload/manifest.json') != ''
@@ -227,13 +220,12 @@ jobs:
             exit 0
           fi
 
-          echo "Updating manifest with CDN URLs..."
+          # Update manifest with CDN URLs
           npm run upload-cdn -- \
             --manifest ./media-upload/manifest.json \
             --update-manifest
 
           # Upload manifest to CDN
-          echo "Uploading manifest to CDN..."
           npm run upload-cdn -- \
             --file ./media-upload/manifest.json \
             --remote "${SOURCE}-media/manifests/${DATE}.json"
@@ -241,8 +233,6 @@ jobs:
           npm run upload-cdn -- \
             --file ./media-upload/manifest.json \
             --remote "${SOURCE}-media/manifests/latest.json"
-
-          echo "✅ Manifest uploaded to CDN"
 
       - name: Generate memes and posters
         run: |
@@ -255,13 +245,10 @@ jobs:
             FORCE_FLAG="--force"
           fi
 
-          echo "Enriching JSON with memes and posters..."
           npm run enrich-json -- \
             --json "./output/${SOURCE}/json/${DATE}.json" \
             --config "${CONFIG}.json" \
             $FORCE_FLAG
-
-          echo "✅ Media generation complete"
 
       - name: Swap Discord URLs with CDN URLs
         if: hashFiles('media-upload/manifest.json') != ''
@@ -269,13 +256,10 @@ jobs:
           SOURCE="${{ inputs.source_name || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
 
-          echo "Swapping Discord URLs with CDN URLs..."
           npm run inject-cdn-media -- \
             --json "./output/${SOURCE}/json/${DATE}.json" \
             --manifest ./media-upload/manifest.json \
             --output "./output/${SOURCE}/json/${DATE}.json"
-
-          echo "✅ URLs swapped"
 
       - name: Prepare files for deployment
         run: |
@@ -286,8 +270,7 @@ jobs:
           cp "./output/${SOURCE}/json/${DATE}.json" "./public/${SOURCE}/json/${DATE}.json"
           touch ./public/.nojekyll
 
-          echo "Final JSON ready for deployment:"
-          jq -C '.' "./public/${SOURCE}/json/${DATE}.json" | head -100
+          echo "✅ Final JSON ready for deployment"
 
       - name: Deploy to gh-pages
         if: inputs.dry_run != 'true'
