@@ -5,7 +5,7 @@
  * @module helpers
  */
 
-import { MediaLookup } from "./mediaLookup";
+import { MediaLookup } from "./mediaHelper";
 
 /**
  * Options for prompt generation with media support

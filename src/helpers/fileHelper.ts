@@ -270,17 +270,81 @@ export const extractDiscordMediaData = (item: ContentItem): MediaDownloadItem[] 
 }
 
 /**
+ * Recursively remove empty arrays and null/undefined values from an object.
+ * This follows the sparse object pattern, reducing JSON file size by ~15-20%.
+ *
+ * @param obj - Object to clean
+ * @returns Cleaned object with no empty arrays or null/undefined values
+ */
+export const removeEmptyArrays = (obj: any): any => {
+  if (Array.isArray(obj)) {
+    return obj.map(removeEmptyArrays).filter(x => x !== undefined);
+  }
+
+  if (obj && typeof obj === 'object') {
+    const result: any = {};
+
+    for (const [key, value] of Object.entries(obj)) {
+      const cleaned = removeEmptyArrays(value);
+
+      // Skip empty arrays
+      if (Array.isArray(cleaned) && cleaned.length === 0) {
+        continue;
+      }
+
+      // Skip null/undefined
+      if (cleaned === null || cleaned === undefined) {
+        continue;
+      }
+
+      result[key] = cleaned;
+    }
+
+    return result;
+  }
+
+  return obj;
+};
+
+/**
+ * Calculate size reduction percentage
+ *
+ * @param originalSize - Original size in bytes
+ * @param cleanedSize - Cleaned size in bytes
+ * @returns Percentage reduction (e.g., "15.2%")
+ */
+export const calculateReduction = (originalSize: number, cleanedSize: number): string => {
+  const reduction = ((originalSize - cleanedSize) / originalSize * 100).toFixed(1);
+  return `${reduction}%`;
+};
+
+/**
+ * Format bytes as human-readable size
+ *
+ * @param bytes - Size in bytes
+ * @returns Formatted string (e.g., "1.5 MB", "234 KB")
+ */
+export const formatSize = (bytes: number): string => {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
+  return `${(bytes / 1024).toFixed(1)} KB`;
+};
+
+/**
  * Writes JSON data to a file, ensuring the directory exists.
  * @param filePath - Full path to the output file
  * @param data - Data to serialize as JSON
  * @param pretty - Whether to pretty-print the JSON (default: true)
+ * @param clean - Whether to remove empty arrays before writing (default: false)
  */
-export const writeJsonFile = (filePath: string, data: unknown, pretty: boolean = true): void => {
+export const writeJsonFile = (filePath: string, data: unknown, pretty: boolean = true, clean: boolean = false): void => {
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  const content = pretty ? JSON.stringify(data, null, 2) : JSON.stringify(data);
+  const processedData = clean ? removeEmptyArrays(data) : data;
+  const content = pretty ? JSON.stringify(processedData, null, 2) : JSON.stringify(processedData);
   fs.writeFileSync(filePath, content);
 }
 

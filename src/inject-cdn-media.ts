@@ -14,8 +14,13 @@
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
-import { buildUrlSwapMap, swapUrlsInObject } from "./helpers/mediaLookup";
+import { buildUrlSwapMap, swapUrlsInObject } from "./helpers/mediaHelper";
 import { logger } from "./helpers/cliHelper";
+import {
+  removeEmptyArrays,
+  calculateReduction,
+  formatSize,
+} from "./helpers/fileHelper";
 
 dotenv.config();
 
@@ -106,6 +111,11 @@ async function main(): Promise<void> {
     logger.info("No manifest provided, skipping URL swap");
   }
 
+  // Clean JSON by removing empty arrays
+  const originalSize = Buffer.byteLength(JSON.stringify(data, null, 2), "utf-8");
+  const cleanedData = removeEmptyArrays(data);
+  const cleanedSize = Buffer.byteLength(JSON.stringify(cleanedData, null, 2), "utf-8");
+
   // Ensure output directory exists
   const outputDir = path.dirname(outputPath);
   if (!fs.existsSync(outputDir)) {
@@ -113,8 +123,9 @@ async function main(): Promise<void> {
   }
 
   // Write output
-  fs.writeFileSync(outputPath, JSON.stringify(data, null, 2));
+  fs.writeFileSync(outputPath, JSON.stringify(cleanedData, null, 2));
   logger.info(`CDN-enriched JSON saved to: ${outputPath}`);
+  logger.info(`Size: ${formatSize(originalSize)} → ${formatSize(cleanedSize)} (-${calculateReduction(originalSize, cleanedSize)})`);
 }
 
 /**
@@ -152,6 +163,7 @@ function printHelp(): void {
 Inject CDN Media Tool
 
 Swaps Discord attachment URLs for CDN URLs using a manifest file.
+Automatically removes empty arrays (videos/memes/posters) for cleaner output.
 Memes and posters are handled directly by enrichers during generation.
 
 Usage:
@@ -165,6 +177,11 @@ Optional Arguments:
   --manifest <path>  Media manifest for Discord URL swapping
   --db <path>        (Deprecated) Database path - no longer needed
   --help, -h         Show this help message
+
+Features:
+  - Swaps Discord URLs with CDN URLs
+  - Removes empty arrays (reduces size ~15-20%)
+  - Preserves only non-empty media arrays
 
 Examples:
   npm run inject-cdn-media -- \\

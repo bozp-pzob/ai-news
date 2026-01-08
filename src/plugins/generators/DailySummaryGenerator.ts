@@ -11,7 +11,7 @@ import {
   createMarkdownPromptForJSON,
   PromptMediaOptions,
 } from "../../helpers/promptHelper";
-import { createMediaLookup, findManifestPath, MediaLookup } from "../../helpers/mediaLookup";
+import { createMediaLookup, findManifestPath, MediaLookup } from "../../helpers/mediaHelper";
 import { retryOperation } from "../../helpers/generalHelper";
 import fs from "fs";
 import path from "path";

@@ -12,7 +12,7 @@ import { URL } from "url";
 import dotenv from "dotenv";
 import { CDNConfig, CDNProvider, CDNUploadResult, MediaManifest } from "../types";
 import { logger } from "./cliHelper";
-import { swapUrlsInJsonFile } from "./mediaLookup";
+import { swapUrlsInJsonFile } from "./mediaHelper";
 
 dotenv.config();
 
