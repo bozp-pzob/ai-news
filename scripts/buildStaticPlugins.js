@@ -10,7 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const glob = require('glob');
+const { globSync } = require('glob');
 
 // Config
 const PLUGINS_OUTPUT_PATH = path.join(__dirname, '../frontend/public/static/plugins.json');
@@ -138,7 +138,7 @@ async function buildPluginsJson() {
     }
     
     // Find all TypeScript files (not .d.ts files)
-    const files = glob.sync('**/*.ts', { 
+    const files = globSync('**/*.ts', { 
       cwd: fullPath, 
       ignore: ['**/*.d.ts', '**/*.test.ts'] 
     });
