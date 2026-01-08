@@ -98,7 +98,7 @@ jobs:
             echo "Extracting ${JSON_PATH} from gh-pages..."
             git show "origin/gh-pages:${JSON_PATH}" > "./output/${JSON_PATH}"
             echo "✅ Extracted JSON file"
-            cat "./output/${JSON_PATH}" | head -50
+            jq -C '.' "./output/${JSON_PATH}" | head -50
           else
             echo "❌ JSON file not found: ${JSON_PATH}"
             echo "Available files:"
@@ -128,7 +128,7 @@ jobs:
           touch ./public/.nojekyll
 
           echo "Updated JSON ready for deployment:"
-          cat "./public/${SOURCE}/json/${DATE}.json" | head -100
+          jq -C '.' "./public/${SOURCE}/json/${DATE}.json" | head -100
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4

@@ -159,7 +159,7 @@ jobs:
 
           if [ -f "./media-upload/manifest.json" ]; then
             echo "Manifest generated"
-            cat ./media-upload/manifest.json | head -50
+            jq -C '.' ./media-upload/manifest.json | head -50
           else
             echo "No manifest generated (possibly no media for this date)"
           fi
