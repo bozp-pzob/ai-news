@@ -157,18 +157,37 @@ async function enrichJsonFile(
 async function main() {
   const args = process.argv.slice(2);
 
-  // Parse arguments
+  // Parse arguments (supports both --arg=value and --arg value)
   let jsonFile: string | undefined;
   let jsonDir: string | undefined;
   let date: string | undefined;
   let configFile = "elizaos.json";
 
-  for (const arg of args) {
-    if (arg.startsWith("--json=")) jsonFile = arg.split("=")[1];
-    else if (arg.startsWith("--dir=")) jsonDir = arg.split("=")[1];
-    else if (arg.startsWith("--date=")) date = arg.split("=")[1];
-    else if (arg.startsWith("--config=")) configFile = arg.split("=")[1];
-    else if (arg === "--help" || arg === "-h") {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    const nextArg = args[i + 1];
+
+    if (arg.startsWith("--json=")) {
+      jsonFile = arg.split("=")[1];
+    } else if (arg === "--json" && nextArg && !nextArg.startsWith("--")) {
+      jsonFile = nextArg;
+      i++;
+    } else if (arg.startsWith("--dir=")) {
+      jsonDir = arg.split("=")[1];
+    } else if (arg === "--dir" && nextArg && !nextArg.startsWith("--")) {
+      jsonDir = nextArg;
+      i++;
+    } else if (arg.startsWith("--date=")) {
+      date = arg.split("=")[1];
+    } else if (arg === "--date" && nextArg && !nextArg.startsWith("--")) {
+      date = nextArg;
+      i++;
+    } else if (arg.startsWith("--config=")) {
+      configFile = arg.split("=")[1];
+    } else if (arg === "--config" && nextArg && !nextArg.startsWith("--")) {
+      configFile = nextArg;
+      i++;
+    } else if (arg === "--help" || arg === "-h") {
       console.log(`
 Enrich JSON Summaries with Memes and Posters
 
@@ -191,8 +210,12 @@ Examples:
     }
   }
 
+  // Debug: show parsed args
+  logger.info(`Parsed args: json=${jsonFile}, dir=${jsonDir}, date=${date}, config=${configFile}`);
+
   if (!jsonFile && !jsonDir) {
     logger.error("Must specify --json or --dir");
+    logger.error(`Raw args: ${args.join(" ")}`);
     process.exit(1);
   }
 
