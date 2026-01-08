@@ -99,8 +99,9 @@ export class GitHubSummaryDataSource implements ContentSource {
       type: "githubAISummary",
       cid: `github-summary-${data.date}-${data.contentHash.slice(0, 8)}`,
       source: sourceUrl,
+      link: sourceUrl,  // Use the API URL as the source link
       title: `GitHub Activity Summary - ${data.date}`,
-      text: data.content,  // ✅ Full AI-generated markdown (NOT stats overview!)
+      text: data.content,
       date: timestamp,
       metadata: {
         contentHash: data.contentHash,
