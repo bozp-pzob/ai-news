@@ -271,6 +271,7 @@ export const extractDiscordMediaData = (item: ContentItem): MediaDownloadItem[] 
 
 /**
  * Recursively remove empty arrays and null/undefined values from an object.
+ * Also converts single-item arrays to scalars with singular keys.
  * This follows the sparse object pattern, reducing JSON file size by ~15-20%.
  *
  * @param obj - Object to clean
@@ -297,6 +298,13 @@ export const removeEmptyArrays = (obj: any): any => {
         continue;
       }
 
+      // Convert single-item arrays to scalars (with singular key)
+      if (Array.isArray(cleaned) && cleaned.length === 1) {
+        const singularKey = getSingularKey(key);
+        result[singularKey] = cleaned[0];
+        continue;
+      }
+
       result[key] = cleaned;
     }
 
@@ -305,6 +313,24 @@ export const removeEmptyArrays = (obj: any): any => {
 
   return obj;
 };
+
+/**
+ * Convert plural key to singular for single-item arrays
+ * @param key - Plural key name
+ * @returns Singular key name
+ */
+function getSingularKey(key: string): string {
+  // Common media field plurals
+  const pluralMap: Record<string, string> = {
+    'images': 'image',
+    'videos': 'video',
+    'sources': 'source',
+    'memes': 'meme',
+    'posters': 'poster',
+  };
+
+  return pluralMap[key] || key;
+}
 
 /**
  * Calculate size reduction percentage

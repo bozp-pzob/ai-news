@@ -163,7 +163,8 @@ ${text.slice(0, 1000)}`;
               summary: memeSummary,
             }],
           };
-          console.log(`MemeEnricher: [${itemId}] ✅ Generated meme using "${result.templateName}"`);
+          const templateInfo = result.templateName ? ` using "${result.templateName}"` : '';
+          console.log(`MemeEnricher: [${itemId}] ✅ Generated meme${templateInfo}`);
           console.log(`  URL: ${finalUrl}`);
         } else {
           console.log(`MemeEnricher: [${itemId}] ❌ Failed - ${result.error}`);
