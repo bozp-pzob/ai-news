@@ -271,8 +271,17 @@ export const extractDiscordMediaData = (item: ContentItem): MediaDownloadItem[] 
 
 /**
  * Recursively remove empty arrays and null/undefined values from an object.
- * Also converts single-item arrays to scalars with singular keys.
+ * Converts single-item arrays to scalars (keeping the same key name).
  * This follows the sparse object pattern, reducing JSON file size by ~15-20%.
+ *
+ * Output format:
+ *   - 0 items: omit key entirely
+ *   - 1 item: key: value (scalar)
+ *   - 2+ items: key: [values] (array)
+ *
+ * Example:
+ *   { images: [], videos: ["url"], sources: ["url1", "url2"] }
+ *   → { videos: "url", sources: ["url1", "url2"] }
  *
  * @param obj - Object to clean
  * @returns Cleaned object with no empty arrays or null/undefined values
@@ -288,7 +297,7 @@ export const removeEmptyArrays = (obj: any): any => {
     for (const [key, value] of Object.entries(obj)) {
       const cleaned = removeEmptyArrays(value);
 
-      // Skip empty arrays
+      // Skip empty arrays (omit key entirely)
       if (Array.isArray(cleaned) && cleaned.length === 0) {
         continue;
       }
@@ -298,10 +307,9 @@ export const removeEmptyArrays = (obj: any): any => {
         continue;
       }
 
-      // Convert single-item arrays to scalars (with singular key)
+      // Convert single-item arrays to scalars (keep same key name)
       if (Array.isArray(cleaned) && cleaned.length === 1) {
-        const singularKey = getSingularKey(key);
-        result[singularKey] = cleaned[0];
+        result[key] = cleaned[0];
         continue;
       }
 
@@ -313,24 +321,6 @@ export const removeEmptyArrays = (obj: any): any => {
 
   return obj;
 };
-
-/**
- * Convert plural key to singular for single-item arrays
- * @param key - Plural key name
- * @returns Singular key name
- */
-function getSingularKey(key: string): string {
-  // Common media field plurals
-  const pluralMap: Record<string, string> = {
-    'images': 'image',
-    'videos': 'video',
-    'sources': 'source',
-    'memes': 'meme',
-    'posters': 'poster',
-  };
-
-  return pluralMap[key] || key;
-}
 
 /**
  * Calculate size reduction percentage
