@@ -30,8 +30,9 @@ on:
           - 'true'
           - 'false'
 
+# Prevent race conditions when deploying to gh-pages
 concurrency:
-  group: media-cdn-upload
+  group: gh-pages-deploy
   cancel-in-progress: false
 
 jobs:

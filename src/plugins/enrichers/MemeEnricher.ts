@@ -7,6 +7,7 @@
 
 import { EnricherPlugin, ContentItem, AiProvider } from "../../types";
 import { generateMeme, MemeResult } from "../../helpers/imgflip";
+import { downloadAndUploadToCDN, getDefaultCDNConfig } from "../../helpers/cdnUploader";
 import fs from "fs";
 import path from "path";
 
@@ -131,6 +132,22 @@ ${text.slice(0, 1000)}`;
         const result: MemeResult = await generateMeme(memeSummary);
 
         if (result.success && result.url) {
+          // Upload to CDN immediately (CDN-first approach)
+          let finalUrl = result.url;
+          const cdnConfig = getDefaultCDNConfig();
+
+          if (cdnConfig.storageZone && cdnConfig.password) {
+            console.log(`MemeEnricher: [${itemId}] Uploading to CDN...`);
+            const cdnResult = await downloadAndUploadToCDN(result.url, "imgflip", cdnConfig);
+
+            if (cdnResult.success && cdnResult.cdnUrl) {
+              finalUrl = cdnResult.cdnUrl;
+              console.log(`MemeEnricher: [${itemId}] ✅ Mirrored to CDN: ${finalUrl}`);
+            } else {
+              console.log(`MemeEnricher: [${itemId}] ⚠️ CDN upload failed, keeping Imgflip URL: ${cdnResult.message}`);
+            }
+          }
+
           generated++;
           newEntries.push({
             date: new Date().toISOString(),
@@ -141,13 +158,13 @@ ${text.slice(0, 1000)}`;
           item.metadata = {
             ...item.metadata,
             memes: [{
-              url: result.url,
+              url: finalUrl,
               template: result.templateName,
               summary: memeSummary,
             }],
           };
           console.log(`MemeEnricher: [${itemId}] ✅ Generated meme using "${result.templateName}"`);
-          console.log(`  URL: ${result.url}`);
+          console.log(`  URL: ${finalUrl}`);
         } else {
           console.log(`MemeEnricher: [${itemId}] ❌ Failed - ${result.error}`);
         }

@@ -1,6 +1,12 @@
 name: Generate Media (Memes & Posters)
 
 on:
+  # Auto-trigger after elizaos workflow completes
+  workflow_run:
+    workflows: ["ElizaOS Daily Data Collection"]
+    types: [completed]
+
+  # Manual trigger for rapid iteration
   workflow_dispatch:
     inputs:
       date:
@@ -18,16 +24,36 @@ on:
         default: 'elizaos'
         type: string
 
+# Prevent race conditions when deploying to gh-pages
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: false
+
 jobs:
   generate-media:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Only run if triggered manually OR if the triggering workflow succeeded
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: Determine date
+        id: date
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            echo "date=${{ inputs.date }}" >> "$GITHUB_OUTPUT"
+          else
+            # Use yesterday for workflow_run trigger
+            echo "date=$(date -u -d 'yesterday' +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Processing date: $(cat $GITHUB_OUTPUT | grep date | cut -d= -f2)"
 
       - name: Fetch gh-pages branch
         run: |
@@ -62,8 +88,8 @@ jobs:
 
       - name: Extract JSON from gh-pages
         run: |
-          SOURCE="${{ inputs.source_name }}"
-          DATE="${{ inputs.date }}"
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
 
           mkdir -p ./output/${SOURCE}/json
 
@@ -82,9 +108,9 @@ jobs:
 
       - name: Generate memes and posters
         run: |
-          SOURCE="${{ inputs.source_name }}"
-          DATE="${{ inputs.date }}"
-          CONFIG="${{ inputs.config_name }}"
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+          CONFIG="${{ inputs.config_name || 'elizaos' }}"
 
           echo "Enriching JSON with memes and posters..."
           npm run enrich-json -- \
@@ -93,8 +119,8 @@ jobs:
 
       - name: Prepare files for deployment
         run: |
-          SOURCE="${{ inputs.source_name }}"
-          DATE="${{ inputs.date }}"
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
 
           mkdir -p ./public/${SOURCE}/json
           cp "./output/${SOURCE}/json/${DATE}.json" "./public/${SOURCE}/json/${DATE}.json"
@@ -110,12 +136,13 @@ jobs:
           publish_dir: ./public
           publish_branch: gh-pages
           keep_files: true
-          commit_message: "Add media to ${{ inputs.source_name }}/json/${{ inputs.date }}.json"
+          commit_message: "Add media to ${{ inputs.source_name || 'elizaos' }}/json/${{ steps.date.outputs.date }}.json"
 
       - name: Summary
         run: |
-          SOURCE="${{ inputs.source_name }}"
-          DATE="${{ inputs.date }}"
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+          CONFIG="${{ inputs.config_name || 'elizaos' }}"
 
           echo "## Media Generation Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -123,6 +150,6 @@ jobs:
           echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Date | \`$DATE\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Source | \`$SOURCE\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Config | \`${{ inputs.config_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Config | \`$CONFIG\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ Memes and posters added to JSON summary" >> $GITHUB_STEP_SUMMARY
