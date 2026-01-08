@@ -32,14 +32,15 @@ export interface PromptMediaOptions {
 export const createMarkdownPromptForJSON = (summaryData: any, dateStr: string): string => {
   const jsonStr = JSON.stringify(summaryData, null, 2);
   return `You are an expert at converting structured JSON data into a concise markdown report for language model processing.
-  
+
 The markdown should:
-- Use clear, hierarchical headings
+- Use clear, hierarchical headings (## for sections)
 - Include bullet lists for key points
 - Be concise and easy to parse
 - Exclude any raw JSON output
 - Maintain hierarchical structure
 - Focus on key information
+- Use plain text only - no emojis
 - ONLY report on what has been done or accomplished
 - DO NOT include statements about what is missing, not done, or needs improvement
 - DO NOT include recommendations or suggestions
@@ -117,7 +118,7 @@ export const createJSONPromptForTopics = (
 
   prompt += `Provide a clear and concise summary based on the ***sources*** above for the topic. DO NOT PULL DATA FROM OUTSIDE SOURCES'${topic}'. Combine similar sources into a longer summary if it makes sense.\n\n`;
 
-  prompt += `Response MUST be a valid JSON object containing:\n- 'title': The title of the topic.\n- 'content': A list of messages with keys 'text', 'sources', 'images', and 'videos'.\n\n`;
+  prompt += `Response MUST be a valid JSON object containing:\n- 'title': The title of the topic.\n- 'content': A list of messages with keys 'text', 'sources', 'images', and 'videos'.\n\nIMPORTANT: Use plain text only - no emojis, no markdown formatting.\n\n`;
 
   // Add instruction about using provided media URLs
   if (hasMedia) {
