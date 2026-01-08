@@ -112,10 +112,11 @@ jobs:
           DATE="${{ steps.date.outputs.date }}"
           CONFIG="${{ inputs.config_name || 'elizaos' }}"
 
-          echo "Enriching JSON with memes and posters..."
+          echo "Enriching JSON with memes and posters (force mode)..."
           npm run enrich-json -- \
             --json "./output/${SOURCE}/json/${DATE}.json" \
-            --config "${CONFIG}.json"
+            --config "${CONFIG}.json" \
+            --force
 
       - name: Prepare files for deployment
         run: |

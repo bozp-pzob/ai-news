@@ -67,14 +67,15 @@ function topicToSourceType(topic: string): string {
  */
 async function enrichJsonFile(
   jsonPath: string,
-  enrichers: EnricherPlugin[]
+  enrichers: EnricherPlugin[],
+  force: boolean = false
 ): Promise<{ enriched: number; file: string }> {
   if (!fs.existsSync(jsonPath)) {
     logger.warning(`File not found: ${jsonPath}`);
     return { enriched: 0, file: jsonPath };
   }
 
-  logger.info(`Processing: ${jsonPath}`);
+  logger.info(`Processing: ${jsonPath}${force ? " (force mode)" : ""}`);
 
   const jsonContent = fs.readFileSync(jsonPath, "utf-8");
   const summary: SummaryJson = JSON.parse(jsonContent);
@@ -95,6 +96,12 @@ async function enrichJsonFile(
 
     for (let i = 0; i < category.content.length; i++) {
       const contentItem = category.content[i];
+
+      // Clear existing media if force mode
+      if (force) {
+        delete contentItem.memes;
+        delete contentItem.posters;
+      }
 
       // Skip if already has memes and posters
       if (contentItem.memes?.length && contentItem.posters?.length) {
@@ -162,6 +169,7 @@ async function main() {
   let jsonDir: string | undefined;
   let date: string | undefined;
   let configFile = "elizaos.json";
+  let force = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -187,6 +195,8 @@ async function main() {
     } else if (arg === "--config" && nextArg && !nextArg.startsWith("--")) {
       configFile = nextArg;
       i++;
+    } else if (arg === "--force" || arg === "-f") {
+      force = true;
     } else if (arg === "--help" || arg === "-h") {
       console.log(`
 Enrich JSON Summaries with Memes and Posters
@@ -200,10 +210,12 @@ Options:
   --dir=<dir>       Directory containing JSON files
   --date=<date>     Date to process (used with --dir)
   --config=<file>   Config file name (default: elizaos.json)
+  --force, -f       Force regenerate memes/posters (clears existing)
   --help, -h        Show this help
 
 Examples:
   npm run enrich-json -- --json ./output/elizaos/json/2026-01-06.json
+  npm run enrich-json -- --json ./output/elizaos/json/2026-01-06.json --force
   npm run enrich-json -- --dir ./output/elizaos/json --date 2026-01-06
 `);
       process.exit(0);
@@ -211,7 +223,7 @@ Examples:
   }
 
   // Debug: show parsed args
-  logger.info(`Parsed args: json=${jsonFile}, dir=${jsonDir}, date=${date}, config=${configFile}`);
+  logger.info(`Parsed args: json=${jsonFile}, dir=${jsonDir}, date=${date}, config=${configFile}, force=${force}`);
 
   if (!jsonFile && !jsonDir) {
     logger.error("Must specify --json or --dir");
@@ -251,18 +263,18 @@ Examples:
   let results: Array<{ enriched: number; file: string }> = [];
 
   if (jsonFile) {
-    const result = await enrichJsonFile(jsonFile, enrichers);
+    const result = await enrichJsonFile(jsonFile, enrichers, force);
     results.push(result);
   } else if (jsonDir) {
     if (date) {
       const filePath = path.join(jsonDir, `${date}.json`);
-      const result = await enrichJsonFile(filePath, enrichers);
+      const result = await enrichJsonFile(filePath, enrichers, force);
       results.push(result);
     } else {
       // Process all JSON files in directory
       const files = fs.readdirSync(jsonDir).filter(f => f.endsWith(".json"));
       for (const file of files) {
-        const result = await enrichJsonFile(path.join(jsonDir, file), enrichers);
+        const result = await enrichJsonFile(path.join(jsonDir, file), enrichers, force);
         results.push(result);
       }
     }
