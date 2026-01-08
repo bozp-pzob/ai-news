@@ -1,0 +1,335 @@
+name: Media CDN Processing
+
+on:
+  # Auto-trigger after elizaos workflow completes
+  workflow_run:
+    workflows: ["ElizaOS Daily Data Collection"]
+    types: [completed]
+
+  # Manual trigger for rapid iteration
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Date to process (YYYY-MM-DD) or "yesterday"'
+        required: false
+        default: 'yesterday'
+        type: string
+      config_name:
+        description: 'Config name (without .json)'
+        required: false
+        default: 'elizaos'
+        type: string
+      source_name:
+        description: 'Source name for JSON path'
+        required: false
+        default: 'elizaos'
+        type: string
+      force_regenerate:
+        description: 'Force regenerate memes/posters'
+        required: false
+        default: true
+        type: boolean
+      dry_run:
+        description: 'Dry run (no actual upload)'
+        required: false
+        default: false
+        type: boolean
+
+# Prevent race conditions when deploying to gh-pages
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  media-cdn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Only run if triggered manually OR if the triggering workflow succeeded
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Determine date
+        id: date
+        run: |
+          if [ "${{ inputs.date }}" = "yesterday" ] || [ -z "${{ inputs.date }}" ]; then
+            DATE=$(date -u -d "yesterday" +%Y-%m-%d)
+          else
+            DATE="${{ inputs.date }}"
+          fi
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+          echo "Processing date: $DATE"
+
+      - name: Fetch gh-pages branch
+        run: |
+          git fetch origin gh-pages:gh-pages --depth=1
+          echo "Fetched gh-pages branch"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Process secrets
+        run: |
+          echo '${{ secrets.ENV_SECRETS }}' > env_secrets.json
+          chmod 600 env_secrets.json
+
+          # Mask values (except public URLs)
+          jq -r 'to_entries[] | select(.key != "BUNNY_CDN_URL" and .key != "SITE_URL") | .value' env_secrets.json | while read -r value; do
+            if [ -n "$value" ]; then
+              echo "::add-mask::$value"
+            fi
+          done
+
+          # Set environment variables
+          jq -r 'to_entries[] | "\(.key)=\(.value)"' env_secrets.json >> $GITHUB_ENV
+
+          rm -f env_secrets.json
+
+      - name: Check and fetch database
+        run: |
+          mkdir -p data
+
+          if git ls-remote --heads origin gh-pages | grep -q gh-pages; then
+            if git ls-tree -r --name-only origin/gh-pages | grep -q "data/elizaos.sqlite.enc"; then
+              echo "Fetching encrypted database from gh-pages..."
+              git show origin/gh-pages:data/elizaos.sqlite.enc > data/elizaos.sqlite.enc
+              echo "Database fetched successfully"
+            else
+              echo "⚠️ No encrypted database found in gh-pages"
+              echo "Continuing without database (Discord media will be skipped)"
+            fi
+          else
+            echo "⚠️ gh-pages branch not found"
+            echo "Continuing without database (Discord media will be skipped)"
+          fi
+
+      - name: Decrypt database
+        if: hashFiles('data/elizaos.sqlite.enc') != ''
+        env:
+          SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
+        run: |
+          if [ -z "$SQLITE_ENCRYPTION_KEY" ]; then
+            echo "⚠️ SQLITE_ENCRYPTION_KEY not set, skipping decryption"
+            exit 0
+          fi
+
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in data/elizaos.sqlite.enc \
+            -out data/elizaos.sqlite \
+            -k "$SQLITE_ENCRYPTION_KEY"
+
+          echo "Database decrypted successfully"
+          rm data/elizaos.sqlite.enc
+
+      - name: Extract JSON from gh-pages
+        run: |
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+
+          mkdir -p ./output/${SOURCE}/json
+
+          JSON_PATH="${SOURCE}/json/${DATE}.json"
+          if git ls-tree -r --name-only origin/gh-pages | grep -q "^${JSON_PATH}$"; then
+            echo "Extracting ${JSON_PATH} from gh-pages..."
+            git show "origin/gh-pages:${JSON_PATH}" > "./output/${JSON_PATH}"
+            echo "✅ Extracted JSON file"
+            jq -C '.' "./output/${JSON_PATH}" | head -50
+          else
+            echo "❌ JSON file not found: ${JSON_PATH}"
+            echo "Available files:"
+            git ls-tree -r --name-only origin/gh-pages | grep "${SOURCE}/json" | head -10
+            exit 1
+          fi
+
+      - name: Download Discord media
+        if: hashFiles('data/elizaos.sqlite') != ''
+        run: |
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+
+          echo "Downloading Discord media for $DATE..."
+          mkdir -p ./media-upload
+
+          # Allow partial failures - some Discord URLs may have expired
+          npm run download-media -- \
+            --db ./data/${SOURCE}.sqlite \
+            --date "$DATE" \
+            --output ./media-upload || echo "⚠️ Some downloads failed (expected for expired URLs)"
+
+          if [ -d "./media-upload" ] && [ -n "$(ls -A ./media-upload/*.* 2>/dev/null)" ]; then
+            echo "✅ Discord media downloaded"
+            ls -la ./media-upload/ | head -20
+          else
+            echo "ℹ️ No Discord media downloaded"
+          fi
+
+      - name: Generate manifest for Discord media
+        if: hashFiles('data/elizaos.sqlite') != ''
+        run: |
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+
+          echo "Generating manifest for Discord media..."
+          npm run generate-manifest -- \
+            --db ./data/${SOURCE}.sqlite \
+            --date "$DATE" \
+            --source "$SOURCE" \
+            --output ./media-upload
+
+          if [ -f "./media-upload/manifest.json" ]; then
+            echo "✅ Manifest generated"
+            jq -C '.' ./media-upload/manifest.json | head -50
+          else
+            echo "ℹ️ No manifest generated (no Discord media for this date)"
+          fi
+
+      - name: Upload Discord media to CDN
+        if: inputs.dry_run != 'true' && hashFiles('media-upload/manifest.json') != ''
+        env:
+          BUNNY_STORAGE_HOST: https://la.storage.bunnycdn.com
+        run: |
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+
+          if [ ! -d "./media-upload" ] || [ -z "$(ls -A ./media-upload/*.* 2>/dev/null)" ]; then
+            echo "ℹ️ No Discord media files to upload"
+            exit 0
+          fi
+
+          echo "Uploading Discord media to CDN..."
+          npm run upload-cdn -- \
+            --dir ./media-upload \
+            --remote "${SOURCE}-media/"
+
+          echo "✅ Discord media uploaded to CDN"
+
+      - name: Update manifest with CDN URLs
+        if: inputs.dry_run != 'true' && hashFiles('media-upload/manifest.json') != ''
+        env:
+          BUNNY_STORAGE_HOST: https://la.storage.bunnycdn.com
+        run: |
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+
+          if [ ! -f "./media-upload/manifest.json" ]; then
+            echo "ℹ️ No manifest to update"
+            exit 0
+          fi
+
+          echo "Updating manifest with CDN URLs..."
+          npm run upload-cdn -- \
+            --manifest ./media-upload/manifest.json \
+            --update-manifest
+
+          # Upload manifest to CDN
+          echo "Uploading manifest to CDN..."
+          npm run upload-cdn -- \
+            --file ./media-upload/manifest.json \
+            --remote "${SOURCE}-media/manifests/${DATE}.json"
+
+          npm run upload-cdn -- \
+            --file ./media-upload/manifest.json \
+            --remote "${SOURCE}-media/manifests/latest.json"
+
+          echo "✅ Manifest uploaded to CDN"
+
+      - name: Generate memes and posters
+        run: |
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+          CONFIG="${{ inputs.config_name || 'elizaos' }}"
+
+          FORCE_FLAG=""
+          if [ "${{ inputs.force_regenerate }}" = "true" ]; then
+            FORCE_FLAG="--force"
+          fi
+
+          echo "Enriching JSON with memes and posters..."
+          npm run enrich-json -- \
+            --json "./output/${SOURCE}/json/${DATE}.json" \
+            --config "${CONFIG}.json" \
+            $FORCE_FLAG
+
+          echo "✅ Media generation complete"
+
+      - name: Swap Discord URLs with CDN URLs
+        if: hashFiles('media-upload/manifest.json') != ''
+        run: |
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+
+          echo "Swapping Discord URLs with CDN URLs..."
+          npm run inject-cdn-media -- \
+            --json "./output/${SOURCE}/json/${DATE}.json" \
+            --manifest ./media-upload/manifest.json \
+            --output "./output/${SOURCE}/json/${DATE}.json"
+
+          echo "✅ URLs swapped"
+
+      - name: Prepare files for deployment
+        run: |
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+
+          mkdir -p ./public/${SOURCE}/json
+          cp "./output/${SOURCE}/json/${DATE}.json" "./public/${SOURCE}/json/${DATE}.json"
+          touch ./public/.nojekyll
+
+          echo "Final JSON ready for deployment:"
+          jq -C '.' "./public/${SOURCE}/json/${DATE}.json" | head -100
+
+      - name: Deploy to gh-pages
+        if: inputs.dry_run != 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          publish_branch: gh-pages
+          keep_files: true
+          commit_message: "Add CDN media to ${{ inputs.source_name || 'elizaos' }}/json/${{ steps.date.outputs.date }}.json"
+
+      - name: Summary
+        run: |
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+          CONFIG="${{ inputs.config_name || 'elizaos' }}"
+
+          echo "## Media CDN Processing Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Date | \`$DATE\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Source | \`$SOURCE\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Config | \`$CONFIG\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Force Regenerate | ${{ inputs.force_regenerate || 'true' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dry Run | ${{ inputs.dry_run || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ inputs.dry_run }}" != "true" ]; then
+            CDN_BASE="${BUNNY_CDN_URL:-https://cdn.elizaos.news}"
+            echo "### CDN URLs" >> $GITHUB_STEP_SUMMARY
+            echo "- Media: ${CDN_BASE}/${SOURCE}-media/" >> $GITHUB_STEP_SUMMARY
+            echo "- Latest manifest: ${CDN_BASE}/${SOURCE}-media/manifests/latest.json" >> $GITHUB_STEP_SUMMARY
+            echo "- Dated manifest: ${CDN_BASE}/${SOURCE}-media/manifests/${DATE}.json" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Memes, posters, and Discord media uploaded to CDN" >> $GITHUB_STEP_SUMMARY
+            echo "✅ All URLs swapped to CDN in JSON summary" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf ./media-upload
+          rm -f ./data/*.sqlite
+          echo "Cleanup complete"
