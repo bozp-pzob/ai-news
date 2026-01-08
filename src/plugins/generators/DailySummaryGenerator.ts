@@ -468,7 +468,7 @@ export class DailySummaryGenerator {
         } else if (obj.type === 'githubStatsSummary') {
           github_topic = 'github_summary';
         } else if (obj.type === 'githubTopContributors') {
-          continue; // Deprecated
+          return; // Deprecated - skip this item
         } else if (obj.type === 'githubCompletedItem') {
           github_topic = 'completed_items';
         } else {
