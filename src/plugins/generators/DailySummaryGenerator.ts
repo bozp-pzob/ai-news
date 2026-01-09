@@ -530,7 +530,7 @@ export class DailySummaryGenerator {
     const alreadyAdded: any = {};
 
     const miscTopics: any = {
-      topic: 'Misceleanous',
+      topic: 'miscellaneous',
       objects: [],
       allTopics: []
     };
