@@ -1,3 +1,5 @@
+// frontend/src/index.tsx
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
@@ -5,7 +7,12 @@ import './index.css';
 import LandingPage from './pages/LandingPage';
 import AppPage from './pages/AppPage';
 import DocsPage from './pages/DocsPage';
+import DashboardPage from './pages/DashboardPage';
+import ConfigPage from './pages/ConfigPage';
+import NewConfigPage from './pages/NewConfigPage';
 import { ToastProvider } from './components/ToastProvider';
+import { PrivyProvider } from './components/PrivyProvider';
+import { AuthProvider } from './context/AuthContext';
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
@@ -13,14 +20,21 @@ const root = ReactDOM.createRoot(
 
 root.render(
   <React.StrictMode>
-    <ToastProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/app" element={<AppPage />} />
-          <Route path="/docs/*" element={<DocsPage />} />
-        </Routes>
-      </BrowserRouter>
-    </ToastProvider>
+    <PrivyProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/app" element={<AppPage />} />
+              <Route path="/docs/*" element={<DocsPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/configs/new" element={<NewConfigPage />} />
+              <Route path="/configs/:id" element={<ConfigPage />} />
+            </Routes>
+          </BrowserRouter>
+        </ToastProvider>
+      </AuthProvider>
+    </PrivyProvider>
   </React.StrictMode>
-); 
+);

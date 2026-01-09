@@ -7,6 +7,8 @@ import { ConfigService, Config } from './services/configService';
 import { AggregatorService } from './services/aggregatorService';
 import { PluginService } from './services/pluginService';
 import { WebSocketService } from './services/websocketService';
+import { databaseService } from './services/databaseService';
+import v1Routes from './routes/v1';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -16,10 +18,14 @@ const server = http.createServer(app);
 
 // Middleware
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // Serve static files from the frontend build directory
 app.use(express.static(path.join(__dirname, '../frontend/build')));
+
+// API v1 routes (multi-tenant platform)
+app.use('/api/v1', v1Routes);
 
 // Initialize services
 const configService = new ConfigService();
@@ -216,8 +222,35 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
 });
 
-// Start the server
-server.listen(port, () => {
-  console.log(`API server running on port ${port}`);
-  console.log(`Frontend served at http://localhost:${port}`);
+// Initialize database and start server
+async function start() {
+  try {
+    // Initialize platform database if DATABASE_URL is set
+    if (process.env.DATABASE_URL) {
+      await databaseService.initPlatformDatabase();
+      console.log('Platform database initialized');
+    }
+
+    // Start the server
+    server.listen(port, () => {
+      console.log(`API server running on port ${port}`);
+      console.log(`Frontend served at http://localhost:${port}`);
+      console.log(`API v1 available at http://localhost:${port}/api/v1`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+start();
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down...');
+  await databaseService.closeAllConnections();
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
 });
