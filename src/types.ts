@@ -16,6 +16,7 @@ export interface ContentItem {
   topics?: string[];
   date?: number;           // When it was created/published
   metadata?: Record<string, any>; // Additional key-value data
+  embedding?: number[];  // Vector embedding for semantic search (1536 dimensions for text-embedding-3-small)
 }
 
 /**
@@ -554,4 +555,139 @@ export interface CDNProvider {
   name: string;
   upload(localPath: string, remotePath: string): Promise<CDNUploadResult>;
   getPublicUrl(remotePath: string): string;
+}
+
+// ============================================
+// MULTI-TENANT PLATFORM TYPES
+// ============================================
+
+/**
+ * User tier levels
+ */
+export type UserTier = 'free' | 'paid' | 'admin';
+
+/**
+ * Config visibility options
+ */
+export type ConfigVisibility = 'public' | 'private' | 'shared' | 'unlisted';
+
+/**
+ * Config storage type
+ */
+export type ConfigStorageType = 'platform' | 'external';
+
+/**
+ * Config status
+ */
+export type ConfigStatus = 'idle' | 'running' | 'error' | 'paused';
+
+/**
+ * Platform user
+ */
+export interface PlatformUser {
+  id: string;
+  privyId: string;
+  email?: string;
+  walletAddress?: string;
+  tier: UserTier;
+  settings?: Record<string, any>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Platform config (data pipeline)
+ */
+export interface PlatformConfig {
+  id: string;
+  userId: string;
+  name: string;
+  slug: string;
+  description?: string;
+  visibility: ConfigVisibility;
+  storageType: ConfigStorageType;
+  externalDbUrl?: string;
+  externalDbValid?: boolean;
+  monetizationEnabled: boolean;
+  pricePerQuery?: number;
+  ownerWallet?: string;
+  configJson: Record<string, any>;
+  status: ConfigStatus;
+  lastRunAt?: Date;
+  lastError?: string;
+  runsToday: number;
+  totalItems: number;
+  totalQueries: number;
+  totalRevenue: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Payment record
+ */
+export interface Payment {
+  id: string;
+  configId: string;
+  payerWallet: string;
+  amount: number;
+  platformFee: number;
+  ownerRevenue: number;
+  txSignature?: string;
+  status: 'pending' | 'verified' | 'settled' | 'failed';
+  createdAt: Date;
+  settledAt?: Date;
+}
+
+/**
+ * API usage record
+ */
+export interface ApiUsage {
+  id: string;
+  configId: string;
+  userId?: string;
+  walletAddress?: string;
+  endpoint: string;
+  method: string;
+  statusCode?: number;
+  responseTimeMs?: number;
+  paymentId?: string;
+  createdAt: Date;
+}
+
+/**
+ * Content item with embedding
+ */
+export interface ContentItemWithEmbedding extends ContentItem {
+  embedding?: number[];
+}
+
+/**
+ * Summary item with embedding
+ */
+export interface SummaryItemWithEmbedding extends SummaryItem {
+  embedding?: number[];
+}
+
+/**
+ * Vector search result
+ */
+export interface VectorSearchResult extends ContentItem {
+  similarity: number;
+}
+
+/**
+ * PostgreSQL storage configuration
+ */
+export interface PostgresStorageConfig {
+  name: string;
+  connectionString?: string;
+  host?: string;
+  port?: number;
+  database?: string;
+  user?: string;
+  password?: string;
+  ssl?: boolean | object;
+  poolSize?: number;
+  configId?: string;
 }

@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://ainews:ainews@postgres:5432/ainews
+      - REDIS_URL=redis://redis:6379
+      - PRIVY_APP_ID=${PRIVY_APP_ID}
+      - PRIVY_APP_SECRET=${PRIVY_APP_SECRET}
+      - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - POP402_FACILITATOR_URL=https://facilitator.pop402.com
+      - PLATFORM_WALLET_ADDRESS=${PLATFORM_WALLET_ADDRESS}
+      - PLATFORM_FEE_PERCENT=10
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    restart: unless-stopped
+    networks:
+      - ainews-network
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      - POSTGRES_USER=ainews
+      - POSTGRES_PASSWORD=ainews
+      - POSTGRES_DB=ainews
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/plugins/storage/postgres-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ainews"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - ainews-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - ainews-network
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=postgresql://ainews:ainews@postgres:5432/ainews
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - POP402_FACILITATOR_URL=https://facilitator.pop402.com
+      - PLATFORM_WALLET_ADDRESS=${PLATFORM_WALLET_ADDRESS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ainews-network
+
+networks:
+  ainews-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
