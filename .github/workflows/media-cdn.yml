@@ -220,10 +220,10 @@ jobs:
             exit 0
           fi
 
-          # Update manifest with CDN URLs
+          # Update manifest with CDN URLs (files already uploaded in previous step)
           npm run upload-cdn -- \
             --manifest ./media-upload/manifest.json \
-            --update-manifest
+            --update-urls-only
 
           # Upload manifest to CDN
           npm run upload-cdn -- \
@@ -316,3 +316,10 @@ jobs:
           rm -rf ./media-upload
           rm -f ./data/*.sqlite
           echo "Cleanup complete"
+
+      - name: Alert on failure
+        if: failure()
+        run: |
+          curl -X POST "${{ secrets.ALERT_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{"content": "<@213767993153290250> ⚠️ **Media CDN Processing** failed: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
