@@ -16,10 +16,16 @@ import { swapUrlsInJsonFile } from "./mediaHelper";
 
 dotenv.config();
 
+// Helper function for delays
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Constants
 const DEFAULT_STORAGE_HOST = "https://la.storage.bunnycdn.com";
 const DEFAULT_TIMEOUT_MS = 120000; // 2 minutes
-const MAX_RETRY_ATTEMPTS = 2;
+const MAX_RETRY_ATTEMPTS = 4;
+const RETRY_DELAY_MS = 4000; // 4 seconds fixed delay between retries
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
 
 // Allowed file extensions for upload
@@ -269,6 +275,11 @@ export class BunnyCDNProvider implements CDNProvider {
         if (result.message.includes("HTTP 5")) {
           lastError = result.message;
           logger.debug(`Upload attempt ${attempt} failed (retryable): ${result.message}`);
+
+          // Wait before retry (except after last attempt)
+          if (attempt < MAX_RETRY_ATTEMPTS) {
+            await delay(RETRY_DELAY_MS);
+          }
           continue;
         }
 
@@ -283,6 +294,11 @@ export class BunnyCDNProvider implements CDNProvider {
             errorMsg.includes("ENOTFOUND")) {
           lastError = errorMsg;
           logger.debug(`Upload attempt ${attempt} failed (retryable): ${errorMsg}`);
+
+          // Wait before retry (except after last attempt)
+          if (attempt < MAX_RETRY_ATTEMPTS) {
+            await delay(RETRY_DELAY_MS);
+          }
           continue;
         }
 
