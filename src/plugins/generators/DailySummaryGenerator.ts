@@ -37,6 +37,8 @@ interface DailySummaryGeneratorConfig {
   groupBySourceType?: boolean;
   /** Path to media manifest for CDN URL enrichment */
   mediaManifestPath?: string;
+  /** Topics to exclude from summaries (default: ['open source']) */
+  blockedTopics?: string[];
 }
 
 /**
@@ -53,7 +55,7 @@ export class DailySummaryGenerator {
   /** Source identifier for the summaries (optional) */
   private source: string | undefined;
   /** List of topics to exclude from summaries */
-  private blockedTopics: string[] = ['open source'];
+  private blockedTopics: string[];
   /** Path for output files */
   private outputPath: string;
   /** Max number of groups to summarize */
@@ -114,6 +116,12 @@ export class DailySummaryGenerator {
         type: 'string',
         required: false,
         description: 'Path to media manifest JSON for CDN URL enrichment in summaries.'
+      },
+      {
+        name: 'blockedTopics',
+        type: 'string[]',
+        required: false,
+        description: 'Topics to exclude from summaries (default: ["open source"]).'
       }
     ]
   };
@@ -131,6 +139,7 @@ export class DailySummaryGenerator {
     this.maxGroupsToSummarize = config.maxGroupsToSummarize || 10;
     this.groupBySourceType = config.groupBySourceType || false;
     this.mediaManifestPath = config.mediaManifestPath;
+    this.blockedTopics = config.blockedTopics || ['open source'];
   }
 
   /**

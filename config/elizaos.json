@@ -197,7 +197,8 @@
         "storage": "SQLiteStorage",
         "summaryType": "elizaosDailySummary",
         "outputPath": "./output/elizaos",
-        "groupBySourceType": true
+        "groupBySourceType": true,
+        "blockedTopics": ["open source"]
       }
     }
   ]

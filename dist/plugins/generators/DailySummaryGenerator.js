@@ -24,8 +24,6 @@ class DailySummaryGenerator {
      * @param {DailySummaryGeneratorConfig} config - Configuration object for the generator
      */
     constructor(config) {
-        /** List of topics to exclude from summaries */
-        this.blockedTopics = ['open source'];
         /** Media lookup instance (lazy loaded) */
         this.mediaLookup = null;
         this.provider = config.provider;
@@ -36,6 +34,7 @@ class DailySummaryGenerator {
         this.maxGroupsToSummarize = config.maxGroupsToSummarize || 10;
         this.groupBySourceType = config.groupBySourceType || false;
         this.mediaManifestPath = config.mediaManifestPath;
+        this.blockedTopics = config.blockedTopics || ['open source'];
     }
     /**
      * Get or initialize the MediaLookup instance
@@ -496,6 +495,12 @@ DailySummaryGenerator.constructorInterface = {
             type: 'string',
             required: false,
             description: 'Path to media manifest JSON for CDN URL enrichment in summaries.'
+        },
+        {
+            name: 'blockedTopics',
+            type: 'string[]',
+            required: false,
+            description: 'Topics to exclude from summaries (default: ["open source"]).'
         }
     ]
 };

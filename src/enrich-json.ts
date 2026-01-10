@@ -1,7 +1,7 @@
 /**
  * Standalone script to enrich JSON summaries with memes and posters.
  *
- * This runs independently of the main pipeline, allowing quick iteration
+ * This is a thin CLI wrapper around SummaryEnricher, allowing quick iteration
  * on media generation without re-fetching or re-generating summaries.
  *
  * Usage:
@@ -12,7 +12,8 @@
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
-import { ContentItem, EnricherPlugin } from "./types";
+import { EnricherPlugin } from "./types";
+import { SummaryEnricher } from "./plugins/enrichers/SummaryEnricher";
 import {
   loadDirectoryModules,
   loadItems,
@@ -22,143 +23,36 @@ import { logger } from "./helpers/cliHelper";
 
 dotenv.config();
 
-interface ContentMessage {
-  text: string;
-  sources: string[];
-  images: string[];
-  videos: string[];
-  posters?: string[];
-  memes?: Array<{ url: string; template?: string; summary?: string }>;
-}
-
-interface CategoryContent {
-  title: string;
-  topic?: string;
-  content: ContentMessage[];
-}
-
-interface SummaryJson {
-  type: string;
-  title: string;
-  date: number;
-  categories: CategoryContent[];
-}
-
 /**
- * Map category topics to source types for enricher compatibility.
+ * Parse a JSON file path into components for SummaryEnricher
+ * Example: ./output/elizaos/json/2026-01-06.json
+ *   -> { outputPath: './output', jsonSubpath: 'elizaos/json', dateStr: '2026-01-06' }
  */
-function topicToSourceType(topic: string): string {
-  const mapping: Record<string, string> = {
-    discordrawdata: "discordRawData",
-    discord: "discordRawData",
-    issue: "githubIssue",
-    issues: "githubIssue",
-    pull_request: "githubPullRequest",
-    pull_requests: "githubPullRequest",
-    github_summary: "githubStatsSummary",
-    contributors: "githubTopContributors",
-    completed_items: "githubCompletedItem",
-  };
-  return mapping[topic.toLowerCase()] || topic;
-}
+function parseJsonPath(jsonPath: string): { outputPath: string; jsonSubpath: string; dateStr: string } | null {
+  const absolutePath = path.resolve(jsonPath);
+  const filename = path.basename(absolutePath, '.json');
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
-/**
- * Enrich a single JSON file with memes and posters.
- */
-async function enrichJsonFile(
-  jsonPath: string,
-  enrichers: EnricherPlugin[],
-  force: boolean = false
-): Promise<{ enriched: number; file: string }> {
-  if (!fs.existsSync(jsonPath)) {
-    logger.warning(`File not found: ${jsonPath}`);
-    return { enriched: 0, file: jsonPath };
+  if (!datePattern.test(filename)) {
+    logger.error(`Invalid date format in filename: ${filename} (expected YYYY-MM-DD)`);
+    return null;
   }
 
-  logger.info(`Processing: ${jsonPath}${force ? " (force mode)" : ""}`);
+  const dirPath = path.dirname(absolutePath);
+  const parts = dirPath.split(path.sep);
 
-  const jsonContent = fs.readFileSync(jsonPath, "utf-8");
-  const summary: SummaryJson = JSON.parse(jsonContent);
-  const dateStr = path.basename(jsonPath, ".json");
+  // Find "output" in the path to split into outputPath and jsonSubpath
+  const outputIndex = parts.findIndex(p => p === 'output');
 
-  if (!summary.categories || summary.categories.length === 0) {
-    logger.warning(`No categories in ${jsonPath}`);
-    return { enriched: 0, file: jsonPath };
+  if (outputIndex === -1) {
+    logger.error(`Could not find 'output' directory in path: ${dirPath}`);
+    return null;
   }
 
-  let totalEnriched = 0;
+  const outputPath = parts.slice(0, outputIndex + 1).join(path.sep);
+  const jsonSubpath = parts.slice(outputIndex + 1).join(path.sep);
 
-  for (const category of summary.categories) {
-    if (!category.content || category.content.length === 0) continue;
-
-    const categoryTopic = category.topic || category.title || "unknown";
-    logger.info(`  Category "${categoryTopic}": ${category.content.length} items`);
-
-    for (let i = 0; i < category.content.length; i++) {
-      const contentItem = category.content[i];
-
-      // Clear existing media if force mode
-      if (force) {
-        delete contentItem.memes;
-        delete contentItem.posters;
-      }
-
-      // Skip if already has memes and posters
-      if (contentItem.memes?.length && contentItem.posters?.length) {
-        continue;
-      }
-
-      // Skip if no text
-      if (!contentItem.text || contentItem.text.trim().length === 0) {
-        continue;
-      }
-
-      // Convert to ContentItem format for enrichers
-      const fakeContentItem: ContentItem = {
-        cid: `summary-${dateStr}-${categoryTopic}-${i}`,
-        source: "summary",
-        type: topicToSourceType(categoryTopic),
-        title: category.title,
-        text: contentItem.text,
-        date: new Date(dateStr).getTime() / 1000,
-        metadata: {
-          images: contentItem.images || [],
-          videos: contentItem.videos || [],
-          memes: contentItem.memes || [],
-        },
-      };
-
-      // Run enrichers
-      let enrichedItems = [fakeContentItem];
-      for (const enricher of enrichers) {
-        enrichedItems = await enricher.enrich(enrichedItems);
-      }
-
-      const enriched = enrichedItems[0];
-
-      // Extract generated media back to category content
-      if (enriched.metadata?.memes?.length) {
-        contentItem.memes = enriched.metadata.memes;
-        totalEnriched++;
-      }
-
-      if (enriched.metadata?.images?.length) {
-        const newPosters = enriched.metadata.images.filter(
-          (img: string) => !contentItem.images?.includes(img)
-        );
-        if (newPosters.length > 0) {
-          contentItem.posters = [...(contentItem.posters || []), ...newPosters];
-          totalEnriched++;
-        }
-      }
-    }
-  }
-
-  // Write updated JSON back
-  fs.writeFileSync(jsonPath, JSON.stringify(summary, null, 2));
-  logger.success(`Enriched ${totalEnriched} items in ${jsonPath}`);
-
-  return { enriched: totalEnriched, file: jsonPath };
+  return { outputPath, jsonSubpath, dateStr: filename };
 }
 
 async function main() {
@@ -222,12 +116,8 @@ Examples:
     }
   }
 
-  // Debug: show parsed args
-  logger.info(`Parsed args: json=${jsonFile}, dir=${jsonDir}, date=${date}, config=${configFile}, force=${force}`);
-
   if (!jsonFile && !jsonDir) {
     logger.error("Must specify --json or --dir");
-    logger.error(`Raw args: ${args.join(" ")}`);
     process.exit(1);
   }
 
@@ -259,35 +149,80 @@ Examples:
 
   logger.info(`Loaded ${enrichers.length} enrichers`);
 
-  // Process files
-  let results: Array<{ enriched: number; file: string }> = [];
+  // Determine which files to process
+  const filesToProcess: string[] = [];
 
   if (jsonFile) {
-    const result = await enrichJsonFile(jsonFile, enrichers, force);
-    results.push(result);
+    filesToProcess.push(jsonFile);
   } else if (jsonDir) {
     if (date) {
-      const filePath = path.join(jsonDir, `${date}.json`);
-      const result = await enrichJsonFile(filePath, enrichers, force);
-      results.push(result);
+      filesToProcess.push(path.join(jsonDir, `${date}.json`));
     } else {
       // Process all JSON files in directory
       const files = fs.readdirSync(jsonDir).filter(f => f.endsWith(".json"));
-      for (const file of files) {
-        const result = await enrichJsonFile(path.join(jsonDir, file), enrichers, force);
-        results.push(result);
-      }
+      filesToProcess.push(...files.map(f => path.join(jsonDir, f)));
     }
   }
 
-  // Summary
-  const totalEnriched = results.reduce((sum, r) => sum + r.enriched, 0);
-  logger.success(`\nTotal: ${totalEnriched} items enriched across ${results.length} files`);
+  // Process each file using SummaryEnricher
+  let totalEnriched = 0;
 
-  process.exit(0);
+  for (const filePath of filesToProcess) {
+    if (!fs.existsSync(filePath)) {
+      logger.warning(`File not found: ${filePath}`);
+      continue;
+    }
+
+    // Parse the path to extract components
+    const parsed = parseJsonPath(filePath);
+    if (!parsed) {
+      logger.error(`Could not parse path: ${filePath}`);
+      continue;
+    }
+
+    const { outputPath, jsonSubpath, dateStr } = parsed;
+
+    // Handle --force by clearing existing memes/posters
+    if (force) {
+      const jsonContent = fs.readFileSync(filePath, 'utf-8');
+      const summary = JSON.parse(jsonContent);
+
+      if (summary.categories) {
+        for (const category of summary.categories) {
+          if (category.content) {
+            for (const item of category.content) {
+              delete item.memes;
+              delete item.posters;
+            }
+          }
+        }
+        fs.writeFileSync(filePath, JSON.stringify(summary, null, 2));
+        logger.info(`Cleared existing media from ${dateStr}`);
+      }
+    }
+
+    // Use SummaryEnricher to enrich the file
+    const summaryEnricher = new SummaryEnricher({
+      enrichers,
+      outputPath
+    });
+
+    try {
+      await summaryEnricher.enrichSummary(dateStr, jsonSubpath);
+      totalEnriched++;
+      logger.success(`✅ Enriched ${dateStr}`);
+    } catch (error) {
+      logger.error(`Failed to enrich ${dateStr}: ${error}`);
+    }
+  }
+
+  logger.success(`\n✨ Complete: Enriched ${totalEnriched}/${filesToProcess.length} files`);
 }
 
-main().catch((error) => {
-  logger.error(`Error: ${error}`);
-  process.exit(1);
-});
+// Run if called directly
+if (require.main === module) {
+  main().catch((error) => {
+    logger.error(`Fatal error: ${error}`);
+    process.exit(1);
+  });
+}
