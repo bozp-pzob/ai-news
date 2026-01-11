@@ -900,6 +900,129 @@ export function calculateUploadStats(results: CDNUploadResult[]): UploadStats {
 }
 
 /**
+ * Verify CDN uploads by checking file accessibility
+ */
+export async function verifyManifestUploads(
+  manifestPath: string,
+  retryFailures: boolean = false,
+  remotePrefix?: string
+): Promise<{ verified: number; failed: number; retried: number }> {
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(`Manifest not found: ${manifestPath}`);
+  }
+
+  const manifest: MediaManifest = JSON.parse(
+    fs.readFileSync(manifestPath, "utf8")
+  );
+
+  if (!manifest.files || manifest.files.length === 0) {
+    logger.info("No files to verify in manifest");
+    return { verified: 0, failed: 0, retried: 0 };
+  }
+
+  const config = getDefaultCDNConfig();
+  const provider = createCDNProvider(config);
+  const prefix = remotePrefix || `${manifest.source}-media`;
+
+  logger.info(`Verifying ${manifest.files.length} files...`);
+
+  let verified = 0;
+  let failed = 0;
+  let retried = 0;
+  const failures: typeof manifest.files = [];
+
+  // Verify each file
+  for (let i = 0; i < manifest.files.length; i++) {
+    const entry = manifest.files[i];
+    const progress = i + 1;
+    const pct = Math.round((progress / manifest.files.length) * 100);
+    process.stdout.write(`\rProgress: ${progress}/${manifest.files.length} (${pct}%)`);
+
+    if (!entry.cdn_path) {
+      failed++;
+      failures.push(entry);
+      continue;
+    }
+
+    try {
+      const exists = await provider.checkExists(entry.cdn_path);
+      if (exists) {
+        verified++;
+      } else {
+        failed++;
+        failures.push(entry);
+      }
+    } catch (error) {
+      failed++;
+      failures.push(entry);
+    }
+  }
+  process.stdout.write("\n");
+
+  logger.info(`Initial verification: ${verified} verified, ${failed} failed`);
+
+  // Retry failures if requested
+  if (retryFailures && failures.length > 0) {
+    logger.info(`\nRetrying ${failures.length} failed uploads...`);
+    const baseDir = path.dirname(manifestPath);
+
+    for (const entry of failures) {
+      let localPath = path.join(baseDir, entry.unique_name);
+
+      // Try base_path if file not found in manifest directory
+      if (!fs.existsSync(localPath) && manifest.base_path) {
+        localPath = path.join(manifest.base_path, entry.unique_name);
+      }
+
+      if (!fs.existsSync(localPath)) {
+        logger.warning(`Local file not found for retry: ${entry.unique_name}`);
+        continue;
+      }
+
+      const remotePath = `${prefix}/${entry.unique_name}`;
+      const result = await provider.upload(localPath, remotePath);
+
+      if (result.success) {
+        // Update entry with new CDN info
+        entry.cdn_url = result.cdnUrl;
+        entry.cdn_path = result.remotePath;
+        entry.cdn_uploaded_at = new Date().toISOString();
+        retried++;
+        verified++;
+        failed--;
+      }
+    }
+
+    logger.info(`Retry complete: ${retried} succeeded`);
+  }
+
+  // Update manifest with final state
+  if (retryFailures) {
+    // Remove CDN info from entries that are still failed
+    for (const entry of manifest.files) {
+      if (!entry.cdn_url) {
+        delete entry.cdn_path;
+        delete entry.cdn_uploaded_at;
+      }
+    }
+
+    // Update stats
+    if (manifest.cdn) {
+      manifest.cdn.upload_stats = {
+        ...manifest.cdn.upload_stats,
+        uploaded: verified,
+        failed: failed
+      };
+    }
+
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    logger.info(`Updated manifest: ${manifestPath}`);
+  }
+
+  return { verified, failed, retried };
+}
+
+/**
  * Update manifest with CDN URLs without uploading
  */
 export async function updateManifestUrlsOnly(
@@ -1005,6 +1128,7 @@ Usage:
   npm run upload-cdn -- --file <path> --remote <path>   Upload single file
   npm run upload-cdn -- --dir <path> --remote <prefix>  Upload directory
   npm run upload-cdn -- --manifest <path>               Upload from manifest
+  npm run upload-cdn -- --manifest <path> --verify      Verify CDN uploads
   npm run upload-cdn -- --swap-urls <json> --manifest <manifest>  Swap Discord URLs for CDN
 
 Options:
@@ -1014,6 +1138,8 @@ Options:
   --remote <path>       Remote path/prefix on CDN
   --update-manifest     Update manifest with CDN URLs after upload
   --update-urls-only    Just update manifest with CDN URLs (no upload)
+  --verify              Verify CDN uploads by checking file accessibility
+  --retry-failures      Re-upload files that failed verification (use with --verify)
   --swap-urls <path>    Swap Discord URLs for CDN URLs in a JSON file (requires --manifest)
   --output <path>       Output path for --swap-urls (default: overwrites input file)
   --dry-run             Preview uploads without actually uploading
@@ -1030,6 +1156,8 @@ Examples:
   npm run upload-cdn -- --file ./media/image.png --remote elizaos-media/
   npm run upload-cdn -- --dir ./media/ --remote elizaos-media/
   npm run upload-cdn -- --manifest ./media/manifest.json --update-manifest
+  npm run upload-cdn -- --manifest ./media/manifest.json --verify
+  npm run upload-cdn -- --manifest ./media/manifest.json --verify --retry-failures
   npm run upload-cdn -- --dir ./media/ --remote elizaos-media/ --dry-run
 `);
 }
@@ -1046,6 +1174,8 @@ async function main(): Promise<void> {
   let remotePath: string | undefined;
   let updateManifest = false;
   let updateUrlsOnly = false;
+  let verify = false;
+  let retryFailures = false;
   let swapUrlsPath: string | undefined;
   let outputPath: string | undefined;
   let dryRun = false;
@@ -1076,6 +1206,12 @@ async function main(): Promise<void> {
         break;
       case "--update-urls-only":
         updateUrlsOnly = true;
+        break;
+      case "--verify":
+        verify = true;
+        break;
+      case "--retry-failures":
+        retryFailures = true;
         break;
       case "--swap-urls":
         swapUrlsPath = args[++i];
@@ -1138,6 +1274,23 @@ async function main(): Promise<void> {
       await updateManifestUrlsOnly(manifestPath, remotePath);
       logger.info("Done! Manifest updated with CDN URLs.");
       process.exit(0);
+    } else if (manifestPath && verify) {
+      logger.info(`Verifying CDN uploads: ${manifestPath}`);
+      const stats = await verifyManifestUploads(manifestPath, retryFailures, remotePath);
+
+      logger.info("\n📊 Verification Summary:");
+      logger.info(`✅ Verified: ${stats.verified}`);
+      if (stats.retried > 0) {
+        logger.info(`🔄 Retried: ${stats.retried}`);
+      }
+      logger.info(`❌ Failed: ${stats.failed}`);
+
+      const successRate = stats.verified > 0
+        ? ((stats.verified / (stats.verified + stats.failed)) * 100).toFixed(1)
+        : "0.0";
+      logger.info(`Success rate: ${successRate}%`);
+
+      process.exit(stats.failed > 0 ? 1 : 0);
     } else if (manifestPath) {
       logger.info(`${dryRun ? "[DRY RUN] " : ""}Uploading from manifest: ${manifestPath}`);
       const { results: uploadResults } = await uploadFromManifest(manifestPath, dryRun, updateManifest);

@@ -234,6 +234,22 @@ jobs:
             --file ./media-upload/manifest.json \
             --remote "${SOURCE}-media/manifests/latest.json"
 
+      - name: Verify CDN uploads
+        if: inputs.dry_run != 'true' && hashFiles('media-upload/manifest.json') != ''
+        env:
+          BUNNY_STORAGE_HOST: https://la.storage.bunnycdn.com
+        run: |
+          if [ ! -f "./media-upload/manifest.json" ]; then
+            echo "ℹ️ No manifest to verify"
+            exit 0
+          fi
+
+          echo "🔍 Verifying CDN uploads..."
+          npm run upload-cdn -- \
+            --manifest ./media-upload/manifest.json \
+            --verify \
+            --retry-failures
+
       - name: Generate memes and posters
         run: |
           SOURCE="${{ inputs.source_name || 'elizaos' }}"
