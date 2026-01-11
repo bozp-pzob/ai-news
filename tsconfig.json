@@ -5,6 +5,13 @@
       "moduleResolution": "node",
       "outDir": "dist",
       "rootDir": "src",
+      "baseUrl": "./src",
+      "paths": {
+        "@helpers/*": ["helpers/*"],
+        "@types": ["types"],
+        "@plugins/*": ["plugins/*"],
+        "@aggregator/*": ["aggregator/*"]
+      },
       "strict": true,
       "esModuleInterop": true,
       "forceConsistentCasingInFileNames": true,
