@@ -272,8 +272,8 @@ jobs:
           SOURCE="${{ inputs.source_name || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
 
-          npm run inject-cdn-media -- \
-            --json "./output/${SOURCE}/json/${DATE}.json" \
+          npm run upload-cdn -- \
+            --swap-urls "./output/${SOURCE}/json/${DATE}.json" \
             --manifest ./media-upload/manifest.json \
             --output "./output/${SOURCE}/json/${DATE}.json"
 

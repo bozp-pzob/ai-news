@@ -15,7 +15,6 @@
     "download-media": "ts-node --transpile-only src/download-media.ts",
     "generate-manifest": "ts-node --transpile-only src/download-media.ts --generate-manifest",
     "upload-cdn": "ts-node --transpile-only src/helpers/cdnUploader.ts",
-    "inject-cdn-media": "ts-node --transpile-only src/inject-cdn-media.ts",
     "api": "ts-node src/api.ts",
     "discover-channels": "node scripts/discover-channels.js --sample",
     "update-configs": "node scripts/update-configs-from-checklist.js",

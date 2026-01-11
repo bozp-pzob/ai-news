@@ -16,7 +16,7 @@ import {
   MediaManifest,
   MediaManifestEntry,
 } from "../types";
-import { extractFilenameFromUrl } from "./fileHelper";
+import { extractFilenameFromUrl, removeEmptyArrays } from "./fileHelper";
 
 /**
  * Process a Discord attachment into standardized format
@@ -606,9 +606,12 @@ export function swapUrlsInJsonFile(
 
     const swapped = swapUrlsInObject(data, swapMap);
 
+    // Clean empty arrays to reduce JSON size (~15-20% reduction)
+    const cleaned = removeEmptyArrays(swapped);
+
     const outPath = outputPath || jsonPath;
-    fs.writeFileSync(outPath, JSON.stringify(swapped, null, 2));
-    console.log(`[MediaLookup] Swapped URLs in ${outPath}`);
+    fs.writeFileSync(outPath, JSON.stringify(cleaned, null, 2));
+    console.log(`[MediaLookup] Swapped URLs and cleaned empty arrays in ${outPath}`);
 
     return true;
   } catch (error) {
