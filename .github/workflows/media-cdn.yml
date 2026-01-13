@@ -244,11 +244,6 @@ jobs:
             exit 0
           fi
 
-          # Wait for CDN propagation before verification
-          # Bunny CDN storage API may have eventual consistency
-          echo "⏳ Waiting 5s for CDN propagation..."
-          sleep 5
-
           echo "🔍 Verifying CDN uploads..."
           npm run upload-cdn -- \
             --manifest ./media-upload/manifest.json \
@@ -265,10 +260,13 @@ jobs:
             echo "Pipeline continues but this should be investigated"
             # Continue with exit 0 to not fail the workflow
             # The warning is logged for visibility
+            exit 0
           elif [ $VERIFY_EXIT -ne 0 ]; then
             echo "❌ Verification failed with exit code $VERIFY_EXIT"
             exit $VERIFY_EXIT
           fi
+
+          echo "✅ All files verified successfully on first attempt"
 
       - name: Generate memes and posters
         run: |
@@ -359,7 +357,7 @@ jobs:
           echo "Cleanup complete"
 
       - name: Alert on failure
-        if: failure()
+        if: failure() && secrets.ALERT_WEBHOOK_URL != ''
         run: |
           curl -X POST "${{ secrets.ALERT_WEBHOOK_URL }}" \
             -H "Content-Type: application/json" \

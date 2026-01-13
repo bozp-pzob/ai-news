@@ -22,7 +22,8 @@ function delay(ms: number): Promise<void> {
 }
 
 // Default propagation delay after upload before verification (CDN edge propagation)
-const DEFAULT_PROPAGATION_DELAY_MS = 2000;
+// Bunny CDN storage API has eventual consistency - 5s provides reasonable buffer
+const DEFAULT_PROPAGATION_DELAY_MS = 5000;
 
 // Constants
 const DEFAULT_STORAGE_HOST = "https://la.storage.bunnycdn.com";
