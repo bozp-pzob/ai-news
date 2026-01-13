@@ -234,50 +234,6 @@ jobs:
             --file ./media-upload/manifest.json \
             --remote "${SOURCE}-media/manifests/latest.json"
 
-      - name: Verify CDN uploads
-        if: inputs.dry_run != 'true' && hashFiles('media-upload/manifest.json') != ''
-        env:
-          BUNNY_STORAGE_HOST: https://la.storage.bunnycdn.com
-        run: |
-          if [ ! -f "./media-upload/manifest.json" ]; then
-            echo "ℹ️ No manifest to verify"
-            exit 0
-          fi
-
-          # Check if CDN credentials are available (without logging values)
-          if [ -z "$BUNNY_STORAGE_ZONE" ] || [ -z "$BUNNY_STORAGE_PASSWORD" ]; then
-            echo "❌ ERROR: CDN credentials not set. Storage API verification will fail."
-            echo "   Falling back to public CDN URL verification..."
-          fi
-
-          echo "🔍 Verifying CDN uploads..."
-
-          # Temporarily disable exit-on-error to capture exit code
-          set +e
-          npm run upload-cdn -- \
-            --manifest ./media-upload/manifest.json \
-            --verify \
-            --retry-failures
-
-          VERIFY_EXIT=$?
-          set -e
-
-          # Exit code 0 = success
-          # Exit code 1 = hard failure (files missing after retry)
-          # Exit code 2 = soft warning (all files needed retry - propagation issue)
-          if [ $VERIFY_EXIT -eq 2 ]; then
-            echo "⚠️ WARNING: All files required retry upload - CDN propagation delay detected"
-            echo "Pipeline continues but this should be investigated"
-            # Continue with exit 0 to not fail the workflow
-            # The warning is logged for visibility
-            exit 0
-          elif [ $VERIFY_EXIT -ne 0 ]; then
-            echo "❌ Verification failed with exit code $VERIFY_EXIT"
-            exit $VERIFY_EXIT
-          fi
-
-          echo "✅ All files verified successfully on first attempt"
-
       - name: Generate memes and posters
         run: |
           SOURCE="${{ inputs.source_name || 'elizaos' }}"
@@ -320,6 +276,54 @@ jobs:
           touch ./public/.nojekyll
 
           echo "✅ Final JSON ready for deployment"
+
+      - name: Verify CDN uploads before deployment
+        if: inputs.dry_run != 'true' && hashFiles('media-upload/manifest.json') != ''
+        env:
+          BUNNY_STORAGE_HOST: https://la.storage.bunnycdn.com
+        run: |
+          if [ ! -f "./media-upload/manifest.json" ]; then
+            echo "ℹ️ No manifest to verify"
+            exit 0
+          fi
+
+          # Check if CDN credentials are available (without logging values)
+          if [ -z "$BUNNY_STORAGE_ZONE" ] || [ -z "$BUNNY_STORAGE_PASSWORD" ]; then
+            echo "⚠️ CDN credentials not set. Using public CDN URL verification..."
+          fi
+
+          echo "🔍 Verifying ALL CDN uploads before deployment..."
+          echo "   This includes Discord media, memes, and posters"
+
+          # Temporarily disable exit-on-error to capture exit code
+          set +e
+          npm run upload-cdn -- \
+            --manifest ./media-upload/manifest.json \
+            --verify \
+            --retry-failures
+
+          VERIFY_EXIT=$?
+          set -e
+
+          # Exit code 0 = success (clean verification)
+          # Exit code 1 = hard failure (files missing after retry) - BLOCKS DEPLOYMENT
+          # Exit code 2 = soft warning (files needed retry but eventually succeeded) - ALLOWS DEPLOYMENT
+          if [ $VERIFY_EXIT -eq 1 ]; then
+            echo "❌ CRITICAL: Verification failed - files missing from CDN even after retry"
+            echo "   Blocking deployment to prevent serving broken links"
+            exit 1
+          elif [ $VERIFY_EXIT -eq 2 ]; then
+            echo "⚠️ WARNING: All files required retry upload (CDN propagation delay)"
+            echo "   All files eventually verified successfully"
+            echo "   Deployment will proceed"
+          elif [ $VERIFY_EXIT -eq 0 ]; then
+            echo "✅ All files verified successfully on first attempt"
+          else
+            echo "❌ Unexpected exit code: $VERIFY_EXIT"
+            exit 1
+          fi
+
+          echo "✅ Verification passed - proceeding to deployment"
 
       - name: Deploy to gh-pages
         if: inputs.dry_run != 'true'
