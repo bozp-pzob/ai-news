@@ -245,12 +245,16 @@ jobs:
           fi
 
           echo "🔍 Verifying CDN uploads..."
+
+          # Temporarily disable exit-on-error to capture exit code
+          set +e
           npm run upload-cdn -- \
             --manifest ./media-upload/manifest.json \
             --verify \
             --retry-failures
 
           VERIFY_EXIT=$?
+          set -e
 
           # Exit code 0 = success
           # Exit code 1 = hard failure (files missing after retry)
