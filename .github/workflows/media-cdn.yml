@@ -357,8 +357,13 @@ jobs:
           echo "Cleanup complete"
 
       - name: Alert on failure
-        if: failure() && secrets.ALERT_WEBHOOK_URL != ''
+        if: failure()
         run: |
-          curl -X POST "${{ secrets.ALERT_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d '{"content": "<@213767993153290250> ⚠️ **Media CDN Processing** failed: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
+          WEBHOOK_URL="${{ secrets.ALERT_WEBHOOK_URL }}"
+          if [ -n "$WEBHOOK_URL" ]; then
+            curl -X POST "$WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d '{"content": "<@213767993153290250> ⚠️ **Media CDN Processing** failed: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
+          else
+            echo "⚠️ ALERT_WEBHOOK_URL not configured, skipping failure notification"
+          fi
