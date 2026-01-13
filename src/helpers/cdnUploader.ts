@@ -21,6 +21,9 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Default propagation delay after upload before verification (CDN edge propagation)
+const DEFAULT_PROPAGATION_DELAY_MS = 2000;
+
 // Constants
 const DEFAULT_STORAGE_HOST = "https://la.storage.bunnycdn.com";
 const DEFAULT_TIMEOUT_MS = 120000; // 2 minutes
@@ -133,7 +136,8 @@ export class BunnyCDNProvider implements CDNProvider {
   }
 
   /**
-   * Check if a file exists on CDN using HEAD request
+   * Check if a file exists on CDN storage using HEAD request to storage API
+   * This checks the storage zone directly (requires AccessKey)
    */
   async checkExists(remotePath: string): Promise<boolean> {
     const validation = validateRemotePath(remotePath);
@@ -163,6 +167,46 @@ export class BunnyCDNProvider implements CDNProvider {
       req.setTimeout(10000, () => {
         req.destroy();
         resolve(false);
+      });
+
+      req.end();
+    });
+  }
+
+  /**
+   * Check if a file exists via public CDN URL using HEAD request
+   * This verifies the file is accessible to end users (no auth required)
+   * May have different consistency characteristics than storage API
+   */
+  async checkExistsViaCDN(remotePath: string): Promise<{ exists: boolean; statusCode?: number }> {
+    const validation = validateRemotePath(remotePath);
+    if (!validation.isValid) return { exists: false };
+
+    const cleanRemotePath = validation.result;
+    const cdnUrl = this.getPublicUrl(cleanRemotePath);
+
+    return new Promise((resolve) => {
+      const url = new URL(cdnUrl);
+
+      const options = {
+        hostname: url.hostname,
+        port: url.port || 443,
+        path: url.pathname + url.search,
+        method: "HEAD",
+        headers: {
+          "User-Agent": "CDN-Verifier/1.0"
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        // 200 = exists and cached, 404 = not found
+        resolve({ exists: res.statusCode === 200, statusCode: res.statusCode });
+      });
+
+      req.on("error", () => resolve({ exists: false }));
+      req.setTimeout(10000, () => {
+        req.destroy();
+        resolve({ exists: false });
       });
 
       req.end();
@@ -900,13 +944,49 @@ export function calculateUploadStats(results: CDNUploadResult[]): UploadStats {
 }
 
 /**
+ * Verification result with detailed metrics for monitoring
+ */
+export interface VerificationResult {
+  verified: number;
+  failed: number;
+  retried: number;
+  initialVerified: number;
+  initialFailed: number;
+  totalFiles: number;
+  initialSuccessRate: number;
+  finalSuccessRate: number;
+  hadInitialFailures: boolean;
+  allRequiredRetry: boolean;
+}
+
+/**
+ * Options for verification behavior
+ */
+export interface VerifyOptions {
+  retryFailures?: boolean;
+  remotePrefix?: string;
+  propagationDelay?: number;  // ms to wait before verification (default: 2000)
+  useCdnUrl?: boolean;        // verify via public CDN URL instead of storage API
+}
+
+/**
  * Verify CDN uploads by checking file accessibility
+ *
+ * IMPORTANT: This function tracks initial vs final verification rates
+ * to detect silent failures where files don't immediately appear on CDN.
+ *
+ * When all files fail initial verification but succeed on retry, this
+ * indicates a CDN propagation delay issue. The function will:
+ * 1. Log a prominent warning about the issue
+ * 2. Still return success if retries worked
+ * 3. But set allRequiredRetry=true so callers can detect this condition
  */
 export async function verifyManifestUploads(
   manifestPath: string,
   retryFailures: boolean = false,
-  remotePrefix?: string
-): Promise<{ verified: number; failed: number; retried: number }> {
+  remotePrefix?: string,
+  options?: VerifyOptions
+): Promise<VerificationResult> {
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`Manifest not found: ${manifestPath}`);
   }
@@ -917,56 +997,135 @@ export async function verifyManifestUploads(
 
   if (!manifest.files || manifest.files.length === 0) {
     logger.info("No files to verify in manifest");
-    return { verified: 0, failed: 0, retried: 0 };
+    return {
+      verified: 0,
+      failed: 0,
+      retried: 0,
+      initialVerified: 0,
+      initialFailed: 0,
+      totalFiles: 0,
+      initialSuccessRate: 100,
+      finalSuccessRate: 100,
+      hadInitialFailures: false,
+      allRequiredRetry: false
+    };
   }
 
-  const config = getDefaultCDNConfig();
-  const provider = createCDNProvider(config);
-  const prefix = remotePrefix || `${manifest.source}-media`;
+  // Merge options
+  const opts: VerifyOptions = {
+    retryFailures,
+    remotePrefix,
+    propagationDelay: DEFAULT_PROPAGATION_DELAY_MS,
+    useCdnUrl: false,
+    ...options
+  };
 
-  logger.info(`Verifying ${manifest.files.length} files...`);
+  const config = getDefaultCDNConfig();
+  const provider = createCDNProvider(config) as BunnyCDNProvider;
+  const prefix = opts.remotePrefix || `${manifest.source}-media`;
+  const totalFiles = manifest.files.length;
+
+  // Wait for CDN propagation if configured
+  if (opts.propagationDelay && opts.propagationDelay > 0) {
+    logger.info(`Waiting ${opts.propagationDelay}ms for CDN propagation...`);
+    await delay(opts.propagationDelay);
+  }
+
+  logger.info(`Verifying ${totalFiles} files via ${opts.useCdnUrl ? "CDN URL" : "storage API"}...`);
 
   let verified = 0;
   let failed = 0;
   let retried = 0;
-  const failures: typeof manifest.files = [];
+  const failures: Array<{ entry: typeof manifest.files[0]; reason: string }> = [];
 
   // Verify each file
   for (let i = 0; i < manifest.files.length; i++) {
     const entry = manifest.files[i];
     const progress = i + 1;
-    const pct = Math.round((progress / manifest.files.length) * 100);
-    process.stdout.write(`\rProgress: ${progress}/${manifest.files.length} (${pct}%)`);
+    const pct = Math.round((progress / totalFiles) * 100);
+    process.stdout.write(`\rVerifying: ${progress}/${totalFiles} (${pct}%)`);
 
     if (!entry.cdn_path) {
       failed++;
-      failures.push(entry);
+      failures.push({ entry, reason: "missing cdn_path in manifest" });
       continue;
     }
 
     try {
-      const exists = await provider.checkExists(entry.cdn_path);
+      let exists: boolean;
+      let detail = "";
+
+      if (opts.useCdnUrl) {
+        // Verify via public CDN URL
+        const result = await provider.checkExistsViaCDN(entry.cdn_path);
+        exists = result.exists;
+        if (!exists) {
+          detail = result.statusCode ? `HTTP ${result.statusCode}` : "connection error";
+        }
+      } else {
+        // Verify via storage API (default)
+        exists = await provider.checkExists(entry.cdn_path);
+        if (!exists) {
+          detail = "storage API returned 404";
+        }
+      }
+
       if (exists) {
         verified++;
       } else {
         failed++;
-        failures.push(entry);
+        failures.push({ entry, reason: detail || "file not found" });
       }
     } catch (error) {
       failed++;
-      failures.push(entry);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      failures.push({ entry, reason: `error: ${errorMsg}` });
     }
   }
   process.stdout.write("\n");
 
-  logger.info(`Initial verification: ${verified} verified, ${failed} failed`);
+  // Track initial metrics BEFORE any retry
+  const initialVerified = verified;
+  const initialFailed = failed;
+  const initialSuccessRate = totalFiles > 0 ? (initialVerified / totalFiles) * 100 : 100;
+  const allRequiredRetry = initialFailed === totalFiles && totalFiles > 0;
+
+  logger.info(`Initial verification: ${initialVerified} verified, ${initialFailed} failed`);
+
+  // Warn loudly if verification rate is concerning
+  if (allRequiredRetry) {
+    logger.warning("");
+    logger.warning("========================================");
+    logger.warning("WARNING: 100% of files failed initial verification!");
+    logger.warning("This indicates a CDN propagation delay or configuration issue.");
+    logger.warning("========================================");
+    logger.warning("");
+    logger.warning("Sample failures:");
+    failures.slice(0, 5).forEach(({ entry, reason }) => {
+      logger.warning(`  - ${entry.unique_name}`);
+      logger.warning(`    cdn_path: ${entry.cdn_path || "NOT SET"}`);
+      logger.warning(`    reason: ${reason}`);
+    });
+    if (failures.length > 5) {
+      logger.warning(`  ... and ${failures.length - 5} more`);
+    }
+    logger.warning("");
+  } else if (initialSuccessRate < 90 && initialFailed > 0) {
+    logger.warning(`WARNING: Only ${initialSuccessRate.toFixed(1)}% initial verification rate`);
+    logger.warning("Sample failures:");
+    failures.slice(0, 3).forEach(({ entry, reason }) => {
+      logger.warning(`  - ${entry.unique_name}: ${reason}`);
+    });
+  }
 
   // Retry failures if requested
-  if (retryFailures && failures.length > 0) {
+  if (opts.retryFailures && failures.length > 0) {
     logger.info(`\nRetrying ${failures.length} failed uploads...`);
     const baseDir = path.dirname(manifestPath);
+    let retrySucceeded = 0;
+    let retryFailed = 0;
 
-    for (const entry of failures) {
+    for (const { entry } of failures) {
       let localPath = path.join(baseDir, entry.unique_name);
 
       // Try base_path if file not found in manifest directory
@@ -975,12 +1134,17 @@ export async function verifyManifestUploads(
       }
 
       if (!fs.existsSync(localPath)) {
-        logger.warning(`Local file not found for retry: ${entry.unique_name}`);
+        logger.debug(`Local file not found for retry: ${entry.unique_name}`);
+        retryFailed++;
         continue;
       }
 
       const remotePath = `${prefix}/${entry.unique_name}`;
-      const result = await provider.upload(localPath, remotePath);
+
+      // Skip existing check is disabled for retry to force re-upload
+      const retryConfig = { ...config, skipExisting: false };
+      const retryProvider = createCDNProvider(retryConfig);
+      const result = await retryProvider.upload(localPath, remotePath);
 
       if (result.success) {
         // Update entry with new CDN info
@@ -990,14 +1154,18 @@ export async function verifyManifestUploads(
         retried++;
         verified++;
         failed--;
+        retrySucceeded++;
+      } else {
+        logger.debug(`Retry upload failed for ${entry.unique_name}: ${result.message}`);
+        retryFailed++;
       }
     }
 
-    logger.info(`Retry complete: ${retried} succeeded`);
+    logger.info(`Retry complete: ${retrySucceeded} succeeded, ${retryFailed} failed`);
   }
 
   // Update manifest with final state
-  if (retryFailures) {
+  if (opts.retryFailures) {
     // Remove CDN info from entries that are still failed
     for (const entry of manifest.files) {
       if (!entry.cdn_url) {
@@ -1019,7 +1187,20 @@ export async function verifyManifestUploads(
     logger.info(`Updated manifest: ${manifestPath}`);
   }
 
-  return { verified, failed, retried };
+  const finalSuccessRate = totalFiles > 0 ? (verified / totalFiles) * 100 : 100;
+
+  return {
+    verified,
+    failed,
+    retried,
+    initialVerified,
+    initialFailed,
+    totalFiles,
+    initialSuccessRate,
+    finalSuccessRate,
+    hadInitialFailures: initialFailed > 0,
+    allRequiredRetry
+  };
 }
 
 /**
@@ -1152,6 +1333,11 @@ Environment Variables:
   BUNNY_CDN_URL           CDN URL (default: https://{zone}.b-cdn.net)
   BUNNY_STORAGE_HOST      Storage API host (default: https://la.storage.bunnycdn.com)
 
+Exit Codes (for --verify):
+  0  All files verified successfully on first attempt
+  1  Some files failed verification even after retry
+  2  All files needed retry (CDN propagation issue detected)
+
 Examples:
   npm run upload-cdn -- --file ./media/image.png --remote elizaos-media/
   npm run upload-cdn -- --dir ./media/ --remote elizaos-media/
@@ -1278,19 +1464,44 @@ async function main(): Promise<void> {
       logger.info(`Verifying CDN uploads: ${manifestPath}`);
       const stats = await verifyManifestUploads(manifestPath, retryFailures, remotePath);
 
-      logger.info("\n📊 Verification Summary:");
-      logger.info(`✅ Verified: ${stats.verified}`);
+      logger.info("\n========================================");
+      logger.info("Verification Summary");
+      logger.info("========================================");
+      logger.info(`Total files: ${stats.totalFiles}`);
+      logger.info(`Initial verified: ${stats.initialVerified}`);
+      logger.info(`Initial failed: ${stats.initialFailed}`);
+      logger.info(`Initial success rate: ${stats.initialSuccessRate.toFixed(1)}%`);
+
       if (stats.retried > 0) {
-        logger.info(`🔄 Retried: ${stats.retried}`);
+        logger.info(`\nRetried uploads: ${stats.retried}`);
+        logger.info(`Final verified: ${stats.verified}`);
+        logger.info(`Final failed: ${stats.failed}`);
+        logger.info(`Final success rate: ${stats.finalSuccessRate.toFixed(1)}%`);
       }
-      logger.info(`❌ Failed: ${stats.failed}`);
 
-      const successRate = stats.verified > 0
-        ? ((stats.verified / (stats.verified + stats.failed)) * 100).toFixed(1)
-        : "0.0";
-      logger.info(`Success rate: ${successRate}%`);
+      // Determine exit code based on verification results
+      let exitCode = 0;
 
-      process.exit(stats.failed > 0 ? 1 : 0);
+      if (stats.failed > 0) {
+        // Some files still failed after retry
+        logger.error(`\nERROR: ${stats.failed} files failed verification`);
+        exitCode = 1;
+      } else if (stats.allRequiredRetry) {
+        // All files failed initially but recovered via retry
+        // This indicates a systemic issue (CDN propagation delay or path mismatch)
+        logger.warning("\nWARNING: All files failed initial verification!");
+        logger.warning("Files only passed after retry upload, indicating:");
+        logger.warning("  1. CDN propagation delay (files not immediately available after upload)");
+        logger.warning("  2. Possible path mismatch between upload and verification");
+        logger.warning("  3. Storage API eventual consistency issue");
+        logger.warning("\nThis is a pipeline reliability issue that should be investigated.");
+        logger.warning("Consider adding a delay between upload and verification steps.");
+        // Exit with code 2 to indicate "success with warnings"
+        // This allows CI to distinguish between hard failures (1) and soft issues (2)
+        exitCode = 2;
+      }
+
+      process.exit(exitCode);
     } else if (manifestPath) {
       logger.info(`${dryRun ? "[DRY RUN] " : ""}Uploading from manifest: ${manifestPath}`);
       const { results: uploadResults } = await uploadFromManifest(manifestPath, dryRun, updateManifest);

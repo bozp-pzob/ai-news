@@ -244,11 +244,31 @@ jobs:
             exit 0
           fi
 
+          # Wait for CDN propagation before verification
+          # Bunny CDN storage API may have eventual consistency
+          echo "⏳ Waiting 5s for CDN propagation..."
+          sleep 5
+
           echo "🔍 Verifying CDN uploads..."
           npm run upload-cdn -- \
             --manifest ./media-upload/manifest.json \
             --verify \
             --retry-failures
+
+          VERIFY_EXIT=$?
+
+          # Exit code 0 = success
+          # Exit code 1 = hard failure (files missing after retry)
+          # Exit code 2 = soft warning (all files needed retry - propagation issue)
+          if [ $VERIFY_EXIT -eq 2 ]; then
+            echo "⚠️ WARNING: All files required retry upload - CDN propagation delay detected"
+            echo "Pipeline continues but this should be investigated"
+            # Continue with exit 0 to not fail the workflow
+            # The warning is logged for visibility
+          elif [ $VERIFY_EXIT -ne 0 ]; then
+            echo "❌ Verification failed with exit code $VERIFY_EXIT"
+            exit $VERIFY_EXIT
+          fi
 
       - name: Generate memes and posters
         run: |
@@ -284,6 +304,11 @@ jobs:
 
           mkdir -p ./public/${SOURCE}/json
           cp "./output/${SOURCE}/json/${DATE}.json" "./public/${SOURCE}/json/${DATE}.json"
+
+          # Also copy CDN-enriched JSON to daily.json (overwrites the non-enriched version)
+          cp "./output/${SOURCE}/json/${DATE}.json" "./public/${SOURCE}/json/daily.json"
+          echo "✅ Copied CDN-enriched JSON to daily.json"
+
           touch ./public/.nojekyll
 
           echo "✅ Final JSON ready for deployment"
@@ -296,7 +321,7 @@ jobs:
           publish_dir: ./public
           publish_branch: gh-pages
           keep_files: true
-          commit_message: "Add CDN media to ${{ inputs.source_name || 'elizaos' }}/json/${{ steps.date.outputs.date }}.json"
+          commit_message: "Add CDN media to ${{ inputs.source_name || 'elizaos' }}/json/${{ steps.date.outputs.date }}.json and daily.json"
 
       - name: Summary
         run: |
