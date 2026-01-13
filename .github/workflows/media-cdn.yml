@@ -244,6 +244,12 @@ jobs:
             exit 0
           fi
 
+          # Check if CDN credentials are available (without logging values)
+          if [ -z "$BUNNY_STORAGE_ZONE" ] || [ -z "$BUNNY_STORAGE_PASSWORD" ]; then
+            echo "❌ ERROR: CDN credentials not set. Storage API verification will fail."
+            echo "   Falling back to public CDN URL verification..."
+          fi
+
           echo "🔍 Verifying CDN uploads..."
 
           # Temporarily disable exit-on-error to capture exit code

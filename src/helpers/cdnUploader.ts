@@ -1017,7 +1017,7 @@ export async function verifyManifestUploads(
     retryFailures,
     remotePrefix,
     propagationDelay: DEFAULT_PROPAGATION_DELAY_MS,
-    useCdnUrl: false,
+    useCdnUrl: true,  // Use public CDN URL by default (more reliable than storage API)
     ...options
   };
 
@@ -1064,10 +1064,10 @@ export async function verifyManifestUploads(
           detail = result.statusCode ? `HTTP ${result.statusCode}` : "connection error";
         }
       } else {
-        // Verify via storage API (default)
+        // Verify via storage API
         exists = await provider.checkExists(entry.cdn_path);
         if (!exists) {
-          detail = "storage API returned 404";
+          detail = "storage API verification failed (auth or not found)";
         }
       }
 
