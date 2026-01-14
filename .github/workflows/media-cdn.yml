@@ -55,21 +55,47 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Determine date
-        id: date
-        run: |
-          if [ "${{ inputs.date }}" = "yesterday" ] || [ -z "${{ inputs.date }}" ]; then
-            DATE=$(date -u -d "yesterday" +%Y-%m-%d)
-          else
-            DATE="${{ inputs.date }}"
-          fi
-          echo "date=$DATE" >> "$GITHUB_OUTPUT"
-          echo "Processing date: $DATE"
-
       - name: Fetch gh-pages branch
         run: |
           git fetch origin gh-pages:gh-pages --depth=1
           echo "Fetched gh-pages branch"
+
+      - name: Determine date
+        id: date
+        run: |
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+
+          if [ "${{ inputs.date }}" = "yesterday" ] || [ -z "${{ inputs.date }}" ]; then
+            # When auto-triggered, find the most recent JSON file from the triggering workflow
+            if [ "${{ github.event_name }}" = "workflow_run" ]; then
+              echo "🤖 Auto-triggered: extracting date from most recent deployed file"
+
+              # Get the most recent JSON file from gh-pages (excluding daily.json)
+              LATEST_FILE=$(git ls-tree -r --name-only origin/gh-pages | \
+                grep "^${SOURCE}/json/[0-9]" | \
+                grep -v "daily.json" | \
+                sort -r | \
+                head -1)
+
+              if [ -n "$LATEST_FILE" ]; then
+                # Extract date from filename (e.g., elizaos/json/2026-01-12.json -> 2026-01-12)
+                DATE=$(basename "$LATEST_FILE" .json)
+                echo "✅ Found most recent file: $LATEST_FILE (date: $DATE)"
+              else
+                echo "⚠️ No recent files found, falling back to yesterday"
+                DATE=$(date -u -d "yesterday" +%Y-%m-%d)
+              fi
+            else
+              # Manual trigger: use yesterday
+              DATE=$(date -u -d "yesterday" +%Y-%m-%d)
+              echo "👤 Manual trigger: using yesterday"
+            fi
+          else
+            DATE="${{ inputs.date }}"
+          fi
+
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+          echo "Processing date: $DATE"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
