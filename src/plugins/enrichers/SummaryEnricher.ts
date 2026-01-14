@@ -86,7 +86,7 @@ export class SummaryEnricher {
 
       // Process each category
       for (const category of summary.categories) {
-        if (!category.content || category.content.length === 0) continue;
+        if (!category.content || !Array.isArray(category.content) || category.content.length === 0) continue;
 
         const categoryTopic = category.topic || category.title || "unknown";
         console.log(`SummaryEnricher: Processing category "${categoryTopic}" with ${category.content.length} content items`);
@@ -357,7 +357,7 @@ async function main() {
 
       if (summary.categories) {
         for (const category of summary.categories) {
-          if (category.content) {
+          if (category.content && Array.isArray(category.content)) {
             for (const item of category.content) {
               delete item.memes;
               delete item.posters;
