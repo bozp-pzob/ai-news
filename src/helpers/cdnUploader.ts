@@ -1278,12 +1278,35 @@ function printSummary(results: CDNUploadResult[], jsonOutput: boolean): void {
 
   const failures = results.filter((r) => !r.success);
   if (failures.length > 0) {
-    logger.info("\n🚨 Failures:");
-    failures.slice(0, 10).forEach((f) => {
-      logger.error(`  ${path.basename(f.localPath)}: ${f.message}`);
+    // Separate expected failures from critical ones
+    const expectedFailures = failures.filter((f) => {
+      const msg = f.message || "";
+      return (
+        msg.includes("File too large") ||
+        msg.includes("File type not allowed") ||
+        msg.includes("File not found")
+      );
     });
-    if (failures.length > 10) {
-      logger.info(`  ... and ${failures.length - 10} more failures`);
+    const criticalFailures = failures.filter((f) => !expectedFailures.includes(f));
+
+    if (expectedFailures.length > 0) {
+      logger.info("\n⚠️  Skipped Files:");
+      expectedFailures.slice(0, 10).forEach((f) => {
+        logger.warning(`  ${path.basename(f.localPath)}: ${f.message}`);
+      });
+      if (expectedFailures.length > 10) {
+        logger.info(`  ... and ${expectedFailures.length - 10} more skipped`);
+      }
+    }
+
+    if (criticalFailures.length > 0) {
+      logger.info("\n🚨 Critical Failures:");
+      criticalFailures.slice(0, 10).forEach((f) => {
+        logger.error(`  ${path.basename(f.localPath)}: ${f.message}`);
+      });
+      if (criticalFailures.length > 10) {
+        logger.info(`  ... and ${criticalFailures.length - 10} more failures`);
+      }
     }
   }
 
@@ -1514,8 +1537,20 @@ async function main(): Promise<void> {
 
     printSummary(results, jsonOutput);
 
+    // Separate expected failures (file too large, unsupported type) from unexpected errors
     const failures = results.filter((r) => !r.success);
-    process.exit(failures.length > 0 ? 1 : 0);
+    const criticalFailures = failures.filter((r) => {
+      const msg = r.message || "";
+      // Expected failures that shouldn't block workflow
+      const isExpectedFailure =
+        msg.includes("File too large") ||
+        msg.includes("File type not allowed") ||
+        msg.includes("File not found");
+      return !isExpectedFailure;
+    });
+
+    // Only exit with error if there are critical (unexpected) failures
+    process.exit(criticalFailures.length > 0 ? 1 : 0);
   } catch (error) {
     logger.error(`Error: ${error instanceof Error ? error.message : error}`);
     process.exit(1);
