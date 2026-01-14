@@ -217,23 +217,7 @@ jobs:
             echo "ℹ️ No manifest generated (no Discord media for this date)"
           fi
 
-      - name: Upload Discord media to CDN
-        if: inputs.dry_run != 'true' && hashFiles('media-upload/manifest.json') != ''
-        env:
-          BUNNY_STORAGE_HOST: https://la.storage.bunnycdn.com
-        run: |
-          SOURCE="${{ inputs.source_name || 'elizaos' }}"
-
-          if [ ! -d "./media-upload" ] || [ -z "$(ls -A ./media-upload/*.* 2>/dev/null)" ]; then
-            echo "ℹ️ No Discord media files to upload"
-            exit 0
-          fi
-
-          npm run upload-cdn -- \
-            --dir ./media-upload \
-            --remote "${SOURCE}-media/"
-
-      - name: Update manifest with CDN URLs
+      - name: Upload Discord media to CDN and update manifest
         if: inputs.dry_run != 'true' && hashFiles('media-upload/manifest.json') != ''
         env:
           BUNNY_STORAGE_HOST: https://la.storage.bunnycdn.com
@@ -242,16 +226,17 @@ jobs:
           DATE="${{ steps.date.outputs.date }}"
 
           if [ ! -f "./media-upload/manifest.json" ]; then
-            echo "ℹ️ No manifest to update"
+            echo "ℹ️ No manifest to upload"
             exit 0
           fi
 
-          # Update manifest with CDN URLs (files already uploaded in previous step)
+          # Upload files from manifest and update it atomically
+          # Only files that successfully upload will get cdn_url added
           npm run upload-cdn -- \
             --manifest ./media-upload/manifest.json \
-            --update-urls-only
+            --update-manifest
 
-          # Upload manifest to CDN
+          # Upload updated manifest to CDN
           npm run upload-cdn -- \
             --file ./media-upload/manifest.json \
             --remote "${SOURCE}-media/manifests/${DATE}.json"
