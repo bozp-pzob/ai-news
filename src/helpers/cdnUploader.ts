@@ -1002,33 +1002,30 @@ async function verifyFilesInRounds(
         // Step 1: Check Storage API (source of truth)
         const storageExists = await provider.checkExists(entry.cdn_path);
 
-        if (!storageExists) {
-          // Real failure - file not in storage
+        // Step 2: Check CDN URL (ultimate verification)
+        const cdnResult = await provider.checkExistsViaCDN(entry.cdn_path);
+
+        if (cdnResult.exists) {
+          // Success - file is accessible via CDN (what matters for users)
+          results.push({
+            entry,
+            storageExists,
+            cdnExists: true,
+            verified: true
+          });
+          pending.delete(idx);
+        } else if (!storageExists) {
+          // Neither storage nor CDN - real failure
           results.push({
             entry,
             storageExists: false,
             cdnExists: false,
             verified: false,
-            reason: "File not found in storage (upload failed)"
-          });
-          pending.delete(idx);
-          return;
-        }
-
-        // Step 2: Check CDN URL (propagation)
-        const cdnResult = await provider.checkExistsViaCDN(entry.cdn_path);
-
-        if (cdnResult.exists) {
-          // Success - both storage and CDN
-          results.push({
-            entry,
-            storageExists: true,
-            cdnExists: true,
-            verified: true
+            reason: "File not found in storage or CDN (upload failed)"
           });
           pending.delete(idx);
         } else if (round === maxRounds - 1) {
-          // Final round - still not propagated
+          // In storage but not CDN after max rounds - propagation issue
           results.push({
             entry,
             storageExists: true,
