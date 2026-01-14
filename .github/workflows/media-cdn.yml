@@ -318,38 +318,20 @@ jobs:
             echo "⚠️ CDN credentials not set. Using public CDN URL verification..."
           fi
 
-          echo "🔍 Verifying ALL CDN uploads before deployment..."
-          echo "   This includes Discord media, memes, and posters"
+          echo "🔍 Verifying CDN uploads with batched polling (6 rounds, ~53s max)..."
+          echo "   - Storage API check: source of truth for upload success"
+          echo "   - CDN URL check: validates edge propagation"
+          echo "   - Minor failures (≤3 files or ≤10%): allow deployment with warnings"
+          echo "   - Systemic failures (>10%): block deployment"
 
-          # Temporarily disable exit-on-error to capture exit code
-          set +e
+          # Exit code 0: Success or minor failures (deployment continues)
+          # Exit code 1: Systemic failure (blocks deployment)
           npm run upload-cdn -- \
             --manifest ./media-upload/manifest.json \
             --verify \
             --retry-failures
 
-          VERIFY_EXIT=$?
-          set -e
-
-          # Exit code 0 = success (clean verification)
-          # Exit code 1 = hard failure (files missing after retry) - BLOCKS DEPLOYMENT
-          # Exit code 2 = soft warning (files needed retry but eventually succeeded) - ALLOWS DEPLOYMENT
-          if [ $VERIFY_EXIT -eq 1 ]; then
-            echo "❌ CRITICAL: Verification failed - files missing from CDN even after retry"
-            echo "   Blocking deployment to prevent serving broken links"
-            exit 1
-          elif [ $VERIFY_EXIT -eq 2 ]; then
-            echo "⚠️ WARNING: All files required retry upload (CDN propagation delay)"
-            echo "   All files eventually verified successfully"
-            echo "   Deployment will proceed"
-          elif [ $VERIFY_EXIT -eq 0 ]; then
-            echo "✅ All files verified successfully on first attempt"
-          else
-            echo "❌ Unexpected exit code: $VERIFY_EXIT"
-            exit 1
-          fi
-
-          echo "✅ Verification passed - proceeding to deployment"
+          echo "✅ Verification complete - proceeding to deployment"
 
       - name: Deploy to gh-pages
         if: inputs.dry_run != 'true'

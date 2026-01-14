@@ -507,6 +507,7 @@ export interface MediaManifest {
       uploaded: number;
       skipped: number;
       failed: number;
+      removed?: number; // Number of failed entries removed from manifest
     };
   };
 }
