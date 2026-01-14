@@ -1518,19 +1518,38 @@ async function main(): Promise<void> {
       const failureThreshold = 0.10; // 10%
       const maxAbsoluteFailures = 3;
 
-      if (stats.failed > 0) {
-        const failureRate = stats.totalFiles > 0 ? stats.failed / stats.totalFiles : 0;
-        const withinThreshold = stats.failed <= maxAbsoluteFailures || failureRate <= failureThreshold;
+      // Separate expected failures (too large, unsupported) from unexpected failures (upload/CDN errors)
+      const expectedFailures = stats.failures.filter(({ reason }) => {
+        return reason?.includes("Missing cdn_path in manifest");
+      });
+      const unexpectedFailures = stats.failures.filter(({ reason }) => {
+        return !reason?.includes("Missing cdn_path in manifest");
+      });
+
+      const unexpectedCount = unexpectedFailures.length;
+
+      // Log expected failures separately (informational only)
+      if (expectedFailures.length > 0) {
+        logger.info(`\nℹ️  ${expectedFailures.length} files skipped (too large or unsupported):`);
+        expectedFailures.forEach(({ entry, reason }) => {
+          logger.info(`  - ${entry.unique_name}: ${reason}`);
+        });
+      }
+
+      // Only count unexpected failures toward threshold
+      if (unexpectedCount > 0) {
+        const failureRate = stats.totalFiles > 0 ? unexpectedCount / stats.totalFiles : 0;
+        const withinThreshold = unexpectedCount <= maxAbsoluteFailures || failureRate <= failureThreshold;
 
         if (withinThreshold) {
           // Minor failures - allow deployment, remove from manifest
-          logger.warning(`\n⚠️ WARNING: ${stats.failed} files failed verification (${(failureRate * 100).toFixed(1)}%)`);
+          logger.warning(`\n⚠️ WARNING: ${unexpectedCount} files failed verification (${(failureRate * 100).toFixed(1)}%)`);
           logger.warning("Within acceptable threshold - deployment will continue");
           logger.warning("Failed entries will be removed from manifest");
           exitCode = 0;
         } else {
           // Systemic failures - block deployment
-          logger.error(`\n❌ CRITICAL: ${stats.failed} files failed verification (${(failureRate * 100).toFixed(1)}%)`);
+          logger.error(`\n❌ CRITICAL: ${unexpectedCount} files failed verification (${(failureRate * 100).toFixed(1)}%)`);
           logger.error(`Exceeds threshold of ${failureThreshold * 100}% or ${maxAbsoluteFailures} files`);
           logger.error("This indicates a systemic issue:");
           logger.error("  - CDN credentials misconfigured");
@@ -1540,6 +1559,11 @@ async function main(): Promise<void> {
           logger.error("\nBlocking deployment to prevent widespread broken links");
           exitCode = 1;
         }
+      } else if (expectedFailures.length > 0) {
+        // Only expected failures - allow deployment with info message
+        logger.info("\n✅ All uploaded files verified successfully");
+        logger.info(`${expectedFailures.length} files were skipped during upload (expected behavior)`);
+        exitCode = 0;
       }
 
       process.exit(exitCode);
