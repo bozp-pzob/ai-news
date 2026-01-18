@@ -21,6 +21,7 @@
     "users": "ts-node -r tsconfig-paths/register --transpile-only scripts/users.ts",
     "enrich-nicknames": "ts-node -r tsconfig-paths/register --transpile-only scripts/enrich-nicknames.ts",
     "merge-discord-dbs": "ts-node -r tsconfig-paths/register --transpile-only scripts/merge-discord-databases.ts",
+    "build-user-registry": "ts-node -r tsconfig-paths/register --transpile-only scripts/build-discord-user-registry.ts",
     "dashboard": "node scripts/generate-dashboard.mjs",
     "status": "node scripts/generate-dashboard.mjs --dry-run",
     "webhook": "node scripts/server.js"
