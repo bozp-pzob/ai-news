@@ -728,7 +728,7 @@ async function commandStatus(db: Database): Promise<void> {
 
 function commandHelp(): void {
   console.log(`
-📚 User Management CLI
+📚 Discord User Registry CLI
 
 Commands:
   index              Build user-index.json from raw Discord logs
