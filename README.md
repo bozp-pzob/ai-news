@@ -153,15 +153,23 @@ npm run historical -- --source=discord-raw.json --before=2024-01-10 --output=./o
 
 ## Channel Management
 
-### Channel Discovery
-Automatically discover and track Discord channels across all configured servers:
+Unified CLI for Discord channel discovery, tracking, and configuration:
 
 ```bash
-# Generate channel checklist (runs daily via GitHub Action)
-npm run discover-channels
+# Discover all channels from Discord API → registry → CHANNELS.md
+npm run channels -- discover --sample
 
 # Test mode (validate configs without Discord API)
-npm run discover-channels -- --test-configs
+npm run channels -- discover --test-configs
+
+# Sync CHANNELS.md changes to registry and configs
+npm run channels -- sync [--dry-run]
+
+# Query and manage channels
+npm run channels -- list [--tracked|--active|--muted]
+npm run channels -- show <channelId>
+npm run channels -- stats
+npm run channels -- track|untrack|mute|unmute <channelId>
 
 # With media download
 npm run historical -- --source=elizaos.json --download-media=true --date=2024-01-15
@@ -202,35 +210,14 @@ npm run upload-cdn -- --dir ./media/ --remote elizaos-media/ --dry-run
 
 📋 **Channel Checklist**: View and edit tracked channels at [scripts/CHANNELS.md](scripts/CHANNELS.md)
 
-### Configuration Updates
-Update configs based on checked channels in the checklist:
+### Workflow
 
-```bash
-# Apply changes from checklist to config files
-npm run update-configs
-
-# Preview changes without applying
-npm run update-configs -- --dry-run
-```
-
-### Workflow Options
-
-**Option A: GitHub Web Interface (Automated)**
-1. Open [scripts/CHANNELS.md](scripts/CHANNELS.md) on GitHub
-2. Edit file and check/uncheck channel boxes
-3. Commit changes
-4. GitHub Action automatically runs `update-configs` and commits any config changes
-
-**Option B: Local Development**
-1. Run `npm run discover-channels` to update checklist
-2. Edit `scripts/CHANNELS.md` locally to check/uncheck channels
-3. Run `npm run update-configs` to update config files
+1. Run `npm run channels -- discover --sample` to fetch all channels and generate checklist
+2. Edit `scripts/CHANNELS.md` - check Track/Mute boxes as needed
+3. Run `npm run channels -- sync` to apply changes to registry and config files
 4. Commit and push changes
 
-**Option C: Manual GitHub Workflow**
-1. Open [scripts/CHANNELS.md](scripts/CHANNELS.md) on GitHub and edit
-2. Commit changes → Pull locally: `git pull`
-3. Apply updates: `npm run update-configs`
+**GitHub Actions**: Channel discovery runs weekly and commits updated checklist automatically.
 
 ## Server Deployment
 

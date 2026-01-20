@@ -118,26 +118,39 @@ src/
 
 The system supports specialized modes: `--onlyFetch` (no AI processing), `--onlyGenerate` (process existing data), and configurable output directories.
 
-## Channel Discovery System
-Automated Discord channel discovery generates a daily checklist showing all visible channels and their tracking status:
-- **Daily Updates**: GitHub Action runs at 6:00 AM UTC to update `scripts/CHANNELS.md`
-- **Manual Discovery**: `npm run discover-channels` to run locally
-- **Test Mode**: `npm run discover-channels -- --test-configs` to validate configurations without Discord API
-- **Debug Mode**: `npm run discover-channels -- --test-configs --debug` to see detailed guild and channel information
-- **Checklist Format**: Markdown checklist organized by guild with tracked/untracked channels clearly marked
+## Channel Management System
 
-### Config Updates from Checklist
-Update configuration files based on checked channels in the checklist:
-- **Update Configs**: `npm run update-configs` - adds checked channels to their respective config files
-- **Dry Run**: `npm run update-configs -- --dry-run` - preview changes without applying them
-- **Workflow**: Check boxes in `scripts/CHANNELS.md` → run update script → channels automatically added to configs
+Unified TypeScript CLI (`scripts/channels.ts`) for Discord channel discovery and management:
 
-### Analytics Reminder System
-Automated reminders to review Discord analytics for channel activity:
-- **28-Day Cycle**: Countdown appears at top of `scripts/CHANNELS.md` every 28 days
-- **Direct Link**: Analytics URL with proper date range automatically generated
-- **Smart Reset**: Timer resets when you run `npm run update-configs` (implying you reviewed and acted on analytics)
-- **Purpose**: Identify low-activity channels to reduce tracking noise and focus on active discussions
+```bash
+# Discovery & Sync
+npm run channels -- discover [--sample]     # Fetch ALL channels from Discord → registry → CHANNELS.md
+npm run channels -- sync [--dry-run]        # Parse CHANNELS.md → update registry → update configs
+
+# Query Commands
+npm run channels -- list [--tracked|--active|--muted|--quiet]
+npm run channels -- show <channelId>
+npm run channels -- stats
+
+# Management Commands
+npm run channels -- track <channelId>
+npm run channels -- untrack <channelId>
+npm run channels -- mute <channelId>
+npm run channels -- unmute <channelId>
+
+# Registry Commands
+npm run channels -- build-registry          # Backfill from discordRawData
+```
+
+### Workflow
+1. `npm run channels -- discover --sample` - Fetches all channels, samples activity, generates CHANNELS.md
+2. Edit `scripts/CHANNELS.md` - Check Track/Mute boxes as needed
+3. `npm run channels -- sync` - Applies changes to registry and config files
+
+### Data Storage
+- **DiscordChannelRegistry** (`src/plugins/storage/DiscordChannelRegistry.ts`) - SQLite table for channel metadata
+- Tracks: name/topic/category changes, activity history, AI insights, muted state
+- GitHub Action runs weekly to update channel checklist
 
 ## User Identity Systems
 

@@ -2,42 +2,83 @@
 
 Utility scripts for the AI News aggregator.
 
-## Discord Channel Discovery & Management
+## Discord Channel Management
 
-Automated tools for discovering and managing Discord channels in your AI News Aggregator configurations.
-
-### Overview
-
-This system provides two main scripts:
-
-1. **`discover-channels.mjs`** - Discovers all visible channels in your Discord servers and generates a markdown checklist
-2. **`update-configs-from-checklist.mjs`** - Updates your configuration files based on the checklist selections
+Unified TypeScript CLI for discovering and managing Discord channels.
 
 ### Quick Start
 
-#### 1. Discover Channels
-
 ```bash
-# Generate channel checklist
-npm run discover-channels
+# Discover all channels from Discord API
+npm run channels -- discover
+
+# Discover with activity sampling (recommended)
+npm run channels -- discover --sample
 
 # Test configurations without Discord API calls
-npm run discover-channels -- --test-configs
+npm run channels -- discover --test-configs
+
+# Sync CHANNELS.md changes to registry and configs
+npm run channels -- sync
+
+# Preview sync changes without applying
+npm run channels -- sync --dry-run
 ```
 
-This creates `scripts/CHANNELS.md` with a checklist of all discoverable channels.
-
-#### 2. Update Configurations
+### All Commands
 
 ```bash
-# Preview changes without applying them
-npm run update-configs -- --dry-run
+# Discovery & Sync
+npm run channels -- discover [--sample] [--test-configs]
+npm run channels -- sync [--dry-run]
 
-# Apply changes to configuration files
-npm run update-configs
+# Query Commands
+npm run channels -- list [--tracked|--active|--muted|--quiet]
+npm run channels -- show <channelId>
+npm run channels -- stats
+
+# Management Commands
+npm run channels -- track <channelId>
+npm run channels -- untrack <channelId>
+npm run channels -- mute <channelId>
+npm run channels -- unmute <channelId>
+
+# Registry Commands
+npm run channels -- build-registry [--dry-run]
 ```
 
-After checking/unchecking channels in `CHANNELS.md`, run this to automatically update your configuration files.
+### Workflow
+
+1. Run `npm run channels -- discover --sample` to fetch all channels
+2. Edit `scripts/CHANNELS.md` - check Track/Mute boxes as needed
+3. Run `npm run channels -- sync` to apply changes to registry and configs
+
+### Aliases
+
+For convenience, these npm scripts are available:
+- `npm run discover-channels` → `npm run channels -- discover --sample`
+- `npm run update-configs` → `npm run channels -- sync`
+
+## Discord User Management
+
+TypeScript CLI for managing Discord user data and avatars.
+
+```bash
+# Build user index from raw Discord logs
+npm run users -- index
+
+# Fetch avatar URLs from Discord API
+npm run users -- fetch-avatars [--rate-limit=<ms>] [--skip-existing]
+
+# Download avatar images locally
+npm run users -- download-avatars [--rate-limit=<ms>] [--skip-existing]
+
+# Build discord_users table from discordRawData
+npm run users -- build-registry [--dry-run]
+
+# Enrich JSON files with nickname maps
+npm run users -- enrich [--date=YYYY-MM-DD] [--from/--to] [--all] [--dry-run]
+```
 
 ## Collection Scripts
 
@@ -69,11 +110,6 @@ npm run webhook
 - `POST /run-collect` - Trigger collection (HMAC auth required)
 - `GET /healthz` - Health check
 
-**Payload:**
-```json
-{"config": "elizaos.json", "date": "2025-01-15"}
-```
-
 ### `test-webhook.sh`
 Test utility for webhook development.
 
@@ -88,11 +124,8 @@ export COLLECT_WEBHOOK_SECRET="your-secret"
 Project dashboard with terminal and HTML output.
 
 ```bash
-# Generate full dashboard
-npm run dashboard
-
-# Status overview only
-npm run status
+npm run dashboard    # Generate full dashboard
+npm run status       # Status overview only
 ```
 
 ## Integration
@@ -100,6 +133,7 @@ npm run status
 This system is designed to work seamlessly with the broader AI News Aggregator plugin architecture. All discovered channels are automatically compatible with:
 
 - `DiscordRawDataSource` plugins
+- `DiscordChannelRegistry` for metadata storage
 - Historical data collection
-- Media download functionality  
+- Media download functionality
 - Content enrichment and AI processing
