@@ -436,8 +436,9 @@ async function commandDiscover(db: Database, args: CliArgs): Promise<void> {
           });
           errors++;
 
-          // Auto-mute inaccessible channels
-          if (!mutedChannels.has(channelId)) {
+          // Auto-mute inaccessible channels (but not tracked ones)
+          const tracked = trackedChannels.get(guildId)?.has(channelId);
+          if (!mutedChannels.has(channelId) && !tracked) {
             mutedChannels.add(channelId);
             await registry.setMuted(channelId, true);
           }
