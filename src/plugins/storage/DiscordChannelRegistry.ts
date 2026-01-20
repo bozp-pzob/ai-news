@@ -15,6 +15,93 @@ import { Database } from "sqlite";
 import sqlite3 from "sqlite3";
 
 // ============================================================================
+// Discord API Constraints (from discord-api-types)
+// https://github.com/discordjs/discord-api-types/blob/main/rest/v10/channel.ts
+// ============================================================================
+
+export const DISCORD_LIMITS = {
+  CHANNEL_NAME_MIN: 1,
+  CHANNEL_NAME_MAX: 100,
+  CHANNEL_TOPIC_MAX: 1024,        // 4096 for forum/thread-only channels
+  CHANNEL_TOPIC_MAX_FORUM: 4096,
+  RATE_LIMIT_PER_USER_MAX: 21600, // seconds (6 hours)
+  GUILD_NAME_MAX: 100,
+  CATEGORY_NAME_MAX: 100,
+} as const;
+
+// ============================================================================
+// Validation (no mutation - just checks)
+// ============================================================================
+
+interface ValidationError {
+  field: string;
+  value: any;
+  constraint: string;
+}
+
+function validateChannelParams(params: {
+  id: string;
+  guildId: string;
+  guildName: string;
+  name: string;
+  topic?: string | null;
+  categoryName?: string | null;
+  rateLimitPerUser?: number;
+}): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  // Required fields
+  if (!params.id || typeof params.id !== 'string') {
+    errors.push({ field: 'id', value: params.id, constraint: 'required string (Discord snowflake)' });
+  }
+  if (!params.guildId || typeof params.guildId !== 'string') {
+    errors.push({ field: 'guildId', value: params.guildId, constraint: 'required string (Discord snowflake)' });
+  }
+
+  // Name: 1-100 characters
+  if (!params.name || typeof params.name !== 'string') {
+    errors.push({ field: 'name', value: params.name, constraint: 'required string' });
+  } else if (params.name.length < DISCORD_LIMITS.CHANNEL_NAME_MIN || params.name.length > DISCORD_LIMITS.CHANNEL_NAME_MAX) {
+    errors.push({ field: 'name', value: params.name.length, constraint: `${DISCORD_LIMITS.CHANNEL_NAME_MIN}-${DISCORD_LIMITS.CHANNEL_NAME_MAX} characters` });
+  }
+
+  // Guild name: 1-100 characters
+  if (!params.guildName || typeof params.guildName !== 'string') {
+    errors.push({ field: 'guildName', value: params.guildName, constraint: 'required string' });
+  } else if (params.guildName.length > DISCORD_LIMITS.GUILD_NAME_MAX) {
+    errors.push({ field: 'guildName', value: params.guildName.length, constraint: `max ${DISCORD_LIMITS.GUILD_NAME_MAX} characters` });
+  }
+
+  // Topic: 0-1024 characters (null allowed)
+  if (params.topic !== null && params.topic !== undefined) {
+    if (typeof params.topic !== 'string') {
+      errors.push({ field: 'topic', value: typeof params.topic, constraint: 'string or null' });
+    } else if (params.topic.length > DISCORD_LIMITS.CHANNEL_TOPIC_MAX_FORUM) {
+      // Use forum limit (4096) as upper bound since we might not know channel type yet
+      errors.push({ field: 'topic', value: params.topic.length, constraint: `max ${DISCORD_LIMITS.CHANNEL_TOPIC_MAX_FORUM} characters` });
+    }
+  }
+
+  // Category name: 0-100 characters (null allowed)
+  if (params.categoryName !== null && params.categoryName !== undefined) {
+    if (typeof params.categoryName !== 'string') {
+      errors.push({ field: 'categoryName', value: typeof params.categoryName, constraint: 'string or null' });
+    } else if (params.categoryName.length > DISCORD_LIMITS.CATEGORY_NAME_MAX) {
+      errors.push({ field: 'categoryName', value: params.categoryName.length, constraint: `max ${DISCORD_LIMITS.CATEGORY_NAME_MAX} characters` });
+    }
+  }
+
+  // Rate limit: 0-21600 seconds
+  if (params.rateLimitPerUser !== undefined) {
+    if (typeof params.rateLimitPerUser !== 'number' || params.rateLimitPerUser < 0 || params.rateLimitPerUser > DISCORD_LIMITS.RATE_LIMIT_PER_USER_MAX) {
+      errors.push({ field: 'rateLimitPerUser', value: params.rateLimitPerUser, constraint: `0-${DISCORD_LIMITS.RATE_LIMIT_PER_USER_MAX} seconds` });
+    }
+  }
+
+  return errors;
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -213,6 +300,15 @@ export class DiscordChannelRegistry {
     isTracked?: boolean;
     isMuted?: boolean;
   }): Promise<void> {
+    // Validate params against Discord constraints (no mutation, just checks)
+    const validationErrors = validateChannelParams(params);
+    if (validationErrors.length > 0) {
+      const errorMsg = validationErrors
+        .map(e => `${e.field}: ${e.value} (expected: ${e.constraint})`)
+        .join('; ');
+      throw new Error(`Channel validation failed: ${errorMsg}`);
+    }
+
     const now = Math.floor(Date.now() / 1000);
     const observedTimestamp = Math.floor(new Date(params.observedAt).getTime() / 1000);
 
