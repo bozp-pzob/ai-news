@@ -1,34 +1,34 @@
 # Discord Channel Tracking Status
-*Updated: 2026-01-18 06:19:34 UTC*
+*Updated: 2026-01-20 08:35:24 UTC*
 
 ## Summary
 
 | Metric | Count |
 |--------|-------|
-| Total Channels | 141 |
-| Currently Tracking | 6 |
-| Muted | 97 |
+| Total Channels | 139 |
+| Currently Tracking | 7 |
+| Muted | 94 |
 | Available | 39 |
 
-## 🔥 Recommendations
+## Recommendations
 
 **7 active channels** not being tracked:
 
 | Channel | ID | Activity | Track | Mute |
 |---------|-----|----------|-------|------|
-| #cloud-logs | `1434932532473757829` | 🔥 175/day | ⬜ | ⬜ |
-| #elizaos-github | `1377733240449925150` | 🔥 87/day | ⬜ | ⬜ |
-| #cloud | `1422802977457967156` | 🟢 29/day | ⬜ | ⬜ |
+| #elizaos-github | `1377733240449925150` | 🔥 184/day | ⬜ | ⬜ |
+| #plugins-github | `1377733306594099371` | 🔥 78/day | ⬜ | ⬜ |
+| #cloud-logs | `1434932532473757829` | 🟢 47/day | ⬜ | ⬜ |
 | #legend-of-elza | `1456005015599710314` | 🟢 24/day | ⬜ | ⬜ |
-| #plugins-github | `1377733306594099371` | 🟢 24/day | ⬜ | ⬜ |
-| #🌈-migration-questions | `1425417640071139358` | 🟢 18/day | ⬜ | ⬜ |
-| #content-and-memes | `1299956148253884416` | 🟢 11/day | ⬜ | ⬜ |
+| #cloud | `1422802977457967156` | 🟢 19/day | ⬜ | ⬜ |
+| #🌈-migration-questions | `1425417640071139358` | 🟢 14/day | ⬜ | ⬜ |
+| #content-and-memes | `1299956148253884416` | 🟢 9/day | ⬜ | ⬜ |
 
 ## Instructions
 
 1. **Track**: Change ⬜ to ✅ to add channel to config
 2. **Mute**: Change ⬜ to ✅ to hide from recommendations (won't track)
-3. Run `npm run update-configs` to apply changes
+3. Run `npm run channels -- sync` to apply changes
 
 ## Activity Legend
 
@@ -48,20 +48,20 @@
 
 | Channel | ID | Activity | Track | Mute |
 |---------|-----|----------|-------|------|
-| #core-devs-archived | `1318117081215930459` | ⚫ 198d ago | ⬜ | ⬜ |
+| #core-devs-archived | `1318117081215930459` | ⚫ 200d ago | ⬜ | ⬜ |
 
 ### ARCHIVES-2
 
 | Channel | ID | Activity | Track | Mute |
 |---------|-----|----------|-------|------|
-| #dao-organization | `1351627860351258685` | ⚫ 229d ago | ⬜ | ⬜ |
-| #partner-portal-workgroup | `1327141924183998555` | ⚫ 244d ago | ⬜ | ⬜ |
-| #workgroups-general | `1310291767341486101` | ⚫ 253d ago | ⬜ | ⬜ |
-| #agent-dev | `1395058973509554186` | ⚫ 150d ago | ⬜ | ⬜ |
-| #2x-yaps | `1389507912191184998` | ⚫ 156d ago | ⬜ | ⬜ |
-| #tweets | `1361523520676560997` | ⚫ 190d ago | ⬜ | ⬜ |
-| #⭐-starboard | `1303039409494429696` | ⚫ 292d ago | ⬜ | ⬜ |
-| #twitter-ai-news | `1326603270893867064` | ⚫ 1.3/day | ⬜ | ⬜ |
+| #dao-organization | `1351627860351258685` | ⚫ 231d ago | ⬜ | ⬜ |
+| #partner-portal-workgroup | `1327141924183998555` | ⚫ 246d ago | ⬜ | ⬜ |
+| #workgroups-general | `1310291767341486101` | ⚫ 255d ago | ⬜ | ⬜ |
+| #agent-dev | `1395058973509554186` | ⚫ 152d ago | ⬜ | ⬜ |
+| #2x-yaps | `1389507912191184998` | ⚫ 158d ago | ⬜ | ⬜ |
+| #tweets | `1361523520676560997` | ⚫ 192d ago | ⬜ | ⬜ |
+| #⭐-starboard | `1303039409494429696` | ⚫ 294d ago | ⬜ | ⬜ |
+| #twitter-ai-news | `1326603270893867064` | ⚫ 1.2/day | ⬜ | ⬜ |
 
 ### COMMUNITY WORKGROUPS
 
@@ -83,12 +83,12 @@
 
 | Channel | ID | Activity | Track | Mute |
 |---------|-----|----------|-------|------|
-| #💬-coders | `1300025221834739744` | 🔥 50/day | ✅ | ⬜ |
-| #core-devs | `1377726087789940836` | 🟢 18/day | ✅ | ⬜ |
-| #elizaos-github | `1377733240449925150` | 🔥 87/day | ⬜ | ⬜ |
-| #plugins-github | `1377733306594099371` | 🟢 24/day | ⬜ | ⬜ |
-| #cloud | `1422802977457967156` | 🟢 29/day | ⬜ | ⬜ |
-| #cloud-logs | `1434932532473757829` | 🔥 175/day | ⬜ | ⬜ |
+| #💬-coders | `1300025221834739744` | 🟢 25/day | ✅ | ⬜ |
+| #core-devs | `1377726087789940836` | 🟢 13/day | ✅ | ⬜ |
+| #elizaos-github | `1377733240449925150` | 🔥 184/day | ⬜ | ⬜ |
+| #plugins-github | `1377733306594099371` | 🔥 78/day | ⬜ | ⬜ |
+| #cloud | `1422802977457967156` | 🟢 19/day | ⬜ | ⬜ |
+| #cloud-logs | `1434932532473757829` | 🟢 47/day | ⬜ | ⬜ |
 | #clone-ur-crush | `1440207337087307817` | 🔵 6.0/day | ⬜ | ⬜ |
 | #legend-of-elza | `1456005015599710314` | 🟢 24/day | ⬜ | ⬜ |
 
@@ -109,7 +109,7 @@
 
 | Channel | ID | Activity | Track | Mute |
 |---------|-----|----------|-------|------|
-| #open-a-ticket | `1423981231300935801` | ⚫ 105d ago | ⬜ | ⬜ |
+| #open-a-ticket | `1423981231300935801` | ⚫ 107d ago | ⬜ | ⬜ |
 
 ### SPARTAN
 
@@ -123,18 +123,24 @@
 
 | Channel | ID | Activity | Track | Mute |
 |---------|-----|----------|-------|------|
-| #rules-and-faq | `1285103549944168450` | ⚫ 69d ago | ⬜ | ⬜ |
-| #verify-now | `1361911606967144528` | ⚫ 277d ago | ⬜ | ⬜ |
-| #select-role | `1300245650180669472` | ⚫ 263d ago | ⬜ | ⬜ |
+| #rules-and-faq | `1285103549944168450` | ⚫ 72d ago | ⬜ | ⬜ |
+| #verify-now | `1361911606967144528` | ⚫ 279d ago | ⬜ | ⬜ |
+| #select-role | `1300245650180669472` | ⚫ 265d ago | ⬜ | ⬜ |
 | #builder-onboarding | `1415627400456437831` | ⚫ empty | ⬜ | ⬜ |
 
 ### THE ARENA
 
 | Channel | ID | Activity | Track | Mute |
 |---------|-----|----------|-------|------|
-| #💬-discussion | `1253563209462448241` | 🟢 46/day | ✅ | ⬜ |
-| #🌈-migration-questions | `1425417640071139358` | 🟢 18/day | ⬜ | ⬜ |
+| #💬-discussion | `1253563209462448241` | 🔥 105/day | ✅ | ⬜ |
+| #🌈-migration-questions | `1425417640071139358` | 🟢 14/day | ⬜ | ⬜ |
 | #🔦-watchtower | `1300480482466861147` | ⚫ 1.0/day | ⬜ | ⬜ |
-| #🤖-the-arena | `1285105813349859421` | 🔵 2.7/day | ⬜ | ⬜ |
-| #content-and-memes | `1299956148253884416` | 🟢 11/day | ⬜ | ⬜ |
+| #🤖-the-arena | `1285105813349859421` | 🔵 1.9/day | ⬜ | ⬜ |
+| #content-and-memes | `1299956148253884416` | 🟢 9/day | ⬜ | ⬜ |
+
+### Working Groups
+
+| Channel | ID | Activity | Track | Mute |
+|---------|-----|----------|-------|------|
+| #tokenomics | `1318770424632311930` | ❓ not sampled | ✅ | ⬜ |
 

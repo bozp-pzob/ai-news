@@ -61,10 +61,10 @@ jobs:
           # Include --sample for scheduled runs or if explicitly requested
           if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.sample }}" = "true" ]; then
             echo "Running with activity sampling..."
-            node scripts/discover-channels.js --sample
+            npm run channels -- discover --sample
           else
             echo "Running without activity sampling..."
-            node scripts/discover-channels.js
+            npm run channels -- discover
           fi
         env:
           NODE_ENV: production
@@ -87,7 +87,7 @@ jobs:
 
       - name: Run config auto-update
         if: steps.checklist_changes.outputs.checklist_changed == 'true'
-        run: node scripts/update-configs-from-checklist.mjs
+        run: npm run channels -- sync
         env:
           NODE_ENV: production
 

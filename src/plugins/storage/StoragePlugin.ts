@@ -65,4 +65,12 @@ export interface StoragePlugin {
    * @param messageId - message id that was last fetched.
    */
   setCursor(cid: string, messageId: string): Promise<void>;
+
+  /**
+   * Returns the underlying database connection for direct access.
+   * Used by registries (DiscordUserRegistry, DiscordChannelRegistry) that need
+   * to manage their own tables within the same database.
+   * @returns The database connection, or null if not initialized
+   */
+  getDb(): any;
 }
