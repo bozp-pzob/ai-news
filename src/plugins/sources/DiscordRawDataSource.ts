@@ -11,6 +11,7 @@ import { delay, retryOperation } from '../../helpers/generalHelper';
 import { isMediaFile } from '../../helpers/fileHelper';
 import { processDiscordAttachment, processDiscordEmbed, processDiscordSticker } from '../../helpers/mediaHelper';
 import { StoragePlugin } from '../storage/StoragePlugin';
+import { DiscordChannelRegistry } from '../storage/DiscordChannelRegistry';
 
 const API_RATE_LIMIT_DELAY = 50; // Reduced to 50ms between API calls
 const PARALLEL_USER_FETCHES = 10; // Number of user fetches to run in parallel
@@ -66,6 +67,8 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
   private guildId: string;
   /** Store to cursors for recently pulled discord channels*/
   private storage: StoragePlugin;
+  /** Channel registry for tracking channel metadata and activity */
+  private channelRegistry: DiscordChannelRegistry | null = null;
   /** Media download configuration */
   public mediaDownload?: MediaDownloadConfig;
 
@@ -552,6 +555,16 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
       logger.success('Successfully logged in to Discord');
     }
 
+    // Initialize channel registry if storage supports direct db access
+    if (!this.channelRegistry) {
+      const db = this.storage.getDb();
+      if (db) {
+        this.channelRegistry = new DiscordChannelRegistry(db);
+        await this.channelRegistry.initialize();
+        logger.debug('Initialized DiscordChannelRegistry');
+      }
+    }
+
     const items: ContentItem[] = [];
     const targetDate = new Date(date);
     // Ensure targetDate is interpreted as UTC start of day for consistency
@@ -595,7 +608,38 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
             }
           });
         }
-        
+
+        // Update channel registry with channel metadata and activity
+        if (this.channelRegistry) {
+          try {
+            await this.channelRegistry.upsertChannel({
+              id: channel.id,
+              guildId: channel.guild.id,
+              guildName: guildName,
+              name: channel.name,
+              topic: channel.topic,
+              categoryId: channel.parentId,
+              categoryName: channel.parent?.name || null,
+              type: channel.type,
+              position: channel.position,
+              nsfw: channel.nsfw,
+              rateLimitPerUser: channel.rateLimitPerUser,
+              createdAt: Math.floor(channel.createdTimestamp / 1000),
+              observedAt: date,
+              isTracked: true
+            });
+
+            // Record daily activity
+            await this.channelRegistry.recordActivity(
+              channel.id,
+              date,
+              rawData.messages.length
+            );
+          } catch (regError) {
+            logger.warning(`Failed to update channel registry for ${channel.name}: ${regError}`);
+          }
+        }
+
         logger.success(`Processed ${rawData.messages.length} messages from ${channel.name}`);
       } catch (error) {
         logger.error(`Error processing channel ${channelId}: ${error}`);

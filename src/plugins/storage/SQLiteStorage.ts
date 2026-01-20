@@ -450,11 +450,21 @@ export class SQLiteStorage implements StoragePlugin {
    */
   public async setCursor(cid: string, messageId: string): Promise<void> {
     if (!this.db) throw new Error("Database not initialized.");
-  
+
     await this.db.run(`
       INSERT INTO cursor (cid, message_id)
       VALUES (?, ?)
       ON CONFLICT(cid) DO UPDATE SET message_id = excluded.message_id;
     `, [cid, messageId]);
+  }
+
+  /**
+   * Returns the underlying database connection for direct access.
+   * Used by registries (DiscordUserRegistry, DiscordChannelRegistry) that need
+   * to manage their own tables within the same database.
+   * @returns The database connection, or null if not initialized
+   */
+  public getDb(): Database<sqlite3.Database, sqlite3.Statement> | null {
+    return this.db;
   }
 }
