@@ -1,0 +1,55 @@
+# Dependencies - will be installed fresh in container
+node_modules
+frontend/node_modules
+
+# Build outputs - will be built fresh in container
+dist
+frontend/build
+
+# Development files
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+
+# IDE and editor files
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test and coverage
+coverage
+.nyc_output
+
+# Documentation (optional - can be built separately)
+docs/node_modules
+docs/.docusaurus
+docs/build
+
+# Temporary files
+tmp
+temp
+*.tmp
+
+# Data and output directories
+data/
+json/
+md/
+media/
+
+# Lock files for yarn (we use npm)
+frontend/yarn.lock
+yarn.lock
