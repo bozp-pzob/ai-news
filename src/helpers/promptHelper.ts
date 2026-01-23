@@ -118,7 +118,19 @@ export const createJSONPromptForTopics = (
 
   prompt += `Provide a clear and concise summary based on the ***sources*** above for the topic. DO NOT PULL DATA FROM OUTSIDE SOURCES'${topic}'. Combine similar sources into a longer summary if it makes sense.\n\n`;
 
-  prompt += `Response MUST be a valid JSON object containing:\n- 'title': The title of the topic.\n- 'content': A list of messages with keys 'text', 'sources', 'images', and 'videos'.\n\nIMPORTANT: Use plain text only - no emojis, no markdown formatting.\n\n`;
+  prompt += `Response MUST be a valid JSON object with this EXACT structure:
+{
+  "title": "Topic Title Here",
+  "content": [
+    {"text": "summary text", "sources": ["url1"], "images": ["img_url"], "videos": ["vid_url"]}
+  ]
+}
+
+CRITICAL: 'content' MUST ALWAYS be an array, even if there is only one item. Never return content as a single object.
+
+IMPORTANT: Use plain text only - no emojis, no markdown formatting.
+
+`;
 
   // Add instruction about using provided media URLs
   if (hasMedia) {

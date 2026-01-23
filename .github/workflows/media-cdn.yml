@@ -34,6 +34,11 @@ on:
         required: false
         default: false
         type: boolean
+      force_ai_weekly:
+        description: 'Force AI curation for weekly (otherwise only on Fridays)'
+        required: false
+        default: false
+        type: boolean
 
 # Prevent race conditions when deploying to gh-pages
 concurrency:
@@ -272,6 +277,55 @@ jobs:
             --manifest ./media-upload/manifest.json \
             --output "./output/${SOURCE}/json/${DATE}.json"
 
+      - name: Regenerate weekly summary with CDN URLs
+        run: |
+          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          DATE="${{ steps.date.outputs.date }}"
+
+          # Extract previous 6 days from gh-pages for ElizaOS summaries
+          echo "Extracting previous days for weekly regeneration..."
+          for i in 1 2 3 4 5 6; do
+            PREV_DATE=$(date -u -d "$DATE - $i days" +%Y-%m-%d)
+            JSON_PATH="${SOURCE}/json/${PREV_DATE}.json"
+            if git ls-tree -r --name-only origin/gh-pages | grep -q "^${JSON_PATH}$"; then
+              git show "origin/gh-pages:${JSON_PATH}" > "./output/${JSON_PATH}"
+              echo "  Extracted: ${PREV_DATE}.json"
+            else
+              echo "  Missing: ${PREV_DATE}.json (may not exist yet)"
+            fi
+          done
+
+          # Also extract Discord summaries for weekly regeneration
+          echo "Extracting Discord summaries for weekly regeneration..."
+          mkdir -p ./output/discord/summaries/json
+          for i in 0 1 2 3 4 5 6; do
+            PREV_DATE=$(date -u -d "$DATE - $i days" +%Y-%m-%d)
+            DISCORD_PATH="${SOURCE}/discord/json/${PREV_DATE}.json"
+            if git ls-tree -r --name-only origin/gh-pages | grep -q "^${DISCORD_PATH}$"; then
+              git show "origin/gh-pages:${DISCORD_PATH}" > "./output/discord/summaries/json/${PREV_DATE}.json"
+              echo "  Extracted Discord: ${PREV_DATE}.json"
+            fi
+          done
+
+          # Regenerate weekly.json with CDN-enriched daily JSONs
+          echo "Regenerating weekly summaries..."
+
+          # Discord weekly (non-AI, raw combination)
+          npm run weekly -- generate --format=discord
+          echo "✅ Discord weekly regenerated"
+
+          # ElizaOS weekly - AI curation on Fridays or when forced
+          DATA_DAY_OF_WEEK=$(date -u -d "$DATE" +%u)
+          FORCE_AI="${{ inputs.force_ai_weekly }}"
+          if [ "$DATA_DAY_OF_WEEK" = "5" ] || [ "$FORCE_AI" = "true" ]; then
+            echo "Generating AI-curated ElizaOS weekly (Friday=$([[ $DATA_DAY_OF_WEEK = 5 ]] && echo 'yes' || echo 'no'), forced=$FORCE_AI)..."
+            npm run weekly -- generate --format=elizaos --ai
+            echo "✅ ElizaOS AI weekly regenerated"
+          else
+            npm run weekly -- generate --format=elizaos
+            echo "✅ ElizaOS weekly regenerated"
+          fi
+
       - name: Prepare files for deployment
         run: |
           SOURCE="${{ inputs.source_name || 'elizaos' }}"
@@ -283,6 +337,19 @@ jobs:
           # Also copy CDN-enriched JSON to daily.json (overwrites the non-enriched version)
           cp "./output/${SOURCE}/json/${DATE}.json" "./public/${SOURCE}/json/daily.json"
           echo "✅ Copied CDN-enriched JSON to daily.json"
+
+          # Copy weekly.json (regenerated with CDN URLs)
+          if [ -f "./output/${SOURCE}/json/weekly.json" ]; then
+            cp "./output/${SOURCE}/json/weekly.json" "./public/${SOURCE}/json/weekly.json"
+            echo "✅ Copied CDN-enriched ElizaOS weekly.json"
+          fi
+
+          # Copy Discord weekly.json
+          mkdir -p ./public/${SOURCE}/discord
+          if [ -f "./output/discord/summaries/json/weekly.json" ]; then
+            cp "./output/discord/summaries/json/weekly.json" "./public/${SOURCE}/discord/weekly.json"
+            echo "✅ Copied Discord weekly.json"
+          fi
 
           touch ./public/.nojekyll
 
