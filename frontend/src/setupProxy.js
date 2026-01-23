@@ -1,6 +1,25 @@
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
 module.exports = function(app) {
+  // Proxy API requests to the backend server for development
+  // Uses REACT_APP_API_URL env var or defaults to localhost:3000
+  const apiTarget = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+  
+  app.use(
+    '/api',
+    createProxyMiddleware({
+      target: apiTarget,
+      changeOrigin: true,
+      onProxyReq: (proxyReq) => {
+        console.log(`[Proxy] API request: ${proxyReq.method} ${proxyReq.path} -> ${apiTarget}`);
+      },
+      onError: (err, req, res) => {
+        console.error(`[Proxy] API error:`, err.message);
+        res.status(502).json({ error: 'Backend server unavailable', details: err.message });
+      }
+    })
+  );
+  
   // Proxy requests to the Docusaurus server for development
   app.use(
     '/docs',

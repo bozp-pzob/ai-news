@@ -1,12 +1,20 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 export const CallToAction: React.FC = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, login } = useAuth();
 
-  const handleLaunchAppClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    navigate('/app');
+  // Handle Launch App click - login if needed, then go to dashboard
+  const handleLaunchAppClick = () => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    } else {
+      // Store redirect destination and trigger login
+      sessionStorage.setItem('postLoginRedirect', '/dashboard');
+      login();
+    }
   };
 
   return (
@@ -27,8 +35,7 @@ export const CallToAction: React.FC = () => {
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link 
-              to="/app" 
+            <button 
               onClick={handleLaunchAppClick}
               className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-12 px-10 py-2 relative group overflow-hidden bg-amber-300 text-black hover:bg-amber-400"
             >
@@ -39,7 +46,7 @@ export const CallToAction: React.FC = () => {
                   <path d="m12 5 7 7-7 7"></path>
                 </svg>
               </span>
-            </Link>
+            </button>
             
             <a 
               href="https://github.com/bozp-pzob/digital-gardener" 

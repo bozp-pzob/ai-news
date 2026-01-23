@@ -1,0 +1,90 @@
+# =============================================================================
+# AI News Aggregator - Backend Only Docker Compose
+# =============================================================================
+# For private/self-hosted deployments that only need the backend API.
+# Services: backend, redis
+#
+# Note: PostgreSQL is external (provide DATABASE_URL in environment)
+# Note: MCP service can be added if needed - copy from docker-compose.yml
+#
+# Usage:
+#   docker compose -f docker-compose.backend.yml up -d
+#   docker compose -f docker-compose.backend.yml up -d --build  # Rebuild
+#
+# Required environment variables:
+#   DATABASE_URL - PostgreSQL connection string (external database)
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Backend - Express API server
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      target: backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379
+      # Authentication
+      - PRIVY_APP_ID=${PRIVY_APP_ID}
+      - PRIVY_APP_SECRET=${PRIVY_APP_SECRET}
+      - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY}
+      # AI/LLM
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - USE_OPENROUTER=${USE_OPENROUTER:-true}
+      - SITE_URL=${SITE_URL:-}
+      - SITE_NAME=${SITE_NAME:-}
+      # Data Sources (optional)
+      - DISCORD_TOKEN=${DISCORD_TOKEN:-}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID:-}
+      - DISCORD_APP_ID=${DISCORD_APP_ID:-}
+      - CODEX_API_KEY=${CODEX_API_KEY:-}
+      - BIRDEYE_API_KEY=${BIRDEYE_API_KEY:-}
+      # Payments (optional)
+      - POP402_FACILITATOR_URL=https://facilitator.pop402.com
+      - PLATFORM_WALLET_ADDRESS=${PLATFORM_WALLET_ADDRESS:-}
+      - PLATFORM_FEE_PERCENT=${PLATFORM_FEE_PERCENT:-10}
+      # Rate Limiting
+      - FREE_TIER_MAX_CONFIGS=${FREE_TIER_MAX_CONFIGS:-1}
+      - FREE_TIER_MAX_RUNS_PER_DAY=${FREE_TIER_MAX_RUNS_PER_DAY:-1}
+      - FREE_TIER_MAX_QUERIES_PER_DAY=${FREE_TIER_MAX_QUERIES_PER_DAY:-100}
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data
+    restart: unless-stopped
+    networks:
+      - ainews-network
+
+  # ---------------------------------------------------------------------------
+  # Redis - Job queue and caching
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - ainews-network
+
+networks:
+  ainews-network:
+    driver: bridge
+
+volumes:
+  redis_data:

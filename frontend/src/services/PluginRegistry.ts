@@ -78,17 +78,42 @@ class PluginRegistry {
       // First try to load from static file
       const staticLoaded = await this.loadStaticPlugins();
       
-      // If static loading failed, fall back to API
-      if (!staticLoaded) {
-        const plugins = await getPlugins();
+      // If static loading succeeded, we're done
+      if (staticLoaded) {
+        return;
+      }
+      
+      // If static loading failed, try API with a timeout
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
+        const plugins = await Promise.race([
+          getPlugins(),
+          new Promise<never>((_, reject) => {
+            controller.signal.addEventListener('abort', () => {
+              reject(new Error('Plugin fetch timed out'));
+            });
+          })
+        ]);
+        
+        clearTimeout(timeoutId);
         this.plugins = plugins;
         this.isLoaded = true;
         
         // Notify all listeners that plugins have been loaded
         this.notifyListeners();
+      } catch (apiError) {
+        console.warn('🔌 PluginRegistry: API fetch failed or timed out, plugins may be unavailable:', apiError);
+        // Mark as loaded anyway to prevent infinite retries
+        this.isLoaded = true;
+        this.notifyListeners();
       }
     } catch (error) {
       console.error('🔌 PluginRegistry: Error fetching plugins:', error);
+      // Mark as loaded to prevent infinite retries
+      this.isLoaded = true;
+      this.notifyListeners();
     } finally {
       this.isLoading = false;
     }
@@ -99,6 +124,27 @@ class PluginRegistry {
    */
   getPlugins(): Record<string, PluginInfo[]> {
     return this.plugins;
+  }
+
+  /**
+   * Get plugins filtered for platform mode
+   * Hides SQLiteStorage in platform mode since platform uses PostgreSQL
+   */
+  getPluginsForMode(platformMode: boolean): Record<string, PluginInfo[]> {
+    if (!platformMode) {
+      return this.plugins;
+    }
+    
+    // Filter out SQLiteStorage in platform mode
+    const filtered: Record<string, PluginInfo[]> = {};
+    
+    for (const [category, plugins] of Object.entries(this.plugins)) {
+      filtered[category] = plugins.filter(plugin => 
+        plugin.pluginName !== 'SQLiteStorage'
+      );
+    }
+    
+    return filtered;
   }
 
   /**

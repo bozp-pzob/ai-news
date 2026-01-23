@@ -302,6 +302,15 @@ export class AggregatorService {
   private async runAggregationProcess(jobId: string, configName: string, config: Config, settings: any, secrets: any): Promise<void> {
     const jobStatus = this.jobs.get(jobId)!;
     
+    // Log config summary (not params - may contain credentials)
+    console.log('[AggregatorService] Received config:', {
+      storageCount: config.storage?.length || 0,
+      generatorCount: config.generators?.length || 0,
+      sourceCount: config.sources?.length || 0,
+      aiCount: config.ai?.length || 0,
+      enricherCount: config.enrichers?.length || 0,
+    });
+    
     // Initialize the intervals array (even though one-time jobs don't use intervals)
     jobStatus.intervals = [];
     

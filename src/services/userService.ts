@@ -3,6 +3,7 @@
 import { databaseService } from './databaseService';
 import { encryptionService } from './encryptionService';
 import { AuthUser } from '../middleware/authMiddleware';
+import { sanitizeConfigSecrets } from '../helpers/secretSanitizer';
 
 /**
  * Config visibility options
@@ -81,8 +82,32 @@ export interface UpdateConfigParams {
  */
 const FREE_TIER_LIMITS = {
   maxConfigs: parseInt(process.env.FREE_TIER_MAX_CONFIGS || '1'),
-  maxRunsPerDay: parseInt(process.env.FREE_TIER_MAX_RUNS_PER_DAY || '1'),
+  maxRunsPerDay: parseInt(process.env.FREE_TIER_MAX_RUNS_PER_DAY || '3'),
+  storageType: 'platform' as const,
+  aiModel: process.env.FREE_TIER_AI_MODEL || 'gpt-4o-mini',
 };
+
+/**
+ * Pro tier limits
+ */
+const PRO_TIER_LIMITS = {
+  dailyAiCalls: parseInt(process.env.PRO_TIER_DAILY_AI_CALLS || '1000'),
+  aiModel: process.env.PRO_TIER_AI_MODEL || 'gpt-4o',
+};
+
+/**
+ * Get next midnight UTC as Date
+ */
+function getNextMidnightUTC(): Date {
+  const now = new Date();
+  const tomorrow = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + 1,
+    0, 0, 0, 0
+  ));
+  return tomorrow;
+}
 
 /**
  * Generate a URL-safe slug from a name
@@ -237,6 +262,15 @@ export async function createConfig(params: CreateConfigParams): Promise<Config> 
     secrets
   } = params;
 
+  // Sanitize config to remove any actual secrets that may have slipped through
+  // Preserves lookup variables like $SECRET:uuid$, process.env.X, and ALL_CAPS references
+  const { sanitizedConfig, removedSecrets } = sanitizeConfigSecrets(configJson);
+  
+  if (removedSecrets.length > 0) {
+    console.warn('[UserService] Removed actual secrets from config before saving:', 
+      removedSecrets.length, 'field(s)');
+  }
+
   // Generate unique slug
   const baseSlug = generateSlug(name);
   const slug = await ensureUniqueSlug(baseSlug);
@@ -267,7 +301,7 @@ export async function createConfig(params: CreateConfigParams): Promise<Config> 
       visibility,
       storageType,
       encryptedDbUrl,
-      JSON.stringify(configJson)
+      JSON.stringify(sanitizedConfig)
     ]
   );
 
@@ -365,8 +399,16 @@ export async function updateConfig(configId: string, params: UpdateConfigParams)
   }
 
   if (params.configJson !== undefined) {
+    // Sanitize config to remove any actual secrets that may have slipped through
+    const { sanitizedConfig, removedSecrets } = sanitizeConfigSecrets(params.configJson);
+    
+    if (removedSecrets.length > 0) {
+      console.warn('[UserService] Removed actual secrets from config update:', 
+        removedSecrets.length, 'field(s)');
+    }
+    
     updates.push(`config_json = $${paramIndex++}::jsonb`);
-    values.push(JSON.stringify(params.configJson));
+    values.push(JSON.stringify(sanitizedConfig));
   }
 
   if (params.secrets !== undefined) {
@@ -591,6 +633,125 @@ export async function getUserRevenue(userId: string): Promise<{
   };
 }
 
+/**
+ * Check if user can use platform AI (has remaining quota)
+ * Returns allowed: true with remaining count, or allowed: false with reason
+ */
+export async function canUsePlatformAI(
+  user: AuthUser
+): Promise<{ allowed: boolean; reason?: string; remaining: number; resetAt: Date }> {
+  // Admin always allowed with unlimited quota
+  if (user.tier === 'admin') {
+    return { allowed: true, remaining: Infinity, resetAt: getNextMidnightUTC() };
+  }
+  
+  // Free tier uses platform AI but has no AI call limit tracking 
+  // (their limit is enforced by runs per day instead)
+  if (user.tier === 'free') {
+    return { allowed: true, remaining: Infinity, resetAt: getNextMidnightUTC() };
+  }
+  
+  // Pro tier: check daily AI call quota
+  const usage = await getUserAiUsage(user.id);
+  const remaining = PRO_TIER_LIMITS.dailyAiCalls - usage.callsToday;
+  
+  if (remaining <= 0) {
+    return {
+      allowed: false,
+      reason: `Daily AI quota exhausted (${PRO_TIER_LIMITS.dailyAiCalls} calls). Resets at midnight UTC. Run will continue but AI processing will be skipped.`,
+      remaining: 0,
+      resetAt: getNextMidnightUTC()
+    };
+  }
+  
+  return { allowed: true, remaining, resetAt: getNextMidnightUTC() };
+}
+
+/**
+ * Get user's AI usage stats (resets at midnight UTC if needed)
+ */
+export async function getUserAiUsage(userId: string): Promise<{
+  callsToday: number;
+  limit: number;
+  resetAt: Date;
+}> {
+  const todayUTC = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  // Check if we need to reset (last reset date is before today)
+  // The database trigger handles the reset, but we query it here
+  const result = await databaseService.query(
+    `UPDATE users 
+     SET ai_calls_today = CASE 
+       WHEN ai_calls_today_reset_at < $1 THEN 0 
+       ELSE ai_calls_today 
+     END,
+     ai_calls_today_reset_at = CASE
+       WHEN ai_calls_today_reset_at < $1 THEN $1
+       ELSE ai_calls_today_reset_at
+     END
+     WHERE id = $2
+     RETURNING ai_calls_today`,
+    [todayUTC, userId]
+  );
+  
+  return {
+    callsToday: result.rows[0]?.ai_calls_today || 0,
+    limit: PRO_TIER_LIMITS.dailyAiCalls,
+    resetAt: getNextMidnightUTC()
+  };
+}
+
+/**
+ * Increment user's AI usage counter
+ */
+export async function incrementAiUsage(userId: string, calls: number = 1): Promise<void> {
+  const todayUTC = new Date().toISOString().split('T')[0];
+  
+  await databaseService.query(
+    `UPDATE users 
+     SET ai_calls_today = CASE 
+       WHEN ai_calls_today_reset_at < $1 THEN $2
+       ELSE ai_calls_today + $2
+     END,
+     ai_calls_today_reset_at = CASE
+       WHEN ai_calls_today_reset_at < $1 THEN $1
+       ELSE ai_calls_today_reset_at
+     END
+     WHERE id = $3`,
+    [todayUTC, calls, userId]
+  );
+}
+
+/**
+ * Get tier limits for display purposes
+ */
+export function getTierLimits(tier: string): {
+  maxConfigs?: number;
+  maxRunsPerDay?: number;
+  dailyAiCalls?: number;
+  aiModel: string;
+} {
+  if (tier === 'free') {
+    return {
+      maxConfigs: FREE_TIER_LIMITS.maxConfigs,
+      maxRunsPerDay: FREE_TIER_LIMITS.maxRunsPerDay,
+      aiModel: FREE_TIER_LIMITS.aiModel,
+    };
+  }
+  
+  if (tier === 'paid') {
+    return {
+      dailyAiCalls: PRO_TIER_LIMITS.dailyAiCalls,
+      aiModel: PRO_TIER_LIMITS.aiModel,
+    };
+  }
+  
+  // Admin - unlimited
+  return {
+    aiModel: PRO_TIER_LIMITS.aiModel,
+  };
+}
+
 export const userService = {
   canCreateConfig,
   canRunAggregation,
@@ -605,5 +766,10 @@ export const userService = {
   getConfigExternalDbUrl,
   incrementRunCount,
   updateConfigRunStatus,
-  getUserRevenue
+  getUserRevenue,
+  // AI usage tracking
+  canUsePlatformAI,
+  getUserAiUsage,
+  incrementAiUsage,
+  getTierLimits,
 };

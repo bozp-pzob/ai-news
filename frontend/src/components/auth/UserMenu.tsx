@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth, PlatformUser } from '../../context/AuthContext';
+import { useLicense } from '../../hooks/useLicense';
 
 /**
  * User avatar component
@@ -13,7 +14,7 @@ function UserAvatar({ user }: { user: PlatformUser }) {
   
   // Generate a color based on the user ID
   const colors = [
-    'bg-emerald-500',
+    'bg-amber-500',
     'bg-blue-500',
     'bg-purple-500',
     'bg-pink-500',
@@ -36,7 +37,7 @@ function UserAvatar({ user }: { user: PlatformUser }) {
 function TierBadge({ tier }: { tier: PlatformUser['tier'] }) {
   const config = {
     free: { label: 'Free', className: 'bg-stone-600 text-stone-200' },
-    paid: { label: 'Pro', className: 'bg-emerald-600 text-emerald-100' },
+    paid: { label: 'Pro', className: 'bg-amber-600 text-amber-100' },
     admin: { label: 'Admin', className: 'bg-purple-600 text-purple-100' },
   };
 
@@ -62,6 +63,7 @@ function formatWallet(address: string): string {
  */
 export function UserMenu() {
   const { user, isLoading, logout, isFreeUser } = useAuth();
+  const { isActive, daysRemaining, hoursRemaining, timeRemainingText } = useLicense();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -138,6 +140,16 @@ export function UserMenu() {
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <TierBadge tier={user.tier} />
+                  {/* Show subscription expiry for Pro users */}
+                  {isActive && timeRemainingText && (
+                    <span className={`text-xs ${(daysRemaining !== null && daysRemaining <= 7) || (hoursRemaining !== null && hoursRemaining < 24) ? 'text-amber-400' : 'text-stone-400'}`}>
+                      {hoursRemaining !== null && hoursRemaining < 24 
+                        ? `${hoursRemaining}h left` 
+                        : daysRemaining !== null 
+                          ? `${daysRemaining}d left`
+                          : ''}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -178,11 +190,11 @@ export function UserMenu() {
               My Configs
             </a>
 
-            {/* Upgrade prompt for free users */}
-            {isFreeUser && (
+            {/* Upgrade/Renew prompt */}
+            {isFreeUser ? (
               <a
                 href="/upgrade"
-                className="flex items-center gap-3 px-4 py-2 text-sm text-emerald-400 hover:bg-stone-700 transition-colors"
+                className="flex items-center gap-3 px-4 py-2 text-sm text-amber-400 hover:bg-stone-700 transition-colors"
                 onClick={() => setIsOpen(false)}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -190,7 +202,18 @@ export function UserMenu() {
                 </svg>
                 Upgrade to Pro
               </a>
-            )}
+            ) : isActive && daysRemaining !== null && daysRemaining <= 7 ? (
+              <a
+                href="/upgrade"
+                className="flex items-center gap-3 px-4 py-2 text-sm text-amber-400 hover:bg-stone-700 transition-colors"
+                onClick={() => setIsOpen(false)}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Renew Subscription
+              </a>
+            ) : null}
 
             {/* Settings link */}
             <a

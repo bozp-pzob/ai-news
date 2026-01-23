@@ -5,24 +5,19 @@ import { SecretInputField } from './SecretInputField';
 import { SecretInputSelectField } from './SecretInputSelectField';
 import { pluginRegistry } from '../services/PluginRegistry';
 import { useToast } from './ToastProvider';
+import { isSensitiveParam, isLookupVariable } from '../utils/secretValidation';
 
-// Array of parameter name patterns that should be treated as sensitive
-const SENSITIVE_PARAM_PATTERNS = [
-  'api_key', 'apikey', 'key', 'token', 'secret', 'password', 'auth', 'credential',
-  'access_token', 'access_key', 'private_key', 'client_secret', 'security'
-];
-
-// Function to check if a parameter is sensitive based on its name
-const isSensitiveParameter = (paramName: string): boolean => {
-  const lowerName = paramName.toLowerCase();
-  return SENSITIVE_PARAM_PATTERNS.some(pattern => lowerName.includes(pattern));
-};
+// Re-export for backwards compatibility with existing code
+const isSensitiveParameter = isSensitiveParam;
 
 interface PluginParamDialogProps {
   plugin: PluginInfo | PluginConfig;
   isOpen: boolean;
   onClose: () => void;
   onAdd: (plugin: any) => void;
+  // Platform mode props for storage plugin handling
+  platformMode?: boolean;
+  isPlatformPro?: boolean;
 }
 
 // Determine if a plugin type supports provider or storage connections
@@ -54,6 +49,8 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   isOpen,
   onClose,
   onAdd,
+  platformMode = false,
+  isPlatformPro = false,
 }) => {
   const { showToast } = useToast();
   
@@ -244,9 +241,23 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     // Get constructor parameters from schema
     const constructorParams = pluginSchema.constructorInterface.parameters;
     
+    // Check if this is free tier (platform mode but not pro)
+    const isFreeTier = platformMode && !isPlatformPro;
+    
+    // Determine plugin type
+    let pluginType = '';
+    if ('type' in plugin) {
+      pluginType = plugin.type;
+    }
+    
     // Create a new parameters object with default values for missing fields
     setParams(currentParams => {
       const updatedParams = { ...currentParams };
+      
+      // For free tier storage plugins, force usePlatformStorage to true
+      if (isFreeTier && pluginType === 'storage') {
+        updatedParams.usePlatformStorage = true;
+      }
       
       // Initialize any missing parameters with appropriate values
       constructorParams.forEach(param => {
@@ -287,7 +298,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
       
       return updatedParams;
     });
-  }, [pluginSchema]);
+  }, [pluginSchema, platformMode, isPlatformPro, plugin]);
 
   // Handle adding a new item to an array
   const handleAddArrayItem = (key: string) => {    
@@ -355,6 +366,32 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
       
       if (requiredMissing) {
         showToast("Please fill in all required fields marked with *", 'warning');
+        return;
+      }
+      
+      // Validate that sensitive fields don't contain actual secrets
+      // Secrets should be stored via SecretManager and referenced as $SECRET:uuid$, 
+      // process.env.X, or ALL_CAPS variable names
+      const secretViolations: string[] = [];
+      
+      pluginSchema.constructorInterface.parameters.forEach((param: any) => {
+        const key = param.name;
+        const value = params[key];
+        
+        // Check if this field is sensitive
+        const isSensitive = param.secret === true || isSensitiveParameter(key);
+        
+        if (isSensitive && typeof value === 'string' && !isLookupVariable(value)) {
+          secretViolations.push(key);
+        }
+      });
+      
+      if (secretViolations.length > 0) {
+        showToast(
+          `The field(s) "${secretViolations.join(', ')}" contain actual secrets instead of references. ` +
+          `Please use the secure input field to store secrets, or use ALL_CAPS variable names (e.g., MY_API_KEY).`,
+          'error'
+        );
         return;
       }
     }
@@ -445,6 +482,49 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         pluginType = idParts[0] || '';
       }
     }
+
+    // Check if this is free tier (platform mode but not pro)
+    const isFreeTier = platformMode && !isPlatformPro;
+
+    // For free tier AI plugins, show simplified read-only view
+    if (isFreeTier && pluginType === 'ai') {
+      return (
+        <div className="space-y-4">
+          <div className="p-4 bg-stone-700 rounded-lg border border-amber-500/30">
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span className="font-medium text-white">Free Tier AI (GPT-4o-mini)</span>
+            </div>
+            <p className="text-stone-400 text-sm">
+              Your pipeline uses GPT-4o-mini, optimized for cost-effectiveness.
+              Upgrade to Pro for GPT-4o with higher quality outputs and configurable daily quota.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // For free tier storage plugins, show simplified read-only view
+    if (isFreeTier && pluginType === 'storage') {
+      return (
+        <div className="space-y-4">
+          <div className="p-4 bg-stone-700 rounded-lg border border-amber-500/30">
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
+              </svg>
+              <span className="font-medium text-white">Platform Storage</span>
+            </div>
+            <p className="text-stone-400 text-sm">
+              Your data will be stored securely on our platform with PostgreSQL and pgvector for semantic search.
+              Upgrade to Pro to use your own external database.
+            </p>
+          </div>
+        </div>
+      );
+    }
     
     // Get constructor interface from plugin or schema
     const constructorInterface = pluginSchema?.constructorInterface || 
@@ -521,6 +601,89 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
           </div>
         )}
         
+        {/* Special handling for PostgresStorage in platform mode */}
+        {platformMode && pluginSchema?.pluginName === 'PostgresStorage' && (
+          <div className="mb-6 p-4 bg-stone-700 rounded-lg border border-stone-600">
+            {/* Free tier: Platform storage is always enabled (no choice) */}
+            {!isPlatformPro ? (
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-green-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <div className="flex-1">
+                  <div className="font-medium text-white text-sm">Platform Storage Enabled</div>
+                  <p className="text-gray-400 text-xs mt-1">
+                    Your data is stored securely on our managed PostgreSQL with pgvector.
+                    Upgrade to Pro to use your own external database.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              /* Pro users can choose between platform and external storage */
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!params.usePlatformStorage}
+                  onChange={(e) => handleParamChange('usePlatformStorage', e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-stone-600 text-amber-600 focus:ring-amber-500"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-white text-sm">Use Platform Storage</div>
+                  <p className="text-gray-400 text-xs mt-1">
+                    Use our managed PostgreSQL with pgvector. We handle backups, scaling, and maintenance.
+                  </p>
+                </div>
+              </label>
+            )}
+          </div>
+        )}
+
+        {/* Special handling for AI providers in platform mode */}
+        {platformMode && (pluginSchema?.pluginName === 'OpenAIProvider' || pluginSchema?.pluginName === 'OpenRouterProvider') && (
+          <div className="mb-6 p-4 bg-stone-700 rounded-lg border border-stone-600">
+            {/* Free tier: Platform AI is always enabled (no choice) */}
+            {!isPlatformPro ? (
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-green-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <div className="flex-1">
+                  <div className="font-medium text-white text-sm">Platform AI Enabled (GPT-4o-mini)</div>
+                  <p className="text-gray-400 text-xs mt-1">
+                    Using GPT-4o-mini, optimized for cost-effectiveness.
+                    Upgrade to Pro for GPT-4o with higher quality outputs.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              /* Pro users can choose between platform AI and their own key */
+              <>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!params.usePlatformAI}
+                    onChange={(e) => handleParamChange('usePlatformAI', e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-stone-600 text-amber-600 focus:ring-amber-500"
+                  />
+                  <div className="flex-1">
+                    <div className="font-medium text-white text-sm">Use Platform AI (GPT-4o)</div>
+                    <p className="text-gray-400 text-xs mt-1">
+                      Use our managed AI with GPT-4o. Daily usage quota applies. We handle API costs and rate limiting.
+                    </p>
+                  </div>
+                </label>
+                {params.usePlatformAI && (
+                  <div className="mt-3 p-2 bg-stone-600 rounded text-xs text-gray-300">
+                    <p className="text-amber-300">
+                      Daily AI calls are tracked. When quota is exhausted, aggregation will continue but skip AI processing (raw data only).
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         {/* Render constructor interface parameters */}
         {constructorInterface && (constructorInterface.parameters as Array<{
           name: string;
@@ -528,6 +691,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
           required: boolean;
           description: string;
           secret?: boolean;
+          platformOnly?: boolean;
         }>).map(param => {
           const key = param.name;
           
@@ -536,6 +700,30 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               (key === 'storage' && hasStorageParameter)) {
             return null;
           }
+          
+          // Skip usePlatformStorage and usePlatformAI - handled above with special UI
+          if (key === 'usePlatformStorage' || key === 'usePlatformAI') {
+            return null;
+          }
+          
+          // In platform mode, hide connection params when using platform storage
+          if (platformMode && params.usePlatformStorage) {
+            // Hide all DB connection parameters when platform storage is enabled
+            const connectionParams = ['connectionString', 'host', 'port', 'database', 'user', 'password'];
+            if (connectionParams.includes(key)) {
+              return null;
+            }
+          }
+          
+          // In platform mode, hide AI config fields when using platform AI
+          // The platform injects apiKey, model, and OpenRouter-specific settings
+          if (platformMode && params.usePlatformAI) {
+            const platformAIFields = ['apiKey', 'model', 'temperature', 'siteUrl', 'siteName', 'fallbackModel'];
+            if (platformAIFields.includes(key)) {
+              return null;
+            }
+          }
+          
           // Render different input types based on parameter type
           if (param.type === 'boolean') {
             return (

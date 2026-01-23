@@ -4,27 +4,263 @@
  * Provides utilities for rendering graph nodes, connections, and related UI elements
  * in the canvas-based graph editor. Implements visual styling for different node types,
  * port connectivity, status indicators, and interactive elements.
+ * 
+ * Design: Minimal outline style with circuit-diagram connections
  */
 
 import { Node, Connection, PortInfo } from '../types/nodeTypes';
 import { shouldShowPort } from './nodeHandlers';
 
-// Draw a connection between two nodes
+// ============================================================================
+// DESIGN CONSTANTS
+// ============================================================================
+
+// Color palette - refined amber theme
+const COLORS = {
+  // Backgrounds - differentiated by node type
+  nodeBg: '#0c0c0c',
+  nodeBgAi: '#1c1408',        // Dark amber tint for AI providers
+  nodeBgStorage: '#0c1416',   // Dark cyan tint for storage
+  nodeBgParent: '#0a0908',    // Almost black for parent groups
+  
+  // Borders
+  borderDefault: '#44403c',
+  borderSelected: '#f59e0b',
+  borderHover: '#78716c',
+  borderAi: '#92400e',        // Amber border for AI
+  borderStorage: '#155e75',   // Cyan border for storage
+  
+  // Text
+  textPrimary: '#e5e5e5',
+  textSecondary: '#a8a29e',
+  textSelected: '#fbbf24',
+  
+  // Port colors by type
+  portProvider: '#f59e0b',  // Amber
+  portStorage: '#06b6d4',   // Cyan
+  portData: '#a8a29e',      // Stone/gray
+  
+  // Status colors
+  statusRunning: '#f59e0b',
+  statusSuccess: '#22c55e',
+  statusFailed: '#ef4444',
+  statusIdle: '#57534e',
+  
+  // Grid
+  gridDot: 'rgba(68, 64, 60, 0.4)',
+  
+  // Shadows
+  shadowDefault: 'rgba(0, 0, 0, 0.4)',
+  shadowSelected: 'rgba(245, 158, 11, 0.15)',
+};
+
+// Dimensions
+const NODE_WIDTH = 200;
+const NODE_HEIGHT_MIN = 50;
+const NODE_HEADER_HEIGHT = 30;  // Space for title
+const NODE_RADIUS = 6;
+const PORT_RADIUS = 5;
+const PORT_RING_WIDTH = 2;
+const PORT_OFFSET_Y = 25;
+const PORT_SPACING = 20;
+const NODE_PADDING_BOTTOM = 12;  // Padding below last port
+const CONNECTION_LINE_WIDTH = 1.5;
+const CIRCUIT_CORNER_RADIUS = 8;
+const MIN_HORIZONTAL_EXIT = 40;
+
+// ============================================================================
+// NODE HEIGHT CALCULATION
+// ============================================================================
+
+/**
+ * Calculate the height of a node based on visible ports
+ */
+const calculateNodeHeight = (node: Node): number => {
+  if (node.isParent) {
+    return node.expanded && node.children && node.children.length > 0 ? 80 : 50;
+  }
+  
+  // Count visible input ports
+  let visibleInputs = 0;
+  if (node.inputs) {
+    for (const input of node.inputs) {
+      if (shouldShowPort(node, input.name, true)) {
+        visibleInputs++;
+      }
+    }
+  }
+  
+  // Count visible output ports
+  let visibleOutputs = 0;
+  if (node.outputs) {
+    // Check if this node type should show outputs
+    const shouldDrawOutputs = node.type === 'storage' || node.type === 'ai' || node.isProvider ||
+                             !(node.id && (node.id.includes('source-') || node.id.includes('enricher-') || 
+                               node.id.includes('generator-')));
+    
+    if (shouldDrawOutputs) {
+      for (const output of node.outputs) {
+        if (shouldShowPort(node, output.name, false)) {
+          visibleOutputs++;
+        }
+      }
+    }
+  }
+  
+  // Use the maximum of inputs or outputs to determine height
+  const maxPorts = Math.max(visibleInputs, visibleOutputs);
+  
+  // Calculate height: header + ports + padding
+  if (maxPorts === 0) {
+    return NODE_HEIGHT_MIN;
+  }
+  
+  const portsHeight = PORT_OFFSET_Y + (maxPorts - 1) * PORT_SPACING + NODE_PADDING_BOTTOM;
+  return Math.max(NODE_HEIGHT_MIN, portsHeight);
+};
+
+// ============================================================================
+// PORT COLOR HELPERS
+// ============================================================================
+
+/**
+ * Get port color based on type
+ */
+const getPortColor = (type: string): string => {
+  switch (type) {
+    case 'provider':
+      return COLORS.portProvider;
+    case 'storage':
+      return COLORS.portStorage;
+    case 'data':
+    default:
+      return COLORS.portData;
+  }
+};
+
+/**
+ * Legacy helper for compatibility
+ */
+const getPortColorByType = (type: string, isConnected: boolean | string | undefined): string => {
+  return getPortColor(type);
+};
+
+// ============================================================================
+// CONNECTION DRAWING - CIRCUIT DIAGRAM STYLE
+// ============================================================================
+
+/**
+ * Draw a circuit-diagram style connection line with rounded corners
+ */
+export const drawConnectionLine = (
+  ctx: CanvasRenderingContext2D,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  portType: string
+) => {
+  const color = getPortColor(portType);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = CONNECTION_LINE_WIDTH;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  
+  // Calculate routing
+  const deltaX = endX - startX;
+  const deltaY = endY - startY;
+  
+  // If target is to the left of source, we need a more complex route
+  const goingBackward = deltaX < MIN_HORIZONTAL_EXIT * 2;
+  
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  
+  if (goingBackward) {
+    // Complex routing: go right, down/up, left, then to target
+    const exitX = startX + MIN_HORIZONTAL_EXIT;
+    const midY = startY + (deltaY > 0 ? 50 : -50);
+    const entryX = endX - MIN_HORIZONTAL_EXIT;
+    
+    // Horizontal exit from start
+    ctx.lineTo(exitX - CIRCUIT_CORNER_RADIUS, startY);
+    
+    // Corner down/up
+    ctx.arcTo(exitX, startY, exitX, startY + (deltaY > 0 ? CIRCUIT_CORNER_RADIUS : -CIRCUIT_CORNER_RADIUS), CIRCUIT_CORNER_RADIUS);
+    
+    // Vertical to mid
+    ctx.lineTo(exitX, midY - (deltaY > 0 ? CIRCUIT_CORNER_RADIUS : -CIRCUIT_CORNER_RADIUS));
+    
+    // Corner to go left
+    ctx.arcTo(exitX, midY, exitX - CIRCUIT_CORNER_RADIUS, midY, CIRCUIT_CORNER_RADIUS);
+    
+    // Horizontal across
+    ctx.lineTo(entryX + CIRCUIT_CORNER_RADIUS, midY);
+    
+    // Corner to go down/up to target
+    ctx.arcTo(entryX, midY, entryX, midY + (endY > midY ? CIRCUIT_CORNER_RADIUS : -CIRCUIT_CORNER_RADIUS), CIRCUIT_CORNER_RADIUS);
+    
+    // Vertical to target Y
+    ctx.lineTo(entryX, endY - (endY > midY ? CIRCUIT_CORNER_RADIUS : -CIRCUIT_CORNER_RADIUS));
+    
+    // Corner to target
+    ctx.arcTo(entryX, endY, entryX + CIRCUIT_CORNER_RADIUS, endY, CIRCUIT_CORNER_RADIUS);
+    
+    // Final horizontal to target
+    ctx.lineTo(endX, endY);
+  } else {
+    // Simple routing: horizontal, vertical, horizontal
+    const midX = startX + Math.max(MIN_HORIZONTAL_EXIT, deltaX / 2);
+    
+    // Horizontal from start
+    ctx.lineTo(midX - CIRCUIT_CORNER_RADIUS, startY);
+    
+    // First corner
+    if (Math.abs(deltaY) > CIRCUIT_CORNER_RADIUS * 2) {
+      const cornerDir = deltaY > 0 ? 1 : -1;
+      ctx.arcTo(midX, startY, midX, startY + CIRCUIT_CORNER_RADIUS * cornerDir, CIRCUIT_CORNER_RADIUS);
+      
+      // Vertical segment
+      ctx.lineTo(midX, endY - CIRCUIT_CORNER_RADIUS * cornerDir);
+      
+      // Second corner
+      ctx.arcTo(midX, endY, midX + CIRCUIT_CORNER_RADIUS, endY, CIRCUIT_CORNER_RADIUS);
+    } else {
+      // Nearly straight line, minimal corners
+      ctx.lineTo(midX, startY);
+      ctx.lineTo(midX, endY);
+    }
+    
+    // Horizontal to end
+    ctx.lineTo(endX, endY);
+  }
+  
+  ctx.stroke();
+  
+  // Draw small chevron arrow at the end
+  const arrowSize = 6;
+  ctx.beginPath();
+  ctx.moveTo(endX - arrowSize, endY - arrowSize / 2);
+  ctx.lineTo(endX, endY);
+  ctx.lineTo(endX - arrowSize, endY + arrowSize / 2);
+  ctx.stroke();
+};
+
+/**
+ * Draw a connection between two nodes
+ */
 export const drawConnection = (ctx: CanvasRenderingContext2D, fromNode: Node, toNode: Node, connection: Connection) => {
   // Find the actual target node if it's a child node
   let actualToNode = toNode;
   let parentOffset = { x: 0, y: 0 };
   
   if (connection.to.nodeId !== toNode.id && toNode.isParent && toNode.children) {
-    // Look for the target node in children
     const childNode = toNode.children.find(child => child.id === connection.to.nodeId);
     if (childNode) {
       actualToNode = childNode;
-      
-      // For child nodes, we need to add the parent's position as an offset
       parentOffset = {
         x: toNode.position.x,
-        y: toNode.position.y + 40 // Add header height offset
+        y: toNode.position.y + 40
       };
     }
   }
@@ -34,129 +270,110 @@ export const drawConnection = (ctx: CanvasRenderingContext2D, fromNode: Node, to
   let fromParentOffset = { x: 0, y: 0 };
   
   if (connection.from.nodeId !== fromNode.id && fromNode.isParent && fromNode.children) {
-    // Look for the source node in children
     const childNode = fromNode.children.find(child => child.id === connection.from.nodeId);
     if (childNode) {
       actualFromNode = childNode;
-      
-      // For child nodes, we need to add the parent's position as an offset
       fromParentOffset = {
         x: fromNode.position.x,
-        y: fromNode.position.y + 40 // Add header height offset
+        y: fromNode.position.y + 40
       };
     }
   }
   
-  // Find the output port on the from node
+  // Find ports
   let fromPort = actualFromNode.outputs.find(output => output.name === connection.from.output);
-  if (!fromPort) {
-    // Try to recover by using the first available output port
-    if (actualFromNode.outputs.length > 0) {
-      fromPort = actualFromNode.outputs[0];
-    } else {
-      return; // Exit without drawing
-    }
+  if (!fromPort && actualFromNode.outputs.length > 0) {
+    fromPort = actualFromNode.outputs[0];
   }
+  if (!fromPort) return;
   
-  // Find the input port on the to node
   let toPort = actualToNode.inputs.find(input => input.name === connection.to.input);
-  if (!toPort) {
-    // Try to recover by using the first available input port
-    if (actualToNode.inputs.length > 0) {
-      toPort = actualToNode.inputs[0];
-    } else {
-      return; // Exit without drawing
-    }
+  if (!toPort && actualToNode.inputs.length > 0) {
+    toPort = actualToNode.inputs[0];
   }
+  if (!toPort) return;
   
-  // Calculate port positions (relative to node position)
+  // Calculate port indices
   const fromPortIndex = actualFromNode.outputs.indexOf(fromPort);
   const toPortIndex = actualToNode.inputs.indexOf(toPort);
   
-  // If either port index is -1, it means we didn't find the port
-  if (fromPortIndex === -1 || toPortIndex === -1) {
-    return; // Exit without drawing
-  }
+  if (fromPortIndex === -1 || toPortIndex === -1) return;
 
-  // Validate that both ports should be shown on their respective nodes
-  if (!shouldShowPort(actualFromNode, fromPort.name, false)) {
-    return; // Skip drawing this connection
-  }
-  
-  if (!shouldShowPort(actualToNode, toPort.name, true)) {
-    return; // Skip drawing this connection
-  }
+  // Validate ports should be shown
+  if (!shouldShowPort(actualFromNode, fromPort.name, false)) return;
+  if (!shouldShowPort(actualToNode, toPort.name, true)) return;
 
-  // Calculate actual coordinates including parent offsets
-  const nodeWidth = 200; // Standard width of nodes
-  const portOffsetY = 25; // Y offset of first port from node top
-  const portSpacing = 20; // Spacing between ports
+  // Calculate positions
+  const startX = (actualFromNode.position.x + fromParentOffset.x) + NODE_WIDTH;
+  const startY = (actualFromNode.position.y + fromParentOffset.y) + PORT_OFFSET_Y + (fromPortIndex * PORT_SPACING);
+  const endX = (actualToNode.position.x + parentOffset.x);
+  const endY = (actualToNode.position.y + parentOffset.y) + PORT_OFFSET_Y + (toPortIndex * PORT_SPACING);
   
-  // Calculate the positions including parent offsets
-  const startX = (actualFromNode.position.x + fromParentOffset.x) + nodeWidth; // right side of from node
-  const startY = (actualFromNode.position.y + fromParentOffset.y) + portOffsetY + (fromPortIndex * portSpacing);
-  const endX = (actualToNode.position.x + parentOffset.x); // left side of to node
-  const endY = (actualToNode.position.y + parentOffset.y) + portOffsetY + (toPortIndex * portSpacing);
-  
-  // Use the port type to determine the connection color
   const portType = fromPort.type || 'default';
   drawConnectionLine(ctx, startX, startY, endX, endY, portType);
 };
 
-// Draw a temporary connection line
-export const drawConnectionLine = (
+// ============================================================================
+// PORT DRAWING - COLOR-CODED RINGS
+// ============================================================================
+
+/**
+ * Draw a port with color-coded ring style
+ */
+const drawPort = (
   ctx: CanvasRenderingContext2D,
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number,
-  portType: string
+  x: number, 
+  y: number, 
+  portType: string,
+  isConnected: boolean | string | undefined,
+  isHovered: boolean,
+  isParent: boolean,
+  label: string,
+  isOutput: boolean
 ) => {
-  // Set color based on port type
-  ctx.strokeStyle = getPortColorByType(portType, true);
+  const color = getPortColor(portType);
+  const connected = !!isConnected;
+  const ringWidth = isHovered ? PORT_RING_WIDTH + 1 : PORT_RING_WIDTH;
   
-  // Use thicker lines
-  ctx.lineWidth = 3;
+  // Hover glow effect
+  if (isHovered) {
+    ctx.beginPath();
+    ctx.arc(x, y, PORT_RADIUS + 6, 0, Math.PI * 2);
+    ctx.fillStyle = color + '20'; // 12% opacity
+    ctx.fill();
+  }
   
-  // Draw connection line
+  // Outer ring
   ctx.beginPath();
-  ctx.moveTo(startX, startY);
-  
-  // Create a curved path with better control points
-  const distance = Math.abs(endX - startX);
-  const curvature = Math.min(distance * 0.5, 100); // Limit the curvature
-  
-  const controlPoint1X = startX + curvature;
-  const controlPoint1Y = startY;
-  const controlPoint2X = endX - curvature;
-  const controlPoint2Y = endY;
-  
-  ctx.bezierCurveTo(
-    controlPoint1X, controlPoint1Y,
-    controlPoint2X, controlPoint2Y,
-    endX, endY
-  );
-  
+  ctx.arc(x, y, PORT_RADIUS, 0, Math.PI * 2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = ringWidth;
   ctx.stroke();
   
-  // Draw arrow with the same strokeStyle
-  const arrowSize = 12; // Larger arrow
-  const angle = Math.atan2(endY - controlPoint2Y, endX - controlPoint2X);
-  
+  // Inner fill - filled if connected, dark if not
   ctx.beginPath();
-  ctx.moveTo(endX, endY);
-  ctx.lineTo(endX - arrowSize * Math.cos(angle - Math.PI / 6), endY - arrowSize * Math.sin(angle - Math.PI / 6));
-  ctx.lineTo(endX - arrowSize * Math.cos(angle + Math.PI / 6), endY - arrowSize * Math.sin(angle + Math.PI / 6));
-  ctx.closePath();
-  ctx.fillStyle = ctx.strokeStyle;
+  ctx.arc(x, y, PORT_RADIUS - ringWidth, 0, Math.PI * 2);
+  ctx.fillStyle = connected ? color : '#1a1a1a';
   ctx.fill();
+  
+  // Port label
+  ctx.fillStyle = isHovered ? color : COLORS.textSecondary;
+  ctx.font = '11px system-ui, -apple-system, sans-serif';
+  ctx.textAlign = isOutput ? 'right' : 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x + (isOutput ? -10 : 10), y);
 };
 
-// Helper function to check if node has missing required connections
+// ============================================================================
+// STATUS INDICATORS - REFINED BADGES
+// ============================================================================
+
+/**
+ * Check if node has missing required connections
+ */
 const hasMissingRequiredConnections = (node: Node): boolean => {
   if (node.isParent) return false;
   
-  // Check for required provider and storage connections
   if (node.params) {
     if ('provider' in node.params && node.params.provider) {
       const providerInput = node.inputs.find(input => input.name === 'provider');
@@ -172,7 +389,85 @@ const hasMissingRequiredConnections = (node: Node): boolean => {
   return false;
 };
 
-// Draw status popup when hovering over status indicators
+/**
+ * Draw status badge in corner of node
+ */
+const drawStatusBadge = (
+  ctx: CanvasRenderingContext2D,
+  node: Node,
+  nodeWidth: number
+) => {
+  if (!node.status || node.isParent) return;
+  
+  const badgeRadius = 5;
+  const badgeX = node.position.x + nodeWidth - 12;
+  const badgeY = node.position.y + 12;
+  
+  let color: string;
+  switch (node.status) {
+    case 'running':
+      color = COLORS.statusRunning;
+      break;
+    case 'success':
+      color = COLORS.statusSuccess;
+      break;
+    case 'failed':
+      color = COLORS.statusFailed;
+      break;
+    default:
+      return;
+  }
+  
+  // Draw badge with subtle glow
+  ctx.save();
+  
+  // Glow
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+  
+  // Badge circle
+  ctx.beginPath();
+  ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  
+  ctx.restore();
+  
+  // Running pulse animation
+  if (node.status === 'running') {
+    const pulse = Math.sin(Date.now() / 400) * 0.4 + 0.6;
+    ctx.beginPath();
+    ctx.arc(badgeX, badgeY, badgeRadius + 4, 0, Math.PI * 2);
+    ctx.fillStyle = `${color}${Math.round(pulse * 40).toString(16).padStart(2, '0')}`;
+    ctx.fill();
+  }
+};
+
+/**
+ * Get border color based on node state
+ */
+const getNodeBorderColor = (node: Node, isSelected: boolean): string => {
+  if (isSelected) return COLORS.borderSelected;
+  
+  // Status-based border tint
+  if (node.status && !node.isParent) {
+    switch (node.status) {
+      case 'running':
+        return COLORS.statusRunning;
+      case 'failed':
+        return COLORS.statusFailed;
+      case 'success':
+        // Brief green tint, could be animated
+        return COLORS.statusSuccess;
+    }
+  }
+  
+  return COLORS.borderDefault;
+};
+
+/**
+ * Draw status popup when hovering over status badge
+ */
 const drawStatusPopup = (
   ctx: CanvasRenderingContext2D,
   node: Node,
@@ -183,177 +478,95 @@ const drawStatusPopup = (
   nodeHeight: number,
   mousePosition: { x: number; y: number } | null
 ) => {
-  if (!mousePosition || !node.id?.startsWith('source')) return;
+  if (!mousePosition || !node.status) return;
   
   const distToIcon = Math.sqrt(
     Math.pow(mousePosition.x - iconX, 2) + 
     Math.pow(mousePosition.y - iconY, 2)
   );
   
-  // Only show popup if hovering near the icon
-  if (distToIcon <= iconRadius * 1.8) {
-    let iconColor = '#57534e'; // Default gray
-    
-    switch (node.status) {
-      case 'running': iconColor = '#f59e0b'; break; // Amber
-      case 'success': iconColor = '#22c55e'; break; // Green
-      case 'failed': iconColor = '#ef4444'; break; // Red
-    }
-    
-    const popupWidth = 240;
-    const popupHeight = node.statusMessage ? 100 : 70;
-    
-    // Position popup, adjusting if near screen edge
-    let popupX = node.position.x;
-    let popupY = node.position.y - popupHeight - 15;
-    
-    if (popupY < 10) {
-      popupY = node.position.y + nodeHeight + 15;
-    }
-    
-    // Draw popup
-    ctx.save();
-    
-    // Background
-    ctx.beginPath();
-    ctx.roundRect(popupX, popupY, popupWidth, popupHeight, 10);
-    ctx.fillStyle = 'rgba(15, 15, 15, 0.97)';
-    ctx.fill();
-    
-    // Border
-    ctx.strokeStyle = iconColor;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    
-    // Title
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    
-    // Title text
-    let title = 'Status: Unknown';
-    switch (node.status) {
-      case 'running': title = 'Status: Running'; break;
-      case 'success': title = 'Status: Success'; break;
-      case 'failed': title = 'Status: Failed'; break;
-    }
-    
-    ctx.fillText(title, popupX + popupWidth / 2, popupY + 10);
-    
-    // Status message if available
-    if (node.statusMessage) {
-      ctx.fillStyle = '#d1d5db';
-      ctx.font = '11px sans-serif';
-      ctx.textAlign = 'center';
-      
-      // Wrap text
-      const maxWidth = popupWidth - 20;
-      const words = node.statusMessage.split(' ');
-      let line = '';
-      let y = popupY + 30;
-      
-      for (let i = 0; i < words.length; i++) {
-        const testLine = line + words[i] + ' ';
-        const metrics = ctx.measureText(testLine);
-        
-        if (metrics.width > maxWidth && i > 0) {
-          ctx.fillText(line, popupX + popupWidth / 2, y);
-          line = words[i] + ' ';
-          y += 16;
-        } else {
-          line = testLine;
-        }
-      }
-      
-      ctx.fillText(line, popupX + popupWidth / 2, y);
-    }
-    
-    // Status data for successful sources
-    if (node.status === 'success' && node.statusData) {
-      ctx.fillStyle = '#86efac'; // Light green
-      ctx.font = '11px sans-serif';
-      ctx.textAlign = 'center';
-      
-      const dataCount = typeof node.statusData === 'number' ? 
-                     node.statusData : 
-                     (node.statusData?.count || 0);
-      
-      const itemText = `Fetched ${dataCount} item${dataCount !== 1 ? 's' : ''}`;
-      ctx.fillText(itemText, popupX + popupWidth / 2, popupY + 50);
-    }
-    
-    ctx.restore();
-  }
-};
-
-// Helper function to determine port color based on type and connection status
-const getPortColorByType = (type: string, isConnected: boolean | string | undefined): string => {
-  // Ensure isConnected is treated as a boolean
-  const connected = !!isConnected;
+  if (distToIcon > iconRadius * 2) return;
   
-  if (type === 'provider') {
-    return connected ? '#d97706' : '#f59e0b'; // Darker yellow for provider connections
-  } else if (type === 'storage') {
-    return connected ? '#fbbf24' : '#fcd34d'; // Lighter amber for storage connections
-  } else if (type === 'data') {
-    return connected ? '#f59e0b' : '#fcd34d'; // Yellow amber for data connections
-  }
-  return '#666'; // Default gray color
-};
-
-// Helper function to draw a port
-const drawPort = (
-  ctx: CanvasRenderingContext2D,
-  x: number, 
-  y: number, 
-  portType: string,
-  isConnected: boolean | string | undefined,
-  isHovered: boolean,
-  isParent: boolean,
-  label: string,
-  isOutput: boolean
-) => {
-  // Draw hover effect if needed
-  if (isHovered) {
-    // Draw outer glow effect
-    ctx.beginPath();
-    ctx.arc(x, y, 12, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(251, 191, 36, 0.15)'; // Yellow amber glow
-    ctx.fill();
-    
-    // Draw inner glow effect
-    ctx.beginPath();
-    ctx.arc(x, y, 8, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(251, 191, 36, 0.3)'; // Darker yellow amber glow
-    ctx.fill();
+  let statusColor = COLORS.statusIdle;
+  switch (node.status) {
+    case 'running': statusColor = COLORS.statusRunning; break;
+    case 'success': statusColor = COLORS.statusSuccess; break;
+    case 'failed': statusColor = COLORS.statusFailed; break;
   }
   
-  // Get port color based on type and connection
-  const portColor = getPortColorByType(portType, isConnected);
+  const popupWidth = 200;
+  const popupHeight = node.statusMessage ? 80 : 50;
   
-  // Port background size (slightly larger for parent nodes)
-  const radius = isParent ? 7 : 6;
+  let popupX = node.position.x + nodeWidth + 10;
+  let popupY = node.position.y;
   
-  // Draw port background
+  ctx.save();
+  
+  // Shadow
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 4;
+  
+  // Background
   ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.fillStyle = '#292524'; // Dark background
+  ctx.roundRect(popupX, popupY, popupWidth, popupHeight, 6);
+  ctx.fillStyle = '#0c0c0c';
   ctx.fill();
   
-  // Draw port border with correct style
-  ctx.strokeStyle = isHovered ? '#fbbf24' : portColor;
-  ctx.lineWidth = isHovered ? 3 : (isParent ? 2.5 : 2);
+  ctx.shadowColor = 'transparent';
+  
+  // Border
+  ctx.strokeStyle = statusColor;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
   
-  // Draw port label
-  ctx.fillStyle = isHovered ? '#fbbf24' : (isParent ? '#d1d5db' : '#9ca3af');
-  ctx.font = '12px sans-serif';
-  ctx.textAlign = isOutput ? 'left' : 'right';
-  ctx.fillText(label, x + (isOutput ? 8 : -8), y + 4);
+  // Title
+  ctx.fillStyle = COLORS.textPrimary;
+  ctx.font = '600 12px system-ui, -apple-system, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  
+  const statusText = node.status.charAt(0).toUpperCase() + node.status.slice(1);
+  ctx.fillText(statusText, popupX + 12, popupY + 12);
+  
+  // Status message
+  if (node.statusMessage) {
+    ctx.fillStyle = COLORS.textSecondary;
+    ctx.font = '11px system-ui, -apple-system, sans-serif';
+    
+    // Truncate if too long
+    let message = node.statusMessage;
+    if (ctx.measureText(message).width > popupWidth - 24) {
+      while (ctx.measureText(message + '...').width > popupWidth - 24 && message.length > 0) {
+        message = message.slice(0, -1);
+      }
+      message += '...';
+    }
+    ctx.fillText(message, popupX + 12, popupY + 32);
+  }
+  
+  // Data count for success
+  if (node.status === 'success' && node.statusData) {
+    const dataCount = typeof node.statusData === 'number' ? 
+                     node.statusData : 
+                     (node.statusData?.count || 0);
+    
+    ctx.fillStyle = COLORS.statusSuccess;
+    ctx.font = '11px system-ui, -apple-system, sans-serif';
+    ctx.fillText(`${dataCount} items`, popupX + 12, popupY + (node.statusMessage ? 52 : 32));
+  }
+  
+  ctx.restore();
 };
 
-// Draw a node
+// ============================================================================
+// NODE DRAWING - MINIMAL OUTLINE STYLE
+// ============================================================================
+
+/**
+ * Draw a node with minimal outline style
+ */
 export const drawNode = (
   ctx: CanvasRenderingContext2D,
   node: Node,
@@ -363,341 +576,215 @@ export const drawNode = (
   mousePosition: { x: number; y: number } | null = null,
   skipStatusPopups: boolean = false
 ) => {
-  const nodeWidth = 200;
+  const isSelected = selectedNode === node.id;
+  const nodeHeight = calculateNodeHeight(node);
   
-  // Save canvas state
   ctx.save();
-
-  // Calculate node height based on type and children
-  const nodeHeight = node.isParent ? 
-    (node.expanded && node.children && node.children.length > 0 ? 80 : 50) : 
-    50;
-    
-  // Draw node background
+  
+  // ============================================================================
+  // SHADOW
+  // ============================================================================
+  ctx.shadowColor = isSelected ? COLORS.shadowSelected : COLORS.shadowDefault;
+  ctx.shadowBlur = isSelected ? 16 : 12;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 4;
+  
+  // ============================================================================
+  // BACKGROUND - Differentiated by node type
+  // ============================================================================
   ctx.beginPath();
   ctx.roundRect(
     node.position.x,
     node.position.y,
-    nodeWidth,
+    NODE_WIDTH,
     nodeHeight,
-    8
+    NODE_RADIUS
   );
   
-  // Set node background color based on its status if it's not a parent node
-  if (node.status && !node.isParent) {
-    // Status-based colors - using more vibrant colors
-    switch (node.status) {
-      case 'running':
-        // Brighter amber/yellow color for running nodes
-        ctx.fillStyle = selectedNode === node.id ? '#d97706' : '#f59e0b';
-        break;
-      case 'success':
-        // Brighter green color for successful nodes
-        ctx.fillStyle = selectedNode === node.id ? '#16a34a' : '#22c55e';
-        break;
-      case 'failed':
-        // Brighter red color for failed nodes
-        ctx.fillStyle = selectedNode === node.id ? '#b91c1c' : '#ef4444';
-        break;
-      default:
-        // Default colors based on node type (same as before)
-        if (node.type === 'ai' || (node.isProvider === true)) {
-          ctx.fillStyle = selectedNode === node.id ? '#854d0e' : '#713f12'; // Darker yellow for providers
-        } else if (node.type === 'storage') {
-          ctx.fillStyle = selectedNode === node.id ? '#92400e' : '#b45309'; // Lighter amber/yellow for storage
-        } else {
-          // Regular nodes
-          ctx.fillStyle = selectedNode === node.id ? '#44403c' : '#292524'; // Dark color
-        }
-    }
+  // Choose background color based on node type
+  if (node.isParent) {
+    ctx.fillStyle = COLORS.nodeBgParent;
+  } else if (node.type === 'ai' || node.isProvider) {
+    ctx.fillStyle = COLORS.nodeBgAi;
+  } else if (node.type === 'storage') {
+    ctx.fillStyle = COLORS.nodeBgStorage;
   } else {
-    // Use darker shades for parent nodes to visually differentiate them
-    if (node.isParent) {
-      // Use very dark solid color for parent nodes
-      ctx.fillStyle = selectedNode === node.id ? '#0c0a09' : '#0a0908'; // Almost black background for parent nodes
-    } else if (node.type === 'ai' || (node.isProvider === true)) {
-      // Special color for provider nodes that matches connection line color - now darker yellow
-      ctx.fillStyle = selectedNode === node.id ? '#854d0e' : '#713f12'; // Darker yellow for providers
-    } else if (node.type === 'storage') {
-      // Special color for storage nodes that matches storage connection line color - now using lighter amber
-      ctx.fillStyle = selectedNode === node.id ? '#92400e' : '#b45309'; // Lighter amber/yellow for storage
-    } else {
-      // Solid color for child nodes instead of gradient
-      ctx.fillStyle = selectedNode === node.id ? '#44403c' : '#292524'; // Dark color
-    }
+    ctx.fillStyle = COLORS.nodeBg;
   }
-  
-  // Draw background
   ctx.fill();
   
-  // Draw glowing effect for running nodes with increased glow
-  if (node.status === 'running' && !node.isParent) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(
-      node.position.x,
-      node.position.y,
-      nodeWidth,
-      nodeHeight,
-      8
-    );
-    ctx.strokeStyle = '#f59e0b'; // Brighter amber glow
-    ctx.shadowColor = '#f59e0b';
-    ctx.shadowBlur = 15; // Increased blur
-    ctx.lineWidth = 3; // Thicker line
-    ctx.stroke();
-    ctx.restore();
-  }
+  // Reset shadow for border
+  ctx.shadowColor = 'transparent';
   
-  // Draw a thin border for the node
+  // ============================================================================
+  // BORDER - Color varies by node type and status
+  // ============================================================================
   ctx.beginPath();
   ctx.roundRect(
     node.position.x,
     node.position.y,
-    nodeWidth,
+    NODE_WIDTH,
     nodeHeight,
-    8
+    NODE_RADIUS
   );
   
-  // Determine border color 
-  if (selectedNode === node.id) {
-    // Always use a bright amber for selected nodes
-    ctx.strokeStyle = '#fbbf24';
+  // Choose border color
+  if (isSelected) {
+    ctx.strokeStyle = COLORS.borderSelected;
     ctx.lineWidth = 2;
-  } else {
-    // Use normal borders based on status
-    if (node.status === 'running') {
-      ctx.strokeStyle = '#f59e0b'; // Brighter yellow border for running
-      ctx.lineWidth = 2;
-    } else if (node.status === 'success') {
-      ctx.strokeStyle = '#22c55e'; // Brighter green border for success
-      ctx.lineWidth = 2;
-    } else if (node.status === 'failed') {
-      ctx.strokeStyle = '#ef4444'; // Brighter red border for failed
-      ctx.lineWidth = 2;
-    } else {
-      // Standard border for normal nodes
-      ctx.strokeStyle = '#57534e';
-      ctx.lineWidth = 1;
+  } else if (node.status && !node.isParent) {
+    // Status-based border
+    switch (node.status) {
+      case 'running':
+        ctx.strokeStyle = COLORS.statusRunning;
+        break;
+      case 'failed':
+        ctx.strokeStyle = COLORS.statusFailed;
+        break;
+      case 'success':
+        ctx.strokeStyle = COLORS.statusSuccess;
+        break;
+      default:
+        ctx.strokeStyle = COLORS.borderDefault;
     }
+    ctx.lineWidth = 1.5;
+  } else if (node.type === 'ai' || node.isProvider) {
+    ctx.strokeStyle = COLORS.borderAi;
+    ctx.lineWidth = 1.5;
+  } else if (node.type === 'storage') {
+    ctx.strokeStyle = COLORS.borderStorage;
+    ctx.lineWidth = 1.5;
+  } else {
+    ctx.strokeStyle = COLORS.borderDefault;
+    ctx.lineWidth = 1.5;
   }
   ctx.stroke();
-
-  // Node title
-  ctx.fillStyle = node.isParent ? '#fcd34d' : '#fcd34d'; // Brighter color for parent nodes
-  ctx.font = node.isParent ? 'bold 14px sans-serif' : '14px sans-serif'; // Bold text for parent nodes
+  
+  // ============================================================================
+  // NODE TITLE
+  // ============================================================================
+  ctx.fillStyle = isSelected ? COLORS.textSelected : COLORS.textPrimary;
+  ctx.font = node.isParent 
+    ? '600 13px system-ui, -apple-system, sans-serif' 
+    : '500 12px system-ui, -apple-system, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(node.name, node.position.x + nodeWidth / 2, node.position.y + 20);
+  ctx.textBaseline = 'middle';
   
-  // Add status indicator icon for any node with a status
-  if (!node.isParent && node.status) {
-    // Show status indicators for all node types, not just source nodes
-    
-    // Define the status icon position - more prominently positioned at top left corner
-    const iconX = node.position.x + 20; // Left side position instead of right
-    const iconY = node.position.y + 15;
-    const iconRadius = 12; // Even larger size
-    
-    // Set icon color based on status - using bolder colors
-    let iconColor = '#57534e'; // Default gray
-    
-    switch (node.status) {
-      case 'running':
-        iconColor = '#f59e0b'; // Bright amber for running
-        break;
-      case 'success':
-        iconColor = '#22c55e'; // Bright green for success
-        break;
-      case 'failed':
-        iconColor = '#ef4444'; // Bright red for failed
-        break;
-    }
-    
-    // Draw larger status indicator with glow
-    ctx.save(); // Save context before applying shadow
-    
-    // Add glow effect
-    ctx.shadowColor = iconColor;
-    ctx.shadowBlur = 10;
-    
-    // Draw status icon with border
-    ctx.beginPath();
-    ctx.arc(iconX, iconY, iconRadius, 0, Math.PI * 2);
-    ctx.fillStyle = iconColor;
-    ctx.fill();
-    
-    ctx.restore(); // Restore context to remove shadow
-    
-    // Add information icon (lowercase "i") instead of status initial
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 14px serif'; // Use serif font for more recognizable info icon
-    ctx.textAlign = 'center';
-    
-    // Add status letter for clarity
-    let statusLetter = '?';
-    switch (node.status) {
-      case 'running':
-        statusLetter = 'R';
-        break;
-      case 'success':
-        statusLetter = 'S';
-        break;
-      case 'failed':
-        statusLetter = 'F';
-        break;
-    }
-    ctx.fillText(statusLetter, iconX, iconY + 5);
-    
-    // Save status popup info for later drawing if not skipping popups
-    if (!skipStatusPopups && mousePosition) {
-      // Check if mouse is hovering over the status icon
-      const dx = mousePosition.x - iconX;
-      const dy = mousePosition.y - iconY;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      if (distance <= iconRadius) {
-        // Direct call to draw status popup if hovering over status icon
-        if (!skipStatusPopups) {
-          drawStatusPopup(ctx, node, iconX, iconY, iconRadius, nodeWidth, nodeHeight, mousePosition);
-        }
-      }
-    }
+  // Truncate name if too long
+  let displayName = node.name;
+  const maxTextWidth = NODE_WIDTH - 40;
+  while (ctx.measureText(displayName).width > maxTextWidth && displayName.length > 0) {
+    displayName = displayName.slice(0, -1);
+  }
+  if (displayName !== node.name) {
+    displayName += '...';
   }
   
-  // For source nodes, display a small indicator for successful data count
-  if (node.id?.startsWith('source') && !node.isParent && node.status === 'success' && node.statusData) {
-    // Subtle data count indicator at bottom of node
-    const dataCount = typeof node.statusData === 'number' ? 
-                     node.statusData : 
-                     (node.statusData?.count || 0);
-    
-    if (dataCount > 0) {
-      ctx.fillStyle = '#16a34a'; // Green background
-      ctx.beginPath();
-      ctx.roundRect(
-        node.position.x + nodeWidth / 2 - 20,
-        node.position.y + nodeHeight - 8,
-        40,
-        6,
-        3
-      );
-      ctx.fill();
-    }
-  }
+  ctx.fillText(displayName, node.position.x + NODE_WIDTH / 2, node.position.y + 16);
   
-  // Show small warning indicator for failed nodes
-  if (!node.isParent && node.status === 'failed') {
-    // Draw error icon at bottom of node
-    ctx.fillStyle = '#b91c1c'; // Red background
-    ctx.beginPath();
-    ctx.roundRect(
-      node.position.x + nodeWidth / 2 - 20,
-      node.position.y + nodeHeight - 8,
-      40,
-      6,
-      3
-    );
-    ctx.fill();
-  }
+  // ============================================================================
+  // STATUS BADGE
+  // ============================================================================
+  drawStatusBadge(ctx, node, NODE_WIDTH);
   
-  // Add warning indicator for nodes with missing required connections
+  // ============================================================================
+  // MISSING CONNECTION WARNING
+  // ============================================================================
   if (hasMissingRequiredConnections(node)) {
+    const warningX = node.position.x + 12;
+    const warningY = node.position.y + 12;
+    const warningRadius = 6;
+    
     ctx.beginPath();
-    ctx.arc(node.position.x + 15, node.position.y + 15, 8, 0, Math.PI * 2);
-    ctx.fillStyle = '#dc2626'; // Red warning indicator
+    ctx.arc(warningX, warningY, warningRadius, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS.statusFailed;
     ctx.fill();
     
-    // Add exclamation mark
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 12px sans-serif';
+    ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('!', node.position.x + 15, node.position.y + 15);
+    ctx.fillText('!', warningX, warningY);
   }
-
-  // Handle parent nodes with special attention for their input ports
+  
+  // ============================================================================
+  // PORTS
+  // ============================================================================
   if (node.isParent) {
-    // Draw parent node input ports at the top
+    // Parent node ports
     node.inputs.forEach((input, index) => {
-      // Only draw if this port should be shown for this node type
       if (!shouldShowPort(node, input.name, true)) return;
       
-      const portY = node.position.y + 25 + index * 20;
-      
-      // Port border and hover effect
+      const portY = node.position.y + PORT_OFFSET_Y + index * PORT_SPACING;
       const isHovered = hoveredPort?.nodeId === node.id && hoveredPort?.port === input.name && !hoveredPort?.isOutput;
       
       drawPort(ctx, node.position.x, portY, input.type, input.connectedTo, isHovered, true, input.name, false);
     });
     
-    // Also draw parent output ports
     node.outputs.forEach((output, index) => {
-      // Only draw if this port should be shown for this node type
       if (!shouldShowPort(node, output.name, false)) return;
       
-      const portY = node.position.y + 25 + index * 20;
-      
-      // Port border and hover effect
+      const portY = node.position.y + PORT_OFFSET_Y + index * PORT_SPACING;
       const isHovered = hoveredPort?.nodeId === node.id && hoveredPort?.port === output.name && hoveredPort?.isOutput;
       
-      drawPort(ctx, node.position.x + nodeWidth, portY, output.type, output.connectedTo, isHovered, true, output.name, true);
+      drawPort(ctx, node.position.x + NODE_WIDTH, portY, output.type, output.connectedTo, isHovered, true, output.name, true);
     });
-  }
-  else if (node.type === 'provider' && node.isProvider) {
-    // For provider nodes, only draw the provider output port on the right
-    const output = node.outputs[0];
-    const portY = node.position.y + 25;
-    
-    // Port border and hover effect
-    const isHovered = hoveredPort?.nodeId === node.id && hoveredPort?.port === output.name && hoveredPort?.isOutput;
-    
-    drawPort(ctx, node.position.x + nodeWidth, portY, 'provider', output.connectedTo, isHovered, false, output.name, true);
-  } else if (!node.isParent) {
-    // For all other non-parent nodes, draw their input and output ports
+  } else {
+    // Regular node ports
     node.inputs.forEach((input, index) => {
-      // Only draw if this port should be shown for this node type
       if (!shouldShowPort(node, input.name, true)) return;
       
-      const portY = node.position.y + 25 + index * 20;
-      
-      // Port border and hover effect
+      const portY = node.position.y + PORT_OFFSET_Y + index * PORT_SPACING;
       const isHovered = hoveredPort?.nodeId === node.id && hoveredPort?.port === input.name && !hoveredPort?.isOutput;
       
       drawPort(ctx, node.position.x, portY, input.type, input.connectedTo, isHovered, false, input.name, false);
     });
 
-    // Check if this is a child node of a parent - child nodes shouldn't have output ports
+    // Output ports (only for storage/ai nodes, not for child nodes in groups)
     const shouldDrawOutputs = node.type === 'storage' || node.type === 'ai' || node.isProvider ||
                            !(node.id && (node.id.includes('source-') || node.id.includes('enricher-') || 
                              node.id.includes('generator-')));
 
-    // Only draw output ports if needed
     if (shouldDrawOutputs) {
       node.outputs.forEach((output, index) => {
-        // Only draw if this port should be shown for this node type
         if (!shouldShowPort(node, output.name, false)) return;
         
-        const portY = node.position.y + 25 + index * 20;
+        const portY = node.position.y + PORT_OFFSET_Y + index * PORT_SPACING;
         const isHovered = hoveredPort?.nodeId === node.id && hoveredPort?.port === output.name && hoveredPort?.isOutput;
         
-        drawPort(ctx, node.position.x + nodeWidth, portY, output.type, output.connectedTo, isHovered, false, output.name, true);
+        drawPort(ctx, node.position.x + NODE_WIDTH, portY, output.type, output.connectedTo, isHovered, false, output.name, true);
       });
     }
   }
 
-  // Draw child nodes if parent is expanded and has children
+  // ============================================================================
+  // CHILD NODES
+  // ============================================================================
   if (node.isParent && node.expanded && node.children && node.children.length > 0) {
-    // Draw the child nodes recursively
     node.children.forEach((child) => {
       drawNode(ctx, child, scale, hoveredPort, selectedNode, mousePosition, skipStatusPopups);
     });
   }
 
-  // Restore canvas state
+  // ============================================================================
+  // STATUS POPUP (if hovering)
+  // ============================================================================
+  if (!skipStatusPopups && mousePosition && node.status && !node.isParent) {
+    const badgeX = node.position.x + NODE_WIDTH - 12;
+    const badgeY = node.position.y + 12;
+    drawStatusPopup(ctx, node, badgeX, badgeY, 8, NODE_WIDTH, nodeHeight, mousePosition);
+  }
+
   ctx.restore();
 };
 
-// Draw the grid
+// ============================================================================
+// GRID DRAWING - DOT PATTERN
+// ============================================================================
+
+/**
+ * Draw a subtle dot grid
+ */
 export const drawGrid = (
   ctx: CanvasRenderingContext2D,
   canvasWidth: number,
@@ -705,30 +792,23 @@ export const drawGrid = (
   scale: number,
   offset: { x: number, y: number }
 ) => {
-  // Use subtle yellow amber grid color
-  ctx.strokeStyle = 'rgba(251, 191, 36, 0.15)'; // Subtle yellow amber color
-  ctx.lineWidth = 1 / scale; // Adjust line width for zoom
   const gridSize = 20;
+  const dotRadius = 1;
   
-  // Calculate grid boundaries to cover the entire visible area
-  const startX = -offset.x / scale;
-  const startY = -offset.y / scale;
+  // Calculate grid boundaries
+  const startX = Math.floor((-offset.x / scale) / gridSize) * gridSize;
+  const startY = Math.floor((-offset.y / scale) / gridSize) * gridSize;
   const endX = (canvasWidth - offset.x) / scale;
   const endY = (canvasHeight - offset.y) / scale;
   
-  // Draw vertical lines
-  for (let x = Math.floor(startX / gridSize) * gridSize; x < endX; x += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(x, startY);
-    ctx.lineTo(x, endY);
-    ctx.stroke();
-  }
+  ctx.fillStyle = COLORS.gridDot;
   
-  // Draw horizontal lines
-  for (let y = Math.floor(startY / gridSize) * gridSize; y < endY; y += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(startX, y);
-    ctx.lineTo(endX, y);
-    ctx.stroke();
+  // Draw dots
+  for (let x = startX; x < endX; x += gridSize) {
+    for (let y = startY; y < endY; y += gridSize) {
+      ctx.beginPath();
+      ctx.arc(x, y, dotRadius / scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
-}; 
+};

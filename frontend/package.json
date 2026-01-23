@@ -4,6 +4,8 @@
   "private": true,
   "dependencies": {
     "@privy-io/react-auth": "^2.0.0",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
@@ -12,6 +14,7 @@
     "@types/react-router-dom": "^5.3.3",
     "@types/uuid": "^9.0.7",
     "@types/websocket": "^1.0.6",
+    "buffer": "^6.0.3",
     "clsx": "^2.1.1",
     "prismjs": "^1.30.0",
     "react": "^18.2.0",
@@ -20,14 +23,14 @@
     "react-scripts": "5.0.1",
     "tailwindcss": "^3.3.3",
     "three": "^0.175.0",
-    "typescript": "^4.9.5",
+    "typescript": "^5.3.3",
     "uuid": "^9.0.1",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
     "start": "react-scripts start",
     "prebuild": "mkdir -p public/static",
-    "copy-docs": "mkdir -p public/docs && cp -r ../docs/build/* public/docs/",
+    "copy-docs": "mkdir -p public/docs && cp -r ../docs/build/* public/docs/ 2>/dev/null || true",
     "build": "npm run copy-docs && react-scripts build",
     "postbuild": "echo 'Build completed successfully with docs integration!'",
     "test": "react-scripts test",

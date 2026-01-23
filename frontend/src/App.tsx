@@ -14,7 +14,38 @@ import { UnlockDatabaseDialog } from './components/UnlockDatabaseDialog';
 // Add a variable at module level to track the last processed config
 let lastProcessedConfig: string | null = null;
 
-function App() {
+/**
+ * Props for platform mode integration
+ */
+interface AppProps {
+  // Platform mode - when true, uses platform API instead of legacy API
+  platformMode?: boolean;
+  // Platform config ID (for edit mode)
+  platformConfigId?: string;
+  // Platform config JSON (pre-loaded config for edit mode)
+  platformConfigJson?: any;
+  // Callback when saving in platform mode
+  onPlatformSave?: (configJson: any) => Promise<boolean>;
+  // Callback to open config settings panel
+  onOpenConfigSettings?: () => void;
+  // Whether a save operation is in progress
+  isSaving?: boolean;
+  // Config name (for display in platform mode)
+  configName?: string;
+  // Whether user is a pro user (for platform storage option)
+  isPlatformPro?: boolean;
+}
+
+function App({
+  platformMode = false,
+  platformConfigId,
+  platformConfigJson,
+  onPlatformSave,
+  onOpenConfigSettings,
+  isSaving: externalIsSaving = false,
+  configName: externalConfigName,
+  isPlatformPro = false,
+}: AppProps = {}) {
   const [configs, setConfigs] = useState<string[]>([]);
   const [selectedConfig, setSelectedConfig] = useState<string | null>(null);
   const [config, setConfig] = useState<Config>({
@@ -57,8 +88,11 @@ function App() {
   const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
-    loadConfigs();
-  }, []);
+    // In platform mode, we don't load configs from legacy API
+    if (!platformMode) {
+      loadConfigs();
+    }
+  }, [platformMode]);
 
   // Update node statuses when websocket status updates come in
   useEffect(() => {
@@ -86,8 +120,10 @@ function App() {
     };
   }, [wsConnected, selectedConfig, refreshStatus]);
 
-  // Initialize SecretManager on app startup
+  // Initialize SecretManager on app startup (only in legacy mode)
   useEffect(() => {
+    if (platformMode) return; // Skip in platform mode
+    
     console.log('App starting, initializing SecretManager...');
     secretManager.initialize().then(() => {
       console.log('SecretManager initialized in App component');
@@ -95,7 +131,29 @@ function App() {
     }).catch(error => {
       console.error('Error initializing SecretManager in App component:', error);
     });
-  }, []);
+  }, [platformMode]);
+
+  // Load platform config when provided
+  useEffect(() => {
+    if (platformMode && platformConfigJson) {
+      const sanitizedConfig = {
+        name: externalConfigName || platformConfigJson.name || '',
+        sources: platformConfigJson.sources || [],
+        ai: platformConfigJson.ai || [],
+        enrichers: platformConfigJson.enrichers || [],
+        generators: platformConfigJson.generators || [],
+        providers: platformConfigJson.providers || [],
+        storage: platformConfigJson.storage || [],
+        settings: platformConfigJson.settings || {
+          runOnce: false,
+          onlyFetch: false
+        }
+      };
+      setConfig(sanitizedConfig);
+      setSelectedConfig(sanitizedConfig.name);
+      configStateManager.loadConfig(sanitizedConfig);
+    }
+  }, [platformMode, platformConfigJson, externalConfigName]);
 
   // Check if the database is password-protected and locked
   const checkDatabaseLockStatus = () => {
@@ -214,39 +272,50 @@ function App() {
         console.error('No configuration to save');
         return false;
       }
-      
-      // If the configuration needs a name, prompt for it
-      let configName = selectedConfig || config.name || '';
-      if (!configName || configName.trim() === '') {
-        const userInput = prompt('Please enter a name for this configuration:', 'my-config');
-        if (!userInput || userInput.trim() === '') {
-          return false; // User cancelled or provided empty name
-        }
-        configName = userInput.trim();
-        
-        // Update configuration with the new name
-        const updatedConfig = { ...config, name: configName };
-        setConfig(updatedConfig);
-        setSelectedConfig(configName);
-        configStateManager.updateConfig(updatedConfig);
-      }
 
       // Make sure everything is in sync before saving
       configStateManager.forceSync(true);
       
       // Get the current config from ConfigStateManager
       const currentConfig = configStateManager.getConfig();
+
+      // Platform mode - use callback
+      if (platformMode && onPlatformSave) {
+        const success = await onPlatformSave(currentConfig);
+        if (success) {
+          setHasUnsavedChanges(false);
+          configStateManager.resetPendingChanges();
+        }
+        return success;
+      }
+      
+      // Legacy mode - use direct API
+      // If the configuration needs a name, prompt for it
+      let configNameToSave = selectedConfig || config.name || '';
+      if (!configNameToSave || configNameToSave.trim() === '') {
+        const userInput = prompt('Please enter a name for this configuration:', 'my-config');
+        if (!userInput || userInput.trim() === '') {
+          return false; // User cancelled or provided empty name
+        }
+        configNameToSave = userInput.trim();
+        
+        // Update configuration with the new name
+        const updatedConfig = { ...config, name: configNameToSave };
+        setConfig(updatedConfig);
+        setSelectedConfig(configNameToSave);
+        configStateManager.updateConfig(updatedConfig);
+      }
       
       // Use the API's saveConfig function with both name and config parameters
       // saveConfig returns Promise<void>, so if no exception is thrown, it succeeded
-      await saveConfig(configName, currentConfig);
+      await saveConfig(configNameToSave, currentConfig);
       
       // If we got here, the save was successful
       // Clear unsaved changes flag
       setHasUnsavedChanges(false);
       // Also clear the pending changes in configStateManager
       configStateManager.resetPendingChanges();
-      showToast(`Configuration ${configName} saved successfully`, 'success');
+      showToast(`Configuration ${configNameToSave} saved successfully`, 'success');
       
       // Reload configs list to ensure it's up to date
       loadConfigs();
@@ -455,24 +524,62 @@ function App() {
     reader.readAsText(file);
   };
 
+  // Helper to create default platform config with pre-configured storage and AI plugins
+  const createDefaultPlatformConfig = (): Config => ({
+    name: '',
+    sources: [],
+    ai: [{
+      type: 'OpenAIProvider',
+      name: 'OpenAIProvider',
+      pluginName: 'OpenAIProvider',
+      params: {
+        usePlatformAI: true,
+      }
+    }],
+    enrichers: [],
+    generators: [],
+    providers: [],
+    storage: [{
+      type: 'PostgresStorage',
+      name: 'PostgresStorage',
+      pluginName: 'PostgresStorage',
+      params: {
+        usePlatformStorage: true,
+      }
+    }],
+    settings: {
+      runOnce: false,
+      onlyFetch: false
+    }
+  });
+
   // Handle new config creation
   const handleNewConfig = () => {
-                    // Clear selected config and reset state to empty
-                    setSelectedConfig(null);
-                    setConfig({
-                      name: '',
-                      sources: [],
-                      ai: [],
-                      enrichers: [],
-                      generators: [],
-                      providers: [],
-                      storage: [],
-                      settings: {
-                        runOnce: false,
-                        onlyFetch: false
-                      }
-                    });
-                    setHasUnsavedChanges(false);
+    // Clear selected config
+    setSelectedConfig(null);
+    
+    if (platformMode) {
+      // Platform mode: Start with default storage and AI plugins pre-configured
+      const defaultConfig = createDefaultPlatformConfig();
+      setConfig(defaultConfig);
+      configStateManager.loadConfig(defaultConfig);
+    } else {
+      // Legacy mode: Empty config
+      setConfig({
+        name: '',
+        sources: [],
+        ai: [],
+        enrichers: [],
+        generators: [],
+        providers: [],
+        storage: [],
+        settings: {
+          runOnce: false,
+          onlyFetch: false
+        }
+      });
+    }
+    setHasUnsavedChanges(false);
   };
   
   // Function to handle plugin drag from sidebar to NodeGraph
@@ -498,6 +605,11 @@ function App() {
     setShowResetDialog(true);
   };
 
+  // In platform mode, the parent handles positioning; in legacy mode, we're fixed fullscreen
+  const containerClass = platformMode 
+    ? "absolute inset-0 flex flex-col bg-stone-950 text-white overflow-hidden"
+    : "fixed inset-0 flex flex-col bg-stone-950 text-white overflow-hidden";
+
   return (
     <div className="fixed inset-0 flex flex-col bg-stone-950 text-white overflow-hidden">
       {/* Full-width Toolbar */}
@@ -517,23 +629,23 @@ function App() {
         
         {/* Sidebar */}
         <Sidebar 
-          configs={configs}
-          selectedConfig={selectedConfig}
-          onConfigSelect={handleConfigSelect}
-          onNewConfig={handleNewConfig}
+          configs={platformMode ? [] : configs}
+          selectedConfig={platformMode ? (externalConfigName || null) : selectedConfig}
+          onConfigSelect={platformMode ? () => {} : handleConfigSelect}
+          onNewConfig={platformMode ? () => {} : handleNewConfig}
           onExportJSON={handleExportJSON}
-          onImportJSON={handleImportJSON}
-          onOpenSecretsManager={() => setSecretsManagerOpen(true)}
-          onOpenSecretSettings={() => setSecretSettingsOpen(true)}
-          onUnlockDatabase={() => setUnlockDatabaseOpen(true)}
-          fileInputRef={fileInputRef}
+          onImportJSON={platformMode ? () => {} : handleImportJSON}
+          onOpenSecretsManager={platformMode ? undefined : () => setSecretsManagerOpen(true)}
+          onOpenSecretSettings={platformMode ? undefined : () => setSecretSettingsOpen(true)}
+          onUnlockDatabase={platformMode ? undefined : () => setUnlockDatabaseOpen(true)}
+          fileInputRef={platformMode ? undefined : fileInputRef}
           hasUnsavedChanges={hasUnsavedChanges}
-          onRunAggregation={handleRunAggregation}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          onRunAggregation={platformMode ? undefined : handleRunAggregation}
+          activeTab={platformMode ? 'plugins' : activeTab}
+          setActiveTab={platformMode ? () => {} : setActiveTab}
           onDragPlugin={handleDragPlugin}
           config={config}
-          onConfigNameSave={(name) => {
+          onConfigNameSave={platformMode ? undefined : (name) => {
             // Update config name
             const updatedConfig = { ...config, name };
             setConfig(updatedConfig);
@@ -548,7 +660,9 @@ function App() {
           viewMode={viewMode}
           onViewModeChange={handleViewModeChange}
           saveConfiguration={saveConfiguration}
-          resetConfiguration={handleResetConfiguration}
+          resetConfiguration={platformMode ? undefined : handleResetConfiguration}
+          platformMode={platformMode}
+          isSaving={externalIsSaving}
         />
 
         {/* Main Content */}
@@ -573,6 +687,9 @@ function App() {
             runAggregation={selectedConfig ? handleRunAggregation : undefined}
             viewMode={viewMode}
             hasUnsavedChanges={hasUnsavedChanges}
+            platformMode={platformMode}
+            isPlatformPro={isPlatformPro}
+            platformConfigId={platformConfigId}
           />
         </div>
       </div>

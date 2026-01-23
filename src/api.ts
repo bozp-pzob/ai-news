@@ -10,16 +10,73 @@ import { WebSocketService } from './services/websocketService';
 import { databaseService } from './services/databaseService';
 import v1Routes from './routes/v1';
 
+// Import pop402 payment middleware
+// @ts-ignore - package may not have types
+import { paymentMiddleware } from '@pop402/x402-express';
+import { PRO_PLANS } from './services/licenseService';
+
 const app = express();
 const port = process.env.PORT || 3000;
 
 // Create HTTP server
 const server = http.createServer(app);
 
+// pop402 configuration
+const FACILITATOR_URL = process.env.POP402_FACILITATOR_URL || 'https://facilitator.pop402.com';
+const NETWORK = process.env.POP402_NETWORK || 'solana';
+const PLATFORM_WALLET = process.env.PLATFORM_WALLET_ADDRESS || '';
+const MOCK_MODE = process.env.POP402_MOCK_MODE === 'true';
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+
+// Configure pop402 protected routes for license purchases
+// Each plan has its own endpoint with its specific price
+const protectedRoutes: Record<string, any> = {};
+for (const [planId, plan] of Object.entries(PRO_PLANS)) {
+  protectedRoutes[`/api/v1/me/license/purchase/${planId}`] = {
+    price: `$${plan.priceDisplay}`,
+    network: NETWORK,
+    config: {
+      description: `Pro License - ${plan.name}`,
+      mimeType: 'application/json',
+    }
+  };
+}
+
+// Debug middleware to log payment headers
+app.use((req, res, next) => {
+  if (req.path.includes('/license/purchase/')) {
+    console.log('[pop402] Request to protected route:', {
+      path: req.path,
+      method: req.method,
+      hasXPayment: !!req.headers['x-payment'],
+      hasXPaymentMeta: !!req.headers['x-payment-meta'],
+      xPaymentMetaPreview: req.headers['x-payment-meta'] 
+        ? Buffer.from(req.headers['x-payment-meta'] as string, 'base64').toString().slice(0, 200) + '...'
+        : null,
+    });
+  }
+  next();
+});
+
+// Apply pop402 payment middleware at app level (only if configured and not mock mode)
+if (!MOCK_MODE && PLATFORM_WALLET) {
+  console.log('[pop402] Payment middleware enabled:', {
+    platformWallet: PLATFORM_WALLET.slice(0, 8) + '...',
+    facilitatorUrl: FACILITATOR_URL,
+    network: NETWORK,
+    protectedRoutes: Object.keys(protectedRoutes),
+  });
+  
+  app.use(paymentMiddleware(PLATFORM_WALLET, protectedRoutes, { url: FACILITATOR_URL }));
+} else if (MOCK_MODE) {
+  console.log('[pop402] Mock mode - payment middleware disabled');
+} else {
+  console.warn('[pop402] PLATFORM_WALLET_ADDRESS not set - payment middleware disabled');
+}
 
 // Serve static files from the frontend build directory
 app.use(express.static(path.join(__dirname, '../frontend/build')));
@@ -103,7 +160,18 @@ app.post('/aggregate', async (req, res) => {
     const onlyFetch: boolean = _config?.settings?.onlyFetch === true;
     const historicalDate = _config?.settings?.historicalDate;
 
-    const config = await configService.getConfig(configName);
+    // Use the config from request body if it has the required fields,
+    // otherwise fall back to loading from file (for backwards compatibility)
+    let config: Config;
+    if (_config.sources && _config.ai && _config.storage) {
+      // Config was sent in the request body - use it directly
+      config = _config;
+    } else if (configName) {
+      // Only config name provided - load from file
+      config = await configService.getConfig(configName);
+    } else {
+      throw new Error('Either a full config or a config name must be provided');
+    }
 
     const runtimeSettings = {
       runOnce,
@@ -135,20 +203,6 @@ app.post('/aggregate', async (req, res) => {
 
 // POST /aggregate/:configName/stop - Stop content aggregation for a specific config
 app.post('/aggregate/:configName/stop', async (req, res) => {
-  try {
-    aggregatorService.stopAggregation(req.params.configName);
-    
-    // Broadcast the updated status to all WebSocket clients
-    webSocketService.broadcastStatus(req.params.configName);
-    
-    res.json({ message: 'Content aggregation stopped successfully' });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Failed to stop content aggregation' });
-  }
-});
-
-// DELETE /aggregate/:configName - Stop content aggregation for a specific config (keeping for backward compatibility)
-app.delete('/aggregate/:configName', async (req, res) => {
   try {
     aggregatorService.stopAggregation(req.params.configName);
     
@@ -217,8 +271,8 @@ app.post('/job/:jobId/stop', (req, res) => {
   }
 });
 
-// Serve the React app for any other routes
-app.get('*', (req, res) => {
+// Serve the React app for any other routes (catch-all)
+app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
 });
 

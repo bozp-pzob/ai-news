@@ -23,48 +23,85 @@ const PLUGINS_DIRS = {
 };
 
 /**
+ * Find matching closing brace for an opening brace
+ * @param {string} content - Content to search
+ * @param {number} startIndex - Index of opening brace
+ * @returns {number} - Index of closing brace or -1 if not found
+ */
+function findMatchingBrace(content, startIndex) {
+  let depth = 0;
+  let inString = false;
+  let stringChar = '';
+  
+  for (let i = startIndex; i < content.length; i++) {
+    const char = content[i];
+    const prevChar = i > 0 ? content[i - 1] : '';
+    
+    // Handle string literals
+    if ((char === '"' || char === "'" || char === '`') && prevChar !== '\\') {
+      if (!inString) {
+        inString = true;
+        stringChar = char;
+      } else if (char === stringChar) {
+        inString = false;
+      }
+      continue;
+    }
+    
+    if (inString) continue;
+    
+    if (char === '{' || char === '[') {
+      depth++;
+    } else if (char === '}' || char === ']') {
+      depth--;
+      if (depth === 0) {
+        return i;
+      }
+    }
+  }
+  
+  return -1;
+}
+
+/**
  * Extract and parse a static class field to a JavaScript object
  * @param {string} content - File content to search in
  * @param {string} fieldName - Static field name (e.g., 'constructorInterface')
  * @returns {object|null} - Parsed object or null if not found/invalid
  */
 function extractStaticField(content, fieldName) {
-  // Match the static field with more flexible pattern: static {fieldName} = { ... };
-  // This handles various formatting scenarios including multi-line definitions
-  const regex = new RegExp(`static\\s+${fieldName}\\s*=\\s*({[\\s\\S]*?});`, 'm');
+  // Find the start of the static field
+  const regex = new RegExp(`static\\s+${fieldName}\\s*=\\s*{`);
   const match = content.match(regex);
   
-  if (!match || !match[1]) {
+  if (!match) {
     return null;
   }
   
+  // Find where the opening brace is
+  const startIndex = content.indexOf(match[0]) + match[0].length - 1;
+  const endIndex = findMatchingBrace(content, startIndex);
+  
+  if (endIndex === -1) {
+    return null;
+  }
+  
+  // Extract the full object including braces
+  const objectStr = content.substring(startIndex, endIndex + 1);
+  
   try {
-    // Attempt to clean and parse the object definition
-    let objectStr = match[1]
+    // Clean up TypeScript-specific syntax for JSON parsing
+    let cleanStr = objectStr
       // Remove single-line comments
       .replace(/\/\/.*$/gm, '')
       // Remove multi-line comments
       .replace(/\/\*[\s\S]*?\*\//gm, '')
-      // Handle string literals with proper escaping
-      .replace(/(['"])((?:\\.|(?!\1)[^\\])*)\1/g, (match) => {
-        return JSON.stringify(match.slice(1, -1));
-      })
-      // Wrap property names in quotes if they're unquoted
-      .replace(/(\b)(\w+)\s*:/g, '$1"$2":')
       // Handle trailing commas
-      .replace(/,\s*([}\]])/g, '$1');
+      .replace(/,(\s*[}\]])/g, '$1');
     
-    // For improved handling of TypeScript syntax
-    objectStr = objectStr
-      .replace(/true/g, 'true')
-      .replace(/false/g, 'false')
-      .replace(/null/g, 'null')
-      .replace(/undefined/g, 'null')
-      // Replace any remaining unknown keywords with null
-      .replace(/\b(default|export|import|as|from|const|let|var)\b/g, 'null');
-    
-    // Parse with a more resilient approach
-    return Function(`"use strict"; try { return (${objectStr}); } catch(e) { return {}; }`)();
+    // Use Function to evaluate as JavaScript (handles unquoted keys, etc.)
+    const result = Function(`"use strict"; return (${cleanStr});`)();
+    return result;
   } catch (error) {
     console.warn(`Non-critical error parsing ${fieldName}: ${error.message}`);
     return {};

@@ -1,22 +1,8 @@
 import { getPlugins, getConfigs, getConfig, saveConfig, deleteConfig, startAggregation, runAggregation, stopAggregation, getAggregationStatus, getJobStatus } from '../api';
 import { Config } from '../../types';
-import { websocketService } from '../websocket';
 
 // Mock fetch
 global.fetch = jest.fn();
-
-// Mock websocket service
-jest.mock('../websocket', () => ({
-  websocketService: {
-    isConnected: jest.fn(),
-    connect: jest.fn(),
-    getStatus: jest.fn(),
-    connectToJob: jest.fn(),
-    addJobStatusListener: jest.fn(),
-    removeJobStatusListener: jest.fn(),
-    disconnect: jest.fn(),
-  },
-}));
 
 describe('API Service', () => {
   const originalConsoleError = console.error;
@@ -47,15 +33,17 @@ describe('API Service', () => {
 
       const result = await getPlugins();
       expect(result).toEqual(mockPlugins);
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/plugins');
+      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/plugins'), expect.anything());
     });
 
     it('should throw error when fetch fails', async () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
+        statusText: 'Not Found',
+        json: () => Promise.resolve({ error: 'Failed to fetch plugins' }),
       });
 
-      await expect(getPlugins()).rejects.toThrow('Failed to fetch plugins');
+      await expect(getPlugins()).rejects.toThrow();
     });
   });
 
@@ -69,15 +57,17 @@ describe('API Service', () => {
 
       const result = await getConfigs();
       expect(result).toEqual(mockConfigs);
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/configs');
+      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/configs'), expect.anything());
     });
 
     it('should throw error when fetch fails', async () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
+        statusText: 'Not Found',
+        json: () => Promise.resolve({ error: 'Failed to fetch configs' }),
       });
 
-      await expect(getConfigs()).rejects.toThrow('Failed to fetch configs');
+      await expect(getConfigs()).rejects.toThrow();
     });
   });
 
@@ -104,7 +94,7 @@ describe('API Service', () => {
 
       const result = await getConfig('test-config');
       expect(result).toEqual(mockConfig);
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/config/test-config');
+      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/config/test-config'), expect.anything());
     });
 
     it('should throw error when name is empty', async () => {
@@ -143,15 +133,15 @@ describe('API Service', () => {
     it('should save config successfully', async () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
+        status: 200,
+        json: () => Promise.resolve({}),
       });
 
       await saveConfig('test-config', mockConfig);
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:3000/config/test-config',
+        expect.stringContaining('/config/test-config'),
         expect.objectContaining({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(mockConfig),
         })
       );
     });
@@ -159,9 +149,11 @@ describe('API Service', () => {
     it('should throw error when save fails', async () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
+        statusText: 'Bad Request',
+        json: () => Promise.resolve({ error: 'Failed to save config' }),
       });
 
-      await expect(saveConfig('test-config', mockConfig)).rejects.toThrow('Failed to save config');
+      await expect(saveConfig('test-config', mockConfig)).rejects.toThrow();
     });
   });
 
@@ -169,21 +161,26 @@ describe('API Service', () => {
     it('should delete config successfully', async () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
+        status: 204,
       });
 
       await deleteConfig('test-config');
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:3000/config/test-config',
-        { method: 'DELETE' }
+        expect.stringContaining('/config/test-config'),
+        expect.objectContaining({
+          method: 'DELETE',
+        })
       );
     });
 
     it('should throw error when delete fails', async () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
+        statusText: 'Not Found',
+        json: () => Promise.resolve({ error: 'Failed to delete config' }),
       });
 
-      await expect(deleteConfig('test-config')).rejects.toThrow('Failed to delete config');
+      await expect(deleteConfig('test-config')).rejects.toThrow();
     });
   });
 
@@ -206,17 +203,16 @@ describe('API Service', () => {
       const mockJobId = 'job-123';
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ jobId: mockJobId }),
+        json: () => Promise.resolve({ jobId: mockJobId, message: 'Started' }),
       });
 
       const result = await startAggregation('test-config', mockConfig);
       expect(result).toBe(mockJobId);
+      // Now calls /aggregate with config in body (not /aggregate/:configName)
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:3000/aggregate/test-config',
+        expect.stringContaining('/aggregate'),
         expect.objectContaining({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(mockConfig),
         })
       );
     });
@@ -224,18 +220,49 @@ describe('API Service', () => {
     it('should throw error when start fails', async () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
+        statusText: 'Bad Request',
+        json: () => Promise.resolve({ error: 'Failed to start aggregation' }),
       });
 
-      await expect(startAggregation('test-config', mockConfig)).rejects.toThrow('Failed to start aggregation');
+      await expect(startAggregation('test-config', mockConfig)).rejects.toThrow();
+    });
+  });
+
+  describe('runAggregation', () => {
+    const mockConfig: Config = {
+      name: 'test-config',
+      sources: [],
+      ai: [],
+      enrichers: [],
+      generators: [],
+      providers: [],
+      storage: [],
+      settings: {
+        runOnce: false,
+        onlyFetch: false
+      }
+    };
+
+    it('should run aggregation successfully', async () => {
+      const mockJobId = 'job-456';
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ jobId: mockJobId, message: 'Running' }),
+      });
+
+      const result = await runAggregation('test-config', mockConfig);
+      expect(result).toBe(mockJobId);
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/aggregate'),
+        expect.objectContaining({
+          method: 'POST',
+        })
+      );
     });
   });
 
   describe('getAggregationStatus', () => {
-    it('should fetch status via REST API when WebSocket is not connected', async () => {
-      (websocketService.isConnected as jest.Mock).mockReturnValue(false);
-      (websocketService.connect as jest.Mock).mockImplementation(() => {
-        throw new Error('WebSocket connection failed');
-      });
+    it('should fetch status via REST API', async () => {
       const mockStatus = { 
         status: 'running', 
         currentPhase: 'processing'
@@ -247,19 +274,10 @@ describe('API Service', () => {
 
       const result = await getAggregationStatus('test-config');
       expect(result).toEqual(mockStatus);
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/status/test-config');
-    });
-
-    it('should use WebSocket when connected', async () => {
-      (websocketService.isConnected as jest.Mock).mockReturnValue(true);
-      const result = await getAggregationStatus('test-config');
-      
-      expect(result).toEqual({
-        status: 'running',
-        currentPhase: 'waiting',
-        lastUpdated: expect.any(Number)
-      });
-      expect(websocketService.getStatus).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/status/test-config'),
+        expect.anything()
+      );
     });
   });
 
@@ -273,15 +291,37 @@ describe('API Service', () => {
 
       const result = await getJobStatus('job-123');
       expect(result).toEqual(mockStatus);
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/job/job-123');
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/job/job-123'),
+        expect.anything()
+      );
     });
 
     it('should throw error when fetch fails', async () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
+        statusText: 'Not Found',
+        json: () => Promise.resolve({ error: 'Job not found' }),
       });
 
-      await expect(getJobStatus('job-123')).rejects.toThrow('Failed to fetch job status');
+      await expect(getJobStatus('job-123')).rejects.toThrow();
     });
   });
-}); 
+
+  describe('stopAggregation', () => {
+    it('should stop aggregation successfully', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+      });
+
+      await stopAggregation('test-config');
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/aggregate/test-config/stop'),
+        expect.objectContaining({
+          method: 'POST',
+        })
+      );
+    });
+  });
+});

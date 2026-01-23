@@ -1,10 +1,14 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const Navbar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const isAppPage = location.pathname === '/app';
+  const { isAuthenticated, login } = useAuth();
+  
+  const isBuilderPage = location.pathname === '/builder';
+  const isDashboardPage = location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/configs');
   const isLandingPage = location.pathname === '/';
 
   // Use a dark navbar for the landing page and light for the app
@@ -20,9 +24,14 @@ const Navbar: React.FC = () => {
     ? "text-gray-300 hover:text-white"
     : "text-gray-600 hover:text-amber-600";
 
-  const handleLaunchAppClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    navigate('/app');
+  // Handle Launch App click - login if needed, then go to dashboard
+  const handleLaunchAppClick = () => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    } else {
+      sessionStorage.setItem('postLoginRedirect', '/dashboard');
+      login();
+    }
   };
 
   return (
@@ -45,7 +54,7 @@ const Navbar: React.FC = () => {
             </div> */}
           </div>
           <div className="flex items-center">
-            {isAppPage ? (
+            {(isBuilderPage || isDashboardPage) ? (
               <Link 
                 to="/" 
                 className="text-gray-600 hover:text-amber-600 px-3 py-2 rounded-md text-sm font-medium"
@@ -53,13 +62,12 @@ const Navbar: React.FC = () => {
                 Home
               </Link>
             ) : (
-              <Link 
-                to="/app" 
+              <button 
                 onClick={handleLaunchAppClick}
                 className="bg-white text-black hover:bg-amber-600 hover:text-white transition-colors px-3 py-2 rounded-md text-sm font-medium"
               >
                 Launch App
-              </Link>
+              </button>
             )}
           </div>
         </div>

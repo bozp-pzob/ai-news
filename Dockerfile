@@ -1,50 +1,119 @@
-# Build stage
-FROM node:20-alpine AS builder
+# =============================================================================
+# AI News Aggregator - Multi-Target Dockerfile
+# =============================================================================
+# This Dockerfile supports multiple build targets:
+#   - frontend: React app served via nginx
+#   - backend:  Express API server
+#   - mcp:      Model Context Protocol server
+#
+# Usage:
+#   docker build --target frontend -t ai-news-frontend .
+#   docker build --target backend -t ai-news-backend .
+#   docker build --target mcp -t ai-news-mcp .
+# =============================================================================
 
+# =============================================================================
+# Stage: base
+# Common Node.js base image
+# =============================================================================
+FROM node:20-alpine AS base
 WORKDIR /app
 
-# Copy package files
+# =============================================================================
+# Stage: builder
+# Builds both frontend and backend from source
+# =============================================================================
+FROM base AS builder
+
+# Build argument for frontend API URL (baked in at build time)
+ARG REACT_APP_API_URL=
+
+# Copy package files for dependency installation
 COPY package*.json ./
 COPY frontend/package*.json ./frontend/
 
-# Install dependencies
+# Install all dependencies (including devDependencies for build)
 RUN npm ci
 RUN cd frontend && npm ci
 
 # Copy source code
 COPY . .
 
-# Build backend and frontend
+# Build backend (TypeScript -> dist/)
 RUN npm run build
-RUN cd frontend && npm run build
 
-# Production stage
-FROM node:20-alpine AS production
+# Build frontend (React -> frontend/build/)
+# Pass REACT_APP_API_URL to the build process
+RUN cd frontend && REACT_APP_API_URL=$REACT_APP_API_URL npm run build
 
-WORKDIR /app
+# =============================================================================
+# Target: backend
+# Production backend API server
+# =============================================================================
+FROM base AS backend
 
 # Install production dependencies only
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
-# Copy built files
+# Copy built backend from builder stage
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/frontend/build ./frontend/build
-COPY --from=builder /app/config ./config
 
-# Create data directory
+# Create data directory for runtime files
 RUN mkdir -p /app/data
 
-# Set environment
+# Set production environment
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Expose port
+# Expose API port
 EXPOSE 3000
 
-# Health check
+# Health check for container orchestration
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/v1/health || exit 1
 
-# Start the application
+# Start the API server
 CMD ["node", "dist/api.js"]
+
+# =============================================================================
+# Target: frontend
+# Production frontend served via nginx
+# =============================================================================
+FROM nginx:alpine AS frontend
+
+# Copy built frontend from builder stage
+COPY --from=builder /app/frontend/build /usr/share/nginx/html
+
+# Copy nginx configuration for SPA routing
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Expose HTTP port
+EXPOSE 80
+
+# Health check for container orchestration
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:80/health || exit 1
+
+# Start nginx in foreground
+CMD ["nginx", "-g", "daemon off;"]
+
+# =============================================================================
+# Target: mcp
+# Model Context Protocol server for AI integrations
+# =============================================================================
+FROM base AS mcp
+
+# Install production dependencies only
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# Copy built MCP server from builder stage
+COPY --from=builder /app/dist ./dist
+
+# Set production environment
+ENV NODE_ENV=production
+
+# MCP server uses stdio transport by default
+# It reads from stdin and writes to stdout for MCP protocol communication
+CMD ["node", "dist/mcp/server.js"]
