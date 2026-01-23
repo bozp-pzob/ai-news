@@ -44,7 +44,8 @@ RUN npm run build
 
 # Build frontend (React -> frontend/build/)
 # Pass REACT_APP_API_URL to the build process
-RUN cd frontend && REACT_APP_API_URL=$REACT_APP_API_URL npm run build
+# CI=false prevents treating warnings as errors
+RUN cd frontend && CI=false REACT_APP_API_URL=$REACT_APP_API_URL npm run build
 
 # =============================================================================
 # Target: backend

@@ -67,7 +67,7 @@ function App({
   const [viewMode, setViewMode] = useState<'graph' | 'json'>('graph'); // State for view mode
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [unlockDatabaseOpen, setUnlockDatabaseOpen] = useState(false);
-  const [databaseLocked, setDatabaseLocked] = useState(false);
+  const [_databaseLocked, setDatabaseLocked] = useState(false);
   const { showToast } = useToast();
   
   // Reference to the NodeGraph component for accessing its functions
@@ -79,7 +79,7 @@ function App({
   // Use WebSocket hook for real-time status updates
   const { 
     status, 
-    error: wsError, 
+    error: _wsError, 
     isConnected: wsConnected,
     refreshStatus
   } = useWebSocket(selectedConfig);
