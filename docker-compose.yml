@@ -22,6 +22,7 @@ services:
       target: frontend
       args:
         - REACT_APP_API_URL=${REACT_APP_API_URL:-http://backend:3000}
+        - REACT_APP_PRIVY_APP_ID=${REACT_APP_PRIVY_APP_ID}
     ports:
       - "8080:80"
     depends_on:

@@ -25,8 +25,9 @@ WORKDIR /app
 # =============================================================================
 FROM base AS builder
 
-# Build argument for frontend API URL (baked in at build time)
+# Build arguments for frontend (baked in at build time)
 ARG REACT_APP_API_URL=
+ARG REACT_APP_PRIVY_APP_ID=
 
 # Copy package files for dependency installation
 COPY package*.json ./
@@ -43,9 +44,12 @@ COPY . .
 RUN npm run build
 
 # Build frontend (React -> frontend/build/)
-# Pass REACT_APP_API_URL to the build process
+# Pass REACT_APP_* variables to the build process
 # CI=false prevents treating warnings as errors
-RUN cd frontend && CI=false REACT_APP_API_URL=$REACT_APP_API_URL npm run build
+RUN cd frontend && CI=false \
+    REACT_APP_API_URL=$REACT_APP_API_URL \
+    REACT_APP_PRIVY_APP_ID=$REACT_APP_PRIVY_APP_ID \
+    npm run build
 
 # =============================================================================
 # Target: backend
