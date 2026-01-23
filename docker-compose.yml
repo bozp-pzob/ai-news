@@ -21,7 +21,8 @@ services:
       context: .
       target: frontend
       args:
-        - REACT_APP_API_URL=${REACT_APP_API_URL:-http://backend:3000}
+        # Empty = same-origin requests (nginx proxies /api to backend)
+        - REACT_APP_API_URL=${REACT_APP_API_URL:-}
         - REACT_APP_PRIVY_APP_ID=${REACT_APP_PRIVY_APP_ID}
     ports:
       - "33334:80"
