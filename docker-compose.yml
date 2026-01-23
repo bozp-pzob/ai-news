@@ -24,7 +24,7 @@ services:
         - REACT_APP_API_URL=${REACT_APP_API_URL:-http://backend:3000}
         - REACT_APP_PRIVY_APP_ID=${REACT_APP_PRIVY_APP_ID}
     ports:
-      - "8080:80"
+      - "33334:80"
     depends_on:
       backend:
         condition: service_healthy
@@ -40,7 +40,7 @@ services:
       context: .
       target: backend
     ports:
-      - "3000:3000"
+      - "33333:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
