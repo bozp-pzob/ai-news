@@ -17,6 +17,7 @@
     "upload-cdn": "ts-node -r tsconfig-paths/register --transpile-only src/helpers/cdnUploader.ts",
     "api": "ts-node -r tsconfig-paths/register src/api.ts",
     "channels": "ts-node -r tsconfig-paths/register --transpile-only scripts/channels.ts",
+    "weekly": "ts-node -r tsconfig-paths/register --transpile-only scripts/weekly.ts",
     "discover-channels": "npm run channels -- discover --sample",
     "update-configs": "npm run channels -- sync",
     "users": "ts-node -r tsconfig-paths/register --transpile-only scripts/users.ts",
