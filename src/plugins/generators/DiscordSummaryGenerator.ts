@@ -76,8 +76,8 @@ export class DiscordSummaryGenerator {
     try {
       const today = new Date();
       // Check for summary created *within* the last 24 hours, using the correct summaryType
-      const checkStartTimeEpoch = (today.getTime() - (24 * 60 * 60 * 1000)) / 1000;
-      const checkEndTimeEpoch = today.getTime() / 1000;
+      const checkStartTimeEpoch = Math.floor((today.getTime() - (24 * 60 * 60 * 1000)) / 1000);
+      const checkEndTimeEpoch = Math.floor(today.getTime() / 1000);
       
       let summary: SummaryItem[] = await this.storage.getSummaryBetweenEpoch(
         checkStartTimeEpoch,

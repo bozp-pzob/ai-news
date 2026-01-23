@@ -6,8 +6,10 @@ import { findPortAtCoordinates, isPointInNode, removeNodeConnection, handleNodeC
 import { Node, Connection, PortInfo } from '../types/nodeTypes';
 import { configStateManager } from '../services/ConfigStateManager';
 import { pluginRegistry } from '../services/PluginRegistry';
+import { dependencyResolver, DependencyAnalysis, AutoAddResult } from '../services/DependencyResolver';
 import { animateCenterView } from '../utils/animation/centerViewAnimation';
-import { getConfig } from '../services/api';
+import { getConfig, configApi } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { websocketService } from '../services/websocket';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { JobStatusDisplay } from './JobStatusDisplay';
@@ -36,13 +38,18 @@ interface NodeGraphProps {
   runAggregation?: () => Promise<void>;
   viewMode?: 'graph' | 'json';
   hasUnsavedChanges?: boolean;
+  // Platform mode props for PostgresStorage handling
+  platformMode?: boolean;
+  isPlatformPro?: boolean;
+  platformConfigId?: string;
 }
 
 export const NodeGraph = forwardRef<
   { handleDragPlugin: (plugin: PluginInfo, clientX: number, clientY: number) => void },
   NodeGraphProps
->(({ config, onConfigUpdate, saveConfiguration, runAggregation, viewMode = 'graph', hasUnsavedChanges = false }, ref) => {
+>(({ config, onConfigUpdate, saveConfiguration, runAggregation, viewMode = 'graph', hasUnsavedChanges = false, platformMode = false, isPlatformPro = false, platformConfigId }, ref) => {
   const { showToast } = useToast();
+  const { authToken } = useAuth();
   
   // Get the initial state from the ConfigStateManager
   const [nodes, setNodes] = useState<Node[]>(configStateManager.getNodes());
@@ -92,6 +99,9 @@ export const NodeGraph = forwardRef<
   const [dateRangeMode, setDateRangeMode] = useState<"single" | "range">("single");
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  // State for auto-add dependencies feature
+  const [pendingDependencyAnalysis, setPendingDependencyAnalysis] = useState<DependencyAnalysis | null>(null);
+  const [pendingAutoAddResult, setPendingAutoAddResult] = useState<AutoAddResult | null>(null);
   
   // Add a ref for preventing config update loops
   const preventConfigUpdateLoopRef = useRef(false);
@@ -291,33 +301,66 @@ export const NodeGraph = forwardRef<
       prevConfigNameRef.current = config.name;
     }
     
-    // Check if config is valid - if not, create an empty graph for drag and drop
+    // Check if config is valid - if not, create appropriate default config
     if (!config || !config.name) {
-      // Create a minimal default config that satisfies the Config type
-      const emptyConfig: Config = {
-        name: 'new-config',
-        sources: [],
-        enrichers: [],
-        generators: [],
-        ai: [],
-        storage: [],
-        providers: [],
-        settings: {
-          runOnce: false,
-          onlyFetch: false
-        }
-      };
+      let defaultConfig: Config;
       
-      // Initialize state manager with empty config
-      configStateManager.loadConfig(emptyConfig);
+      if (platformMode) {
+        // Platform mode: Start with default storage and AI plugins pre-configured
+        defaultConfig = {
+          name: 'new-config',
+          sources: [],
+          enrichers: [],
+          generators: [],
+          ai: [{
+            type: 'OpenAIProvider',
+            name: 'OpenAIProvider',
+            pluginName: 'OpenAIProvider',
+            params: {
+              usePlatformAI: true,
+            }
+          }],
+          storage: [{
+            type: 'PostgresStorage',
+            name: 'PostgresStorage',
+            pluginName: 'PostgresStorage',
+            params: {
+              usePlatformStorage: true,
+            }
+          }],
+          providers: [],
+          settings: {
+            runOnce: false,
+            onlyFetch: false
+          }
+        };
+      } else {
+        // Legacy mode: Empty config
+        defaultConfig = {
+          name: 'new-config',
+          sources: [],
+          enrichers: [],
+          generators: [],
+          ai: [],
+          storage: [],
+          providers: [],
+          settings: {
+            runOnce: false,
+            onlyFetch: false
+          }
+        };
+      }
+      
+      // Initialize state manager with default config
+      configStateManager.loadConfig(defaultConfig);
       configStateManager.forceSync();
       
-      // Update local state
-      setNodes([]);
-      setConnections([]);
+      // Update local state with nodes from the config
+      setNodes(configStateManager.getNodes());
+      setConnections(configStateManager.getConnections());
       setSelectedNode(null);
       
-      // Force a redraw to show empty graph
+      // Force a redraw to show the graph
       setTimeout(() => {
         if (canvasRef.current) {
           drawToBackBuffer();
@@ -1701,6 +1744,35 @@ export const NodeGraph = forwardRef<
         currentConfig[targetArray] = [];
       }
       
+      // AUTO-ADD DEPENDENCIES: Add dependency nodes before the main plugin
+      if (pendingAutoAddResult && pendingAutoAddResult.nodesToAdd.length > 0) {
+        for (const depNode of pendingAutoAddResult.nodesToAdd) {
+          if (depNode.type === 'ai') {
+            // Ensure ai array exists
+            if (!Array.isArray(currentConfig.ai)) {
+              currentConfig.ai = [];
+            }
+            currentConfig.ai.push({
+              name: depNode.name,
+              type: depNode.pluginName || depNode.name,
+              params: deepCopy(depNode.params) || {},
+              position: depNode.position,
+            } as any);
+          } else if (depNode.type === 'storage') {
+            // Ensure storage array exists
+            if (!Array.isArray(currentConfig.storage)) {
+              currentConfig.storage = [];
+            }
+            currentConfig.storage.push({
+              name: depNode.name,
+              type: depNode.pluginName || depNode.name,
+              params: deepCopy(depNode.params) || {},
+              position: depNode.position,
+            } as any);
+          }
+        }
+      }
+      
       // Generate index based on current array length
       const index = currentConfig[targetArray].length;
       
@@ -1731,6 +1803,30 @@ export const NodeGraph = forwardRef<
       
       // Force a sync to rebuild nodes from the config
       configStateManager.forceSync();
+      
+      // AUTO-ADD DEPENDENCIES: Create connections for the newly added plugin
+      if (pendingDependencyAnalysis && pendingAutoAddResult) {
+        const updatedNodes = configStateManager.getNodes();
+        const updatedConnections = [...configStateManager.getConnections()];
+        
+        // Create dependency connections
+        const newConnections = dependencyResolver.createDependencyConnections(
+          pluginCopy.id,
+          pendingDependencyAnalysis,
+          pendingAutoAddResult,
+          updatedNodes
+        );
+        
+        // Add the new connections
+        if (newConnections.length > 0) {
+          updatedConnections.push(...newConnections);
+          configStateManager.setConnections(updatedConnections);
+        }
+        
+        // Clear pending dependency state
+        setPendingDependencyAnalysis(null);
+        setPendingAutoAddResult(null);
+      }
       
       // Update local state directly for new plugins
       setNodes(configStateManager.getNodes());
@@ -1763,6 +1859,10 @@ export const NodeGraph = forwardRef<
     // Close the plugin dialog
     setShowPluginDialog(false);
     setSelectedPlugin(null);
+    
+    // Clear pending dependency state (in case it wasn't cleared in the if branch)
+    setPendingDependencyAnalysis(null);
+    setPendingAutoAddResult(null);
     
     // Ensure the changes are immediately visible
     drawToBackBuffer();
@@ -1849,18 +1949,44 @@ export const NodeGraph = forwardRef<
     const dropX = (e.clientX - rect.left - offset.x) / scale;
     const dropY = (e.clientY - rect.top - offset.y) / scale;
     
+    // Analyze dependencies for this plugin
+    const analysis = dependencyResolver.analyzeDependencies(
+      draggedPlugin,
+      nodes,
+      config
+    );
+    
+    // Create missing dependency nodes if needed
+    const autoAddResult = dependencyResolver.createMissingDependencies(
+      analysis,
+      { x: dropX, y: dropY },
+      nodes,
+      platformMode,
+      isPlatformPro
+    );
+    
+    // Get default params with pre-filled provider/storage names
+    const defaultDependencyParams = dependencyResolver.getDefaultDependencyParams(
+      analysis,
+      autoAddResult
+    );
+    
     // Create new plugin instance with the full schema from the draggedPlugin
     const newPlugin = {
       type: draggedPlugin.type,
       name: draggedPlugin.name,
       pluginName: draggedPlugin.pluginName || draggedPlugin.name,
-      params: {},
+      params: { ...defaultDependencyParams }, // Pre-fill with dependency params
       position: { x: dropX, y: dropY },
       // Include constructor interface and config schema from the original plugin definition
       constructorInterface: draggedPlugin.constructorInterface,
       configSchema: draggedPlugin.configSchema,
       description: draggedPlugin.description
     };
+    
+    // Store dependency analysis for use when the plugin is added
+    setPendingDependencyAnalysis(analysis);
+    setPendingAutoAddResult(autoAddResult);
     
     // Set as selected plugin
     setSelectedPlugin(newPlugin);
@@ -1966,6 +2092,9 @@ export const NodeGraph = forwardRef<
         } else {
           // If the node was removed, close the dialog
           setShowPluginDialog(false);
+          // Clear pending dependency state
+          setPendingDependencyAnalysis(null);
+          setPendingAutoAddResult(null);
         }
       });
       
@@ -2025,31 +2154,6 @@ export const NodeGraph = forwardRef<
     }
     
     try {
-      // Get the latest config from the state manager
-      const currentConfig = configStateManager.getConfig();
-      
-      // Set onlyFetch and onlyGenerate settings
-      if (!currentConfig.settings) {
-        currentConfig.settings = { runOnce: true, onlyFetch: false };
-      }
-      currentConfig.settings.onlyFetch = onlyFetch;
-      currentConfig.settings.onlyGenerate = onlyGenerate;
-      
-      // Add historical date settings if enabled
-      if (useHistoricalDates) {
-        currentConfig.settings.historicalDate = {
-          enabled: true,
-          mode: dateRangeMode,
-          startDate: startDate,
-          endDate: dateRangeMode === "range" ? endDate : startDate
-        };
-      } else {
-        // Clear historical date settings if disabled
-        currentConfig.settings.historicalDate = {
-          enabled: false
-        };
-      }
-      
       // Reset the job status display closed state when starting a new job
       setJobStatusDisplayClosed(false);
       
@@ -2068,28 +2172,64 @@ export const NodeGraph = forwardRef<
         }
       }
       
-      // Extract secrets from the configuration instead of replacing them directly
-      // This keeps references like "process.env.API_KEY" in the config but sends the actual values separately
-      const { config: cleanConfig, secrets } = await secretManager.extractSecretsForBackend(currentConfig);
+      let jobId: string;
       
-      // Make a direct REST API call to run the aggregation
-      const response = await fetch(`http://localhost:3000/aggregate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          config: cleanConfig,
-          secrets: secrets // Pass secrets as a separate object
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to run aggregation via REST API');
+      // Use v1 API for platform mode, legacy endpoint for local mode
+      if (platformMode && platformConfigId && authToken) {
+        // Platform mode: Use v1 API which handles free tier AI/storage injection
+        const result = await configApi.run(authToken, platformConfigId);
+        jobId = result.jobId;
+      } else {
+        // Local mode: Use legacy /aggregate endpoint with full config
+        // Get the latest config from the state manager
+        const currentConfig = configStateManager.getConfig();
+        
+        // Set onlyFetch and onlyGenerate settings
+        if (!currentConfig.settings) {
+          currentConfig.settings = { runOnce: true, onlyFetch: false };
+        }
+        currentConfig.settings.onlyFetch = onlyFetch;
+        currentConfig.settings.onlyGenerate = onlyGenerate;
+        
+        // Add historical date settings if enabled
+        if (useHistoricalDates) {
+          currentConfig.settings.historicalDate = {
+            enabled: true,
+            mode: dateRangeMode,
+            startDate: startDate,
+            endDate: dateRangeMode === "range" ? endDate : startDate
+          };
+        } else {
+          // Clear historical date settings if disabled
+          currentConfig.settings.historicalDate = {
+            enabled: false
+          };
+        }
+        
+        // Extract secrets from the configuration instead of replacing them directly
+        // This keeps references like "process.env.API_KEY" in the config but sends the actual values separately
+        const { config: cleanConfig, secrets } = await secretManager.extractSecretsForBackend(currentConfig);
+        
+        // Make a direct REST API call to run the aggregation
+        const response = await fetch(`/aggregate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            config: cleanConfig,
+            secrets: secrets // Pass secrets as a separate object
+          }),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to run aggregation via REST API');
+        }
+        
+        const result = await response.json();
+        jobId = result.jobId;
       }
-      
-      const result = await response.json();
-      const jobId = result.jobId;
       
       // Set the current job ID and mark this as a run-once job
       setCurrentJobId(jobId);
@@ -2104,7 +2244,7 @@ export const NodeGraph = forwardRef<
       setIsAggregationRunning(true);
     } catch (error) {
       console.error("Failed to run aggregation:", error);
-      showToast("Failed to run aggregation. Please try again.", 'error');
+      showToast(error instanceof Error ? error.message : "Failed to run aggregation. Please try again.", 'error');
     }
   };
   
@@ -2770,8 +2910,15 @@ export const NodeGraph = forwardRef<
         <PluginParamDialog
           plugin={selectedPlugin}
           isOpen={showPluginDialog}
-          onClose={() => setShowPluginDialog(false)}
+          onClose={() => {
+            setShowPluginDialog(false);
+            // Clear pending dependency state on close/cancel
+            setPendingDependencyAnalysis(null);
+            setPendingAutoAddResult(null);
+          }}
           onAdd={handleAddPlugin}
+          platformMode={platformMode}
+          isPlatformPro={isPlatformPro}
         />
       )}
     </div>

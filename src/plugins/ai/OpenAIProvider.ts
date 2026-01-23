@@ -10,13 +10,14 @@ import { logger } from "../../helpers/cliHelper";
  */
 interface OpenAIProviderConfig {
   name: string;           // Name identifier for this provider
-  apiKey: string;         // OpenAI API key for authentication
+  apiKey?: string;        // OpenAI API key for authentication (optional if using platform AI)
   model?: string;         // Optional model name (defaults to gpt-4o-mini)
   temperature?: number;   // Optional temperature setting for response generation
   useOpenRouter?: boolean; // Whether to use OpenRouter instead of direct OpenAI API
   siteUrl?: string;       // Optional site URL for OpenRouter
   siteName?: string;      // Optional site name for OpenRouter
   fallbackModel?: string; // Optional large context model for fallback when token limits exceeded
+  usePlatformAI?: boolean; // Whether to use platform-hosted AI (API key injected by platform)
 }
 
 /**
@@ -37,17 +38,24 @@ export class OpenAIProvider implements AiProvider {
   static constructorInterface = {
     parameters: [
       {
+        name: 'usePlatformAI',
+        type: 'boolean',
+        required: false,
+        description: 'Use platform-hosted AI provider (Pro users get daily quota, free tier uses efficient model)',
+        platformOnly: true
+      },
+      {
         name: 'apiKey',
         type: 'string',
-        required: true,
-        description: 'OpenAI API key for authentication',
+        required: false,
+        description: 'OpenAI API key for authentication (not required if using platform AI)',
         secret: true
       },
       {
         name: 'model',
         type: 'string',
         required: false,
-        description: 'OpenAI model to use (e.g., "gpt-4", "gpt-3.5-turbo")'
+        description: 'OpenAI model to use (e.g., "gpt-4o", "gpt-4o-mini")'
       },
       {
         name: 'temperature',
@@ -56,28 +64,10 @@ export class OpenAIProvider implements AiProvider {
         description: 'Temperature setting for model responses (0-2)'
       },
       {
-        name: 'useOpenRouter',
-        type: 'boolean',
-        required: false,
-        description: 'Whether to use OpenRouter instead of direct OpenAI API'
-      },
-      {
-        name: 'siteUrl',
-        type: 'string',
-        required: false,
-        description: 'URL of the site using this provider'
-      },
-      {
-        name: 'siteName',
-        type: 'string',
-        required: false,
-        description: 'Name of the site using this provider'
-      },
-      {
         name: 'fallbackModel',
         type: 'string',
         required: false,
-        description: 'Large context model to fallback to when token limits exceeded (e.g., "openrouter/sonoma-sky-alpha")'
+        description: 'Fallback model to use when token limits exceeded'
       }
     ]
   };
@@ -93,9 +83,18 @@ export class OpenAIProvider implements AiProvider {
     this.useOpenRouter = config.useOpenRouter || false;
     this.fallbackModel = config.fallbackModel;
     
+    // When using platform AI, the API key is injected by the platform at runtime
+    // If no API key is provided and usePlatformAI is true, use a placeholder
+    // (the platform will replace this with the actual key before execution)
+    const apiKey = config.apiKey || (config.usePlatformAI ? 'platform-injected' : '');
+    
+    if (!apiKey && !config.usePlatformAI) {
+      throw new Error('OpenAI API key is required unless using platform AI');
+    }
+    
     // Initialize main client (OpenRouter or OpenAI)
     const openAIConfig: any = {
-      apiKey: config.apiKey
+      apiKey: apiKey
     };
 
     if (this.useOpenRouter) {

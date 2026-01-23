@@ -29,7 +29,7 @@ export function LoginButton({
 
   // Variant classes
   const variantClasses = {
-    primary: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+    primary: 'bg-amber-600 hover:bg-amber-700 text-white',
     secondary: 'bg-stone-700 hover:bg-stone-600 text-white',
     ghost: 'bg-transparent hover:bg-stone-800 text-stone-300 hover:text-white',
   };

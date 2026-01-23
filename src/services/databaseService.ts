@@ -83,6 +83,34 @@ let platformPool: Pool | null = null;
 const externalPools: Map<string, Pool> = new Map();
 
 /**
+ * Run database migrations to add missing columns
+ * This is safe to run multiple times (idempotent)
+ */
+async function runMigrations(pool: Pool): Promise<void> {
+  const client = await pool.connect();
+  try {
+    // Add ai_calls_today columns if they don't exist
+    await client.query(`
+      ALTER TABLE users 
+      ADD COLUMN IF NOT EXISTS ai_calls_today INTEGER DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS ai_calls_today_reset_at DATE DEFAULT CURRENT_DATE
+    `);
+    
+    // Add index if it doesn't exist
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_ai_reset ON users(ai_calls_today_reset_at)
+    `);
+    
+    console.log('[DatabaseService] Migrations completed successfully');
+  } catch (error) {
+    console.error('[DatabaseService] Migration error (non-fatal):', error);
+    // Don't throw - migrations are best-effort
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Initialize the platform database connection
  */
 export async function initPlatformDatabase(): Promise<void> {
@@ -111,6 +139,9 @@ export async function initPlatformDatabase(): Promise<void> {
   } finally {
     client.release();
   }
+
+  // Run migrations
+  await runMigrations(platformPool);
 }
 
 /**

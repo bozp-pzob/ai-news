@@ -1,51 +1,6 @@
 {
   "source": [
     {
-      "name": "TwitterSource",
-      "pluginName": "TwitterSource",
-      "type": "source",
-      "description": "",
-      "configSchema": {},
-      "constructorInterface": {
-        "parameters": [
-          {
-            "name": "username",
-            "type": "string",
-            "required": false,
-            "description": "Twitter username for authentication",
-            "secret": true
-          },
-          {
-            "name": "password",
-            "type": "string",
-            "required": false,
-            "description": "Twitter password for authentication",
-            "secret": true
-          },
-          {
-            "name": "email",
-            "type": "string",
-            "required": false,
-            "description": "Email associated with Twitter account",
-            "secret": true
-          },
-          {
-            "name": "cookies",
-            "type": "string",
-            "required": false,
-            "description": "JSON string of Twitter cookies",
-            "secret": true
-          },
-          {
-            "name": "accounts",
-            "type": "string[]",
-            "required": true,
-            "description": "Array of Twitter accounts to monitor"
-          }
-        ]
-      }
-    },
-    {
       "name": "SolanaAnalyticsSource",
       "pluginName": "SolanaAnalyticsSource",
       "type": "source",
@@ -160,6 +115,12 @@
       "constructorInterface": {
         "parameters": [
           {
+            "name": "name",
+            "type": "string",
+            "required": true,
+            "description": "Name identifier for this Discord source"
+          },
+          {
             "name": "botToken",
             "type": "string",
             "required": true,
@@ -168,22 +129,27 @@
           },
           {
             "name": "channelIds",
-            "type": "string[]",
+            "type": "array",
             "required": true,
-            "description": "Array of Discord channel IDs to monitor"
+            "description": "List of Discord channel IDs to monitor"
           },
           {
             "name": "guildId",
             "type": "string",
             "required": true,
-            "description": "Discord bot token for authentication",
-            "secret": true
+            "description": "Discord guild/server ID"
           },
           {
             "name": "storage",
-            "type": "StoragePlugin",
+            "type": "object",
             "required": true,
-            "description": "Storage to store data fetching cursors"
+            "description": "Storage plugin for cursor management"
+          },
+          {
+            "name": "mediaDownload",
+            "type": "object",
+            "required": false,
+            "description": "Media download configuration"
           }
         ]
       }
@@ -330,25 +296,32 @@
   ],
   "ai": [
     {
-      "name": "OpenAIProvider",
-      "pluginName": "OpenAIProvider",
+      "name": "OpenRouterProvider",
+      "pluginName": "OpenRouterProvider",
       "type": "ai",
       "description": "",
       "configSchema": {},
       "constructorInterface": {
         "parameters": [
           {
+            "name": "usePlatformAI",
+            "type": "boolean",
+            "required": false,
+            "description": "Use platform-hosted AI provider (Pro users get daily quota, free tier uses efficient model)",
+            "platformOnly": true
+          },
+          {
             "name": "apiKey",
             "type": "string",
-            "required": true,
-            "description": "OpenAI API key for authentication",
+            "required": false,
+            "description": "OpenRouter API key for authentication (not required if using platform AI)",
             "secret": true
           },
           {
             "name": "model",
             "type": "string",
             "required": false,
-            "description": "OpenAI model to use (e.g., \"gpt-4\", \"gpt-3.5-turbo\")"
+            "description": "Model to use via OpenRouter (e.g., \"anthropic/claude-3.7-sonnet\", \"openai/gpt-4o\")"
           },
           {
             "name": "temperature",
@@ -357,22 +330,65 @@
             "description": "Temperature setting for model responses (0-2)"
           },
           {
-            "name": "useOpenRouter",
-            "type": "boolean",
-            "required": false,
-            "description": "Whether to use OpenRouter instead of direct OpenAI API"
-          },
-          {
             "name": "siteUrl",
             "type": "string",
             "required": false,
-            "description": "URL of the site using this provider"
+            "description": "URL of the site using this provider (for OpenRouter analytics)"
           },
           {
             "name": "siteName",
             "type": "string",
             "required": false,
-            "description": "Name of the site using this provider"
+            "description": "Name of the site using this provider (for OpenRouter analytics)"
+          },
+          {
+            "name": "fallbackModel",
+            "type": "string",
+            "required": false,
+            "description": "Large context model to fallback to when token limits exceeded (e.g., \"openrouter/sonoma-sky-alpha\")"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OpenAIProvider",
+      "pluginName": "OpenAIProvider",
+      "type": "ai",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "usePlatformAI",
+            "type": "boolean",
+            "required": false,
+            "description": "Use platform-hosted AI provider (Pro users get daily quota, free tier uses efficient model)",
+            "platformOnly": true
+          },
+          {
+            "name": "apiKey",
+            "type": "string",
+            "required": false,
+            "description": "OpenAI API key for authentication (not required if using platform AI)",
+            "secret": true
+          },
+          {
+            "name": "model",
+            "type": "string",
+            "required": false,
+            "description": "OpenAI model to use (e.g., \"gpt-4o\", \"gpt-4o-mini\")"
+          },
+          {
+            "name": "temperature",
+            "type": "number",
+            "required": false,
+            "description": "Temperature setting for model responses (0-2)"
+          },
+          {
+            "name": "fallbackModel",
+            "type": "string",
+            "required": false,
+            "description": "Fallback model to use when token limits exceeded"
           }
         ]
       }
@@ -380,13 +396,73 @@
   ],
   "enricher": [
     {
+      "name": "EmbeddingEnricher",
+      "pluginName": "EmbeddingEnricher",
+      "type": "enricher",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "minLength",
+            "type": "number",
+            "required": false,
+            "description": "Minimum text length to generate embeddings (default: 50)"
+          },
+          {
+            "name": "batchSize",
+            "type": "number",
+            "required": false,
+            "description": "Maximum items per batch (default: 50)"
+          },
+          {
+            "name": "model",
+            "type": "string",
+            "required": false,
+            "description": "OpenAI embedding model (default: text-embedding-3-small)"
+          },
+          {
+            "name": "skipExisting",
+            "type": "boolean",
+            "required": false,
+            "description": "Skip items that already have embeddings (default: true)"
+          },
+          {
+            "name": "includeTitle",
+            "type": "boolean",
+            "required": false,
+            "description": "Include title in embedding text (default: true)"
+          }
+        ]
+      }
+    },
+    {
       "name": "AiTopicsEnricher",
       "pluginName": "AiTopicsEnricher",
       "type": "enricher",
       "description": "",
       "configSchema": {},
       "constructorInterface": {
-        "parameters": []
+        "parameters": [
+          {
+            "name": "provider",
+            "type": "AiProvider",
+            "required": true,
+            "description": "AI provider to use for topic extraction"
+          },
+          {
+            "name": "maxTokens",
+            "type": "number",
+            "required": false,
+            "description": "Maximum number of tokens to use for topic extraction"
+          },
+          {
+            "name": "thresholdLength",
+            "type": "number",
+            "required": false,
+            "description": "Minimum text length required for topic extraction (default: 300)"
+          }
+        ]
       }
     },
     {
@@ -396,7 +472,26 @@
       "description": "",
       "configSchema": {},
       "constructorInterface": {
-        "parameters": []
+        "parameters": [
+          {
+            "name": "provider",
+            "type": "AiProvider",
+            "required": true,
+            "description": "AI provider to use for image generation"
+          },
+          {
+            "name": "maxTokens",
+            "type": "number",
+            "required": false,
+            "description": "Maximum number of tokens to use for image generation"
+          },
+          {
+            "name": "thresholdLength",
+            "type": "number",
+            "required": false,
+            "description": "Minimum text length required for image generation (default: 300)"
+          }
+        ]
       }
     }
   ],
@@ -519,7 +614,13 @@
             "name": "groupBySourceType",
             "type": "boolean",
             "required": false,
-            "description": "Group by source type null storage, instead of topics generated null enriching."
+            "description": "Group by source type from storage, instead of topics generated from enriching."
+          },
+          {
+            "name": "skipFileOutput",
+            "type": "boolean",
+            "required": false,
+            "description": "Skip writing JSON/MD files to disk (for platform storage mode)."
           }
         ]
       }
@@ -547,6 +648,68 @@
             "type": "string",
             "required": true,
             "description": "Path to the SQLite database file"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PostgresStorage",
+      "pluginName": "PostgresStorage",
+      "type": "storage",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "usePlatformStorage",
+            "type": "boolean",
+            "required": false,
+            "description": "Use platform-hosted PostgreSQL storage (Pro users only)",
+            "platformOnly": true
+          },
+          {
+            "name": "connectionString",
+            "type": "string",
+            "required": false,
+            "description": "PostgreSQL connection string (alternative to individual params)",
+            "secret": true
+          },
+          {
+            "name": "host",
+            "type": "string",
+            "required": false,
+            "description": "PostgreSQL host"
+          },
+          {
+            "name": "port",
+            "type": "number",
+            "required": false,
+            "description": "PostgreSQL port (default: 5432)"
+          },
+          {
+            "name": "database",
+            "type": "string",
+            "required": false,
+            "description": "Database name"
+          },
+          {
+            "name": "user",
+            "type": "string",
+            "required": false,
+            "description": "Database user"
+          },
+          {
+            "name": "password",
+            "type": "string",
+            "required": false,
+            "description": "Database password",
+            "secret": true
+          },
+          {
+            "name": "skipValidation",
+            "type": "boolean",
+            "required": false,
+            "description": "Skip database connection validation (for testing only)"
           }
         ]
       }

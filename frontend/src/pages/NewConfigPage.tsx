@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { AuthGuard } from '../components/auth/AuthGuard';
-import { configApi, userApi, ConfigVisibility, StorageType, UserLimits } from '../services/platformApi';
+import { configApi, userApi, ConfigVisibility, StorageType, UserLimits } from '../services/api';
 
 /**
  * Step indicator
@@ -20,10 +20,10 @@ function Steps({
     <div className="flex items-center justify-center mb-8">
       {steps.map((step, i) => (
         <React.Fragment key={i}>
-          <div className={`flex items-center ${i <= currentStep ? 'text-emerald-400' : 'text-stone-500'}`}>
+          <div className={`flex items-center ${i <= currentStep ? 'text-amber-400' : 'text-stone-500'}`}>
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-              i < currentStep ? 'bg-emerald-600 text-white' :
-              i === currentStep ? 'border-2 border-emerald-500 text-emerald-400' :
+              i < currentStep ? 'bg-amber-600 text-white' :
+              i === currentStep ? 'border-2 border-amber-500 text-amber-400' :
               'border-2 border-stone-600 text-stone-500'
             }`}>
               {i < currentStep ? (
@@ -37,7 +37,7 @@ function Steps({
             <span className="ml-2 text-sm hidden sm:block">{step}</span>
           </div>
           {i < steps.length - 1 && (
-            <div className={`w-12 h-0.5 mx-2 ${i < currentStep ? 'bg-emerald-600' : 'bg-stone-700'}`} />
+            <div className={`w-12 h-0.5 mx-2 ${i < currentStep ? 'bg-amber-600' : 'bg-stone-700'}`} />
           )}
         </React.Fragment>
       ))}
@@ -80,7 +80,7 @@ function BasicInfoStep({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="My Community Context"
-          className="w-full px-3 py-2 bg-stone-900 border border-stone-700 rounded-lg text-white placeholder-stone-500 focus:border-emerald-500 focus:outline-none"
+          className="w-full px-3 py-2 bg-stone-900 border border-stone-700 rounded-lg text-white placeholder-stone-500 focus:border-amber-500 focus:outline-none"
         />
         <p className="text-stone-500 text-xs mt-1">
           This will be the display name for your config
@@ -96,7 +96,7 @@ function BasicInfoStep({
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Describe what context this config aggregates..."
           rows={3}
-          className="w-full px-3 py-2 bg-stone-900 border border-stone-700 rounded-lg text-white placeholder-stone-500 focus:border-emerald-500 focus:outline-none resize-none"
+          className="w-full px-3 py-2 bg-stone-900 border border-stone-700 rounded-lg text-white placeholder-stone-500 focus:border-amber-500 focus:outline-none resize-none"
         />
       </div>
 
@@ -110,7 +110,7 @@ function BasicInfoStep({
               key={v}
               className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                 visibility === v
-                  ? 'border-emerald-500 bg-emerald-900/20'
+                  ? 'border-amber-500 bg-amber-900/20'
                   : 'border-stone-700 hover:border-stone-600'
               } ${v === 'private' && !canBePrivate ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
@@ -140,7 +140,7 @@ function BasicInfoStep({
         <button
           onClick={onNext}
           disabled={!name.trim()}
-          className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-stone-700 disabled:text-stone-500 text-white rounded-lg font-medium transition-colors"
+          className="px-6 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-700 disabled:text-stone-500 text-white rounded-lg font-medium transition-colors"
         >
           Continue
         </button>
@@ -169,16 +169,16 @@ function StorageStep({
   onBack: () => void;
   onNext: () => void;
 }) {
-  const canUsePlatform = limits?.tier !== 'free';
+  const isFree = limits?.tier === 'free';
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Free users must use external storage
+  // Free tier uses platform storage (no choice)
   useEffect(() => {
-    if (!canUsePlatform) {
-      setStorageType('external');
+    if (isFree) {
+      setStorageType('platform');
     }
-  }, [canUsePlatform, setStorageType]);
+  }, [isFree, setStorageType]);
 
   const handleNext = async () => {
     if (storageType === 'external' && externalDbUrl) {
@@ -191,6 +191,49 @@ function StorageStep({
     onNext();
   };
 
+  // For free tier, show simplified storage info
+  if (isFree) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-stone-300 mb-3">
+            Storage Location
+          </label>
+          <div className="p-4 rounded-lg border border-amber-500/50 bg-amber-900/20">
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
+              </svg>
+              <span className="font-medium text-white">Platform Storage</span>
+            </div>
+            <p className="text-stone-400 text-sm">
+              Your data will be stored securely on our platform. This includes PostgreSQL with pgvector for semantic search capabilities.
+            </p>
+            <p className="text-stone-500 text-xs mt-3">
+              Upgrade to Pro for external database support and unlimited storage.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex justify-between">
+          <button
+            onClick={onBack}
+            className="px-6 py-2 text-stone-400 hover:text-white transition-colors"
+          >
+            Back
+          </button>
+          <button
+            onClick={onNext}
+            className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors"
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // For paid/admin users, show full storage selection
   return (
     <div className="space-y-6">
       <div>
@@ -201,24 +244,20 @@ function StorageStep({
           <label
             className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors ${
               storageType === 'platform'
-                ? 'border-emerald-500 bg-emerald-900/20'
+                ? 'border-amber-500 bg-amber-900/20'
                 : 'border-stone-700 hover:border-stone-600'
-            } ${!canUsePlatform ? 'opacity-50 cursor-not-allowed' : ''}`}
+            }`}
           >
             <input
               type="radio"
               name="storageType"
               value="platform"
               checked={storageType === 'platform'}
-              onChange={() => canUsePlatform && setStorageType('platform')}
-              disabled={!canUsePlatform}
+              onChange={() => setStorageType('platform')}
               className="mt-1"
             />
             <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-white">Platform Storage</span>
-                <span className="px-2 py-0.5 bg-emerald-900/50 text-emerald-400 text-xs rounded">Pro</span>
-              </div>
+              <div className="font-medium text-white">Platform Storage</div>
               <div className="text-stone-400 text-sm mt-1">
                 We handle everything - PostgreSQL with pgvector, backups, and scaling.
               </div>
@@ -228,7 +267,7 @@ function StorageStep({
           <label
             className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors ${
               storageType === 'external'
-                ? 'border-emerald-500 bg-emerald-900/20'
+                ? 'border-amber-500 bg-amber-900/20'
                 : 'border-stone-700 hover:border-stone-600'
             }`}
           >
@@ -263,14 +302,14 @@ function StorageStep({
               setValidationError(null);
             }}
             placeholder="postgresql://user:password@host:5432/database"
-            className="w-full px-3 py-2 bg-stone-900 border border-stone-700 rounded-lg text-white placeholder-stone-500 focus:border-emerald-500 focus:outline-none font-mono text-sm"
+            className="w-full px-3 py-2 bg-stone-900 border border-stone-700 rounded-lg text-white placeholder-stone-500 focus:border-amber-500 focus:outline-none font-mono text-sm"
           />
           {validationError && (
             <p className="text-red-400 text-sm mt-1">{validationError}</p>
           )}
           <p className="text-stone-500 text-xs mt-2">
             Your database must have the pgvector extension installed. 
-            <a href="/docs/external-database" className="text-emerald-400 hover:underline ml-1">
+            <a href="/docs/external-database" className="text-amber-400 hover:underline ml-1">
               Learn more
             </a>
           </p>
@@ -287,7 +326,7 @@ function StorageStep({
         <button
           onClick={handleNext}
           disabled={storageType === 'external' && !externalDbUrl.trim()}
-          className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-stone-700 disabled:text-stone-500 text-white rounded-lg font-medium transition-colors"
+          className="px-6 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-700 disabled:text-stone-500 text-white rounded-lg font-medium transition-colors"
         >
           {isValidating ? 'Validating...' : 'Continue'}
         </button>
@@ -334,7 +373,7 @@ function SourcesStep({
           <a 
             href="/docs/config-schema" 
             target="_blank"
-            className="text-emerald-400 text-sm hover:underline"
+            className="text-amber-400 text-sm hover:underline"
           >
             View schema docs
           </a>
@@ -344,7 +383,7 @@ function SourcesStep({
           onChange={(e) => handleJsonChange(e.target.value)}
           rows={20}
           className={`w-full px-3 py-2 bg-stone-900 border rounded-lg text-white font-mono text-sm focus:outline-none resize-none ${
-            jsonError ? 'border-red-500' : 'border-stone-700 focus:border-emerald-500'
+            jsonError ? 'border-red-500' : 'border-stone-700 focus:border-amber-500'
           }`}
           spellCheck={false}
         />
@@ -367,7 +406,7 @@ function SourcesStep({
         <button
           onClick={onNext}
           disabled={!!jsonError}
-          className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-stone-700 disabled:text-stone-500 text-white rounded-lg font-medium transition-colors"
+          className="px-6 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-700 disabled:text-stone-500 text-white rounded-lg font-medium transition-colors"
         >
           Create Config
         </button>
@@ -445,7 +484,7 @@ function NewConfigContent() {
         </p>
         <a
           href="/upgrade"
-          className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors inline-block"
+          className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors inline-block"
         >
           Upgrade to Pro
         </a>
@@ -538,7 +577,7 @@ function NewConfigContent() {
       {isCreating && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-stone-800 rounded-lg p-6 text-center">
-            <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
             <p className="text-white">Creating your config...</p>
           </div>
         </div>

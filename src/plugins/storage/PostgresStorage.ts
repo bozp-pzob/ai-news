@@ -54,10 +54,18 @@ export class PostgresStorage implements StoragePlugin {
   static constructorInterface = {
     parameters: [
       {
+        name: 'usePlatformStorage',
+        type: 'boolean',
+        required: false,
+        description: 'Use platform-hosted PostgreSQL storage (Pro users only)',
+        platformOnly: true
+      },
+      {
         name: 'connectionString',
         type: 'string',
         required: false,
-        description: 'PostgreSQL connection string (alternative to individual params)'
+        description: 'PostgreSQL connection string (alternative to individual params)',
+        secret: true
       },
       {
         name: 'host',
@@ -87,13 +95,14 @@ export class PostgresStorage implements StoragePlugin {
         name: 'password',
         type: 'string',
         required: false,
-        description: 'Database password'
+        description: 'Database password',
+        secret: true
       },
       {
-        name: 'configId',
-        type: 'string',
+        name: 'skipValidation',
+        type: 'boolean',
         required: false,
-        description: 'Config ID for multi-tenant isolation'
+        description: 'Skip database connection validation (for testing only)'
       }
     ]
   };

@@ -1,53 +1,86 @@
-version: '3.8'
+# =============================================================================
+# AI News Aggregator - Full Stack Docker Compose
+# =============================================================================
+# Services: frontend, backend, redis, mcp
+# Note: PostgreSQL is external (not included in this stack)
+#
+# Usage:
+#   docker compose up -d
+#   docker compose up -d --build  # Rebuild images
+#
+# With custom backend URL for Cloudflare tunnel:
+#   REACT_APP_API_URL=https://api.yourdomain.com docker compose up -d --build
+# =============================================================================
 
 services:
-  app:
-    build: .
+  # ---------------------------------------------------------------------------
+  # Frontend - React app served via nginx
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      target: frontend
+      args:
+        - REACT_APP_API_URL=${REACT_APP_API_URL:-http://backend:3000}
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ainews-network
+
+  # ---------------------------------------------------------------------------
+  # Backend - Express API server
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      target: backend
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://ainews:ainews@postgres:5432/ainews
+      - PORT=3000
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379
+      # Authentication
       - PRIVY_APP_ID=${PRIVY_APP_ID}
       - PRIVY_APP_SECRET=${PRIVY_APP_SECRET}
       - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY}
+      # AI/LLM
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - USE_OPENROUTER=${USE_OPENROUTER:-true}
+      - SITE_URL=${SITE_URL:-}
+      - SITE_NAME=${SITE_NAME:-}
+      # Data Sources (optional)
+      - DISCORD_TOKEN=${DISCORD_TOKEN:-}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID:-}
+      - DISCORD_APP_ID=${DISCORD_APP_ID:-}
+      - CODEX_API_KEY=${CODEX_API_KEY:-}
+      - BIRDEYE_API_KEY=${BIRDEYE_API_KEY:-}
+      # Payments (optional)
       - POP402_FACILITATOR_URL=https://facilitator.pop402.com
-      - PLATFORM_WALLET_ADDRESS=${PLATFORM_WALLET_ADDRESS}
-      - PLATFORM_FEE_PERCENT=10
+      - PLATFORM_WALLET_ADDRESS=${PLATFORM_WALLET_ADDRESS:-}
+      - PLATFORM_FEE_PERCENT=${PLATFORM_FEE_PERCENT:-10}
+      # Rate Limiting
+      - FREE_TIER_MAX_CONFIGS=${FREE_TIER_MAX_CONFIGS:-1}
+      - FREE_TIER_MAX_RUNS_PER_DAY=${FREE_TIER_MAX_RUNS_PER_DAY:-1}
+      - FREE_TIER_MAX_QUERIES_PER_DAY=${FREE_TIER_MAX_QUERIES_PER_DAY:-100}
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
+      - ./config:/app/config:ro
       - ./data:/app/data
-      - ./config:/app/config
     restart: unless-stopped
     networks:
       - ainews-network
 
-  postgres:
-    image: pgvector/pgvector:pg16
-    environment:
-      - POSTGRES_USER=ainews
-      - POSTGRES_PASSWORD=ainews
-      - POSTGRES_DB=ainews
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./src/plugins/storage/postgres-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ainews"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    networks:
-      - ainews-network
-
+  # ---------------------------------------------------------------------------
+  # Redis - Job queue and caching
+  # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
     ports:
@@ -64,20 +97,24 @@ services:
     networks:
       - ainews-network
 
+  # ---------------------------------------------------------------------------
+  # MCP - Model Context Protocol server
+  # ---------------------------------------------------------------------------
   mcp:
     build:
       context: .
-      dockerfile: Dockerfile.mcp
+      target: mcp
     ports:
       - "3001:3001"
     environment:
-      - DATABASE_URL=postgresql://ainews:ainews@postgres:5432/ainews
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - POP402_FACILITATOR_URL=https://facilitator.pop402.com
-      - PLATFORM_WALLET_ADDRESS=${PLATFORM_WALLET_ADDRESS}
+      - PLATFORM_WALLET_ADDRESS=${PLATFORM_WALLET_ADDRESS:-}
     depends_on:
-      postgres:
+      redis:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -88,5 +125,4 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
   redis_data:

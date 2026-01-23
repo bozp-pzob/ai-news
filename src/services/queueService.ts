@@ -296,9 +296,9 @@ export async function getQueueStats(): Promise<{
   ]);
   
   return {
-    aggregation: aggCounts,
-    retentionRetry: retryCounts,
-    embeddingBackfill: backfillCounts,
+    aggregation: aggCounts as { waiting: number; active: number; completed: number; failed: number },
+    retentionRetry: retryCounts as { waiting: number; active: number; completed: number; failed: number },
+    embeddingBackfill: backfillCounts as { waiting: number; active: number; completed: number; failed: number },
   };
 }
 

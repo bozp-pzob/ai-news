@@ -2,7 +2,7 @@
 // @ts-nocheck - Privy types will be available after npm install
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { usePrivy, useLogin, useLogout, User as PrivyUser } from '@privy-io/react-auth';
+import { usePrivy, useLogout, User as PrivyUser } from '@privy-io/react-auth';
 
 /**
  * User tier in our system
@@ -63,14 +63,14 @@ const API_BASE = process.env.REACT_APP_API_URL || '';
  * AuthProvider component
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { ready, authenticated, user: privyUser, getAccessToken } = usePrivy();
-  const { login: privyLogin } = useLogin();
+  const { ready, authenticated, user: privyUser, getAccessToken, login: privyLogin } = usePrivy();
   const { logout: privyLogout } = useLogout();
   
   const [user, setUser] = useState<PlatformUser | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Start true to show loading on initial load
   const [error, setError] = useState<string | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
+  const [hasSynced, setHasSynced] = useState(false); // Track if we've done initial sync
 
   /**
    * Get auth headers for API calls
@@ -134,22 +134,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     const syncAuth = async () => {
-      if (!ready) return;
+      console.log('[AuthContext] syncAuth called:', { 
+        ready, 
+        authenticated, 
+        hasPrivyUser: !!privyUser,
+        hasSynced,
+        hasUser: !!user,
+        hasToken: !!authToken
+      });
+      
+      if (!ready) {
+        console.log('[AuthContext] Privy not ready yet');
+        return;
+      }
+      
+      // Skip if already synced and have user data
+      if (hasSynced && user && authToken) {
+        console.log('[AuthContext] Already synced with user data, skipping');
+        return;
+      }
       
       if (authenticated && privyUser) {
+        console.log('[AuthContext] User is authenticated, fetching token...');
         setIsLoading(true);
         setError(null);
         
         try {
           // Get access token from Privy
           const token = await getAccessToken();
+          console.log('[AuthContext] Got token:', token ? `yes (${token.substring(0, 20)}...)` : 'no');
           
           if (token) {
             setAuthToken(token);
             
             // Fetch platform user from our backend
+            console.log('[AuthContext] Fetching platform user from API...');
             const platformUser = await fetchPlatformUser(token);
-            setUser(platformUser);
+            console.log('[AuthContext] Platform user response:', platformUser);
+            
+            if (platformUser) {
+              setUser(platformUser);
+              setHasSynced(true);
+              
+              // Check for post-login redirect
+              const redirectPath = sessionStorage.getItem('postLoginRedirect');
+              if (redirectPath) {
+                sessionStorage.removeItem('postLoginRedirect');
+                // Use window.location for redirect since we're outside Router
+                window.location.href = redirectPath;
+              }
+            } else {
+              console.warn('[AuthContext] No platform user returned');
+              setError('Failed to load user profile');
+            }
+          } else {
+            console.warn('[AuthContext] No token returned from Privy');
+            setError('Failed to get authentication token');
           }
         } catch (err) {
           console.error('[AuthContext] Auth sync error:', err);
@@ -157,23 +197,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } finally {
           setIsLoading(false);
         }
-      } else {
-        // Not authenticated - clear state
+      } else if (ready) {
+        // Privy is ready but user is not authenticated - clear state
+        console.log('[AuthContext] User not authenticated, clearing state');
         setUser(null);
         setAuthToken(null);
         setError(null);
+        setIsLoading(false);
+        setHasSynced(true);
       }
     };
 
     syncAuth();
-  }, [ready, authenticated, privyUser, getAccessToken, fetchPlatformUser]);
+  }, [ready, authenticated, privyUser?.id]); // Minimal deps to avoid loops
 
   /**
    * Login action
    */
   const login = useCallback(() => {
-    privyLogin();
-  }, [privyLogin]);
+    // Only call login if not already authenticated
+    if (!authenticated) {
+      console.log('[AuthContext] Calling Privy login...');
+      privyLogin();
+    } else {
+      console.log('[AuthContext] Already authenticated, triggering re-sync...');
+      // Force a re-sync if already authenticated but no user data
+      if (!user && !isLoading) {
+        // Manually trigger sync by getting token and fetching user
+        (async () => {
+          setIsLoading(true);
+          try {
+            const token = await getAccessToken();
+            if (token) {
+              setAuthToken(token);
+              const platformUser = await fetchPlatformUser(token);
+              setUser(platformUser);
+            }
+          } catch (err) {
+            console.error('[AuthContext] Re-sync error:', err);
+          } finally {
+            setIsLoading(false);
+          }
+        })();
+      }
+    }
+  }, [authenticated, privyLogin, user, isLoading, getAccessToken, fetchPlatformUser]);
 
   /**
    * Logout action

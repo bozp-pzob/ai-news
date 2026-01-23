@@ -30,6 +30,7 @@ interface DailySummaryGeneratorConfig {
   outputPath?: string;
   maxGroupsToSummarize?: number;
   groupBySourceType?: boolean;
+  skipFileOutput?: boolean;
 }
 
 /**
@@ -53,6 +54,8 @@ export class DailySummaryGenerator {
   private maxGroupsToSummarize: number;
   /** Force Content grouping to be by Source types */
   private groupBySourceType: boolean;
+  /** Skip writing JSON/MD files (for platform storage mode) */
+  private skipFileOutput: boolean;
 
   static constructorInterface = {
     parameters: [
@@ -97,6 +100,12 @@ export class DailySummaryGenerator {
         type: 'boolean',
         required: false,
         description: 'Group by source type from storage, instead of topics generated from enriching.'
+      },
+      {
+        name: 'skipFileOutput',
+        type: 'boolean',
+        required: false,
+        description: 'Skip writing JSON/MD files to disk (for platform storage mode).'
       }
     ]
   };
@@ -112,7 +121,8 @@ export class DailySummaryGenerator {
     this.source = config.source;
     this.outputPath = config.outputPath || './';
     this.maxGroupsToSummarize = config.maxGroupsToSummarize || 10;
-    this.groupBySourceType = config.groupBySourceType || false
+    this.groupBySourceType = config.groupBySourceType || false;
+    this.skipFileOutput = config.skipFileOutput || false;
   }
 
   /**
@@ -174,7 +184,7 @@ export class DailySummaryGenerator {
    */
   public async generateAndStoreSummary(dateStr: string): Promise<void> {
     try {
-      const currentTime = new Date(dateStr).getTime() / 1000;
+      const currentTime = Math.floor(new Date(dateStr).getTime() / 1000);
       const targetTime = currentTime + (60 * 60 * 24);
       
       // Fetch items based on whether a specific source type was configured
@@ -230,8 +240,12 @@ export class DailySummaryGenerator {
       };
 
       await this.storage.saveSummaryItem(summaryItem);
-      await this.writeSummaryToFile(dateStr, currentTime, allSummaries);
-      await this.writeMDToFile(dateStr, markdownString);
+      
+      // Only write files if not in platform-only mode
+      if (!this.skipFileOutput) {
+        await this.writeSummaryToFile(dateStr, currentTime, allSummaries);
+        await this.writeMDToFile(dateStr, markdownString);
+      }
 
       console.log(`Daily report for ${dateStr} generated and stored successfully.`);
     } catch (error) {
@@ -246,13 +260,21 @@ export class DailySummaryGenerator {
    * @returns {Promise<void>}
    */
   public async checkIfFileMatchesDB(dateStr: string, summary: SummaryItem) {
+    // Skip file validation in platform-only mode
+    if (this.skipFileOutput) {
+      console.log('Skipping file validation (platform storage mode)');
+      return;
+    }
+    
     try {
       let jsonParsed = await this.readSummaryFromFile(dateStr);
 
       let summaryParsed = {
         type: summary.type,
         title: summary.title,
-        categories: JSON.parse(summary.categories || "[]"),
+        categories: typeof summary.categories === 'string' 
+          ? JSON.parse(summary.categories || "[]") 
+          : (summary.categories || []),
         date: summary.date
       };
 
@@ -274,14 +296,12 @@ export class DailySummaryGenerator {
     try {
       const today = new Date();
 
-      let summary: SummaryItem[] = await this.storage.getSummaryBetweenEpoch((today.getTime() - (hour * 24)) / 1000, today.getTime() / 1000);
+      let summary: SummaryItem[] = await this.storage.getSummaryBetweenEpoch(Math.floor((today.getTime() - (hour * 24)) / 1000), Math.floor(today.getTime() / 1000));
       
       if (summary && summary.length <= 0) {
-        const summaryDate = new Date(today);
-        summaryDate.setDate(summaryDate.getDate() - 1);
-        
-        const dateStr = summaryDate.toISOString().slice(0, 10);
-        console.log(`Summarizing data from for daily report`);
+        // Generate summary for today's data
+        const dateStr = today.toISOString().slice(0, 10);
+        console.log(`Summarizing data for daily report: ${dateStr}`);
       
         await this.generateAndStoreSummary(dateStr);
         
@@ -289,10 +309,7 @@ export class DailySummaryGenerator {
       }
       else {
         console.log('Summary already generated for today, validating file is correct');
-        const summaryDate = new Date(today);
-        summaryDate.setDate(summaryDate.getDate() - 1);
-        
-        const dateStr = summaryDate.toISOString().slice(0, 10);
+        const dateStr = today.toISOString().slice(0, 10);
 
         await this.checkIfFileMatchesDB(dateStr, summary[0]);
       }

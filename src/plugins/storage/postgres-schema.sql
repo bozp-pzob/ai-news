@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS users (
   wallet_address TEXT,
   tier TEXT NOT NULL DEFAULT 'free' CHECK (tier IN ('free', 'paid', 'admin')),
   settings JSONB DEFAULT '{}',
+  -- AI usage tracking (for platform AI with daily limits)
+  ai_calls_today INTEGER DEFAULT 0,
+  ai_calls_today_reset_at DATE DEFAULT CURRENT_DATE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -207,6 +210,7 @@ CREATE INDEX IF NOT EXISTS idx_users_privy ON users(privy_id);
 CREATE INDEX IF NOT EXISTS idx_users_wallet ON users(wallet_address);
 CREATE INDEX IF NOT EXISTS idx_users_tier ON users(tier);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_ai_reset ON users(ai_calls_today_reset_at);
 
 -- Configs
 CREATE INDEX IF NOT EXISTS idx_configs_user ON configs(user_id);
@@ -313,6 +317,23 @@ DROP TRIGGER IF EXISTS configs_reset_runs ON configs;
 CREATE TRIGGER configs_reset_runs
   BEFORE UPDATE ON configs
   FOR EACH ROW EXECUTE FUNCTION reset_daily_runs();
+
+-- Reset daily AI calls counter function (for users table)
+CREATE OR REPLACE FUNCTION reset_daily_ai_calls()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.ai_calls_today_reset_at < CURRENT_DATE THEN
+    NEW.ai_calls_today = 0;
+    NEW.ai_calls_today_reset_at = CURRENT_DATE;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS users_reset_ai_calls ON users;
+CREATE TRIGGER users_reset_ai_calls
+  BEFORE UPDATE ON users
+  FOR EACH ROW EXECUTE FUNCTION reset_daily_ai_calls();
 
 -- Update config stats after item insert
 CREATE OR REPLACE FUNCTION update_config_item_count()

@@ -3,6 +3,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { PrivyClient } from '@privy-io/server-auth';
 import { databaseService } from '../services/databaseService';
+import { licenseService } from '../services/licenseService';
 
 /**
  * User object attached to request after authentication
@@ -43,6 +44,40 @@ function getPrivyClient(): PrivyClient {
 }
 
 /**
+ * Resolve effective tier for a user based on database tier and pop402 license
+ * 
+ * Priority:
+ * 1. Admin tier (from database) - always honored
+ * 2. Active pop402 license - grants 'paid' tier
+ * 3. Database tier (free/paid) - fallback
+ */
+async function resolveEffectiveTier(
+  dbTier: 'free' | 'paid' | 'admin',
+  walletAddress?: string
+): Promise<'free' | 'paid' | 'admin'> {
+  // Admin tier is always respected from database
+  if (dbTier === 'admin') {
+    return 'admin';
+  }
+
+  // If user has a wallet, check pop402 for active license
+  if (walletAddress) {
+    try {
+      const license = await licenseService.verifyLicense(walletAddress);
+      if (license.isActive) {
+        return 'paid';
+      }
+    } catch (error) {
+      console.error('[AuthMiddleware] Error checking license:', error);
+      // On error, fall back to database tier
+    }
+  }
+
+  // Fall back to database tier
+  return dbTier;
+}
+
+/**
  * Get or create user in database from Privy user
  */
 async function getOrCreateUser(privyUser: any): Promise<AuthUser> {
@@ -56,12 +91,17 @@ async function getOrCreateUser(privyUser: any): Promise<AuthUser> {
 
   if (existingResult.rows.length > 0) {
     const user = existingResult.rows[0];
+    const walletAddress = user.wallet_address || undefined;
+    
+    // Resolve effective tier (checks pop402 license)
+    const effectiveTier = await resolveEffectiveTier(user.tier, walletAddress);
+    
     return {
       id: user.id,
       privyId: user.privy_id,
       email: user.email || undefined,
-      walletAddress: user.wallet_address || undefined,
-      tier: user.tier
+      walletAddress,
+      tier: effectiveTier
     };
   }
 
@@ -94,12 +134,16 @@ async function getOrCreateUser(privyUser: any): Promise<AuthUser> {
   );
 
   const newUser = insertResult.rows[0];
+  
+  // Resolve effective tier for new user (check if they already have a license)
+  const effectiveTier = await resolveEffectiveTier('free', walletAddress);
+  
   return {
     id: newUser.id,
     privyId: newUser.privy_id,
     email: newUser.email || undefined,
     walletAddress: newUser.wallet_address || undefined,
-    tier: newUser.tier
+    tier: effectiveTier
   };
 }
 
