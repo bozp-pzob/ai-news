@@ -309,11 +309,11 @@ jobs:
           npm run weekly -- generate --format=discord
           echo "✅ Discord weekly regenerated"
 
-          # ElizaOS weekly - AI curation on Fridays or when forced
+          # ElizaOS weekly - AI curation on Sundays or when forced
           DATA_DAY_OF_WEEK=$(date -u -d "$DATE" +%u)
           FORCE_AI="${{ inputs.force_ai_weekly }}"
-          if [ "$DATA_DAY_OF_WEEK" = "5" ] || [ "$FORCE_AI" = "true" ]; then
-            echo "Generating AI-curated ElizaOS weekly (Friday=$([[ $DATA_DAY_OF_WEEK = 5 ]] && echo 'yes' || echo 'no'), forced=$FORCE_AI)..."
+          if [ "$DATA_DAY_OF_WEEK" = "7" ] || [ "$FORCE_AI" = "true" ]; then
+            echo "Generating AI-curated ElizaOS weekly (Sunday=$([[ $DATA_DAY_OF_WEEK = 7 ]] && echo 'yes' || echo 'no'), forced=$FORCE_AI)..."
             npm run weekly -- generate --format=elizaos --ai
             echo "✅ ElizaOS AI weekly regenerated"
           else
