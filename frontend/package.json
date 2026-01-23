@@ -23,7 +23,7 @@
     "react-scripts": "5.0.1",
     "tailwindcss": "^3.3.3",
     "three": "^0.175.0",
-    "typescript": "^5.3.3",
+    "typescript": "5.3.3",
     "uuid": "^9.0.1",
     "web-vitals": "^2.1.4"
   },
