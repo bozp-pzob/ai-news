@@ -15,12 +15,7 @@ on:
         default: 'yesterday'
         type: string
       config_name:
-        description: 'Config name (without .json)'
-        required: false
-        default: 'elizaos'
-        type: string
-      source_name:
-        description: 'Source name for JSON path'
+        description: 'Config name from config/ folder (without .json)'
         required: false
         default: 'elizaos'
         type: string
@@ -68,7 +63,7 @@ jobs:
       - name: Determine date
         id: date
         run: |
-          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          SOURCE="${{ inputs.config_name || 'elizaos' }}"
 
           if [ "${{ inputs.date }}" = "yesterday" ] || [ -z "${{ inputs.date }}" ]; then
             # When auto-triggered, find the most recent JSON file from the triggering workflow
@@ -166,7 +161,7 @@ jobs:
 
       - name: Extract JSON from gh-pages
         run: |
-          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          SOURCE="${{ inputs.config_name || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
 
           mkdir -p ./output/${SOURCE}/json
@@ -185,7 +180,7 @@ jobs:
       - name: Download Discord media
         if: hashFiles('data/elizaos.sqlite') != ''
         run: |
-          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          SOURCE="${{ inputs.config_name || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
 
           mkdir -p ./media-upload
@@ -206,7 +201,7 @@ jobs:
       - name: Generate manifest for Discord media
         if: hashFiles('data/elizaos.sqlite') != ''
         run: |
-          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          SOURCE="${{ inputs.config_name || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
 
           npm run generate-manifest -- \
@@ -227,7 +222,7 @@ jobs:
         env:
           BUNNY_STORAGE_HOST: https://la.storage.bunnycdn.com
         run: |
-          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          SOURCE="${{ inputs.config_name || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
 
           if [ ! -f "./media-upload/manifest.json" ]; then
@@ -252,7 +247,7 @@ jobs:
 
       - name: Generate memes and posters
         run: |
-          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          SOURCE="${{ inputs.config_name || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
           CONFIG="${{ inputs.config_name || 'elizaos' }}"
 
@@ -269,7 +264,7 @@ jobs:
       - name: Swap Discord URLs with CDN URLs
         if: hashFiles('media-upload/manifest.json') != ''
         run: |
-          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          SOURCE="${{ inputs.config_name || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
 
           npm run upload-cdn -- \
@@ -279,7 +274,7 @@ jobs:
 
       - name: Regenerate weekly summary with CDN URLs
         run: |
-          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          SOURCE="${{ inputs.config_name || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
 
           # Extract previous 6 days from gh-pages for ElizaOS summaries
@@ -328,7 +323,7 @@ jobs:
 
       - name: Prepare files for deployment
         run: |
-          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          SOURCE="${{ inputs.config_name || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
 
           mkdir -p ./public/${SOURCE}/json
@@ -393,11 +388,11 @@ jobs:
           publish_dir: ./public
           publish_branch: gh-pages
           keep_files: true
-          commit_message: "Add CDN media to ${{ inputs.source_name || 'elizaos' }}/json/${{ steps.date.outputs.date }}.json and daily.json"
+          commit_message: "Add CDN media to ${{ inputs.config_name || 'elizaos' }}/json/${{ steps.date.outputs.date }}.json and daily.json"
 
       - name: Summary
         run: |
-          SOURCE="${{ inputs.source_name || 'elizaos' }}"
+          SOURCE="${{ inputs.config_name || 'elizaos' }}"
           DATE="${{ steps.date.outputs.date }}"
           CONFIG="${{ inputs.config_name || 'elizaos' }}"
 
