@@ -11,11 +11,12 @@
         "botToken": "process.env.DISCORD_TOKEN",
         "guildId": "process.env.DISCORD_GUILD_ID",
         "channelIds": [
-          "1301363808421543988",
-          "1328592959444095038",
+          "1253563209462448241",
           "1300025221834739744",
-          "1377726087789940836",
-          "1253563209462448241"
+          "1328592959444095038",
+          "1361442528813121556",
+          "1301363808421543988",
+          "1377726087789940836"
         ],
         "storage": "SQLiteStorage",
         "mediaDownload": {
@@ -197,9 +198,7 @@
         "summaryType": "elizaosDailySummary",
         "outputPath": "./output/elizaos",
         "groupBySourceType": true,
-        "blockedTopics": [
-          "open source"
-        ]
+        "blockedTopics": ["open source"]
       }
     }
   ]
