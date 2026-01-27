@@ -21,7 +21,7 @@ on:
 
 jobs:
   sqlite-job:
-    timeout-minutes: 30
+    timeout-minutes: 90
     runs-on: ubuntu-latest
     permissions:
       contents: write # Needed for checkout and gh-pages push

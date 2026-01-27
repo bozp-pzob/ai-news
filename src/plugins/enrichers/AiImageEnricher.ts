@@ -1,16 +1,16 @@
-// src/plugins/enrichers/AiTopicEnricher.ts
+// src/plugins/enrichers/AiImageEnricher.ts
 
 import { EnricherPlugin, ContentItem, AiEnricherConfig, AiProvider } from "../../types";
 
+export interface AiImageEnricherConfig extends AiEnricherConfig {}
+
 /**
- * AiImageEnricher class implements the EnricherPlugin interface to add AI-generated images
- * to content items. This enricher uses an AI provider to generate images based on the
- * content text and adds them to the item's metadata.
+ * AiImageEnricher - Generates AI images (posters) for content items.
+ *
+ * Simple approach: try to generate 1 poster per item. If it fails, continue.
  */
 export class AiImageEnricher implements EnricherPlugin {
   private provider: AiProvider;
-  private maxTokens?: number;
-  private thresholdLength?: number;
 
   static constructorInterface = {
     parameters: [
@@ -19,70 +19,71 @@ export class AiImageEnricher implements EnricherPlugin {
         type: 'AiProvider',
         required: true,
         description: 'AI provider to use for image generation'
-      },
-      {
-        name: 'maxTokens',
-        type: 'number',
-        required: false,
-        description: 'Maximum number of tokens to use for image generation'
-      },
-      {
-        name: 'thresholdLength',
-        type: 'number',
-        required: false,
-        description: 'Minimum text length required for image generation (default: 300)'
       }
     ]
   };
 
-  /**
-   * Creates a new instance of AiImageEnricher.
-   * @param config - Configuration object containing the AI provider and optional parameters
-   */
-  constructor(config: AiEnricherConfig) {
+  constructor(config: AiImageEnricherConfig) {
     this.provider = config.provider;
-    this.maxTokens = config.maxTokens;
   }
 
   /**
-   * Enriches content items by generating and adding AI-created images.
-   * Only processes items that meet the length threshold and don't already have images.
-   * @param contentItems - Array of content items to enrich
-   * @returns Promise<ContentItem[]> Array of enriched content items
+   * Simple approach: try to generate 1 poster per item.
+   * Skip items that already have images or have no text.
    */
   public async enrich(contentItems: ContentItem[]): Promise<ContentItem[]> {
-    const enrichedContent: ContentItem[] = [];
-    const thresholdLength = this.thresholdLength || 300;
+    const DEBUG = process.env.DEBUG_ENRICHERS === 'true';
 
-    for (const contentItem of contentItems) {
-      let images = contentItem?.metadata?.images || [];
+    console.log(`\n=== AiImageEnricher ===`);
+    console.log(`Input: ${contentItems.length} items`);
 
-      if (!contentItem || !contentItem.text || images.length > 0) {
-        enrichedContent.push(contentItem);
+    let generated = 0;
+    let skipped = 0;
+
+    for (const item of contentItems) {
+      const itemId = item.title?.substring(0, 40) || item.type || "unknown";
+
+      // Skip if already has images
+      if (item.metadata?.images?.length > 0) {
+        skipped++;
         continue;
       }
 
-      if (contentItem.text.length < thresholdLength) {
-        enrichedContent.push(contentItem);
+      // Skip if no text
+      if (!item.text) {
+        skipped++;
         continue;
       }
+
+      if (DEBUG) {
+        console.log(`\n--- Processing: ${itemId} ---`);
+        console.log(`Content (${item.text.length} chars):`);
+        console.log(item.text);
+      }
+
+      console.log(`AiImageEnricher: [${itemId}] Generating poster (${item.text.length} chars)`);
 
       try {
-        const image = await this.provider.image(contentItem.text);
-        
-        enrichedContent.push({
-          ...contentItem,
-          metadata: {
-            ...contentItem.metadata,
-            images: image,
-          }
+        const image = await this.provider.image(item.text, {
+          category: item.type || undefined,
         });
+
+        if (image && image.length > 0) {
+          generated++;
+          item.metadata = {
+            ...item.metadata,
+            images: image,
+          };
+          console.log(`AiImageEnricher: [${itemId}] ✅ Generated poster`);
+        } else {
+          console.log(`AiImageEnricher: [${itemId}] ❌ No image returned`);
+        }
       } catch (error) {
-        console.error("Error creating topics: ", error);
-        enrichedContent.push(contentItem);
+        console.error(`AiImageEnricher: [${itemId}] Error:`, error);
       }
     }
 
-    return enrichedContent;
+    console.log(`AiImageEnricher: Generated ${generated} posters, skipped ${skipped} items\n`);
+    return contentItems;
   }
 }

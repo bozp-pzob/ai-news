@@ -341,8 +341,8 @@ class MediaDownloader {
   }
 
   /**
-   * Refresh all Discord CDN URLs in the manifest via Discord API
-   * Groups by channel to minimize API calls
+   * Refresh all Discord CDN URLs using the bulk /attachments/refresh-urls endpoint
+   * Much faster than fetching individual messages
    */
   private async refreshManifestUrls(mediaItems: MediaDownloadItem[]): Promise<void> {
     const token = process.env.DISCORD_TOKEN;
@@ -351,59 +351,100 @@ class MediaDownloader {
       return;
     }
 
-    logger.info('🔄 Refreshing expired Discord URLs...');
+    logger.info('🔄 Refreshing expired Discord URLs via bulk API...');
 
-    // Group items by channel and message for efficient API calls
-    const messageGroups = new Map<string, { channelId: string; messageId: string; items: MediaDownloadItem[] }>();
+    // Collect all Discord URLs that need refreshing
+    const discordUrls = mediaItems
+      .filter(item => isDiscordUrl(item.url))
+      .map(item => item.url);
 
-    for (const item of mediaItems) {
-      if (!isDiscordUrl(item.url)) continue;
-
-      const key = `${item.channelId}:${item.messageId}`;
-      if (!messageGroups.has(key)) {
-        messageGroups.set(key, { channelId: item.channelId || 'unknown', messageId: item.messageId, items: [] });
-      }
-      messageGroups.get(key)!.items.push(item);
+    if (discordUrls.length === 0) {
+      logger.info('No Discord URLs to refresh');
+      return;
     }
 
-    const totalMessages = messageGroups.size;
-    const etaSeconds = Math.ceil(totalMessages * 0.5); // 500ms per message
-    logger.info(`Fetching fresh URLs for ${totalMessages} messages (ETA: ~${Math.ceil(etaSeconds/60)} min)...`);
-
+    // Discord API accepts up to 50 URLs per request
+    const BATCH_SIZE = 50;
     let refreshed = 0;
     let failed = 0;
-    let processed = 0;
-    const progressInterval = Math.max(1, Math.floor(totalMessages / 10)); // Show progress every 10%
 
-    for (const [key, group] of messageGroups) {
+    for (let i = 0; i < discordUrls.length; i += BATCH_SIZE) {
+      const batch = discordUrls.slice(i, i + BATCH_SIZE);
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(discordUrls.length / BATCH_SIZE);
+
+      logger.info(`  Refreshing batch ${batchNum}/${totalBatches} (${batch.length} URLs)...`);
+
       try {
-        const freshMessage = await this.fetchDiscordMessage(token, group.channelId, group.messageId);
-        if (freshMessage) {
-          // Map old URLs to fresh URLs from the message
-          this.mapFreshUrls(group.items, freshMessage);
-          refreshed++;
-        } else {
-          failed++;
-        }
+        const refreshedUrls = await this.bulkRefreshUrls(token, batch);
 
-        processed++;
-        // Show progress periodically
-        if (processed % progressInterval === 0) {
-          const pct = Math.round((processed / totalMessages) * 100);
-          logger.info(`  Refresh progress: ${processed}/${totalMessages} (${pct}%)`);
+        // Map old URLs to new URLs
+        for (const refreshedUrl of refreshedUrls) {
+          if (refreshedUrl.original && refreshedUrl.refreshed) {
+            this.urlRefreshCache.set(refreshedUrl.original, refreshedUrl.refreshed);
+            refreshed++;
+          }
         }
-
-        // Rate limit: 500ms between requests (2 req/sec) to avoid 429s
-        await delay(500);
       } catch (error) {
-        logger.debug(`Failed to refresh message ${key}: ${error}`);
-        failed++;
-        processed++;
+        logger.warning(`Batch ${batchNum} failed: ${error}`);
+        failed += batch.length;
+      }
+
+      // Small delay between batches to be nice to the API
+      if (i + BATCH_SIZE < discordUrls.length) {
+        await delay(200);
       }
     }
 
-    logger.info(`✅ Refreshed ${refreshed} messages (${failed} failed)`);
+    logger.info(`✅ Refreshed ${refreshed}/${discordUrls.length} URLs (${failed} failed)`);
     this.manifestRefreshed = true;
+  }
+
+  /**
+   * Bulk refresh Discord CDN URLs using /attachments/refresh-urls endpoint
+   */
+  private async bulkRefreshUrls(token: string, urls: string[]): Promise<Array<{ original: string; refreshed: string }>> {
+    return new Promise((resolve, reject) => {
+      const postData = JSON.stringify({ attachment_urls: urls });
+
+      const options = {
+        hostname: 'discord.com',
+        path: '/api/v10/attachments/refresh-urls',
+        method: 'POST',
+        headers: {
+          'Authorization': `Bot ${token}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData),
+          'User-Agent': USER_AGENT
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try {
+              const response = JSON.parse(data);
+              // Response format: { refreshed_urls: [{ original: "...", refreshed: "..." }] }
+              resolve(response.refreshed_urls || []);
+            } catch {
+              reject(new Error('Invalid JSON response'));
+            }
+          } else if (res.statusCode === 429) {
+            const retryAfter = parseFloat(res.headers['retry-after'] as string || '5');
+            reject(new Error(`Rate limited, retry after ${retryAfter}s`));
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}: ${data.substring(0, 200)}`));
+          }
+        });
+      });
+
+      req.on('error', (error) => reject(error));
+      req.setTimeout(30000, () => { req.destroy(); reject(new Error('Request timeout')); });
+      req.write(postData);
+      req.end();
+    });
   }
 
   /**

@@ -80,12 +80,13 @@ export class HistoricalAggregator {
 
   /**
    * Fetches historical content from all registered sources for a specific date
-   * 
+   *
    * This method:
    * 1. Fetches historical content from each source that supports it
    * 2. Processes the content to remove duplicates
-   * 3. Applies all registered enrichers
-   * 
+   *
+   * Note: Enrichers are NOT applied here - they run after generators produce summaries
+   *
    * @param date - The date to fetch historical content for (YYYY-MM-DD format)
    * @returns A promise that resolves to an array of processed content items
    */
@@ -104,22 +105,18 @@ export class HistoricalAggregator {
 
     allItems = await this.processItems(allItems);
 
-    // Apply each enricher to the entire articles array
-    for (const enricher of this.enrichers) {
-        allItems = await enricher.enrich(allItems);
-    }
-
     return allItems;
   }
 
   /**
    * Fetches historical content from a specific source for a specific date
-   * 
+   *
    * This method:
    * 1. Fetches historical content from the specified source
    * 2. Processes the content to remove duplicates
-   * 3. Applies all registered enrichers
-   * 
+   *
+   * Note: Enrichers are NOT applied here - they run after generators produce summaries
+   *
    * @param sourceName - The name of the source to fetch from
    * @param date - The date to fetch historical content for (YYYY-MM-DD format)
    * @returns A promise that resolves to an array of processed content items
@@ -140,11 +137,6 @@ export class HistoricalAggregator {
     }
 
     allItems = await this.processItems(allItems);
-
-    // Apply each enricher to the entire articles array
-    for (const enricher of this.enrichers) {
-        allItems = await enricher.enrich(allItems);
-    }
 
     return allItems;
   }
@@ -199,16 +191,18 @@ export class HistoricalAggregator {
       throw("Storage Plugin is not set for Aggregator.")
     }
 
+    const forceOverwrite = process.env.FORCE_OVERWRITE === 'true';
+
     let allItems: ContentItem[] = [];
     for (const item of items) {
       if ( item && item.cid ) {
         const exists = await this.storage.getContentItem(item.cid);
-        if (! exists) {
+        if (!exists || forceOverwrite) {
           allItems.push(item)
         }
       }
     }
-    
+
     return allItems;
   };
 }

@@ -17,7 +17,7 @@ A modular TypeScript-based news aggregator that collects, enriches, and analyzes
 - **AI-Powered Processing**
   - Automated content summarization (e.g., daily reports, Discord channel activity) using configurable AI providers (OpenAI, OpenRouter).
   - Token limit resilience with automatic fallback models for large content processing.
-  - Optional content enrichment (e.g., topic extraction, image generation).
+  - Optional content enrichment (e.g., topic extraction, image generation, meme generation via Imgflip API).
 
 - **Flexible Storage & Output**
   - SQLite for persistent storage of fetched content and generated summaries.
@@ -32,7 +32,7 @@ A modular TypeScript-based news aggregator that collects, enriches, and analyzes
 
 ## Prerequisites
 
-- Node.js â‰¥ 18 (v23 recommended)
+- Node.js ≥ 18 (v23 recommended)
 - TypeScript
 - SQLite3 (command-line tool required for integrity checks)
 - npm
@@ -53,48 +53,86 @@ Use JSON files in the `config/` directory and a `.env` file for secrets.
 ### Example `.env` File
 
 ```env
-OPENAI_API_KEY=
+# OpenAI/OpenRouter Configuration
+OPENAI_API_KEY=your_openai_or_openrouter_api_key
+OPENAI_DIRECT_KEY=your_direct_openai_key_for_images
 USE_OPENROUTER=true
-SITE_URL=your_site.com
-SITE_NAME=YourAppName
+SITE_URL=https://your-domain.com/ai-news/
+SITE_NAME=AI_News
 
-DISCORD_TOKEN=
-DISCORD_GUILD_ID=
+# Discord Bot Configuration
+DISCORD_APP_ID=your_discord_app_id
+DISCORD_TOKEN=your_discord_bot_token
+DISCORD_GUILD_ID=your_main_discord_guild_id
 
-CODEX_API_KEY=
+# Optional: Additional Discord servers
+HYPERFY_DISCORD_APP_ID=your_hyperfy_discord_app_id
+HYPERFY_DISCORD_TOKEN=your_hyperfy_discord_token
+HYPERFY_DISCORD_GUILD_ID=your_hyperfy_guild_id
+
+# API Keys for Data Sources
+CODEX_API_KEY=your_codex_api_key
+BIRDEYE_API_KEY=your_birdeye_api_key
+
+# CDN Configuration (optional)
+BUNNY_STORAGE_ZONE=your_bunny_storage_zone
+BUNNY_STORAGE_PASSWORD=your_bunny_api_password
+BUNNY_CDN_URL=https://your-custom-cdn.com
 ```
+
+See `.env.example` for all available options.
 
 ## GitHub Actions Secrets
 
-Create three repository secrets in GitHub:
+Create these repository secrets in GitHub:
 
-1. `ENV_SECRETS` â€" JSON object with credentials:
+1. `ENV_SECRETS` — JSON object with credentials:
 ```json
 {
   "OPENAI_API_KEY": "sk-...",
+  "OPENAI_DIRECT_KEY": "sk-...",
   "USE_OPENROUTER": "true",
-  "SITE_URL": "your_site.com",
-  "SITE_NAME": "YourAppName",
+  "SITE_URL": "https://your-domain.com/ai-news/",
+  "SITE_NAME": "AI_News",
   "DISCORD_APP_ID": "your_discord_app_id",
   "DISCORD_TOKEN": "your_discord_bot_token",
   "DISCORD_GUILD_ID": "your_discord_guild_id",
-  "CODEX_API_KEY": "your_codex_key"
+  "HYPERFY_DISCORD_APP_ID": "your_hyperfy_app_id",
+  "HYPERFY_DISCORD_TOKEN": "your_hyperfy_token",
+  "HYPERFY_DISCORD_GUILD_ID": "your_hyperfy_guild_id",
+  "CODEX_API_KEY": "your_codex_key",
+  "BIRDEYE_API_KEY": "your_birdeye_key",
+  "IMGFLIP_USERNAME": "your_imgflip_username",
+  "IMGFLIP_PASSWORD": "your_imgflip_password",
+  "BUNNY_STORAGE_ZONE": "your_bunny_storage_zone",
+  "BUNNY_STORAGE_PASSWORD": "your_bunny_api_password",
+  "BUNNY_CDN_URL": "https://your-custom-cdn.com"
 }
 ```
 
-2. `SQLITE_ENCRYPTION_KEY` â€" strong password to encrypt the database.
+**Notes:** `OPENAI_DIRECT_KEY` is required for image generation when using OpenRouter. `IMGFLIP_*` credentials are required for meme generation (sign up at imgflip.com). `HYPERFY_*`, `BIRDEYE_*`, and `BUNNY_*` keys are optional depending on your configuration.
+
+2. `SQLITE_ENCRYPTION_KEY` — strong password to encrypt the database.
 
 ### For Webhook Server Integration (deploy-media-collection.yml)
 
-3. `COLLECT_WEBHOOK_URL` â€" Your webhook server endpoint:
+3. `COLLECT_WEBHOOK_URL` — Your webhook server endpoint:
 ```
 https://your-server.com/run-collect
 ```
 
-4. `COLLECT_WEBHOOK_SECRET` â€" HMAC signing secret (generate with `openssl rand -hex 32`):
+4. `COLLECT_WEBHOOK_SECRET` — HMAC signing secret (generate with `openssl rand -hex 32`):
 ```
 a1b2c3d4e5f6...
 ```
+
+### For CDN Media Upload (media-cdn-upload.yml)
+
+5. `BUNNY_STORAGE_ZONE` — Storage zone name from Bunny.net dashboard (Storage → your zone name)
+
+6. `BUNNY_STORAGE_PASSWORD` — FTP & API Access password from Bunny.net (Storage → FTP & API Access → Password)
+
+**Optional:** Set `BUNNY_CDN_URL` in ENV_SECRETS if using a custom hostname (default: `https://{zone}.b-cdn.net`)
 
 ## Running the Application
 
@@ -115,15 +153,23 @@ npm run historical -- --source=discord-raw.json --before=2024-01-10 --output=./o
 
 ## Channel Management
 
-### Channel Discovery
-Automatically discover and track Discord channels across all configured servers:
+Unified CLI for Discord channel discovery, tracking, and configuration:
 
 ```bash
-# Generate channel checklist (runs daily via GitHub Action)
-npm run discover-channels
+# Discover all channels from Discord API → registry → CHANNELS.md
+npm run channels -- discover --sample
 
 # Test mode (validate configs without Discord API)
-npm run discover-channels -- --test-configs
+npm run channels -- discover --test-configs
+
+# Sync CHANNELS.md changes to registry and configs
+npm run channels -- sync [--dry-run]
+
+# Query and manage channels
+npm run channels -- list [--tracked|--active|--muted]
+npm run channels -- show <channelId>
+npm run channels -- stats
+npm run channels -- track|untrack|mute|unmute <channelId>
 
 # With media download
 npm run historical -- --source=elizaos.json --download-media=true --date=2024-01-15
@@ -137,37 +183,41 @@ npm run download-media -- --date=2024-01-15             # Specific date
 npm run download-media -- --start=2024-01-10 --end=2024-01-15  # Date range
 ```
 
-📋 **Channel Checklist**: View and edit tracked channels at [scripts/CHANNELS.md](scripts/CHANNELS.md)
+## CDN Upload
 
-### Configuration Updates
-Update configs based on checked channels in the checklist:
+Upload media files to Bunny CDN for permanent hosting (Discord URLs expire after 24h):
 
 ```bash
-# Apply changes from checklist to config files
-npm run update-configs
+# Upload single file
+npm run upload-cdn -- --file ./media/image.png --remote elizaos-media/
 
-# Preview changes without applying
-npm run update-configs -- --dry-run
+# Upload directory
+npm run upload-cdn -- --dir ./media/ --remote elizaos-media/
+
+# Upload and update manifest with CDN URLs
+npm run upload-cdn -- --manifest ./media/manifest.json --update-manifest
+
+# Swap Discord URLs for CDN URLs in summary JSON
+npm run upload-cdn -- --swap-urls ./output/elizaos/json/2024-01-15.json \
+  --manifest ./media/manifest.json \
+  --output ./output/elizaos/json-cdn/2024-01-15.json
+
+# Preview without uploading
+npm run upload-cdn -- --dir ./media/ --remote elizaos-media/ --dry-run
 ```
 
-### Workflow Options
+**Automated:** The `media-cdn-upload.yml` workflow runs daily at 7:30 AM UTC to upload media and create CDN-enriched JSON files.
 
-**Option A: GitHub Web Interface (Automated)**
-1. Open [scripts/CHANNELS.md](scripts/CHANNELS.md) on GitHub
-2. Edit file and check/uncheck channel boxes
-3. Commit changes
-4. GitHub Action automatically runs `update-configs` and commits any config changes
+📋 **Channel Checklist**: View and edit tracked channels at [scripts/CHANNELS.md](scripts/CHANNELS.md)
 
-**Option B: Local Development**
-1. Run `npm run discover-channels` to update checklist
-2. Edit `scripts/CHANNELS.md` locally to check/uncheck channels
-3. Run `npm run update-configs` to update config files
+### Workflow
+
+1. Run `npm run channels -- discover --sample` to fetch all channels and generate checklist
+2. Edit `scripts/CHANNELS.md` - check Track/Mute boxes as needed
+3. Run `npm run channels -- sync` to apply changes to registry and config files
 4. Commit and push changes
 
-**Option C: Manual GitHub Workflow**
-1. Open [scripts/CHANNELS.md](scripts/CHANNELS.md) on GitHub and edit
-2. Commit changes → Pull locally: `git pull`
-3. Apply updates: `npm run update-configs`
+**GitHub Actions**: Channel discovery runs weekly and commits updated checklist automatically.
 
 ## Server Deployment
 

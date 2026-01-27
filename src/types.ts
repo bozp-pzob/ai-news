@@ -109,13 +109,36 @@ export interface AiEnricherConfig {
 }
 
 /**
+ * Configuration for AI image generation.
+ */
+export interface ImageGenerationConfig {
+  model?: string;
+  promptTemplates?: Record<string, string[]>;
+  defaultPrompts?: string[];
+  aspectRatio?: string;
+  imageSize?: '1K' | '2K' | '4K';
+  uploadToCDN?: boolean;
+  cdnPath?: string;
+}
+
+/**
+ * Options for a single image generation request.
+ */
+export interface ImageGenerationOptions {
+  category?: string;
+  referenceImages?: string[];
+  aspectRatio?: string;
+  imageSize?: '1K' | '2K' | '4K';
+}
+
+/**
  * Interface for AI providers that can process text.
  * Defines core AI capabilities used throughout the system.
  */
 export interface AiProvider {
   summarize(text: string): Promise<string>;
   topics(text: string): Promise<string[]>;
-  image(text: string): Promise<string[]>;
+  image(text: string, options?: ImageGenerationOptions): Promise<string[]>;
 }
 
 /**
@@ -453,6 +476,11 @@ export interface MediaManifestEntry {
   // Message context
   message_content?: string;
   reactions?: Array<{ emoji: string; count: number }>;
+
+  // CDN upload fields (populated after upload)
+  cdn_url?: string;
+  cdn_path?: string;
+  cdn_uploaded_at?: string;
 }
 
 /**
@@ -470,4 +498,59 @@ export interface MediaManifest {
     by_type: Record<string, number>;
     total_size_bytes: number;
   };
+  cdn?: {
+    provider: string;
+    base_url: string;
+    uploaded_at: string;
+    upload_stats: {
+      total: number;
+      uploaded: number;
+      skipped: number;
+      failed: number;
+      removed?: number; // Number of failed entries removed from manifest
+    };
+  };
+}
+
+// =============================================================================
+// CDN Upload Types
+// =============================================================================
+
+/**
+ * Result of a CDN upload operation
+ * @interface CDNUploadResult
+ */
+export interface CDNUploadResult {
+  localPath: string;
+  remotePath: string;
+  cdnUrl: string;
+  success: boolean;
+  message: string;
+  size?: number;
+}
+
+/**
+ * Configuration for CDN providers
+ * @interface CDNConfig
+ */
+export interface CDNConfig {
+  provider: 'bunny' | 'ipfs';
+  storageZone?: string;
+  storageHost?: string;
+  cdnUrl?: string;
+  password?: string;
+  dryRun?: boolean;
+  maxFileSize?: number;
+  /** Skip upload if file already exists on CDN (default: true) */
+  skipExisting?: boolean;
+}
+
+/**
+ * CDN Provider interface for upload operations
+ * @interface CDNProvider
+ */
+export interface CDNProvider {
+  name: string;
+  upload(localPath: string, remotePath: string): Promise<CDNUploadResult>;
+  getPublicUrl(remotePath: string): string;
 }
