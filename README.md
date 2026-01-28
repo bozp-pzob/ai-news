@@ -172,7 +172,7 @@ npm run channels -- stats
 npm run channels -- track|untrack|mute|unmute <channelId>
 
 # With media download
-npm run historical -- --source=elizaos.json --download-media=true --date=2024-01-15
+npm run historical -- --source=elizaos.json --download-media --date=2024-01-15
 ```
 
 ## Media Download
