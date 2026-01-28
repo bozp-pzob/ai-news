@@ -3,7 +3,7 @@
  * Handles detailed message retrieval, user data caching, and media content processing
  */
 
-import { Client, TextChannel, Message, GuildMember, User, MessageType, MessageReaction, Collection, GatewayIntentBits, ChannelType, GuildBasedChannel, Guild } from 'discord.js';
+import { Client, TextChannel, Message, GuildMember, User, MessageType, MessageReaction, Collection, GatewayIntentBits, ChannelType, GuildBasedChannel, Guild, ForumChannel, ThreadChannel, AnyThreadChannel } from 'discord.js';
 import { ContentSource } from './ContentSource';
 import { ContentItem, DiscordRawData, DiscordRawDataSourceConfig, TimeBlock, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig } from '../../types';
 import { logger, createProgressBar } from '../../helpers/cliHelper';
@@ -281,6 +281,188 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
     return processedMessages;
   }
 
+  /**
+   * Fetches messages from a forum channel by iterating through its threads
+   * @param channel - Forum channel to fetch from
+   * @param targetDate - Target date to fetch messages for
+   * @returns Promise with aggregated raw data from all threads
+   */
+  private async fetchForumMessages(channel: ForumChannel, targetDate: Date): Promise<DiscordRawData> {
+    logger.channel(`Processing forum: ${channel.name} (${channel.id}) for date ${targetDate.toISOString().split('T')[0]}`);
+
+    const users = new Map<string, DiscordRawData['users'][string]>();
+    let allMessages: DiscordRawData['messages'] = [];
+    const threadNames: string[] = [];
+
+    const startOfDay = new Date(targetDate);
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setUTCHours(23, 59, 59, 999);
+
+    try {
+      // Fetch active threads
+      logger.progress(`Fetching ${channel.name}: Getting active threads...`);
+      const activeThreads = await retryOperation(() => channel.threads.fetchActive());
+
+      // Fetch archived threads (may contain messages from target date)
+      logger.progress(`Fetching ${channel.name}: Getting archived threads...`);
+      const archivedThreads = await retryOperation(() => channel.threads.fetchArchived({ limit: 100 }));
+
+      // Combine all threads
+      const allThreads = new Map<string, AnyThreadChannel>();
+      activeThreads.threads.forEach((thread, id) => allThreads.set(id, thread));
+      archivedThreads.threads.forEach((thread, id) => allThreads.set(id, thread));
+
+      logger.info(`Found ${allThreads.size} threads in forum ${channel.name}`);
+
+      let threadIndex = 0;
+      for (const [threadId, thread] of allThreads) {
+        threadIndex++;
+        logger.progress(`Fetching ${channel.name}: Thread ${threadIndex}/${allThreads.size} - ${thread.name}`);
+
+        try {
+          // Fetch messages from this thread for the target date
+          const threadMessages = await this.fetchThreadMessages(thread, targetDate, users);
+
+          if (threadMessages.length > 0) {
+            threadNames.push(thread.name);
+            allMessages = allMessages.concat(threadMessages);
+            logger.debug(`  Thread "${thread.name}": ${threadMessages.length} messages`);
+          }
+
+          await delay(API_RATE_LIMIT_DELAY);
+        } catch (threadError) {
+          if (threadError instanceof Error && threadError.message.includes('Missing Access')) {
+            logger.debug(`  Skipping thread ${thread.name}: Missing access`);
+          } else {
+            logger.warning(`  Error fetching thread ${thread.name}: ${threadError}`);
+          }
+        }
+      }
+
+      logger.clearLine();
+      logger.info(`Finished ${channel.name}. Collected ${allMessages.length} messages from ${threadNames.length} threads.`);
+
+    } catch (error) {
+      logger.clearLine();
+      if (error instanceof Error && error.message.includes('Missing Access')) {
+        logger.warning(`Missing permissions to access forum ${channel.name}`);
+      } else {
+        logger.error(`Error fetching forum ${channel.name}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+
+    return {
+      channel: {
+        id: channel.id,
+        name: channel.name,
+        topic: channel.topic,
+        category: channel.parent?.name || null
+      },
+      date: targetDate.toISOString(),
+      users: Object.fromEntries(users),
+      messages: allMessages.sort((a, b) => new Date(a.ts!).getTime() - new Date(b.ts!).getTime())
+    };
+  }
+
+  /**
+   * Fetches messages from a single thread for a target date
+   */
+  private async fetchThreadMessages(
+    thread: AnyThreadChannel,
+    targetDate: Date,
+    users: Map<string, DiscordRawData['users'][string]>
+  ): Promise<DiscordRawData['messages']> {
+    const messages: DiscordRawData['messages'] = [];
+    const collectedMessageIds = new Set<string>();
+
+    const startOfDay = new Date(targetDate);
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setUTCHours(23, 59, 59, 999);
+
+    const startSnowflake = dateToSnowflake(startOfDay);
+
+    try {
+      // Fetch messages around the target date
+      let fetchedMessages = await retryOperation(() => thread.messages.fetch({ limit: 100, around: startSnowflake }));
+
+      // Filter to target date and process
+      const targetMessages = fetchedMessages.filter(
+        msg => msg.createdTimestamp >= startOfDay.getTime() && msg.createdTimestamp <= endOfDay.getTime()
+      );
+
+      if (targetMessages.size === 0) {
+        return messages;
+      }
+
+      // Fetch user data for message authors
+      const missingUsers = new Map<string, User>();
+      targetMessages.forEach(msg => {
+        if (!users.has(msg.author.id)) {
+          missingUsers.set(msg.author.id, msg.author);
+        }
+      });
+
+      if (missingUsers.size > 0) {
+        const existingMembers = new Map<string, GuildMember | null>();
+        const newUserData = await this.fetchUserDataBatch(existingMembers, missingUsers);
+        newUserData.forEach((data, id) => users.set(id, data));
+      }
+
+      // Process messages
+      for (const msg of targetMessages.values()) {
+        if (collectedMessageIds.has(msg.id)) continue;
+        collectedMessageIds.add(msg.id);
+
+        const reactions = msg.reactions.cache.map(reaction => ({
+          emoji: reaction.emoji.toString(),
+          count: reaction.count || 0
+        }));
+
+        // Process attachments
+        const attachments: DiscordAttachment[] = [];
+        for (const attachment of msg.attachments.values()) {
+          attachments.push(processDiscordAttachment(attachment));
+        }
+
+        const embeds: DiscordEmbed[] = [];
+        for (const embed of msg.embeds) {
+          embeds.push(processDiscordEmbed(embed));
+        }
+
+        const stickers: DiscordSticker[] = [];
+        for (const sticker of msg.stickers.values()) {
+          stickers.push(processDiscordSticker(sticker));
+        }
+
+        messages.push({
+          id: msg.id,
+          ts: msg.createdAt.toISOString(),
+          uid: msg.author.id,
+          content: msg.content,
+          type: msg.type === MessageType.Reply ? 'Reply' : undefined,
+          mentions: msg.mentions.users.map(u => u.id),
+          ref: msg.reference?.messageId,
+          edited: msg.editedAt?.toISOString(),
+          reactions: reactions.length > 0 ? reactions : undefined,
+          attachments: attachments.length > 0 ? attachments : undefined,
+          embeds: embeds.length > 0 ? embeds : undefined,
+          sticker_items: stickers.length > 0 ? stickers : undefined,
+          threadName: thread.name // Add thread context
+        });
+      }
+
+    } catch (error) {
+      // Silently skip threads we can't access
+      if (!(error instanceof Error && error.message.includes('Missing Access'))) {
+        throw error;
+      }
+    }
+
+    return messages;
+  }
+
   private async fetchChannelMessages(channel: TextChannel, targetDate: Date): Promise<DiscordRawData> {
     logger.channel(`Processing channel: ${channel.name} (${channel.id}) for date ${targetDate.toISOString().split('T')[0]}`);
     const users = new Map<string, DiscordRawData['users'][string]>();
@@ -476,26 +658,71 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
     for (const channelId of this.channelIds) {
       try {
         logger.channel(`Fetching channel ${channelId}...`);
-        const channel = await retryOperation(() => this.client.channels.fetch(channelId)) as TextChannel;
-        if (!channel || channel.type !== ChannelType.GuildText) {
-          logger.warning(`Channel ${channelId} is not a text channel or does not exist.`);
+        const channel = await retryOperation(() => this.client.channels.fetch(channelId));
+        if (!channel) {
+          logger.warning(`Channel ${channelId} does not exist.`);
           continue;
         }
 
+        // Skip unsupported channel types
+        if (channel.type !== ChannelType.GuildText &&
+            channel.type !== ChannelType.GuildForum &&
+            channel.type !== ChannelType.GuildAnnouncement) {
+          logger.warning(`Channel ${channelId} is type ${channel.type} (not text/forum/announcement).`);
+          continue;
+        }
+
+        // For forums, use historical fetch with current date (fetchItems is for recent messages)
+        if (channel.type === ChannelType.GuildForum) {
+          const today = new Date();
+          const rawData = await this.fetchForumMessages(channel as ForumChannel, today);
+          if (rawData.messages.length > 0) {
+            const forumChannel = channel as ForumChannel;
+            const timestamp = Date.now();
+            const formattedDate = new Date(timestamp).toISOString().replace(/[:.]/g, '-');
+            const guildName = forumChannel.guild.name;
+
+            items.push({
+              cid: `discord-raw-${forumChannel.id}-${formattedDate}`,
+              type: 'discordRawData',
+              source: `${guildName} - ${forumChannel.name}`,
+              title: `Raw Discord Data: ${forumChannel.name}`,
+              text: JSON.stringify(rawData),
+              link: `https://discord.com/channels/${forumChannel.guild.id}/${forumChannel.id}`,
+              date: timestamp,
+              metadata: {
+                channelId: forumChannel.id,
+                guildId: forumChannel.guild.id,
+                guildName: guildName,
+                channelName: forumChannel.name,
+                channelType: 'forum',
+                messageCount: rawData.messages.length,
+                userCount: Object.keys(rawData.users).length,
+                exportTimestamp: formattedDate
+              }
+            });
+            logger.success(`Successfully processed ${rawData.messages.length} messages from forum ${forumChannel.name}`);
+          }
+          continue;
+        }
+
+        // Handle text and announcement channels
+        const textChannel = channel as TextChannel;
+
         // *** Simplified fetchItems logic - less efficient but uses cursor ***
         // This part still uses the old `after` logic, as it's for fetching recent items, not historical.
-        const cursorKey = `${this.name}-${channel.id}`;
+        const cursorKey = `${this.name}-${textChannel.id}`;
         let lastFetchedMessageId = await this.storage.getCursor(cursorKey);
         const options: any = { limit: 100 };
         if (lastFetchedMessageId) options.after = lastFetchedMessageId;
 
-        const fetchedMessages: Collection<string, Message<true>> = await retryOperation(() => channel.messages.fetch(options));
+        const fetchedMessages: Collection<string, Message<true>> = await retryOperation(() => textChannel.messages.fetch(options));
 
         const recentMessages = fetchedMessages.filter(msg => msg.createdTimestamp >= cutoff.getTime());
 
         if (recentMessages.size > 0) {
              const users = new Map<string, DiscordRawData['users'][string]>();
-             const processedMessages = await this.processMessageBatch(recentMessages, channel, users) as DiscordRawData['messages'];
+             const processedMessages = await this.processMessageBatch(recentMessages, textChannel, users) as DiscordRawData['messages'];
 
              const newestMessage = Array.from(recentMessages.values()).sort((a: Message<true>, b: Message<true>) => b.createdTimestamp - a.createdTimestamp)[0];
              lastFetchedMessageId = newestMessage.id;
@@ -503,10 +730,10 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
 
              const rawData: DiscordRawData = {
                  channel: {
-                     id: channel.id,
-                     name: channel.name,
-                     topic: channel.topic,
-                     category: channel.parent?.name || null
+                     id: textChannel.id,
+                     name: textChannel.name,
+                     topic: textChannel.topic,
+                     category: textChannel.parent?.name || null
                  },
                  date: new Date().toISOString(), // Use current time for fetchItems export
                  users: Object.fromEntries(users),
@@ -515,29 +742,29 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
 
              const timestamp = Date.now();
              const formattedDate = new Date(timestamp).toISOString().replace(/[:.]/g, '-');
-             const guildName = channel.guild.name;
+             const guildName = textChannel.guild.name;
 
              items.push({
-                cid: `discord-raw-${channel.id}-${formattedDate}`,
+                cid: `discord-raw-${textChannel.id}-${formattedDate}`,
                 type: 'discordRawData',
-                source: `${guildName} - ${channel.name}`,
-                title: `Raw Discord Data: ${channel.name}`,
+                source: `${guildName} - ${textChannel.name}`,
+                title: `Raw Discord Data: ${textChannel.name}`,
                 text: JSON.stringify(rawData),
-                link: `https://discord.com/channels/${channel.guild.id}/${channel.id}`,
+                link: `https://discord.com/channels/${textChannel.guild.id}/${textChannel.id}`,
                 date: timestamp,
                 metadata: {
-                  channelId: channel.id,
-                  guildId: channel.guild.id,
+                  channelId: textChannel.id,
+                  guildId: textChannel.guild.id,
                   guildName: guildName,
-                  channelName: channel.name,
+                  channelName: textChannel.name,
                   messageCount: rawData.messages.length,
                   userCount: Object.keys(rawData.users).length,
                   exportTimestamp: formattedDate
                 }
              });
-             logger.success(`Successfully processed ${processedMessages.length} new messages from ${channel.name}`);
+             logger.success(`Successfully processed ${processedMessages.length} new messages from ${textChannel.name}`);
         } else {
-             logger.info(`No new messages found for channel ${channel.name} in the last hour.`);
+             logger.info(`No new messages found for channel ${textChannel.name} in the last hour.`);
         }
       } catch (error) {
         logger.error(`Error processing channel ${channelId} for recent items: ${error}`);
@@ -571,17 +798,55 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
     targetDate.setUTCHours(0, 0, 0, 0);
     const targetTimestamp = Math.floor(targetDate.getTime() / 1000); // Keep as seconds for ContentItem
 
-    logger.info(`Processing ${this.channelIds.length} channels for date: ${date}`);
-    
-    for (const [channelIndex, channelId] of this.channelIds.entries()) {
+    // Pre-check which channels already have data for this date
+    const channelsToFetch: string[] = [];
+    const skippedChannels: string[] = [];
+
+    for (const channelId of this.channelIds) {
+      const cid = `discord-raw-${channelId}-${date}`;
+      const exists = await this.storage.getContentItem(cid);
+      if (exists) {
+        skippedChannels.push(channelId);
+      } else {
+        channelsToFetch.push(channelId);
+      }
+    }
+
+    if (skippedChannels.length > 0) {
+      logger.info(`Skipping ${skippedChannels.length} channels with existing data for ${date}`);
+    }
+
+    if (channelsToFetch.length === 0) {
+      logger.info(`All ${this.channelIds.length} channels already have data for ${date}`);
+      return items;
+    }
+
+    logger.info(`Processing ${channelsToFetch.length} channels for date: ${date}`);
+
+    for (const [channelIndex, channelId] of channelsToFetch.entries()) {
       try {
-        const channel = await retryOperation(() => this.client.channels.fetch(channelId)) as TextChannel;
-        if (!channel || channel.type !== ChannelType.GuildText) { // Use ChannelType enum
-          logger.warning(`Channel ${channelId} is not a text channel or does not exist.`);
+        const channel = await retryOperation(() => this.client.channels.fetch(channelId));
+        if (!channel) {
+          logger.warning(`Channel ${channelId} does not exist.`);
           continue;
         }
-        // Pass the UTC-aligned date object
-        const rawData = await this.fetchChannelMessages(channel, targetDate);
+
+        let rawData: DiscordRawData;
+
+        // Handle different channel types
+        if (channel.type === ChannelType.GuildText) {
+          // Regular text channel
+          rawData = await this.fetchChannelMessages(channel as TextChannel, targetDate);
+        } else if (channel.type === ChannelType.GuildForum) {
+          // Forum channel - fetch from threads
+          rawData = await this.fetchForumMessages(channel as ForumChannel, targetDate);
+        } else if (channel.type === ChannelType.GuildAnnouncement) {
+          // Announcement channels work like text channels
+          rawData = await this.fetchChannelMessages(channel as TextChannel, targetDate);
+        } else {
+          logger.warning(`Channel ${channelId} is type ${channel.type} (not text/forum/announcement).`);
+          continue;
+        }
         
         const guildName = channel.guild.name;
         const channelName = channel.name.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
@@ -612,19 +877,23 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
         // Update channel registry with channel metadata and activity
         if (this.channelRegistry) {
           try {
+            // Get channel properties safely (forums have different properties)
+            const textChannel = channel as TextChannel;
+            const forumChannel = channel as ForumChannel;
+
             await this.channelRegistry.upsertChannel({
               id: channel.id,
-              guildId: channel.guild.id,
+              guildId: channel.type === ChannelType.GuildForum ? forumChannel.guild.id : textChannel.guild.id,
               guildName: guildName,
-              name: channel.name,
-              topic: channel.topic,
-              categoryId: channel.parentId,
-              categoryName: channel.parent?.name || null,
+              name: channel.type === ChannelType.GuildForum ? forumChannel.name : textChannel.name,
+              topic: channel.type === ChannelType.GuildForum ? forumChannel.topic : textChannel.topic,
+              categoryId: channel.type === ChannelType.GuildForum ? forumChannel.parentId : textChannel.parentId,
+              categoryName: channel.type === ChannelType.GuildForum ? forumChannel.parent?.name || null : textChannel.parent?.name || null,
               type: channel.type,
-              position: channel.position,
-              nsfw: channel.nsfw,
-              rateLimitPerUser: channel.rateLimitPerUser,
-              createdAt: Math.floor(channel.createdTimestamp / 1000),
+              position: channel.type === ChannelType.GuildForum ? forumChannel.position : textChannel.position,
+              nsfw: channel.type === ChannelType.GuildForum ? forumChannel.nsfw : textChannel.nsfw,
+              rateLimitPerUser: channel.type === ChannelType.GuildText ? textChannel.rateLimitPerUser : 0,
+              createdAt: Math.floor((channel.createdTimestamp || Date.now()) / 1000),
               observedAt: date,
               isTracked: true
             });
