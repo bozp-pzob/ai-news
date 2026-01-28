@@ -9,28 +9,25 @@ Unified TypeScript CLI for discovering and managing Discord channels.
 ### Quick Start
 
 ```bash
-# Discover all channels from Discord API
+# Discover channels (Discord API, or raw data if no token)
 npm run channels -- discover
 
-# Discover with activity sampling (recommended)
-npm run channels -- discover --sample
+# Analyze channels with LLM (TRACK/MAYBE/SKIP)
+npm run channels -- analyze
 
-# Test configurations without Discord API calls
-npm run channels -- discover --test-configs
-
-# Sync CHANNELS.md changes to registry and configs
-npm run channels -- sync
-
-# Preview sync changes without applying
-npm run channels -- sync --dry-run
+# Generate PR markdown with config changes
+npm run channels -- propose
 ```
 
 ### All Commands
 
 ```bash
-# Discovery & Sync
-npm run channels -- discover [--sample] [--test-configs]
-npm run channels -- sync [--dry-run]
+# Discovery & Analysis
+npm run channels -- discover                # Fetch channels from Discord (or raw data fallback)
+npm run channels -- analyze                 # Analyze channels needing it (30+ days old)
+npm run channels -- analyze --all           # Re-analyze all channels
+npm run channels -- analyze --channel=ID    # Analyze single channel
+npm run channels -- propose [--dry-run]     # Generate PR markdown
 
 # Query Commands
 npm run channels -- list [--tracked|--active|--muted|--quiet]
@@ -49,15 +46,19 @@ npm run channels -- build-registry [--dry-run]
 
 ### Workflow
 
-1. Run `npm run channels -- discover --sample` to fetch all channels
-2. Edit `scripts/CHANNELS.md` - check Track/Mute boxes as needed
-3. Run `npm run channels -- sync` to apply changes to registry and configs
+```bash
+npm run channels -- discover   # Fetch channels
+npm run channels -- analyze    # Run LLM analysis
+npm run channels -- propose    # Generate PR markdown
+```
+
+**GitHub Actions**: Monthly workflow analyzes channels and creates draft PRs.
 
 ### Aliases
 
 For convenience, these npm scripts are available:
-- `npm run discover-channels` → `npm run channels -- discover --sample`
-- `npm run update-configs` → `npm run channels -- sync`
+- `npm run discover-channels` → `npm run channels -- discover`
+- `npm run analyze-channels` → `npm run channels -- analyze`
 
 ## Discord User Management
 

@@ -19,8 +19,7 @@
     "channels": "ts-node -r tsconfig-paths/register --transpile-only scripts/channels.ts",
     "weekly": "ts-node -r tsconfig-paths/register --transpile-only scripts/weekly.ts",
     "fetch-channel": "ts-node -r tsconfig-paths/register --transpile-only scripts/fetch-channel.ts",
-    "discover-channels": "npm run channels -- discover --sample",
-    "update-configs": "npm run channels -- sync",
+    "discover-channels": "npm run channels -- discover",
     "users": "ts-node -r tsconfig-paths/register --transpile-only scripts/users.ts",
     "enrich-nicknames": "ts-node -r tsconfig-paths/register --transpile-only scripts/enrich-nicknames.ts",
     "merge-discord-dbs": "ts-node -r tsconfig-paths/register --transpile-only scripts/merge-discord-databases.ts",
@@ -28,7 +27,7 @@
     "dashboard": "node scripts/generate-dashboard.mjs",
     "status": "node scripts/generate-dashboard.mjs --dry-run",
     "webhook": "node scripts/server.js",
-    "analyze-channels": "ts-node -r tsconfig-paths/register --transpile-only scripts/analyze-channels.ts"
+    "analyze-channels": "npm run channels -- analyze"
   },
   "keywords": [
     "news",
