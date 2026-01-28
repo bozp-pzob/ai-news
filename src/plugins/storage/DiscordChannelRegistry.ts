@@ -141,10 +141,14 @@ export interface DiscordChannel {
   categoryChanges: ChannelCategoryChange[];
   activityHistory: ChannelActivitySnapshot[];
 
-  // AI Insights
+  // AI Insights (legacy)
   aiSummary: string | null;
   aiMannerisms: string | null;
   aiLastAnalyzed: number | null;
+
+  // AI Analysis
+  aiRecommendation: AIRecommendation | null;
+  aiReason: string | null;
 
   // User Notes
   notes: string | null;
@@ -152,6 +156,24 @@ export interface DiscordChannel {
   // Timestamps
   createdAt_registry: number;
   updatedAt: number;
+}
+
+// AI Analysis Types
+export type AIRecommendation = 'TRACK' | 'MAYBE' | 'SKIP';
+
+export interface AIAnalysisResult {
+  recommendation: AIRecommendation;
+  reason: string;
+}
+
+export interface RecommendedChange {
+  channelId: string;
+  channelName: string;
+  category: string | null;
+  currentVelocity: number;
+  recommendation: AIRecommendation;
+  reason: string;
+  action: 'add' | 'remove';
 }
 
 export interface ChannelNameChange {
@@ -203,6 +225,8 @@ interface DiscordChannelRow {
   aiSummary: string | null;
   aiMannerisms: string | null;
   aiLastAnalyzed: number | null;
+  aiRecommendation: string | null;
+  aiReason: string | null;
   notes: string | null;
   createdAt_registry: number;
   updatedAt: number;
@@ -267,6 +291,8 @@ export class DiscordChannelRegistry {
         aiSummary TEXT,
         aiMannerisms TEXT,
         aiLastAnalyzed INTEGER,
+        aiRecommendation TEXT,
+        aiReason TEXT,
         notes TEXT,
         createdAt_registry INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
@@ -277,6 +303,28 @@ export class DiscordChannelRegistry {
       CREATE INDEX IF NOT EXISTS idx_discord_channels_categoryId ON discord_channels(categoryId);
       CREATE INDEX IF NOT EXISTS idx_discord_channels_lastActivityAt ON discord_channels(lastActivityAt);
       CREATE INDEX IF NOT EXISTS idx_discord_channels_currentVelocity ON discord_channels(currentVelocity);
+    `);
+
+    // Add new columns if they don't exist (migration for existing databases)
+    const columns = await this.db.all<Array<{ name: string }>>(
+      "PRAGMA table_info(discord_channels)"
+    );
+    const columnNames = new Set(columns.map(c => c.name));
+
+    const newColumns = [
+      { name: 'aiRecommendation', type: 'TEXT' },
+      { name: 'aiReason', type: 'TEXT' },
+    ];
+
+    for (const col of newColumns) {
+      if (!columnNames.has(col.name)) {
+        await this.db.exec(`ALTER TABLE discord_channels ADD COLUMN ${col.name} ${col.type}`);
+      }
+    }
+
+    // Create index on aiRecommendation after migration ensures column exists
+    await this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_discord_channels_aiRecommendation ON discord_channels(aiRecommendation);
     `);
   }
 
@@ -612,7 +660,7 @@ export class DiscordChannelRegistry {
   }
 
   /**
-   * Update AI-generated insights
+   * Update AI-generated insights (legacy)
    */
   async updateAISummary(channelId: string, summary: string, mannerisms: string): Promise<void> {
     await this.db.run(
@@ -621,6 +669,104 @@ export class DiscordChannelRegistry {
        WHERE id = ?`,
       [summary, mannerisms, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), channelId]
     );
+  }
+
+  /**
+   * Update AI analysis results
+   */
+  async updateAIAnalysis(channelId: string, analysis: AIAnalysisResult): Promise<void> {
+    const now = Math.floor(Date.now() / 1000);
+    await this.db.run(
+      `UPDATE discord_channels
+       SET aiRecommendation = ?,
+           aiReason = ?,
+           aiLastAnalyzed = ?,
+           updatedAt = ?
+       WHERE id = ?`,
+      [
+        analysis.recommendation,
+        analysis.reason,
+        now,
+        now,
+        channelId
+      ]
+    );
+  }
+
+  /**
+   * Get channels that need AI analysis (never analyzed or stale)
+   */
+  async getChannelsNeedingAnalysis(staleDays: number = 30): Promise<DiscordChannel[]> {
+    const cutoffTimestamp = Math.floor(Date.now() / 1000) - (staleDays * 24 * 60 * 60);
+    const rows = await this.db.all<DiscordChannelRow[]>(
+      `SELECT * FROM discord_channels
+       WHERE (aiLastAnalyzed IS NULL OR aiLastAnalyzed < ?)
+         AND isMuted = 0
+         AND currentVelocity > 0
+       ORDER BY currentVelocity DESC`,
+      cutoffTimestamp
+    );
+
+    return rows.map(row => this.parseChannelRow(row));
+  }
+
+  /**
+   * Get recommended tracking changes based on AI analysis
+   * Returns channels that should be added or removed from tracking
+   */
+  async getRecommendedChanges(): Promise<RecommendedChange[]> {
+    const changes: RecommendedChange[] = [];
+
+    // Channels recommended to TRACK but not currently tracked
+    const toAdd = await this.db.all<DiscordChannelRow[]>(
+      `SELECT * FROM discord_channels
+       WHERE aiRecommendation = 'TRACK'
+         AND isTracked = 0
+         AND isMuted = 0
+       ORDER BY currentVelocity DESC`
+    );
+
+    for (const row of toAdd) {
+      const channel = this.parseChannelRow(row);
+      changes.push({
+        channelId: channel.id,
+        channelName: channel.name,
+        category: channel.categoryName,
+        currentVelocity: channel.currentVelocity,
+        recommendation: 'TRACK',
+        reason: channel.aiReason || 'Recommended by AI analysis',
+        action: 'add'
+      });
+    }
+
+    // Tracked channels with SKIP recommendation or inactive
+    const toRemove = await this.db.all<DiscordChannelRow[]>(
+      `SELECT * FROM discord_channels
+       WHERE isTracked = 1
+         AND (aiRecommendation = 'SKIP'
+              OR (lastActivityAt IS NOT NULL
+                  AND lastActivityAt < ?))
+       ORDER BY lastActivityAt ASC`,
+      Math.floor(Date.now() / 1000) - (90 * 24 * 60 * 60) // 90 days inactive
+    );
+
+    for (const row of toRemove) {
+      const channel = this.parseChannelRow(row);
+      const reason = channel.aiRecommendation === 'SKIP'
+        ? channel.aiReason || 'Low documentation value'
+        : 'No activity in 90+ days';
+      changes.push({
+        channelId: channel.id,
+        channelName: channel.name,
+        category: channel.categoryName,
+        currentVelocity: channel.currentVelocity,
+        recommendation: channel.aiRecommendation || 'SKIP',
+        reason,
+        action: 'remove'
+      });
+    }
+
+    return changes;
   }
 
   /**
@@ -769,6 +915,8 @@ export class DiscordChannelRegistry {
       aiSummary: row.aiSummary,
       aiMannerisms: row.aiMannerisms,
       aiLastAnalyzed: row.aiLastAnalyzed,
+      aiRecommendation: row.aiRecommendation as AIRecommendation | null,
+      aiReason: row.aiReason,
       notes: row.notes,
       createdAt_registry: row.createdAt_registry,
       updatedAt: row.updatedAt
