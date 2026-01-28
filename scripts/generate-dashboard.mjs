@@ -447,9 +447,9 @@ async function generateDashboard(options = {}) {
         
         // Gather data
         console.log('📊 Gathering channel statistics...');
-        const channelStats = await parseChannelsFile(
-            path.resolve(config.sources.channelsFile)
-        );
+        const channelStats = config.sources.channelsFile
+            ? await parseChannelsFile(path.resolve(config.sources.channelsFile))
+            : { lastUpdated: null, analyticsReminder: null, guilds: [] };
         
         console.log('⚙️ Checking workflow status...');
         const workflowStatus = await getWorkflowStatus(config);
