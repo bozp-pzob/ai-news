@@ -226,6 +226,7 @@ export interface DiscordRawData {
     attachments?: DiscordAttachment[];
     embeds?: DiscordEmbed[];
     sticker_items?: DiscordSticker[];
+    threadName?: string; // For forum channel messages - indicates which thread the message came from
   }[];
 }
 

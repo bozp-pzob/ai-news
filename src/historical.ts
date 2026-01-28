@@ -74,10 +74,10 @@ Options:
   --before=<YYYY-MM-DD> End date for a range.
   --after=<YYYY-MM-DD>  Start date for a range.
   --during=<YYYY-MM-DD> Alias for --date.
-  --onlyFetch=<true|false>  Only fetch data, do not generate summaries.
-  --onlyGenerate=<true|false> Only generate summaries from existing data, do not fetch.
-  --download-media=<true|false> Download Discord media after data collection (default: false).
-  --generate-manifest=<true|false> Generate media manifest JSON for VPS downloads (default: false).
+  --onlyFetch           Only fetch data, do not generate summaries.
+  --onlyGenerate        Only generate summaries from existing data, do not fetch.
+  --download-media      Download Discord media after data collection (default: false).
+  --generate-manifest   Generate media manifest JSON for VPS downloads (default: false).
   --manifest-output=<path> Output path for manifest file (default: <output>/media-manifest.json).
   --media-manifest=<path> Path to media manifest for CDN URL enrichment in summaries.
   --output=<path>       Output directory path (default: ./)
@@ -90,14 +90,22 @@ Options:
         sourceFile = arg.split('=')[1];
       } else if (arg.startsWith('--date=')) {
         dateStr = arg.split('=')[1];
-      } else if (arg.startsWith('--onlyGenerate=')) {
-        onlyGenerate = arg.split('=')[1].toLowerCase() == 'true';
-      } else if (arg.startsWith('--onlyFetch=')) {
-        onlyFetch = arg.split('=')[1].toLowerCase() == 'true';
-      } else if (arg.startsWith('--download-media=')) {
-        downloadMedia = arg.split('=')[1].toLowerCase() == 'true';
-      } else if (arg.startsWith('--generate-manifest=')) {
-        generateManifest = arg.split('=')[1].toLowerCase() == 'true';
+      } else if (arg === '--onlyGenerate' || arg === '--onlyGenerate=true') {
+        onlyGenerate = true;
+      } else if (arg === '--onlyGenerate=false') {
+        onlyGenerate = false;
+      } else if (arg === '--onlyFetch' || arg === '--onlyFetch=true') {
+        onlyFetch = true;
+      } else if (arg === '--onlyFetch=false') {
+        onlyFetch = false;
+      } else if (arg === '--download-media' || arg === '--download-media=true') {
+        downloadMedia = true;
+      } else if (arg === '--download-media=false') {
+        downloadMedia = false;
+      } else if (arg === '--generate-manifest' || arg === '--generate-manifest=true') {
+        generateManifest = true;
+      } else if (arg === '--generate-manifest=false') {
+        generateManifest = false;
       } else if (arg.startsWith('--manifest-output=')) {
         manifestOutput = arg.split('=')[1];
       } else if (arg.startsWith('--before=')) {
