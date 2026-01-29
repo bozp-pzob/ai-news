@@ -23,9 +23,7 @@
       "maxFailuresCritical": 3
     }
   },
-  "sources": {
-    "channelsFile": "scripts/CHANNELS.md"
-  },
+  "sources": {},
   "output": {
     "directory": "./public",
     "statusFile": "status.txt",

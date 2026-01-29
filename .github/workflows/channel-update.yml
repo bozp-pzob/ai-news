@@ -1,0 +1,79 @@
+name: Monthly Channel Update
+
+on:
+  schedule:
+    - cron: '0 12 1 * *'  # 1st of each month at noon UTC
+  workflow_dispatch:       # Allow manual trigger
+
+jobs:
+  update-channels:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Fetch database from gh-pages
+        run: |
+          git fetch origin gh-pages
+          mkdir -p data
+          git show gh-pages:data/elizaos.sqlite.enc > data/elizaos.sqlite.enc
+          openssl enc -d -aes-256-cbc -pbkdf2 -in data/elizaos.sqlite.enc -out data/elizaos.sqlite -k "$SQLITE_ENCRYPTION_KEY"
+        env:
+          SQLITE_ENCRYPTION_KEY: ${{ secrets.SQLITE_ENCRYPTION_KEY }}
+
+      - name: Build project
+        run: npm run build
+
+      - name: Discover channels
+        run: npm run channels -- discover
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+
+      - name: Run LLM analysis
+        run: npm run channels -- analyze
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          USE_OPENROUTER: ${{ secrets.USE_OPENROUTER }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+          SITE_NAME: ${{ secrets.SITE_NAME }}
+
+      - name: Generate update proposal
+        id: proposal
+        run: |
+          mkdir -p tmp
+          npm run channels -- propose > tmp/proposal.md 2>&1 || true
+          if [ -s tmp/proposal.md ] && grep -q "^## Channel Tracking Update" tmp/proposal.md; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes recommended"
+          fi
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Create Pull Request
+        if: steps.proposal.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: monthly channel tracking update"
+          title: "Monthly Channel Tracking Update"
+          body-path: tmp/proposal.md
+          branch: channel-update-${{ github.run_number }}
+          draft: true
+          labels: channels, automated
+          delete-branch: true

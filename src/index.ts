@@ -39,11 +39,15 @@ dotenv.config();
       if (arg.startsWith('--source=')) {
         sourceFile = arg.split('=')[1];
       }
-      if (arg.startsWith('--onlyGenerate=')) {
-        onlyGenerate = arg.split('=')[1].toLowerCase() == 'true';
+      if (arg === '--onlyGenerate' || arg === '--onlyGenerate=true') {
+        onlyGenerate = true;
+      } else if (arg === '--onlyGenerate=false') {
+        onlyGenerate = false;
       }
-      if (arg.startsWith('--onlyFetch=')) {
-        onlyFetch = arg.split('=')[1].toLowerCase() == 'true';
+      if (arg === '--onlyFetch' || arg === '--onlyFetch=true') {
+        onlyFetch = true;
+      } else if (arg === '--onlyFetch=false') {
+        onlyFetch = false;
       }
       if (arg.startsWith('--output=') || arg.startsWith('-o=')) {
         outputPath = arg.split('=')[1];

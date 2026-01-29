@@ -156,14 +156,14 @@ npm run historical -- --source=discord-raw.json --before=2024-01-10 --output=./o
 Unified CLI for Discord channel discovery, tracking, and configuration:
 
 ```bash
-# Discover all channels from Discord API → registry → CHANNELS.md
-npm run channels -- discover --sample
+# Discover channels (Discord API, or falls back to raw data if no token)
+npm run channels -- discover
 
-# Test mode (validate configs without Discord API)
-npm run channels -- discover --test-configs
+# Analyze channels with LLM (TRACK/MAYBE/SKIP recommendations)
+npm run channels -- analyze
 
-# Sync CHANNELS.md changes to registry and configs
-npm run channels -- sync [--dry-run]
+# Generate PR markdown with config changes
+npm run channels -- propose
 
 # Query and manage channels
 npm run channels -- list [--tracked|--active|--muted]
@@ -172,7 +172,7 @@ npm run channels -- stats
 npm run channels -- track|untrack|mute|unmute <channelId>
 
 # With media download
-npm run historical -- --source=elizaos.json --download-media=true --date=2024-01-15
+npm run historical -- --source=elizaos.json --download-media --date=2024-01-15
 ```
 
 ## Media Download
@@ -208,16 +208,15 @@ npm run upload-cdn -- --dir ./media/ --remote elizaos-media/ --dry-run
 
 **Automated:** The `media-cdn-upload.yml` workflow runs daily at 7:30 AM UTC to upload media and create CDN-enriched JSON files.
 
-📋 **Channel Checklist**: View and edit tracked channels at [scripts/CHANNELS.md](scripts/CHANNELS.md)
-
 ### Workflow
 
-1. Run `npm run channels -- discover --sample` to fetch all channels and generate checklist
-2. Edit `scripts/CHANNELS.md` - check Track/Mute boxes as needed
-3. Run `npm run channels -- sync` to apply changes to registry and config files
-4. Commit and push changes
+```bash
+npm run channels -- discover   # Fetch channels
+npm run channels -- analyze    # Run LLM analysis
+npm run channels -- propose    # Generate PR markdown
+```
 
-**GitHub Actions**: Channel discovery runs weekly and commits updated checklist automatically.
+**GitHub Actions**: Monthly workflow analyzes channels and creates draft PRs with recommendations.
 
 ## Server Deployment
 
