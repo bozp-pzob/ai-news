@@ -119,16 +119,6 @@ export COLLECT_WEBHOOK_SECRET="your-secret"
 ./scripts/test-webhook.sh elizaos.json 2025-01-15
 ```
 
-## Dashboard & Monitoring
-
-### `generate-dashboard.mjs`
-Project dashboard with terminal and HTML output.
-
-```bash
-npm run dashboard    # Generate full dashboard
-npm run status       # Status overview only
-```
-
 ## Integration
 
 This system is designed to work seamlessly with the broader AI News Aggregator plugin architecture. All discovered channels are automatically compatible with:
