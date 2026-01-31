@@ -216,7 +216,7 @@ class ShmotimeRecorder {
           west_pod: scene.cast?.west_pod || undefined
         },
         location: scene.location || '',
-        dialogue: (scene.dialogues || []).map(dialogue => ({
+        dialogue: (scene.dialogue || []).map(dialogue => ({
           number: dialogue.number || 0,
           totalInScenes: dialogue.totalInScenes || 0,
           action: dialogue.action || '',
