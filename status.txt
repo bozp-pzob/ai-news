@@ -1,0 +1,25 @@
+AI News Aggregator Pipeline Status (2026-02-01 06:34:27 UTC)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️  2 workflow failure(s)
+🔴 3 missing files
+
+RECENT WORKFLOW FAILURES:
+├─ ElizaOS Daily Data Collection - 5h ago
+├─ Hyperfy Discord - 7h ago
+
+GENERATED FILES:
+├─ ❌ elizaos/json/daily.json (missing)
+├─ ❌ hyperfy/daily.json (missing)
+└─ ❌ data/db.sqlite (missing)
+
+QUICK ACTIONS:
+├─ Check workflow logs for failure details
+└─ npm run discover-channels  # Refresh channel list
+
+QUICK LINKS:
+├─ Generated files: https://bozp-pzob.github.io/ai-news
+├─ Workflow logs: https://github.com/bozp-pzob/ai-news/actions
+└─ Discord analytics: https://discord.com/developers/applications
+
+💡 curl https://bozp-pzob.github.io/ai-news/status.txt
