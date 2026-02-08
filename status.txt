@@ -1,4 +1,4 @@
-AI News Aggregator Pipeline Status (2026-02-01 06:34:27 UTC)
+AI News Aggregator Pipeline Status (2026-02-08 06:34:46 UTC)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ⚠️  2 workflow failure(s)
