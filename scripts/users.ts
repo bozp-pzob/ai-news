@@ -73,6 +73,7 @@ interface CliArgs {
   skipExisting?: boolean;
   dryRun?: boolean;
   updateIndex?: boolean;
+  source?: string;
 }
 
 // ============================================================================
@@ -95,6 +96,7 @@ function parseArgs(): CliArgs {
     else if (arg === "--skip-existing") args.skipExisting = true;
     else if (arg === "--dry-run") args.dryRun = true;
     else if (arg === "--update-index") args.updateIndex = true;
+    else if (arg.startsWith("--source=")) args.source = arg.split("=")[1];
   }
 
   return args;
@@ -741,8 +743,13 @@ Commands:
   enrich             Enrich JSON files with nickname maps from discord_users
                      Options: --date=YYYY-MM-DD --from/--to --all --dry-run
 
+Options:
+  --source=<config>.json  Target a specific config (e.g. --source=m3org.json)
+                          Without --source, processes all configs in config/
+
 Examples:
-  npm run users -- index
+  npm run users -- build-registry --source=m3org.json
+  npm run users -- index --source=elizaos.json
   npm run users -- fetch-avatars --rate-limit=100 --skip-existing
   npm run users -- download-avatars --rate-limit=2000 --skip-existing
   npm run users -- build-registry
@@ -765,41 +772,77 @@ Note:
 // Main
 // ============================================================================
 
+const CONFIG_DIR = "./config";
+
+function resolveDbPaths(source?: string): string[] {
+  const configFiles = source
+    ? [source]
+    : fs.readdirSync(CONFIG_DIR).filter((f) => f.endsWith(".json"));
+
+  const paths: string[] = [];
+  for (const configFile of configFiles) {
+    const configPath = path.join(CONFIG_DIR, configFile);
+    if (!fs.existsSync(configPath)) continue;
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      const storage = config.storage?.find((s: any) => s.params?.dbPath);
+      if (storage?.params?.dbPath) {
+        const dbPath = path.resolve(process.cwd(), storage.params.dbPath);
+        if (fs.existsSync(dbPath)) {
+          paths.push(dbPath);
+        }
+      }
+    } catch (e) {
+      // Skip invalid configs
+    }
+  }
+  return paths;
+}
+
 async function main() {
   const args = parseArgs();
-  const dbPath = path.join(process.cwd(), "data", "elizaos.sqlite");
-  const db = await open({ filename: dbPath, driver: sqlite3.Database });
+  const dbPaths = resolveDbPaths(args.source);
 
-  await initDatabase(db);
-
-  switch (args.command) {
-    case "index":
-      await commandIndex(db);
-      break;
-    case "fetch-avatars":
-      await commandFetchAvatars(db, args);
-      break;
-    case "build-registry":
-      await commandBuildRegistry(db, args);
-      break;
-    case "enrich":
-      await commandEnrich(db, args);
-      break;
-    case "download-avatars":
-      await commandDownloadAvatars(db, args);
-      break;
-    case "status":
-      console.log("\n⚠️  status command is deprecated");
-      console.log("   Use: sqlite3 data/elizaos.sqlite \"SELECT COUNT(*) FROM discord_users WHERE avatarUrl IS NOT NULL;\"");
-      console.log("   Or: npm run users -- build-registry (to see user stats)\n");
-      break;
-    case "help":
-    default:
-      commandHelp();
-      break;
+  if (dbPaths.length === 0) {
+    console.error("No databases found. Use --source=<config>.json or add configs to config/.");
+    process.exit(1);
   }
 
-  await db.close();
+  // Help doesn't need a database
+  if (args.command === "help" || !args.command) {
+    commandHelp();
+    return;
+  }
+
+  for (const dbPath of dbPaths) {
+    console.log(`\nUsing database: ${path.relative(process.cwd(), dbPath)}`);
+    const db = await open({ filename: dbPath, driver: sqlite3.Database });
+
+    await initDatabase(db);
+
+    switch (args.command) {
+      case "index":
+        await commandIndex(db);
+        break;
+      case "fetch-avatars":
+        await commandFetchAvatars(db, args);
+        break;
+      case "build-registry":
+        await commandBuildRegistry(db, args);
+        break;
+      case "enrich":
+        await commandEnrich(db, args);
+        break;
+      case "download-avatars":
+        await commandDownloadAvatars(db, args);
+        break;
+      default:
+        commandHelp();
+        break;
+    }
+
+    await db.close();
+  }
 }
 
 main().catch((err) => {

@@ -46,8 +46,6 @@ dotenv.config();
 
 const CONFIG_DIR = "./config";
 const BACKUP_DIR = "./config/backup";
-const DEFAULT_CONFIGS = ["elizaos.json", "hyperfy-discord.json"];
-
 // Activity thresholds (messages per day)
 const ACTIVITY_THRESHOLDS = {
   HOT: 50,      // >50 msgs/day
@@ -76,6 +74,8 @@ interface CliArgs {
   debug?: boolean;
   // Analyze options
   all?: boolean;
+  // Config filter
+  source?: string;
 }
 
 interface DiscordRawData {
@@ -156,6 +156,7 @@ function parseArgs(): CliArgs {
     else if (arg === "--all") args.all = true;
     else if (arg.startsWith("--guild=")) args.guildId = arg.split("=")[1];
     else if (arg.startsWith("--channel=")) args.channelId = arg.split("=")[1];
+    else if (arg.startsWith("--source=")) args.source = arg.split("=")[1];
   }
 
   return args;
@@ -165,7 +166,7 @@ function parseArgs(): CliArgs {
 // Config Loading
 // ============================================================================
 
-function loadConfigs(): Map<string, LoadedConfig> {
+function loadConfigs(sourceFilter?: string): Map<string, LoadedConfig> {
   console.log("Loading configuration files...");
 
   const configs = new Map<string, LoadedConfig>();
@@ -177,7 +178,7 @@ function loadConfigs(): Map<string, LoadedConfig> {
 
   const configFiles = fs.readdirSync(CONFIG_DIR)
     .filter(file => file.endsWith(".json"))
-    .filter(file => DEFAULT_CONFIGS.length === 0 || DEFAULT_CONFIGS.includes(file));
+    .filter(file => sourceFilter ? file === sourceFilter : true);
 
   for (const configFile of configFiles) {
     try {
@@ -258,7 +259,7 @@ async function commandDiscover(db: Database, args: CliArgs): Promise<void> {
   const registry = new DiscordChannelRegistry(db);
   await registry.initialize();
 
-  const configs = loadConfigs();
+  const configs = loadConfigs(args.source);
 
   if (args.testConfigs) {
     console.log("Running in test mode (no Discord API calls)\n");
@@ -1158,7 +1159,7 @@ function commandHelp(): void {
 Discord Channel Management CLI
 
 Discovery & Analysis:
-  discover                                Fetch channels from Discord (or raw data if no token)
+  discover [--source=<config>.json]       Fetch channels from Discord (or raw data if no token)
   analyze [--all] [--channel=ID]          Run LLM analysis on channels
   propose [--dry-run]                     Generate config diff and PR markdown
 
@@ -1176,8 +1177,12 @@ Management Commands:
 Registry Commands:
   build-registry [--dry-run]              Backfill discord_channels from discordRawData
 
+Options:
+  --source=<config>.json                  Filter to a single config file (e.g. --source=m3org.json)
+
 Examples:
   npm run channels -- discover              # Discover channels (Discord API or raw data)
+  npm run channels -- discover --source=m3org.json  # Discover for a specific config
   npm run channels -- analyze               # Analyze channels needing analysis
   npm run channels -- analyze --all         # Re-analyze all channels
   npm run channels -- analyze --channel=123 # Analyze a single channel
@@ -1203,9 +1208,28 @@ function sleep(ms: number): Promise<void> {
 // Main
 // ============================================================================
 
+function resolveDbPath(source?: string): string {
+  if (source) {
+    const configPath = path.join(CONFIG_DIR, source);
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+        const storage = config.storage?.find((s: any) => s.params?.dbPath);
+        if (storage?.params?.dbPath) {
+          return path.resolve(process.cwd(), storage.params.dbPath);
+        }
+      } catch (e) {
+        // Fall through to default
+      }
+    }
+  }
+  return path.join(process.cwd(), "data", "elizaos.sqlite");
+}
+
 async function main() {
   const args = parseArgs();
-  const dbPath = path.join(process.cwd(), "data", "elizaos.sqlite");
+  const dbPath = resolveDbPath(args.source);
+  console.log(`Using database: ${path.relative(process.cwd(), dbPath)}`);
   const db = await open({ filename: dbPath, driver: sqlite3.Database });
 
   // Initialize registry
