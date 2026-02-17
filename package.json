@@ -26,7 +26,6 @@
     "build-user-registry": "ts-node -r tsconfig-paths/register --transpile-only scripts/build-discord-user-registry.ts",
     "webhook": "node scripts/server.js",
     "analyze-channels": "npm run channels -- analyze",
-    "transcribe": "ts-node -r tsconfig-paths/register --transpile-only scripts/transcribe.ts",
     "setup": "npx tsx scripts/setup-server.ts"
   },
   "keywords": [
