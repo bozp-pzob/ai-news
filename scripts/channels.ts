@@ -2,15 +2,17 @@
  * Discord Channel Management CLI
  *
  * Single source of truth for all channel operations:
- * - discover: Fetch ALL channels from Discord API → registry → CHANNELS.md
- * - sync: Parse CHANNELS.md → update registry → update configs
+ * - discover: Fetch channels from Discord API (or raw data if no token)
+ * - analyze: Run LLM analysis on channels to generate recommendations
+ * - propose: Generate config diff and PR body for tracking changes
  * - list/show/stats: Query channel data from registry
  * - track/untrack/mute/unmute: Manage channel tracking state
  * - build-registry: Backfill from discordRawData
  *
  * Usage:
- *   npm run channels -- discover [--sample]
- *   npm run channels -- sync [--dry-run]
+ *   npm run channels -- discover
+ *   npm run channels -- analyze [--all] [--channel=ID]
+ *   npm run channels -- propose [--dry-run]
  *   npm run channels -- list [--tracked|--active|--muted|--quiet]
  *   npm run channels -- show <channelId>
  *   npm run channels -- stats
@@ -24,10 +26,17 @@
 import { open, Database } from "sqlite";
 import sqlite3 from "sqlite3";
 import { Client, GatewayIntentBits, ChannelType, TextChannel } from "discord.js";
+import OpenAI from "openai";
 import * as fs from "fs";
 import * as path from "path";
 import * as dotenv from "dotenv";
-import { DiscordChannelRegistry, DiscordChannel } from "../src/plugins/storage/DiscordChannelRegistry";
+import {
+  DiscordChannelRegistry,
+  DiscordChannel,
+  AIAnalysisResult,
+  AIRecommendation,
+  RecommendedChange
+} from "../src/plugins/storage/DiscordChannelRegistry";
 
 dotenv.config();
 
@@ -36,10 +45,7 @@ dotenv.config();
 // ============================================================================
 
 const CONFIG_DIR = "./config";
-const OUTPUT_FILE = "./scripts/CHANNELS.md";
 const BACKUP_DIR = "./config/backup";
-const DEFAULT_CONFIGS = ["elizaos.json", "hyperfy-discord.json"];
-
 // Activity thresholds (messages per day)
 const ACTIVITY_THRESHOLDS = {
   HOT: 50,      // >50 msgs/day
@@ -59,7 +65,6 @@ interface CliArgs {
   command: string;
   channelId?: string;
   guildId?: string;
-  sample?: boolean;
   dryRun?: boolean;
   tracked?: boolean;
   active?: boolean;
@@ -67,6 +72,10 @@ interface CliArgs {
   quiet?: boolean;
   testConfigs?: boolean;
   debug?: boolean;
+  // Analyze options
+  all?: boolean;
+  // Config filter
+  source?: string;
 }
 
 interface DiscordRawData {
@@ -86,17 +95,29 @@ interface DiscordSourceConfig {
   };
 }
 
+interface DiscordRawData {
+  channel: {
+    id: string;
+    name: string;
+    topic?: string;
+    category?: string;
+    guildId?: string;
+    guildName?: string;
+  };
+  date: string;
+  users: Record<string, { username?: string; displayName?: string; nickname?: string }>;
+  messages: Array<{
+    id: string;
+    uid: string;
+    content: string;
+    timestamp?: string;
+  }>;
+}
+
 interface LoadedConfig {
   path: string;
   config: any;
   discordSources: DiscordSourceConfig[];
-}
-
-interface GuildChannelData {
-  guildName: string;
-  checkedChannels: { channelId: string; channelName: string }[];
-  uncheckedChannels: { channelId: string; channelName: string }[];
-  mutedChannels: { channelId: string; channelName: string }[];
 }
 
 interface ChannelActivity {
@@ -125,16 +146,17 @@ function parseArgs(): CliArgs {
   for (let i = argStartIndex; i < process.argv.length; i++) {
     const arg = process.argv[i];
 
-    if (arg === "--sample") args.sample = true;
-    else if (arg === "--dry-run") args.dryRun = true;
+    if (arg === "--dry-run") args.dryRun = true;
     else if (arg === "--tracked") args.tracked = true;
     else if (arg === "--active") args.active = true;
     else if (arg === "--muted") args.muted = true;
     else if (arg === "--quiet") args.quiet = true;
     else if (arg === "--test-configs") args.testConfigs = true;
     else if (arg === "--debug") args.debug = true;
+    else if (arg === "--all") args.all = true;
     else if (arg.startsWith("--guild=")) args.guildId = arg.split("=")[1];
     else if (arg.startsWith("--channel=")) args.channelId = arg.split("=")[1];
+    else if (arg.startsWith("--source=")) args.source = arg.split("=")[1];
   }
 
   return args;
@@ -144,7 +166,7 @@ function parseArgs(): CliArgs {
 // Config Loading
 // ============================================================================
 
-function loadConfigs(): Map<string, LoadedConfig> {
+function loadConfigs(sourceFilter?: string): Map<string, LoadedConfig> {
   console.log("Loading configuration files...");
 
   const configs = new Map<string, LoadedConfig>();
@@ -156,7 +178,7 @@ function loadConfigs(): Map<string, LoadedConfig> {
 
   const configFiles = fs.readdirSync(CONFIG_DIR)
     .filter(file => file.endsWith(".json"))
-    .filter(file => DEFAULT_CONFIGS.length === 0 || DEFAULT_CONFIGS.includes(file));
+    .filter(file => sourceFilter ? file === sourceFilter : true);
 
   for (const configFile of configFiles) {
     try {
@@ -233,7 +255,11 @@ function getGuildIds(configs: Map<string, LoadedConfig>): Set<string> {
 async function commandDiscover(db: Database, args: CliArgs): Promise<void> {
   console.log("\n Discord Channel Discovery\n");
 
-  const configs = loadConfigs();
+  // Initialize registry
+  const registry = new DiscordChannelRegistry(db);
+  await registry.initialize();
+
+  const configs = loadConfigs(args.source);
 
   if (args.testConfigs) {
     console.log("Running in test mode (no Discord API calls)\n");
@@ -241,14 +267,38 @@ async function commandDiscover(db: Database, args: CliArgs): Promise<void> {
     return;
   }
 
+  // Find a valid Discord token
+  let botToken: string | null = null;
+  for (const [configName, configData] of configs) {
+    for (const source of configData.discordSources) {
+      const tokenVar = source.params?.botToken?.replace("process.env.", "");
+      if (tokenVar && process.env[tokenVar]) {
+        botToken = process.env[tokenVar]!;
+        console.log(`Using token from ${configName} (${tokenVar})`);
+        break;
+      }
+    }
+    if (botToken) break;
+  }
+
+  // Fallback to building from raw data if no Discord token
+  if (!botToken) {
+    console.log("No Discord token available. Building registry from raw data...\n");
+    await buildRegistryFromRawData(db, registry, true);
+
+    const stats = await registry.getStats();
+    console.log("\nRegistry now contains " + stats.totalChannels + " channels");
+    console.log("  Tracked: " + stats.trackedChannels);
+    console.log("\nNext steps:");
+    console.log("1. Run 'npm run channels -- analyze --stale' to analyze channels with LLM");
+    console.log("2. Run 'npm run channels -- propose' to generate config changes");
+    return;
+  }
+
   if (configs.size === 0) {
     console.error("No valid Discord configurations found");
     process.exit(1);
   }
-
-  // Initialize registry
-  const registry = new DiscordChannelRegistry(db);
-  await registry.initialize();
 
   // Load muted channels from existing registry
   const existingChannels = await registry.getAllChannels();
@@ -266,24 +316,6 @@ async function commandDiscover(db: Database, args: CliArgs): Promise<void> {
   const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
   });
-
-  // Find a valid Discord token
-  let botToken: string | null = null;
-  for (const [configName, configData] of configs) {
-    for (const source of configData.discordSources) {
-      const tokenVar = source.params?.botToken?.replace("process.env.", "");
-      if (tokenVar && process.env[tokenVar]) {
-        botToken = process.env[tokenVar]!;
-        console.log(`Using token from ${configName} (${tokenVar})`);
-        break;
-      }
-    }
-    if (botToken) break;
-  }
-
-  if (!botToken) {
-    throw new Error("No valid Discord bot token found in environment variables");
-  }
 
   console.log("Connecting to Discord...");
   await client.login(botToken);
@@ -354,9 +386,8 @@ async function commandDiscover(db: Database, args: CliArgs): Promise<void> {
 
   console.log("");
 
-  // Sample activity if requested
-  if (args.sample) {
-    console.log("Sampling channel activity...\n");
+  // Sample activity from each channel
+  console.log("Sampling channel activity...\n");
 
     let sampled = 0;
     let errors = 0;
@@ -447,22 +478,18 @@ async function commandDiscover(db: Database, args: CliArgs): Promise<void> {
     }
 
     console.log(`\n\n  Sampled ${sampled} channels (${errors} inaccessible)\n`);
-  }
-
-  // Generate CHANNELS.md from registry
-  console.log("Generating CHANNELS.md from registry...");
-  const markdown = await generateChecklist(registry, args.sample ? channelActivity : null);
-  fs.writeFileSync(OUTPUT_FILE, markdown, "utf8");
-  console.log(`Checklist saved to ${OUTPUT_FILE}`);
 
   await client.destroy();
 
+  // Print summary stats
+  const stats = await registry.getStats();
   console.log("\n Channel discovery complete!");
+  console.log(`\nRegistry now contains ${stats.totalChannels} channels`);
+  console.log(`  Tracked: ${stats.trackedChannels}`);
+  console.log(`  Muted: ${stats.mutedChannels}`);
   console.log("\nNext steps:");
-  console.log(`1. Review the generated checklist: ${OUTPUT_FILE}`);
-  console.log("2. Check Track column for channels to add");
-  console.log("3. Check Mute column for channels to ignore");
-  console.log("4. Run 'npm run channels -- sync' to apply changes");
+  console.log("1. Run 'npm run channels -- analyze --stale' to analyze channels with LLM");
+  console.log("2. Run 'npm run channels -- propose' to generate config changes");
 }
 
 function validateConfigs(configs: Map<string, LoadedConfig>): void {
@@ -504,520 +531,296 @@ function validateConfigs(configs: Map<string, LoadedConfig>): void {
   console.log(`Summary: ${totalSources} Discord sources, ${totalChannels} channels total\n`);
 }
 
-async function generateChecklist(
-  registry: DiscordChannelRegistry,
-  channelActivity: Map<string, ChannelActivity> | null
-): Promise<string> {
-  const now = new Date();
-  const timeStr = now.toISOString().replace("T", " ").substring(0, 19) + " UTC";
-  const includeSampling = channelActivity !== null && channelActivity.size > 0;
-
-  let markdown = `# Discord Channel Tracking Status\n`;
-  markdown += `*Updated: ${timeStr}*\n\n`;
-
-  // Get all channels from registry
-  const allChannels = await registry.getAllChannels();
-
-  // Collect stats
-  let totalChannels = allChannels.length;
-  let trackedCount = allChannels.filter(c => c.isTracked).length;
-  let mutedCount = allChannels.filter(c => c.isMuted).length;
-  let newCount = allChannels.filter(c => !c.isTracked && !c.isMuted).length;
-  const recommendations: Array<{ channel: DiscordChannel; activity: ChannelActivity }> = [];
-
-  // Collect recommendations
-  if (includeSampling) {
-    for (const channel of allChannels) {
-      if (!channel.isTracked && !channel.isMuted) {
-        const activity = channelActivity!.get(channel.id);
-        if (activity && (activity.badge === "hot" || activity.badge === "active")) {
-          recommendations.push({ channel, activity });
-        }
-      }
-    }
-    recommendations.sort((a, b) => (b.activity.velocity || 0) - (a.activity.velocity || 0));
-  }
-
-  // Summary stats
-  markdown += `## Summary\n\n`;
-  markdown += `| Metric | Count |\n`;
-  markdown += `|--------|-------|\n`;
-  markdown += `| Total Channels | ${totalChannels} |\n`;
-  markdown += `| Currently Tracking | ${trackedCount} |\n`;
-  markdown += `| Muted | ${mutedCount} |\n`;
-  markdown += `| Available | ${newCount} |\n\n`;
-
-  // Recommendations section
-  if (recommendations.length > 0) {
-    markdown += `## Recommendations\n\n`;
-    markdown += `**${recommendations.length} active channels** not being tracked:\n\n`;
-    markdown += `| Channel | ID | Activity | Track | Mute |\n`;
-    markdown += `|---------|-----|----------|-------|------|\n`;
-
-    for (const rec of recommendations.slice(0, 20)) {
-      const badge = getActivityBadge(rec.activity.badge);
-      markdown += `| #${rec.channel.name} | \`${rec.channel.id}\` | ${badge} ${rec.activity.description} | \u2B1C | \u2B1C |\n`;
-    }
-    if (recommendations.length > 20) {
-      markdown += `| *...and ${recommendations.length - 20} more* | | | | |\n`;
-    }
-    markdown += `\n`;
-  }
-
-  // Instructions
-  markdown += `## Instructions\n\n`;
-  markdown += `1. **Track**: Change \u2B1C to \u2705 to add channel to config\n`;
-  markdown += `2. **Mute**: Change \u2B1C to \u2705 to hide from recommendations (won't track)\n`;
-  markdown += `3. Run \`npm run channels -- sync\` to apply changes\n`;
-  if (!includeSampling) {
-    markdown += `4. Run with \`--sample\` flag to get activity data\n`;
-  }
-  markdown += `\n`;
-
-  // Activity legend
-  if (includeSampling) {
-    markdown += `## Activity Legend\n\n`;
-    markdown += `| Badge | Meaning |\n`;
-    markdown += `|-------|--------|\n`;
-    markdown += `| \uD83D\uDD25 | Hot: >50 msgs/day |\n`;
-    markdown += `| \uD83D\uDFE2 | Active: 7-50 msgs/day |\n`;
-    markdown += `| \uD83D\uDD35 | Moderate: 1.5-7 msgs/day |\n`;
-    markdown += `| \u26AB | Quiet: <1.5 msgs/day or inactive |\n`;
-    markdown += `| \uD83D\uDD12 | No access (bot can't read) |\n`;
-    markdown += `\n`;
-  }
-
-  // Group channels by guild
-  const channelsByGuild = new Map<string, DiscordChannel[]>();
-  for (const channel of allChannels) {
-    const guildName = channel.guildName || "Unknown Guild";
-    if (!channelsByGuild.has(guildName)) {
-      channelsByGuild.set(guildName, []);
-    }
-    channelsByGuild.get(guildName)!.push(channel);
-  }
-
-  // Generate table for each guild
-  for (const [guildName, guildChannels] of channelsByGuild) {
-    const guildId = guildChannels[0]?.guildId || "unknown";
-
-    markdown += `## ${guildName}\n\n`;
-    markdown += `*Guild ID: \`${guildId}\`*\n\n`;
-
-    // Group by category
-    const channelsByCategory = new Map<string, DiscordChannel[]>();
-    for (const channel of guildChannels) {
-      const categoryName = channel.categoryName || "Uncategorized";
-      if (!channelsByCategory.has(categoryName)) {
-        channelsByCategory.set(categoryName, []);
-      }
-      channelsByCategory.get(categoryName)!.push(channel);
-    }
-
-    // Sort categories
-    const sortedCategories = Array.from(channelsByCategory.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]));
-
-    for (const [categoryName, categoryChannels] of sortedCategories) {
-      // Filter out locked channels when sampling
-      let visibleChannels = categoryChannels;
-      if (includeSampling) {
-        visibleChannels = categoryChannels.filter(ch => {
-          const activity = channelActivity!.get(ch.id);
-          return !activity || activity.badge !== "locked";
-        });
-        if (visibleChannels.length === 0) continue;
-      }
-
-      markdown += `### ${categoryName}\n\n`;
-
-      if (includeSampling) {
-        markdown += `| Channel | ID | Activity | Track | Mute |\n`;
-        markdown += `|---------|-----|----------|-------|------|\n`;
-      } else {
-        markdown += `| Channel | ID | Track | Mute |\n`;
-        markdown += `|---------|-----|-------|------|\n`;
-      }
-
-      for (const channel of visibleChannels) {
-        const trackBox = channel.isTracked ? "\u2705" : "\u2B1C";
-        const muteBox = channel.isMuted ? "\u2705" : "\u2B1C";
-
-        if (includeSampling) {
-          const activity = channelActivity!.get(channel.id) || {
-            badge: "unknown",
-            description: "not sampled"
-          };
-          const badge = getActivityBadge(activity.badge);
-          markdown += `| #${channel.name} | \`${channel.id}\` | ${badge} ${activity.description} | ${trackBox} | ${muteBox} |\n`;
-        } else {
-          markdown += `| #${channel.name} | \`${channel.id}\` | ${trackBox} | ${muteBox} |\n`;
-        }
-      }
-
-      markdown += `\n`;
-    }
-  }
-
-  return markdown;
-}
-
-function getActivityBadge(badge: string): string {
-  switch (badge) {
-    case "hot": return "\uD83D\uDD25";
-    case "active": return "\uD83D\uDFE2";
-    case "moderate": return "\uD83D\uDD35";
-    case "quiet": return "\u26AB";
-    case "dead": return "\u26AB";
-    case "locked": return "\uD83D\uDD12";
-    default: return "\u2753";
-  }
+function getActivityBadge(velocity: number, daysSinceActivity?: number): string {
+  if (daysSinceActivity && daysSinceActivity > 90) return "⚫";
+  if (velocity >= ACTIVITY_THRESHOLDS.HOT) return "🔥";
+  if (velocity >= ACTIVITY_THRESHOLDS.ACTIVE) return "🟢";
+  if (velocity >= ACTIVITY_THRESHOLDS.MODERATE) return "🔵";
+  return "⚫";
 }
 
 // ============================================================================
-// Command: sync
+// Command: analyze
 // ============================================================================
 
-async function commandSync(db: Database, args: CliArgs): Promise<void> {
-  console.log(`\n Discord Channel Sync ${args.dryRun ? "(DRY RUN)" : ""}\n`);
+async function loadChannelMessages(db: Database, channelId: string, limit: number = 100): Promise<string[]> {
+  const rows = await db.all<Array<{ text: string }>>(
+    `SELECT text FROM items
+     WHERE type = 'discordRawData'
+       AND json_extract(text, '$.channel.id') = ?
+     ORDER BY date DESC
+     LIMIT 10`,
+    channelId
+  );
 
-  // Parse checklist
-  const guildChannels = parseChecklist();
-
-  // Load configurations
-  const configs = loadConfigs();
-  if (configs.size === 0) {
-    console.error("No Discord configurations found to update");
-    process.exit(1);
+  const messages: string[] = [];
+  for (const row of rows) {
+    try {
+      const data: DiscordRawData = JSON.parse(row.text);
+      for (const msg of data.messages) {
+        if (!msg.content.trim()) continue;
+        const user = data.users[msg.uid];
+        const username = user?.displayName || user?.nickname || user?.username || "Unknown";
+        messages.push(`[${username}]: ${msg.content.slice(0, 500)}`);
+        if (messages.length >= limit) break;
+      }
+    } catch (e) {
+      // Skip malformed entries
+    }
+    if (messages.length >= limit) break;
   }
 
-  // Initialize registry
-  const registry = new DiscordChannelRegistry(db);
-  await registry.initialize();
+  return messages;
+}
 
-  // Update registry based on checklist
-  console.log("Updating registry from checklist...\n");
-  let registryUpdates = 0;
+async function analyzeChannelWithLLM(
+  openai: OpenAI,
+  model: string,
+  channel: DiscordChannel,
+  messagesText: string
+): Promise<AIAnalysisResult | null> {
+  const prompt = `Analyze these Discord messages from #${channel.name}.
 
-  for (const [guildId, guildData] of guildChannels) {
-    // Update tracked channels
-    for (const ch of guildData.checkedChannels) {
-      const channel = await registry.getChannelById(ch.channelId);
-      if (channel && !channel.isTracked) {
-        if (!args.dryRun) {
-          await registry.setTracked(ch.channelId, true);
-        }
-        registryUpdates++;
-        console.log(`  Track: #${ch.channelName} (${ch.channelId})`);
-      }
+Messages:
+${messagesText}
+
+Respond ONLY with valid JSON:
+{
+  "recommendation": "TRACK|MAYBE|SKIP",
+  "reason": "brief explanation (15 words max)"
+}
+
+Guidelines:
+- TRACK: Technical content, development discussion, code sharing, valuable for documentation
+- MAYBE: Mixed content, occasional useful info, could be filtered
+- SKIP: Bot spam, price talk, low signal, no documentation value`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0,
+      max_tokens: 150
+    });
+
+    const content = completion.choices[0]?.message?.content || "";
+
+    // Try to extract JSON from response
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        recommendation: parsed.recommendation as AIRecommendation,
+        reason: parsed.reason || ""
+      };
     }
 
-    // Update untracked channels
-    for (const ch of guildData.uncheckedChannels) {
-      const channel = await registry.getChannelById(ch.channelId);
-      if (channel && channel.isTracked) {
-        if (!args.dryRun) {
-          await registry.setTracked(ch.channelId, false);
-        }
-        registryUpdates++;
-        console.log(`  Untrack: #${ch.channelName} (${ch.channelId})`);
-      }
-    }
-
-    // Update muted channels
-    for (const ch of guildData.mutedChannels) {
-      const channel = await registry.getChannelById(ch.channelId);
-      if (channel && !channel.isMuted) {
-        if (!args.dryRun) {
-          await registry.setMuted(ch.channelId, true);
-        }
-        registryUpdates++;
-        console.log(`  Mute: #${ch.channelName} (${ch.channelId})`);
-      }
-    }
+    throw new Error("No JSON found in response");
+  } catch (error: any) {
+    console.error(`    LLM error for #${channel.name}: ${error.message}`);
+    return null;
   }
+}
 
-  console.log(`\nRegistry: ${registryUpdates} updates\n`);
+async function commandAnalyze(db: Database, registry: DiscordChannelRegistry, args: CliArgs): Promise<void> {
+  console.log("\n Channel Analysis\n");
 
-  // Update config files
-  console.log("Updating configuration files...\n");
-
-  const changes = new Map<string, {
-    added: { channelId: string; channelName: string }[];
-    removed: { channelId: string; channelName: string }[];
-    sources: any[];
-  }>();
-
-  for (const [configFile, configData] of configs) {
-    const { config, discordSources } = configData;
-    let configUpdated = false;
-    const configChanges = {
-      added: [] as { channelId: string; channelName: string }[],
-      removed: [] as { channelId: string; channelName: string }[],
-      sources: [] as any[]
-    };
-
-    for (const source of discordSources) {
-      const guildIdVar = source.params?.guildId?.replace("process.env.", "");
-      const guildId = guildIdVar ? process.env[guildIdVar] : source.params?.guildId;
-
-      if (!guildId) {
-        console.log(`  Cannot determine guild ID for source ${source.name} in ${configFile}`);
-        continue;
-      }
-
-      const guildData = guildChannels.get(guildId);
-      if (!guildData) {
-        console.log(`  No checklist data found for guild ${guildId} (${source.name})`);
-        continue;
-      }
-
-      const currentChannels = new Set(source.params?.channelIds || []);
-      const shouldTrack = new Set(guildData.checkedChannels.map(ch => ch.channelId));
-
-      const toAdd = [...shouldTrack].filter(id => !currentChannels.has(id));
-      const toRemove = [...currentChannels].filter(id => !shouldTrack.has(id));
-
-      if (toAdd.length > 0 || toRemove.length > 0) {
-        configUpdated = true;
-
-        if (!source.params) source.params = {};
-        source.params.channelIds = [...shouldTrack];
-
-        const sourceChange = {
-          sourceName: source.name,
-          guildName: guildData.guildName,
-          added: toAdd.map(id => {
-            const ch = guildData.checkedChannels.find(c => c.channelId === id);
-            return { channelId: id, channelName: ch?.channelName || "Unknown" };
-          }),
-          removed: toRemove.map(id => {
-            const ch = guildData.uncheckedChannels.find(c => c.channelId === id);
-            return { channelId: id, channelName: ch?.channelName || "Unknown" };
-          }),
-          totalChannels: shouldTrack.size
-        };
-
-        configChanges.sources.push(sourceChange);
-        configChanges.added.push(...sourceChange.added);
-        configChanges.removed.push(...sourceChange.removed);
-      }
-    }
-
-    if (configUpdated) {
-      changes.set(configFile, configChanges);
-
-      console.log(`${configFile}:`);
-      for (const sourceChange of configChanges.sources) {
-        console.log(`  - ${sourceChange.sourceName} (${sourceChange.guildName}):`);
-        console.log(`    Total channels: ${sourceChange.totalChannels}`);
-
-        if (sourceChange.added.length > 0) {
-          console.log(`    Added ${sourceChange.added.length} channels:`);
-          for (const ch of sourceChange.added) {
-            console.log(`      + #${ch.channelName} (${ch.channelId})`);
-          }
-        }
-
-        if (sourceChange.removed.length > 0) {
-          console.log(`    Removed ${sourceChange.removed.length} channels:`);
-          for (const ch of sourceChange.removed) {
-            console.log(`      - #${ch.channelName} (${ch.channelId})`);
-          }
-        }
-      }
+  // Auto-populate registry if empty but raw data exists
+  const stats = await registry.getStats();
+  if (stats.totalChannels === 0) {
+    const rawCount = await db.get<{ count: number }>(
+      "SELECT COUNT(DISTINCT json_extract(text, '$.channel.id')) as count FROM items WHERE type = 'discordRawData'"
+    );
+    if (rawCount && rawCount.count > 0) {
+      console.log(`Registry empty but found ${rawCount.count} channels in raw data.`);
+      console.log("Auto-populating registry...\n");
+      await buildRegistryFromRawData(db, registry);
       console.log("");
     }
   }
 
-  if (changes.size === 0) {
-    console.log("No changes needed! All configurations are already in sync with the checklist.\n");
+  // Initialize OpenAI
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    console.error("OPENAI_API_KEY not set in environment");
+    process.exit(1);
+  }
+
+  const openai = new OpenAI({
+    apiKey,
+    baseURL: process.env.USE_OPENROUTER === "true" ? "https://openrouter.ai/api/v1" : undefined,
+    defaultHeaders: process.env.USE_OPENROUTER === "true" ? {
+      "HTTP-Referer": process.env.SITE_URL || "",
+      "X-Title": process.env.SITE_NAME || ""
+    } : undefined
+  });
+
+  const model = process.env.USE_OPENROUTER === "true" ? "openai/gpt-4o-mini" : "gpt-4o-mini";
+
+  // Determine which channels to analyze
+  let channelsToAnalyze: DiscordChannel[];
+
+  if (args.channelId) {
+    // Single channel mode
+    const channel = await registry.getChannelById(args.channelId);
+    if (!channel) {
+      console.error(`Channel ${args.channelId} not found in registry`);
+      process.exit(1);
+    }
+    channelsToAnalyze = [channel];
+    console.log(`Analyzing single channel: #${channel.name}`);
+  } else if (args.all) {
+    // All non-muted channels with activity
+    channelsToAnalyze = (await registry.getAllChannels()).filter(c => !c.isMuted && c.currentVelocity > 0);
+    console.log(`Analyzing all ${channelsToAnalyze.length} active channels`);
+  } else {
+    // Default: channels needing analysis (never analyzed or >30 days old)
+    channelsToAnalyze = await registry.getChannelsNeedingAnalysis(30);
+    console.log(`Analyzing ${channelsToAnalyze.length} channels needing analysis`);
+  }
+
+  if (channelsToAnalyze.length === 0) {
+    console.log("\nNo channels to analyze.\n");
     return;
-  }
-
-  if (args.dryRun) {
-    console.log("DRY RUN: No files were actually modified\n");
-    generateSyncSummary(changes);
-    console.log("\nRun without --dry-run to apply these changes");
-    return;
-  }
-
-  // Create backups and save
-  console.log("Creating configuration backups...");
-  if (!fs.existsSync(BACKUP_DIR)) {
-    fs.mkdirSync(BACKUP_DIR, { recursive: true });
-  }
-
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  for (const [configFile] of changes) {
-    const configData = configs.get(configFile)!;
-    const backupFile = `${configFile}.${timestamp}.backup`;
-    const backupPath = path.join(BACKUP_DIR, backupFile);
-    fs.copyFileSync(configData.path, backupPath);
-    console.log(`  Backed up ${configFile} to ${backupFile}`);
-  }
-
-  console.log("\nSaving updated configurations...");
-  for (const [configFile] of changes) {
-    const configData = configs.get(configFile)!;
-    const updatedJson = JSON.stringify(configData.config, null, 2);
-    fs.writeFileSync(configData.path, updatedJson, "utf8");
-    console.log(`  Saved ${configFile}`);
   }
 
   console.log("");
-  generateSyncSummary(changes);
 
-  console.log("\n Channel sync complete!");
+  // Analyze each channel
+  let analyzed = 0;
+  let tracked = 0;
+  let maybe = 0;
+  let skip = 0;
+  let errors = 0;
+
+  for (const channel of channelsToAnalyze) {
+    process.stdout.write(`  Analyzing #${channel.name.padEnd(25)}...`);
+
+    // Load messages for this channel
+    const messages = await loadChannelMessages(db, channel.id, 50);
+
+    if (messages.length === 0) {
+      console.log(" no messages");
+      continue;
+    }
+
+    const messagesText = messages.join("\n");
+    const analysis = await analyzeChannelWithLLM(openai, model, channel, messagesText);
+
+    if (analysis) {
+      await registry.updateAIAnalysis(channel.id, analysis);
+      console.log(` ${analysis.recommendation}`);
+
+      if (analysis.recommendation === "TRACK") tracked++;
+      else if (analysis.recommendation === "MAYBE") maybe++;
+      else skip++;
+
+      analyzed++;
+    } else {
+      console.log(" ERROR");
+      errors++;
+    }
+
+    // Rate limiting
+    await sleep(200);
+  }
+
+  console.log(`\nAnalysis complete!`);
+  console.log(`  Analyzed: ${analyzed}`);
+  console.log(`  TRACK: ${tracked}`);
+  console.log(`  MAYBE: ${maybe}`);
+  console.log(`  SKIP: ${skip}`);
+  console.log(`  Errors: ${errors}`);
   console.log("\nNext steps:");
-  console.log("1. Review the updated configuration files");
-  console.log("2. Test your data collection with the new channel selections");
-  console.log("3. Commit the changes to your repository");
+  console.log("1. Run 'npm run channels -- propose' to generate config changes");
 }
 
-function parseChecklist(): Map<string, GuildChannelData> {
-  console.log("Parsing channel checklist...");
+// ============================================================================
+// Command: propose
+// ============================================================================
 
-  if (!fs.existsSync(OUTPUT_FILE)) {
-    throw new Error(`Checklist file not found: ${OUTPUT_FILE}`);
-  }
+async function commandProposeUpdate(db: Database, registry: DiscordChannelRegistry, args: CliArgs): Promise<void> {
+  // Get recommended changes from registry
+  const changes = await registry.getRecommendedChanges();
 
-  const content = fs.readFileSync(OUTPUT_FILE, "utf8");
-  const lines = content.split("\n");
-
-  const guildChannels = new Map<string, GuildChannelData>();
-  const channelToGuild = new Map<string, string>();
-  const pendingRecommendations: { channelId: string; channelName: string; isTrackChecked: boolean; isMuteChecked: boolean }[] = [];
-  let currentGuild: string | null = null;
-  let currentGuildId: string | null = null;
-  let inRecommendations = false;
-
-  for (const line of lines) {
-    // Detect Recommendations section
-    if (line.includes("## ") && line.includes("Recommendations")) {
-      inRecommendations = true;
-      continue;
+  if (changes.length === 0) {
+    // No output for piping - the workflow checks for empty output
+    if (!args.dryRun) {
+      console.error("No recommended changes.");
     }
+    return;
+  }
 
-    // Match guild headers
-    const guildMatch = line.match(/^##+ ([^*\n]+)$/);
-    if (guildMatch && !line.includes("Summary") && !line.includes("Recommendations") &&
-        !line.includes("Instructions") && !line.includes("Legend")) {
-      currentGuild = guildMatch[1].trim();
-      inRecommendations = false;
-      continue;
+  const toAdd = changes.filter(c => c.action === "add");
+  const toRemove = changes.filter(c => c.action === "remove");
+
+  // Get stats
+  const stats = await registry.getStats();
+  const now = new Date();
+  const monthYear = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  // Generate markdown PR body
+  let md = `## Channel Tracking Update - ${monthYear}\n\n`;
+
+  md += `### Summary\n`;
+  md += `- **Channels analyzed**: ${stats.totalChannels}\n`;
+  md += `- **Recommended to add**: ${toAdd.length}\n`;
+  md += `- **Recommended to remove**: ${toRemove.length}\n\n`;
+
+  // Recommended Additions
+  if (toAdd.length > 0) {
+    md += `### Recommended Additions\n\n`;
+    md += `| Channel | Activity | AI Recommendation | Reason |\n`;
+    md += `|---------|----------|-------------------|--------|\n`;
+
+    for (const ch of toAdd) {
+      const activityBadge = getActivityBadge(ch.currentVelocity);
+      const activityDesc = ch.currentVelocity >= 1 ? `${Math.round(ch.currentVelocity)}/day` : `${ch.currentVelocity.toFixed(1)}/day`;
+      md += `| #${ch.channelName} | ${activityBadge} ${activityDesc} | ${ch.recommendation} | ${ch.reason} |\n`;
     }
+    md += `\n`;
+  }
 
-    // Match guild ID
-    const guildIdMatch = line.match(/\*Guild ID: `([^`]+)`\*/);
-    if (guildIdMatch && currentGuild) {
-      currentGuildId = guildIdMatch[1];
-      guildChannels.set(currentGuildId, {
-        guildName: currentGuild,
-        checkedChannels: [],
-        uncheckedChannels: [],
-        mutedChannels: []
-      });
-      continue;
+  // Recommended Removals
+  if (toRemove.length > 0) {
+    md += `### Recommended Removals\n\n`;
+    md += `| Channel | Activity | Reason |\n`;
+    md += `|---------|----------|--------|\n`;
+
+    for (const ch of toRemove) {
+      const activityBadge = getActivityBadge(ch.currentVelocity);
+      const activityDesc = ch.currentVelocity >= 1 ? `${Math.round(ch.currentVelocity)}/day` : `${ch.currentVelocity.toFixed(1)}/day`;
+      md += `| #${ch.channelName} | ${activityBadge} ${activityDesc} | ${ch.reason} |\n`;
     }
-
-    // Match table rows with activity
-    const tableMatchWithActivity = line.match(/^\|\s*#([^|]+)\|\s*`(\d+)`\s*\|[^|]*\|\s*(\u2705|\u2B1C|\[[x ]\])\s*\|\s*(\u2705|\u2B1C|\[[x ]\])\s*\|/);
-    // Match table rows without activity
-    const tableMatchNoActivity = line.match(/^\|\s*#([^|]+)\|\s*`(\d+)`\s*\|\s*(\u2705|\u2B1C|\[[x ]\])\s*\|\s*(\u2705|\u2B1C|\[[x ]\])\s*\|/);
-
-    const tableMatch = tableMatchWithActivity || tableMatchNoActivity;
-    if (tableMatch) {
-      const [, channelName, channelId, trackChecked, muteChecked] = tableMatch;
-      const isTrackChecked = trackChecked === "\u2705" || trackChecked === "[x]";
-      const isMuteChecked = muteChecked === "\u2705" || muteChecked === "[x]";
-
-      if (inRecommendations) {
-        pendingRecommendations.push({ channelId, channelName: channelName.trim(), isTrackChecked, isMuteChecked });
-      } else if (currentGuildId) {
-        const guildData = guildChannels.get(currentGuildId)!;
-        channelToGuild.set(channelId, currentGuildId);
-
-        if (isMuteChecked) {
-          guildData.mutedChannels.push({ channelId, channelName: channelName.trim() });
-        } else if (isTrackChecked) {
-          guildData.checkedChannels.push({ channelId, channelName: channelName.trim() });
-        } else {
-          guildData.uncheckedChannels.push({ channelId, channelName: channelName.trim() });
-        }
-      }
-      continue;
-    }
+    md += `\n`;
   }
 
-  // Process pending recommendations
-  let recommendationsApplied = 0;
-  for (const rec of pendingRecommendations) {
-    const guildId = channelToGuild.get(rec.channelId);
-    if (guildId) {
-      const guildData = guildChannels.get(guildId)!;
+  // Config changes diff
+  md += `### Config Changes\n\n`;
+  md += "```diff\n";
+  md += `// config/elizaos.json\n`;
+  md += `  "channelIds": [\n`;
 
-      if (rec.isMuteChecked) {
-        guildData.checkedChannels = guildData.checkedChannels.filter(c => c.channelId !== rec.channelId);
-        guildData.uncheckedChannels = guildData.uncheckedChannels.filter(c => c.channelId !== rec.channelId);
-        if (!guildData.mutedChannels.find(c => c.channelId === rec.channelId)) {
-          guildData.mutedChannels.push({ channelId: rec.channelId, channelName: rec.channelName });
-        }
-        recommendationsApplied++;
-      } else if (rec.isTrackChecked) {
-        guildData.mutedChannels = guildData.mutedChannels.filter(c => c.channelId !== rec.channelId);
-        guildData.uncheckedChannels = guildData.uncheckedChannels.filter(c => c.channelId !== rec.channelId);
-        if (!guildData.checkedChannels.find(c => c.channelId === rec.channelId)) {
-          guildData.checkedChannels.push({ channelId: rec.channelId, channelName: rec.channelName });
-        }
-        recommendationsApplied++;
-      }
-    }
+  for (const ch of toAdd) {
+    md += `+   "${ch.channelId}",  // #${ch.channelName}\n`;
+  }
+  for (const ch of toRemove) {
+    md += `-   "${ch.channelId}",  // #${ch.channelName} (${ch.reason})\n`;
   }
 
-  // Log summary
-  let totalMuted = 0;
-  for (const [, guildData] of guildChannels) {
-    totalMuted += guildData.mutedChannels?.length || 0;
+  md += `  ]\n`;
+  md += "```\n\n";
+
+  md += `---\n`;
+  md += `*Generated by channel-update workflow*\n`;
+
+  // Output the markdown
+  console.log(md);
+
+  // In dry-run mode, also log to stderr
+  if (args.dryRun) {
+    console.error(`\n[DRY RUN] Would create PR with ${toAdd.length} additions and ${toRemove.length} removals`);
   }
-  console.log(`  Parsed ${guildChannels.size} guilds from checklist`);
-  if (recommendationsApplied > 0) {
-    console.log(`  Applied ${recommendationsApplied} changes from Recommendations section`);
-  }
-  if (totalMuted > 0) {
-    console.log(`  Found ${totalMuted} muted channels (will be ignored)\n`);
-  } else {
-    console.log("");
-  }
-
-  return guildChannels;
-}
-
-function generateSyncSummary(changes: Map<string, any>): void {
-  console.log("Configuration Update Summary\n");
-
-  let totalAdded = 0;
-  let totalRemoved = 0;
-  let totalSources = 0;
-
-  for (const [configFile, configChanges] of changes) {
-    console.log(`${configFile}:`);
-    console.log(`   Sources updated: ${configChanges.sources.length}`);
-    console.log(`   Channels added: ${configChanges.added.length}`);
-    console.log(`   Channels removed: ${configChanges.removed.length}`);
-
-    totalAdded += configChanges.added.length;
-    totalRemoved += configChanges.removed.length;
-    totalSources += configChanges.sources.length;
-    console.log("");
-  }
-
-  console.log(`Overall Changes:`);
-  console.log(`   Configuration files updated: ${changes.size}`);
-  console.log(`   Discord sources updated: ${totalSources}`);
-  console.log(`   Total channels added: ${totalAdded}`);
-  console.log(`   Total channels removed: ${totalRemoved}`);
-  console.log(`   Net channel change: ${totalAdded - totalRemoved > 0 ? "+" : ""}${totalAdded - totalRemoved}`);
 }
 
 // ============================================================================
@@ -1132,8 +935,13 @@ async function commandShow(registry: DiscordChannelRegistry, channelId: string):
     }
   }
 
-  if (channel.aiSummary || channel.aiMannerisms) {
-    console.log(`\nAI Insights:`);
+  if (channel.aiRecommendation || channel.aiSummary || channel.aiMannerisms) {
+    console.log(`\nAI Analysis:`);
+    if (channel.aiRecommendation) {
+      console.log(`   Recommendation: ${channel.aiRecommendation}`);
+      if (channel.aiReason) console.log(`   Reason: ${channel.aiReason}`);
+    }
+    // Legacy fields
     if (channel.aiSummary) console.log(`   Summary: ${channel.aiSummary}`);
     if (channel.aiMannerisms) console.log(`   Mannerisms: ${channel.aiMannerisms}`);
     if (channel.aiLastAnalyzed) {
@@ -1210,30 +1018,19 @@ async function commandMute(registry: DiscordChannelRegistry, channelId: string, 
 }
 
 // ============================================================================
-// Command: build-registry
+// Helper: build registry from raw data
 // ============================================================================
 
-async function commandBuildRegistry(db: Database, args: CliArgs): Promise<void> {
-  console.log("\n Building Discord Channel Registry\n");
-
-  if (args.dryRun) {
-    console.log("(DRY RUN - no changes will be made)\n");
-  }
-
-  // Initialize registry
-  const registry = new DiscordChannelRegistry(db);
-  await registry.initialize();
-  console.log("Initialized discord_channels table\n");
-
+async function buildRegistryFromRawData(db: Database, registry: DiscordChannelRegistry, verbose: boolean = true): Promise<void> {
   // Get all discordRawData entries ordered by date
-  console.log("Fetching discordRawData entries...");
+  if (verbose) console.log("Fetching discordRawData entries...");
   const rawDataRows = await db.all<Array<{ cid: string; text: string; metadata: string }>>(
     "SELECT cid, text, metadata FROM items WHERE type = 'discordRawData' ORDER BY date ASC"
   );
-  console.log(`   Found ${rawDataRows.length} entries\n`);
+  if (verbose) console.log(`   Found ${rawDataRows.length} entries\n`);
 
   if (rawDataRows.length === 0) {
-    console.log("No discordRawData found. Nothing to process.");
+    if (verbose) console.log("No discordRawData found. Nothing to process.");
     return;
   }
 
@@ -1242,7 +1039,7 @@ async function commandBuildRegistry(db: Database, args: CliArgs): Promise<void> 
   const channelsSeen = new Set<string>();
   const channelMessageCounts = new Map<string, Map<string, number>>();
 
-  console.log("Processing entries...\n");
+  if (verbose) console.log("Processing entries...\n");
 
   for (const row of rawDataRows) {
     try {
@@ -1281,29 +1078,24 @@ async function commandBuildRegistry(db: Database, args: CliArgs): Promise<void> 
         isTracked: true
       };
 
-      if (!args.dryRun) {
-        try {
-          await registry.upsertChannel(channelData);
-        } catch (e: any) {
-          // Validation errors are expected for some edge cases
-          if (args.debug) {
-            console.error(`  Failed to upsert channel ${channelId}: ${e.message}`);
-          }
-        }
+      try {
+        await registry.upsertChannel(channelData);
+      } catch (e: any) {
+        // Validation errors are expected for some edge cases
       }
 
       processed++;
 
-      if (processed % 200 === 0) {
+      if (verbose && processed % 200 === 0) {
         console.log(`   Progress: ${processed}/${rawDataRows.length} (${Math.round(processed / rawDataRows.length * 100)}%)`);
       }
 
     } catch (error) {
-      console.error(`  Failed to process ${row.cid}:`, error);
+      // Skip malformed entries
     }
   }
 
-  console.log(`\nRecording activity history...\n`);
+  if (verbose) console.log(`\nRecording activity history...\n`);
 
   // Record activity for each channel by date
   let activityRecorded = 0;
@@ -1311,28 +1103,41 @@ async function commandBuildRegistry(db: Database, args: CliArgs): Promise<void> 
     const sortedDates = Array.from(dateMap.keys()).sort();
     for (const date of sortedDates) {
       const messageCount = dateMap.get(date)!;
-      if (!args.dryRun) {
-        try {
-          await registry.recordActivity(channelId, date, messageCount);
-          activityRecorded++;
-        } catch (error) {
-          // Channel might not exist
-        }
-      } else {
+      try {
+        await registry.recordActivity(channelId, date, messageCount);
         activityRecorded++;
+      } catch (error) {
+        // Channel might not exist
       }
     }
   }
 
-  console.log(`Processing complete!`);
-  console.log(`   Entries processed: ${processed}`);
-  console.log(`   Unique channels: ${channelsSeen.size}`);
-  console.log(`   Activity records: ${activityRecorded}`);
+  if (verbose) {
+    console.log(`Processing complete!`);
+    console.log(`   Entries processed: ${processed}`);
+    console.log(`   Unique channels: ${channelsSeen.size}`);
+    console.log(`   Activity records: ${activityRecorded}`);
+  }
+}
+
+// ============================================================================
+// Command: build-registry
+// ============================================================================
+
+async function commandBuildRegistry(db: Database, args: CliArgs): Promise<void> {
+  console.log("\n Building Discord Channel Registry\n");
 
   if (args.dryRun) {
-    console.log("\nDRY RUN complete - no changes were made");
+    console.log("(DRY RUN - no changes will be made)\n");
     return;
   }
+
+  // Initialize registry
+  const registry = new DiscordChannelRegistry(db);
+  await registry.initialize();
+  console.log("Initialized discord_channels table\n");
+
+  await buildRegistryFromRawData(db, registry, true);
 
   // Get final stats
   console.log("\nRegistry Statistics:");
@@ -1353,9 +1158,10 @@ function commandHelp(): void {
   console.log(`
 Discord Channel Management CLI
 
-Discovery & Sync:
-  discover [--sample] [--test-configs]    Fetch ALL channels from Discord API -> registry -> CHANNELS.md
-  sync [--dry-run]                        Parse CHANNELS.md -> update registry -> update configs
+Discovery & Analysis:
+  discover [--source=<config>.json]       Fetch channels from Discord (or raw data if no token)
+  analyze [--all] [--channel=ID]          Run LLM analysis on channels
+  propose [--dry-run]                     Generate config diff and PR markdown
 
 Query Commands:
   list [--tracked|--active|--muted|--quiet]   List channels with optional filters
@@ -1371,19 +1177,22 @@ Management Commands:
 Registry Commands:
   build-registry [--dry-run]              Backfill discord_channels from discordRawData
 
-Examples:
-  npm run channels -- discover --sample     # Discover all channels with activity sampling
-  npm run channels -- sync --dry-run        # Preview sync changes
-  npm run channels -- list --tracked        # List tracked channels
-  npm run channels -- show 1253563209462448241
-  npm run channels -- track 1253563209462448241
-  npm run channels -- mute 1253563209462448241
-  npm run channels -- build-registry
+Options:
+  --source=<config>.json                  Filter to a single config file (e.g. --source=m3org.json)
 
-Workflow:
-  1. npm run channels -- discover --sample   # Fetch all channels from Discord
-  2. Edit scripts/CHANNELS.md                # Check/uncheck channels to track/mute
-  3. npm run channels -- sync                # Apply changes to registry and configs
+Examples:
+  npm run channels -- discover              # Discover channels (Discord API or raw data)
+  npm run channels -- discover --source=m3org.json  # Discover for a specific config
+  npm run channels -- analyze               # Analyze channels needing analysis
+  npm run channels -- analyze --all         # Re-analyze all channels
+  npm run channels -- analyze --channel=123 # Analyze a single channel
+  npm run channels -- propose               # Generate PR body with config changes
+  npm run channels -- list --tracked        # List tracked channels
+
+Workflow (automated via GitHub Action):
+  1. npm run channels -- discover            # Fetch channels
+  2. npm run channels -- analyze             # Run LLM analysis
+  3. npm run channels -- propose             # Generate PR body
   `);
 }
 
@@ -1399,9 +1208,28 @@ function sleep(ms: number): Promise<void> {
 // Main
 // ============================================================================
 
+function resolveDbPath(source?: string): string {
+  if (source) {
+    const configPath = path.join(CONFIG_DIR, source);
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+        const storage = config.storage?.find((s: any) => s.params?.dbPath);
+        if (storage?.params?.dbPath) {
+          return path.resolve(process.cwd(), storage.params.dbPath);
+        }
+      } catch (e) {
+        // Fall through to default
+      }
+    }
+  }
+  return path.join(process.cwd(), "data", "elizaos.sqlite");
+}
+
 async function main() {
   const args = parseArgs();
-  const dbPath = path.join(process.cwd(), "data", "elizaos.sqlite");
+  const dbPath = resolveDbPath(args.source);
+  console.log(`Using database: ${path.relative(process.cwd(), dbPath)}`);
   const db = await open({ filename: dbPath, driver: sqlite3.Database });
 
   // Initialize registry
@@ -1413,8 +1241,11 @@ async function main() {
       case "discover":
         await commandDiscover(db, args);
         break;
-      case "sync":
-        await commandSync(db, args);
+      case "analyze":
+        await commandAnalyze(db, registry, args);
+        break;
+      case "propose":
+        await commandProposeUpdate(db, registry, args);
         break;
       case "list":
         await commandList(registry, args);

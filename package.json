@@ -18,15 +18,15 @@
     "api": "ts-node -r tsconfig-paths/register src/api.ts",
     "channels": "ts-node -r tsconfig-paths/register --transpile-only scripts/channels.ts",
     "weekly": "ts-node -r tsconfig-paths/register --transpile-only scripts/weekly.ts",
-    "discover-channels": "npm run channels -- discover --sample",
-    "update-configs": "npm run channels -- sync",
+    "fetch-channel": "ts-node -r tsconfig-paths/register --transpile-only scripts/fetch-channel.ts",
+    "discover-channels": "npm run channels -- discover",
     "users": "ts-node -r tsconfig-paths/register --transpile-only scripts/users.ts",
     "enrich-nicknames": "ts-node -r tsconfig-paths/register --transpile-only scripts/enrich-nicknames.ts",
     "merge-discord-dbs": "ts-node -r tsconfig-paths/register --transpile-only scripts/merge-discord-databases.ts",
     "build-user-registry": "ts-node -r tsconfig-paths/register --transpile-only scripts/build-discord-user-registry.ts",
-    "dashboard": "node scripts/generate-dashboard.mjs",
-    "status": "node scripts/generate-dashboard.mjs --dry-run",
-    "webhook": "node scripts/server.js"
+    "webhook": "node scripts/server.js",
+    "analyze-channels": "npm run channels -- analyze",
+    "setup": "npx tsx scripts/setup-server.ts"
   },
   "keywords": [
     "news",
@@ -56,6 +56,7 @@
     "jsdom": "^27.4.0",
     "node-fetch": "^3.3.2",
     "openai": "^6.15.0",
+    "puppeteer-stream": "^3.0.22",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "rss-parser": "^3.12.0",

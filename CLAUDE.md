@@ -123,9 +123,12 @@ The system supports specialized modes: `--onlyFetch` (no AI processing), `--only
 Unified TypeScript CLI (`scripts/channels.ts`) for Discord channel discovery and management:
 
 ```bash
-# Discovery & Sync
-npm run channels -- discover [--sample]     # Fetch ALL channels from Discord → registry → CHANNELS.md
-npm run channels -- sync [--dry-run]        # Parse CHANNELS.md → update registry → update configs
+# Discovery & Analysis
+npm run channels -- discover                # Fetch channels from Discord (or raw data if no token)
+npm run channels -- analyze                 # Run LLM analysis on channels needing it
+npm run channels -- analyze --all           # Re-analyze all channels
+npm run channels -- analyze --channel=ID    # Analyze single channel
+npm run channels -- propose                 # Generate PR markdown with config changes
 
 # Query Commands
 npm run channels -- list [--tracked|--active|--muted|--quiet]
@@ -143,14 +146,16 @@ npm run channels -- build-registry          # Backfill from discordRawData
 ```
 
 ### Workflow
-1. `npm run channels -- discover --sample` - Fetches all channels, samples activity, generates CHANNELS.md
-2. Edit `scripts/CHANNELS.md` - Check Track/Mute boxes as needed
-3. `npm run channels -- sync` - Applies changes to registry and config files
+```bash
+npm run channels -- discover   # Fetch channels
+npm run channels -- analyze    # Run LLM analysis (TRACK/MAYBE/SKIP)
+npm run channels -- propose    # Generate PR markdown
+```
 
 ### Data Storage
 - **DiscordChannelRegistry** (`src/plugins/storage/DiscordChannelRegistry.ts`) - SQLite table for channel metadata
-- Tracks: name/topic/category changes, activity history, AI insights, muted state
-- GitHub Action runs weekly to update channel checklist
+- Tracks: name/topic/category changes, activity history, AI recommendations, muted state
+- GitHub Action runs monthly to analyze channels and create draft PRs
 
 ## User Identity Systems
 
