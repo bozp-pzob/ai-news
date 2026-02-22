@@ -10,7 +10,7 @@ const Documentation: React.FC = () => {
             Comprehensive Documentation
           </h2>
           <p className="text-xl mb-8 max-w-2xl mx-auto text-stone-400">
-            Everything you need to know about setting up, configuring, and extending AI News.
+            Everything you need to know about setting up, configuring, and extending Digital Gardener.
           </p>
         </div>
         
@@ -23,7 +23,7 @@ const Documentation: React.FC = () => {
               </svg>
             </div>
             <h3 className="text-xl font-semibold mb-2 text-white">Getting Started</h3>
-            <p className="text-stone-400 mb-4">Learn how to install, configure and run AI News on your machine.</p>
+            <p className="text-stone-400 mb-4">Learn how to install, configure and run Digital Gardener on your machine.</p>
             <Link to="/docs/intro" className="text-amber-300 flex items-center gap-1 hover:underline">
               Read Guide
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">

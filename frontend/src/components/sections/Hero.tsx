@@ -46,13 +46,13 @@ export const Hero: React.FC = () => {
                 <span className="text-sm font-mono text-stone-400">v1.0.0 BETA</span>
               </div>
               <h1 className="text-5xl lg:text-7xl font-bold tracking-tighter mb-4">
-                <span className="block text-white">AI-News</span>
+                <span className="block text-white">Digital</span>
                 <span className="block pb-4 text-amber-300">
-                  Aggregator
+                  Gardener
                 </span>
               </h1>
               <p className="text-lg text-stone-400 max-w-md">
-                Experience content aggregation reimagined through the lens of artificial intelligence.
+                Cultivate and curate your content garden with the power of artificial intelligence.
               </p>
             </div>
 
@@ -72,7 +72,7 @@ export const Hero: React.FC = () => {
               </button>
 
               <a 
-                href="https://github.com/bozp-pzob/ai-news" 
+                href="https://github.com/bozp-pzob/digital-gardener" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="inline-flex items-center bg-stone-900/90 justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-stone-800 h-11 px-8 py-2 hover:border-stone-700 text-white"

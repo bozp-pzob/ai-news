@@ -271,7 +271,7 @@ class SecretManager {
     try {
       // Use a consistent seed value for the key derivation to get the same key each time
       // This is a fixed value that's part of the app for symmetric encryption
-      const seedBytes = new TextEncoder().encode('ai-news-secure-encryption-seed-v1');
+      const seedBytes = new TextEncoder().encode('digital-gardener-secure-encryption-seed-v1');
       
       // Import the seed as a key
       const seedKey = await window.crypto.subtle.importKey(

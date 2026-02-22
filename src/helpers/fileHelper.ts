@@ -7,7 +7,7 @@ import { extractAttachmentMedia, extractEmbedMedia, extractStickerMedia } from "
 import { safeJsonParse, isValidArray } from "./generalHelper";
 
 /**
- * file utility functions for the AI News Aggregator.
+ * File utility functions for Digital Gardener.
  * This module provides file helper functions used across the application.
  * 
  * @module helpers

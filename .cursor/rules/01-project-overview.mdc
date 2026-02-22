@@ -3,9 +3,9 @@ description:
 globs: 
 alwaysApply: false
 ---
-# Project Overview: AI News Aggregator
+# Project Overview: Digital Gardener
 
-This project is a configurable AI News Aggregator designed to collect content from various sources, process it using AI, and generate summaries.
+This project is Digital Gardener, a configurable system designed to cultivate content from various sources, process it using AI, and generate summaries.
 
 ## Main Entry Point
 

@@ -1,5 +1,5 @@
 /**
- * Configuration helper utilities for the AI News Aggregator.
+ * Configuration helper utilities for Digital Gardener.
  * This module provides functions for loading and configuring plugins and components.
  * 
  * @module helpers

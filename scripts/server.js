@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Minimal webhook server for AI News collection
+// Minimal webhook server for Digital Gardener collection
 // Zero external dependencies. Triggers collection scripts via HMAC-signed requests.
 
 const http = require("http");

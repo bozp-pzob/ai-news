@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the AI-powered image generation system integrated into the ai-news aggregator. The system uses **OpenRouter** with **Google Gemini 3 Pro** (codenamed "Nano Banana Pro") to generate contextual images for daily summaries.
+This document describes the AI-powered image generation system integrated into Digital Gardener. The system uses **OpenRouter** with **Google Gemini 3 Pro** (codenamed "Nano Banana Pro") to generate contextual images for daily summaries.
 
 ## Architecture
 

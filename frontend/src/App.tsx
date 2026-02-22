@@ -502,7 +502,7 @@ function App() {
     <div className="fixed inset-0 flex flex-col bg-stone-950 text-white overflow-hidden">
       {/* Full-width Toolbar */}
       <div className="h-12 bg-stone-900 border-b border-stone-700 flex items-center px-4 flex-shrink-0">
-        <h1 className="text-xl font-semibold">AI News Aggregator</h1>
+        <h1 className="text-xl font-semibold">Digital Gardener</h1>
       </div>
       
       <div className="flex flex-1 overflow-hidden">

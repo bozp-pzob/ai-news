@@ -1,6 +1,6 @@
 
 /**
- * cli utility functions for the AI News Aggregator.
+ * CLI utility functions for Digital Gardener.
  * This module provides cli helper functions used across the application.
  * 
  * @module helpers

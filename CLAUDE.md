@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI News Aggregator is a modular TypeScript system that collects, enriches, and analyzes AI-related content from multiple sources using a plugin architecture.
+Digital Gardener is a modular TypeScript system that cultivates and curates content from multiple sources, enriching it with AI and organizing it through a plugin architecture.
 
 ## Common Commands
 

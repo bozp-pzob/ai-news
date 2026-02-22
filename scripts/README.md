@@ -1,6 +1,6 @@
 # Scripts Directory
 
-Utility scripts for the AI News aggregator.
+Utility scripts for Digital Gardener.
 
 ## Discord Channel Management
 
@@ -121,7 +121,7 @@ export COLLECT_WEBHOOK_SECRET="your-secret"
 
 ## Integration
 
-This system is designed to work seamlessly with the broader AI News Aggregator plugin architecture. All discovered channels are automatically compatible with:
+This system is designed to work seamlessly with the broader Digital Gardener plugin architecture. All discovered channels are automatically compatible with:
 
 - `DiscordRawDataSource` plugins
 - `DiscordChannelRegistry` for metadata storage

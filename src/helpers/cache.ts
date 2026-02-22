@@ -1,5 +1,5 @@
 /**
- * Caching utilities for the AI News Aggregator.
+ * Caching utilities for Digital Gardener.
  * This module provides in-memory caching functionality for various components.
  * 
  * @module helpers

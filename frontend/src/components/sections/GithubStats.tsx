@@ -43,7 +43,7 @@ const Card = ({ children, delay }: { children: React.ReactNode, delay: number })
 
 // GitHub repo information - Make sure these are correct!
 const REPO_OWNER = "bozp-pzob";
-const REPO_NAME = "ai-news";
+const REPO_NAME = "digital-gardener";
 
 export const GithubStats: React.FC = () => {
   const [stats, setStats] = useState<GitHubStatsType>({

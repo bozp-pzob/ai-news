@@ -1,6 +1,6 @@
-# AI News Aggregator
+# Digital Gardener
 
-A modular TypeScript-based news aggregator that collects, enriches, and analyzes AI-related content from multiple sources.
+A modular TypeScript system that cultivates and curates content from multiple sources, enriching it with AI and organizing it through a plugin architecture.
 
 ## Features
 
@@ -40,8 +40,8 @@ A modular TypeScript-based news aggregator that collects, enriches, and analyzes
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/ai-news.git
-cd ai-news
+git clone https://github.com/bozp-pzob/digital-gardener.git
+cd digital-gardener
 npm install
 cp example.env .env
 ```
@@ -57,8 +57,8 @@ Use JSON files in the `config/` directory and a `.env` file for secrets.
 OPENAI_API_KEY=your_openai_or_openrouter_api_key
 OPENAI_DIRECT_KEY=your_direct_openai_key_for_images
 USE_OPENROUTER=true
-SITE_URL=https://your-domain.com/ai-news/
-SITE_NAME=AI_News
+SITE_URL=https://your-domain.com/digital-gardener/
+SITE_NAME=Digital_Gardener
 
 # Discord Bot Configuration
 DISCORD_APP_ID=your_discord_app_id
@@ -92,8 +92,8 @@ Create these repository secrets in GitHub:
   "OPENAI_API_KEY": "sk-...",
   "OPENAI_DIRECT_KEY": "sk-...",
   "USE_OPENROUTER": "true",
-  "SITE_URL": "https://your-domain.com/ai-news/",
-  "SITE_NAME": "AI_News",
+  "SITE_URL": "https://your-domain.com/digital-gardener/",
+  "SITE_NAME": "Digital_Gardener",
   "DISCORD_APP_ID": "your_discord_app_id",
   "DISCORD_TOKEN": "your_discord_bot_token",
   "DISCORD_GUILD_ID": "your_discord_guild_id",
@@ -223,8 +223,8 @@ npm run channels -- propose    # Generate PR markdown
 For running data collection on a server instead of GitHub Actions (recommended for media downloads due to file size limits):
 
 ### Webhook Server Setup
-1. Clone repository to server: `git clone <repo> ~/ai-news`
-2. Install dependencies: `cd ~/ai-news && npm install && npm run build`
+1. Clone repository to server: `git clone <repo> ~/digital-gardener`
+2. Install dependencies: `cd ~/digital-gardener && npm install && npm run build`
 3. Copy `.env.example` to `.env` and configure with your API keys
 4. Generate webhook secret: `openssl rand -hex 32`
 5. Start webhook server:
@@ -318,16 +318,16 @@ Fields: `url`, `filename`, `user_id`, `guild_id`, `channel_id`, `message_id`, `m
 
 ```bash
 # Clone and setup
-git clone https://github.com/M3-org/ai-news.git ~/ai-news-media
-python3 ~/ai-news-media/scripts/media-sync.py setup
+git clone https://github.com/bozp-pzob/digital-gardener.git ~/digital-gardener-media
+python3 ~/digital-gardener-media/scripts/media-sync.py setup
 
 # Download media (from gh-pages manifests)
-python3 ~/ai-news-media/scripts/media-sync.py sync --dry-run  # Preview
-python3 ~/ai-news-media/scripts/media-sync.py sync            # Download
-python3 ~/ai-news-media/scripts/media-sync.py sync --min-free 1000  # Stop if <1GB free
+python3 ~/digital-gardener-media/scripts/media-sync.py sync --dry-run  # Preview
+python3 ~/digital-gardener-media/scripts/media-sync.py sync            # Download
+python3 ~/digital-gardener-media/scripts/media-sync.py sync --min-free 1000  # Stop if <1GB free
 
 # Check status (disk usage and media sizes)
-python3 ~/ai-news-media/scripts/media-sync.py status
+python3 ~/digital-gardener-media/scripts/media-sync.py status
 ```
 
 The `setup` command installs a systemd timer that runs daily at 01:30 UTC.
@@ -352,8 +352,8 @@ python3 scripts/media-sync.py refresh manifest.json --user USER_ID --dry-run
 ### Manifest Location
 
 After GitHub Actions runs, manifests are available at:
-- `https://raw.githubusercontent.com/M3-org/ai-news/gh-pages/elizaos/media-manifest.json`
-- `https://raw.githubusercontent.com/M3-org/ai-news/gh-pages/hyperfy/media-manifest.json`
+- `https://raw.githubusercontent.com/bozp-pzob/digital-gardener/gh-pages/elizaos/media-manifest.json`
+- `https://raw.githubusercontent.com/bozp-pzob/digital-gardener/gh-pages/hyperfy/media-manifest.json`
 
 ## Project Structure
 

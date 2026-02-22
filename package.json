@@ -1,7 +1,7 @@
 {
-  "name": "news-aggregator",
+  "name": "digital-gardener",
   "version": "1.0.0",
-  "description": "A modular Node.js TypeScript news aggregator with multiple data sources, enrichers, and SQLite storage.",
+  "description": "A modular TypeScript system that cultivates and curates content from multiple sources, enriching it with AI and storing it in SQLite.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc --noEmitOnError false || echo 'TypeScript compilation completed with type issues in dependencies'",
@@ -29,10 +29,10 @@
     "setup": "npx tsx scripts/setup-server.ts"
   },
   "keywords": [
-    "news",
-    "aggregator",
+    "digital-gardener",
+    "content-curation",
     "typescript",
-    "rss",
+    "ai",
     "api",
     "sqlite"
   ],

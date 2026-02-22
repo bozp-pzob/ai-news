@@ -1,7 +1,7 @@
 import { logger } from "./cliHelper";
 
 /**
- * General utility functions for the AI News Aggregator.
+ * General utility functions for Digital Gardener.
  * This module provides common helper functions used across the application.
  * 
  * @module helpers

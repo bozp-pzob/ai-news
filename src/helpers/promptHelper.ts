@@ -1,5 +1,5 @@
 /**
- * Prompt generation utilities for the AI News Aggregator.
+ * Prompt generation utilities for Digital Gardener.
  * This module provides functions for creating prompts for AI models.
  *
  * @module helpers

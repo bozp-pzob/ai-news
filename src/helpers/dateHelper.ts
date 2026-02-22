@@ -1,5 +1,5 @@
 /**
- * Date utility functions for the AI News Aggregator.
+ * Date utility functions for Digital Gardener.
  * This module provides functions for parsing, formatting, and manipulating dates.
  * 
  * @module helpers

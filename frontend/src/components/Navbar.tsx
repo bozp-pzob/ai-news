@@ -32,7 +32,7 @@ const Navbar: React.FC = () => {
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
               <Link to="/" className={`text-xl font-bold ${logoClass}`}>
-                AI News
+                Digital Gardener
               </Link>
             </div>
             {/* <div className="hidden md:ml-6 md:flex md:space-x-8">

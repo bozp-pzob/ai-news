@@ -23,7 +23,7 @@ export const CallToAction: React.FC = () => {
             Ready to transform your content workflow?
           </h2>
           <p className="text-xl mb-10 max-w-2xl mx-auto text-stone-400">
-            Try the AI News Aggregator today and streamline your content management with artificial intelligence.
+            Try Digital Gardener today and let AI help you cultivate, curate, and grow your content.
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -42,7 +42,7 @@ export const CallToAction: React.FC = () => {
             </Link>
             
             <a 
-              href="https://github.com/bozp-pzob/ai-news" 
+              href="https://github.com/bozp-pzob/digital-gardener" 
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-12 px-10 py-2 border border-amber-300/30 bg-transparent text-white hover:bg-amber-300/10"

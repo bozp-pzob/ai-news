@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI News Media Sync - Downloads media files from manifest on gh-pages.
+Digital Gardener Media Sync - Downloads media files from manifest on gh-pages.
 
 This script fetches media manifests from GitHub Pages and downloads the files
 to a local directory. It's designed to run on a VPS via systemd timer.
@@ -29,12 +29,12 @@ from urllib.error import URLError, HTTPError
 import time
 
 # === Configuration ===
-REPO = "M3-org/ai-news"
+REPO = "bozp-pzob/digital-gardener"
 BRANCH = "gh-pages"
 SOURCES = ["elizaos", "hyperfy"]
 BASE_URL = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}"
-INSTALL_DIR = Path(os.environ.get("INSTALL_DIR", Path.home() / "ai-news-media"))
-SERVICE_NAME = "ai-news-media-sync"
+INSTALL_DIR = Path(os.environ.get("INSTALL_DIR", Path.home() / "digital-gardener-media"))
+SERVICE_NAME = "digital-gardener-media-sync"
 MIN_FREE_SPACE_MB = int(os.environ.get("MIN_FREE_SPACE_MB", 500))  # Default 500MB
 
 # === Rate Limiting Configuration (based on DiscordChatExporter best practices) ===
@@ -323,7 +323,7 @@ def cmd_setup(args):
     user = os.environ.get("USER", "root")
 
     service_content = f"""[Unit]
-Description=AI News Media Sync
+Description=Digital Gardener Media Sync
 After=network-online.target
 Wants=network-online.target
 
@@ -343,7 +343,7 @@ PrivateTmp=true
 """
 
     timer_content = f"""[Unit]
-Description=AI News Media Sync Timer
+Description=Digital Gardener Media Sync Timer
 Documentation=https://github.com/{REPO}
 
 [Timer]
@@ -649,7 +649,7 @@ def cmd_refresh(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="AI News Media Sync - Download media from gh-pages manifests",
+        description="Digital Gardener Media Sync - Download media from gh-pages manifests",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 Examples:
@@ -665,7 +665,7 @@ Examples:
   %(prog)s refresh manifest.json --type attachment  Only direct uploads
 
 Environment:
-  INSTALL_DIR        Installation directory (default: ~/ai-news-media)
+  INSTALL_DIR        Installation directory (default: ~/digital-gardener-media)
   MIN_FREE_SPACE_MB  Minimum free disk space in MB (default: 500)
   DISCORD_TOKEN      Bot token for refreshing expired URLs
 
