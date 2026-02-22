@@ -9,30 +9,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Transaction, VersionedTransaction, Connection } from '@solana/web3.js';
 import { useAuth } from '../context/AuthContext';
-import { licenseApi, LicenseStatus, Plan, userApi } from '../services/api';
+import { API_BASE, licenseApi, LicenseStatus, Plan, userApi } from '../services/api';
 import { solanaPayment } from '../services/solanaPayment';
+import { encodeBase58 } from '../services/pop402';
 
 type SolanaTransaction = Transaction | VersionedTransaction;
-
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-
-function encodeBase58(bytes: Uint8Array): string {
-  if (bytes.length === 0) return '';
-  let num = BigInt(0);
-  for (let i = 0; i < bytes.length; i++) {
-    num = num * BigInt(256) + BigInt(bytes[i]);
-  }
-  let encoded = '';
-  while (num > 0) {
-    const remainder = num % BigInt(58);
-    num = num / BigInt(58);
-    encoded = BASE58_ALPHABET[Number(remainder)] + encoded;
-  }
-  for (let i = 0; i < bytes.length && bytes[i] === 0; i++) {
-    encoded = '1' + encoded;
-  }
-  return encoded || '1';
-}
 
 export function useLicense() {
   const { authToken, user, isAuthenticated } = useAuth();
@@ -156,8 +137,6 @@ interface PaymentRequirements {
     network: string;
   }>;
 }
-
-const API_BASE = process.env.REACT_APP_API_URL || '';
 
 export function usePurchase() {
   const { authToken, refreshUser } = useAuth();

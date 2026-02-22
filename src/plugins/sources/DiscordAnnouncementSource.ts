@@ -1,11 +1,18 @@
 /**
  * @fileoverview Implementation of a content source for fetching announcements from Discord channels
  * Handles message retrieval from specified Discord channels using bot authentication
+ * 
+ * Supports two modes:
+ * 1. Self-hosted mode: Uses provided botToken directly (for CLI usage)
+ * 2. Platform mode: Uses shared bot via externalConnectionService (for multi-tenant platform)
  */
 
 import { ContentSource } from "./ContentSource";
-import { ContentItem } from "../../types";
+import { ContentItem, PlatformSourceConfig, isPlatformSourceConfig } from "../../types";
 import { Client, GatewayIntentBits, TextChannel } from "discord.js";
+import { externalConnectionService, discordAdapter } from '../../services/externalConnections';
+import { logger } from '../../helpers/cliHelper';
+import { StoragePlugin } from "../storage/StoragePlugin";
 
 /**
  * Configuration interface for DiscordAnnouncementSource
@@ -21,28 +28,61 @@ interface DiscordAnnouncementSourceConfig {
 }
 
 /**
+ * Platform mode config (extends base platform config)
+ */
+type PlatformAnnouncementConfig = Omit<PlatformSourceConfig, 'storage'> & { storage?: StoragePlugin };
+
+/**
+ * Unified config type for both self-hosted and platform modes
+ */
+type UnifiedAnnouncementConfig = DiscordAnnouncementSourceConfig | PlatformAnnouncementConfig;
+
+/**
  * DiscordAnnouncementSource class that implements ContentSource interface for Discord messages
  * Fetches and processes messages from specified Discord channels using a bot account
+ * 
+ * Supports two modes:
+ * 1. Self-hosted mode: Uses provided botToken directly (for CLI usage)
+ * 2. Platform mode: Uses shared bot via discordAdapter (for multi-tenant platform)
+ * 
  * @implements {ContentSource}
  */
 export class DiscordAnnouncementSource implements ContentSource {
   /** Name identifier for this Discord source */
   public name: string;
-  /** Discord bot token for authentication */
-  private botToken: string = '';
+  /** Discord bot token for authentication (self-hosted mode only) */
+  private botToken: string | null = null;
   /** List of Discord channel IDs to monitor */
   private channelIds: string[];
-  /** Discord.js client instance */
-  private client: Client;
+  /** Discord.js client instance (self-hosted mode only) */
+  private client: Client | null = null;
+  /** Whether running in platform mode (multi-tenant) */
+  private isPlatformMode: boolean = false;
+  /** Connection ID for platform mode */
+  private connectionId: string | null = null;
+  /** Guild ID (resolved at runtime for platform mode) */
+  private guildId: string | null = null;
 
+  /** Platform type required for this source (used by frontend to filter available plugins) */
+  static requiresPlatform = 'discord';
+  
+  /** Hidden from UI - use unified DiscordSource with mode='simple' instead */
+  static hidden = true;
+  
   static constructorInterface = {
     parameters: [
       {
         name: 'botToken',
         type: 'string',
-        required: true,
-        description: 'Discord bot token for authentication',
+        required: false,
+        description: 'Discord bot token for authentication (self-hosted mode)',
         secret: true
+      },
+      {
+        name: 'connectionId',
+        type: 'string',
+        required: false,
+        description: 'External connection ID (platform mode)'
       },
       {
         name: 'channelIds',
@@ -55,15 +95,76 @@ export class DiscordAnnouncementSource implements ContentSource {
 
   /**
    * Creates a new DiscordAnnouncementSource instance
-   * @param {DiscordAnnouncementSourceConfig} config - Configuration object for the Discord source
+   * Supports both self-hosted and platform modes.
+   * @param {UnifiedAnnouncementConfig} config - Configuration object for the Discord source
    */
-  constructor(config: DiscordAnnouncementSourceConfig) {
+  constructor(config: UnifiedAnnouncementConfig) {
     this.name = config.name;
-    this.botToken = config.botToken;
     this.channelIds = config.channelIds;
-    this.client = new Client({
-      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
-    });
+
+    // Check for platform mode by looking for connectionId
+    if (isPlatformSourceConfig(config)) {
+      // Platform mode - use shared bot service
+      this.isPlatformMode = true;
+      this.connectionId = config.connectionId;
+      this.guildId = config._externalId || null;
+      logger.info(`[DiscordAnnouncementSource] Initialized in platform mode with connection ${config.connectionId}`);
+    } else if ('botToken' in config) {
+      // Self-hosted mode - use provided bot token
+      this.isPlatformMode = false;
+      this.botToken = config.botToken;
+      this.client = new Client({
+        intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+      });
+    } else {
+      throw new Error('DiscordAnnouncementSource requires either botToken (self-hosted) or connectionId (platform mode)');
+    }
+  }
+
+  /**
+   * Get the Discord client, initializing if needed
+   */
+  private async getClient(): Promise<Client> {
+    if (this.isPlatformMode) {
+      return discordAdapter.getClient();
+    } else {
+      if (!this.client) {
+        throw new Error('Discord client not initialized');
+      }
+      if (!this.client.isReady() && this.botToken) {
+        await this.client.login(this.botToken);
+      }
+      return this.client;
+    }
+  }
+
+  /**
+   * Validate platform mode connection before fetching
+   */
+  private async validatePlatformConnection(): Promise<void> {
+    if (!this.isPlatformMode || !this.connectionId) {
+      return;
+    }
+
+    const connection = await externalConnectionService.getConnectionById(this.connectionId);
+    if (!connection) {
+      throw new Error(`Connection ${this.connectionId} not found`);
+    }
+
+    if (!connection.isActive) {
+      throw new Error(`Connection ${this.connectionId} is no longer active`);
+    }
+
+    this.guildId = connection.externalId;
+
+    const validation = await externalConnectionService.validateChannels(
+      this.connectionId,
+      this.channelIds
+    );
+
+    if (!validation.valid) {
+      throw new Error(`Some channels are not accessible: ${validation.invalidChannels.join(', ')}`);
+    }
   }
 
   /**
@@ -71,14 +172,16 @@ export class DiscordAnnouncementSource implements ContentSource {
    * @returns {Promise<ContentItem[]>} Array of content items containing Discord messages
    */
   public async fetchItems(): Promise<ContentItem[]> {
-    if (!this.client.isReady()) {
-      await this.client.login(this.botToken);
-    }
+    // Validate platform connection if in platform mode
+    await this.validatePlatformConnection();
+
+    // Get the client (handles login for self-hosted mode)
+    const client = await this.getClient();
 
     let discordResponse : any[] = [];
 
     for (const channelId of this.channelIds) {
-      const channel = await this.client.channels.fetch(channelId);
+      const channel = await client.channels.fetch(channelId);
       let out: any[] = []
       if (!channel || channel.type !== 0) {
         continue
@@ -114,15 +217,17 @@ export class DiscordAnnouncementSource implements ContentSource {
    * @returns {Promise<ContentItem[]>} Array of content items containing historical Discord messages
    */
   public async fetchHistorical(date: string): Promise<ContentItem[]> {
-    if (!this.client.isReady()) {
-      await this.client.login(this.botToken);
-    }
+    // Validate platform connection if in platform mode
+    await this.validatePlatformConnection();
+
+    // Get the client (handles login for self-hosted mode)
+    const client = await this.getClient();
 
     const cutoffTimestamp = new Date(date).getTime();
     let discordResponse: ContentItem[] = [];
 
     for (const channelId of this.channelIds) {
-      const channel = await this.client.channels.fetch(channelId);
+      const channel = await client.channels.fetch(channelId);
       if (!channel || channel.type !== 0) {
         continue;
       }

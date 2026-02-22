@@ -1,8 +1,10 @@
 // src/plugins/ai/OpenRouterProvider.ts
 
-import { AiProvider } from "../../types";
+import { AiProvider, AiUsageStats, SummarizeOptions } from "../../types";
+import { createTopicsPrompt } from "../../helpers/promptHelper";
 import OpenAI from "openai";
 import { logger } from "../../helpers/cliHelper";
+import { getModelMetadata, ModelMetadata } from "../../helpers/modelMetadataCache";
 
 /**
  * Configuration interface for OpenRouterProvider.
@@ -32,6 +34,19 @@ export class OpenRouterProvider implements AiProvider {
   private model: string;
   private temperature: number;
   private fallbackModel?: string;
+  
+  // Model metadata (fetched lazily from OpenRouter)
+  private _modelMetadata: ModelMetadata | null = null;
+  private _metadataFetched: boolean = false;
+  
+  // Cumulative usage tracking
+  private _usage: AiUsageStats = {
+    totalPromptTokens: 0,
+    totalCompletionTokens: 0,
+    totalTokens: 0,
+    totalCalls: 0,
+    estimatedCostUsd: 0,
+  };
 
   static constructorInterface = {
     parameters: [
@@ -100,6 +115,16 @@ export class OpenRouterProvider implements AiProvider {
       throw new Error('OpenRouter API key is required unless using platform AI');
     }
     
+    // Validate that the placeholder was replaced when using platform AI
+    if (apiKey === 'platform-injected') {
+      throw new Error('Platform AI credentials were not properly injected. The placeholder "platform-injected" should have been replaced with the actual API key. Check that OPENAI_API_KEY environment variable is set.');
+    }
+    
+    // Warn if API key format doesn't match expected provider (OpenRouter keys start with 'sk-or-')
+    if (apiKey && !apiKey.startsWith('sk-or-')) {
+      logger.warning(`[OpenRouterProvider] API key does not start with 'sk-or-'. This may cause authentication failures. Ensure OPENAI_API_KEY contains an OpenRouter API key, not an OpenAI key.`);
+    }
+    
     // Initialize client for OpenRouter
     const openAIConfig: any = {
       apiKey: apiKey,
@@ -124,26 +149,100 @@ export class OpenRouterProvider implements AiProvider {
     }
 
     this.openai = new OpenAI(openAIConfig);
-    this.temperature = config.temperature ?? 0.7;
+    this.temperature = typeof config.temperature === 'string' ? parseFloat(config.temperature) : (config.temperature ?? 0.7);
+  }
+
+  /**
+   * Lazily fetch model metadata from OpenRouter for context length and pricing.
+   */
+  private async ensureModelMetadata(): Promise<void> {
+    if (this._metadataFetched) return;
+    this._metadataFetched = true;
+    
+    try {
+      this._modelMetadata = await getModelMetadata(this.model);
+      if (this._modelMetadata) {
+        logger.info(`[OpenRouterProvider] Model ${this.model}: context=${this._modelMetadata.contextLength}, promptPrice=${this._modelMetadata.promptPricePerToken}, completionPrice=${this._modelMetadata.completionPricePerToken}`);
+      }
+    } catch (e) {
+      logger.warning(`[OpenRouterProvider] Failed to fetch model metadata: ${e}`);
+    }
+  }
+
+  /**
+   * Record token usage from an API completion response.
+   */
+  private recordUsage(usage: OpenAI.CompletionUsage | undefined): void {
+    if (!usage) return;
+    this._usage.totalPromptTokens += usage.prompt_tokens || 0;
+    this._usage.totalCompletionTokens += usage.completion_tokens || 0;
+    this._usage.totalTokens += usage.total_tokens || 0;
+    this._usage.totalCalls++;
+    
+    if (this._modelMetadata) {
+      this._usage.estimatedCostUsd +=
+        (usage.prompt_tokens || 0) * this._modelMetadata.promptPricePerToken +
+        (usage.completion_tokens || 0) * this._modelMetadata.completionPricePerToken;
+    }
+  }
+
+  /** Get the model's maximum context length in tokens (0 if unknown). */
+  public getContextLength(): number {
+    return this._modelMetadata?.contextLength || 0;
+  }
+
+  /** Get cumulative token usage and cost stats since last reset. */
+  public getUsageStats(): AiUsageStats {
+    return { ...this._usage };
+  }
+
+  /** Reset cumulative usage stats to zero. */
+  public resetUsageStats(): void {
+    this._usage = {
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+      totalTokens: 0,
+      totalCalls: 0,
+      estimatedCostUsd: 0,
+    };
   }
 
   /**
    * Generates a summary of the provided text using the configured model via OpenRouter.
-   * @param prompt - Text to be summarized
+   * Supports optional system prompts for better instruction/data separation,
+   * per-call temperature overrides, and JSON output mode.
+   * @param prompt - Text to be summarized (sent as user message)
+   * @param options - Optional settings: systemPrompt, temperature override, jsonMode
    * @returns Promise<string> Generated summary
    * @throws Error if the API request fails
    */
-  public async summarize(prompt: string): Promise<string> {
+  public async summarize(prompt: string, options?: SummarizeOptions): Promise<string> {
+    await this.ensureModelMetadata();
+    const effectiveTemp = options?.temperature ?? this.temperature;
+    
     try {
-      logger.debug(`OpenRouter API Call: model=${this.model}, promptLength=${prompt.length}, temperature=${this.temperature}`);
+      // Build messages array: system prompt (if provided) + user message
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+      if (options?.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
+      }
+      messages.push({ role: 'user', content: prompt });
 
-      const completion = await this.openai.chat.completions.create({
+      logger.debug(`OpenRouter API Call: model=${this.model}, promptLength=${prompt.length}, temperature=${effectiveTemp}, hasSystemPrompt=${!!options?.systemPrompt}, jsonMode=${!!options?.jsonMode}`);
+
+      const requestParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
         model: this.model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: this.temperature
-      });
+        messages,
+        temperature: effectiveTemp
+      };
 
-      // Debug: Log the actual API response to understand what's happening
+      // Enable JSON mode when requested and supported
+      if (options?.jsonMode) {
+        requestParams.response_format = { type: 'json_object' };
+      }
+
+      const completion = await this.openai.chat.completions.create(requestParams);
+
       logger.debug(`OpenRouter API Response: hasCompletion=${!!completion}, hasChoices=${!!completion?.choices}, choicesLength=${completion?.choices?.length}`);
 
       if (!completion || !completion.choices || completion.choices.length === 0) {
@@ -151,6 +250,7 @@ export class OpenRouterProvider implements AiProvider {
         throw new Error("No choices returned from OpenRouter API");
       }
       
+      this.recordUsage(completion.usage);
       return completion.choices[0]?.message?.content || "";
     } catch (error: any) {
       logger.error(`Error in summarize: ${error}`);
@@ -160,11 +260,23 @@ export class OpenRouterProvider implements AiProvider {
         logger.info(`Token limit exceeded, retrying with fallback model: ${this.fallbackModel}`);
         
         try {
-          const fallbackCompletion = await this.openai.chat.completions.create({
+          const fallbackMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+          if (options?.systemPrompt) {
+            fallbackMessages.push({ role: 'system', content: options.systemPrompt });
+          }
+          fallbackMessages.push({ role: 'user', content: prompt });
+
+          const fallbackParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
             model: this.fallbackModel,
-            messages: [{ role: 'user', content: prompt }],
-            temperature: this.temperature
-          });
+            messages: fallbackMessages,
+            temperature: effectiveTemp
+          };
+
+          if (options?.jsonMode) {
+            fallbackParams.response_format = { type: 'json_object' };
+          }
+
+          const fallbackCompletion = await this.openai.chat.completions.create(fallbackParams);
 
           logger.debug(`Fallback API Response: model=${this.fallbackModel}, hasCompletion=${!!fallbackCompletion}, hasChoices=${!!fallbackCompletion?.choices}, choicesLength=${fallbackCompletion?.choices?.length}`);
 
@@ -173,6 +285,7 @@ export class OpenRouterProvider implements AiProvider {
             throw new Error("No choices returned from fallback OpenRouter API");
           }
           
+          this.recordUsage(fallbackCompletion.usage);
           return fallbackCompletion.choices[0]?.message?.content || "";
         } catch (fallbackError) {
           logger.error(`Fallback model also failed: ${fallbackError}`);
@@ -191,15 +304,20 @@ export class OpenRouterProvider implements AiProvider {
    * @returns Promise<string[]> Array of topic keywords
    */
   public async topics(text: string): Promise<string[]> {
+    await this.ensureModelMetadata();
     try {
-      const prompt = `Provide up to 6 words that describe the topic of the following text:\n\n"${text}.\n\n Response format MUST be formatted in this way, the words must be strings:\n\n[ \"word1\", \"word2\", \"word3\"]\n`;
+      const { systemPrompt, userPrompt } = createTopicsPrompt(text);
   
       const completion = await this.openai.chat.completions.create({
         model: this.model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: this.temperature
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.2  // Low temperature for factual extraction
       });
 
+      this.recordUsage(completion.usage);
       return JSON.parse(completion.choices[0]?.message?.content || "[]");
     } catch (e) {
       logger.error(`Error in topics: ${e}`);

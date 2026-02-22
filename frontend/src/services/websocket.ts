@@ -59,6 +59,8 @@ export class WebSocketService {
       }
     };
     
+
+    
     socket.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data) as WebSocketMessage;
@@ -88,7 +90,7 @@ export class WebSocketService {
     };
     
     socket.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      console.error('[WebSocket] Connection error:', error);
       this.notifyErrorListeners('WebSocket connection error');
     };
     
@@ -99,7 +101,7 @@ export class WebSocketService {
     return;
   }
   
-  public connectToJob(jobId: string): void {    
+  public connectToJob(jobId: string): void {
     // If already connected to this job ID, don't reconnect
     if (this.socket?.readyState === WebSocket.OPEN && this.jobId === jobId && !this.isConnecting) {
       return;
@@ -193,7 +195,6 @@ export class WebSocketService {
   }
   
   private handleJobStatusUpdate(jobStatus: JobStatus): void {
-    
     // Special handling for continuous operations
     // If the job is a continuous job (indicated by certain phases),
     // we should keep the WebSocket connection active even if the status is "completed"

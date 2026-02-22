@@ -1,6 +1,17 @@
 /**
  * @fileoverview Implementation of a content source for fetching GitHub repository statistics
  * Handles retrieval and processing of repository stats, including issues, PRs, and contributor metrics
+ * 
+ * @deprecated This plugin is deprecated. Use GitHubSource instead,
+ * which provides direct GitHub API access with rate limiting, real-time data fetching,
+ * and support for both self-hosted and platform modes.
+ * 
+ * Migration guide:
+ * - Replace `statsUrl` with direct `owner` and `repo` parameters
+ * - Use `token` for authentication instead of relying on pre-processed JSON
+ * - The new plugin combines both contributor and stats data
+ * 
+ * @see GitHubSource
  */
 
 import { ContentSource } from "./ContentSource";
@@ -35,6 +46,7 @@ function formatDuration(days: number | undefined): string {
  * @property {string} historicalStatsUrl - URL template for historical stats (supports date placeholders)
  * @property {string} githubCompany - GitHub organization/company name
  * @property {string} githubRepo - GitHub repository name
+ * @deprecated Use GitHubSourceConfig instead
  */
 interface GitHubStatsDataSourceConfig {
   name: string;
@@ -48,6 +60,7 @@ interface GitHubStatsDataSourceConfig {
  * GitHubStatsDataSource class that implements ContentSource interface for GitHub repository statistics
  * Fetches and processes repository metrics, issue/PR activity, and contributor stats
  * @implements {ContentSource}
+ * @deprecated Use GitHubSource instead for direct GitHub API access
  */
 export class GitHubStatsDataSource implements ContentSource {
   /** Name identifier for this stats source */
@@ -97,8 +110,15 @@ export class GitHubStatsDataSource implements ContentSource {
   /**
    * Creates a new GitHubStatsDataSource instance
    * @param {GitHubStatsDataSourceConfig} config - Configuration object for the stats source
+   * @deprecated Use GitHubSource instead
    */
   constructor(config: GitHubStatsDataSourceConfig) {
+    console.warn(
+      '[DEPRECATED] GitHubStatsDataSource is deprecated and will be removed in a future version. ' +
+      'Please migrate to GitHubSource for direct GitHub API access. ' +
+      'See documentation for migration guide.'
+    );
+    
     this.name = config.name;
     this.statsUrl = config.statsUrl;
     this.historicalStatsUrl = config.historicalStatsUrl;

@@ -12,6 +12,7 @@ import {
   PlanId,
   PRO_PLANS,
 } from '../../services/licenseService';
+import { jobService } from '../../services/jobService';
 
 const router = Router();
 
@@ -521,6 +522,32 @@ router.post('/license/purchase-mock', requireAuth, async (req: AuthenticatedRequ
   } catch (error: any) {
     console.error('[API] Error processing mock purchase:', error);
     res.status(500).json({ error: 'Failed to process mock purchase' });
+  }
+});
+
+// ============================================================================
+// FREE RUN STATUS ROUTE
+// ============================================================================
+
+/**
+ * GET /api/v1/me/free-run-status - Get user's free run availability
+ */
+router.get('/free-run-status', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const status = await jobService.getFreeRunStatus(req.user.id);
+
+    res.json({
+      available: status.available,
+      usedAt: status.usedAt?.toISOString() || null,
+      resetAt: status.resetAt.toISOString(),
+    });
+  } catch (error: any) {
+    console.error('[API] Error getting free run status:', error);
+    res.status(500).json({ error: 'Failed to get free run status' });
   }
 });
 

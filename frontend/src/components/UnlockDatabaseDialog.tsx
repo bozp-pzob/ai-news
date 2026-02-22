@@ -39,7 +39,7 @@ export const UnlockDatabaseDialog: React.FC<UnlockDatabaseDialogProps> = ({
     
     try {
       // Get persistence status to check if it's password protected
-      const persistenceSettings = (secretManager as any).persistence;
+      const persistenceSettings = secretManager.persistenceState;
       if (!persistenceSettings?.enabled || !persistenceSettings?.passwordProtected) {
         setError('Database is not password protected');
         setLoading(false);

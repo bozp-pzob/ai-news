@@ -16,6 +16,9 @@ export class SQLiteStorage implements StoragePlugin {
   private db: Database<sqlite3.Database, sqlite3.Statement> | null = null;
   private dbPath: string;
 
+  /** Hidden from UI in platform mode - use PostgresStorage instead */
+  static hidden = true;
+
   static constructorInterface = {
     parameters: [
       {

@@ -10,6 +10,7 @@ import {
   createJSONPromptForTopics,
   createMarkdownPromptForJSON,
   PromptMediaOptions,
+  SUMMARIZE_OPTIONS,
 } from "../../helpers/promptHelper";
 import { createMediaLookup, findManifestPath, MediaLookup } from "../../helpers/mediaHelper";
 import { retryOperation } from "../../helpers/generalHelper";
@@ -40,6 +41,7 @@ interface DailySummaryGeneratorConfig {
   /** Topics to exclude from summaries (default: ['open source']) */
   blockedTopics?: string[];
   skipFileOutput?: boolean;
+  generateAfterHour?: number;
 }
 
 /**
@@ -69,6 +71,10 @@ export class DailySummaryGenerator {
   private mediaLookup: MediaLookup | null = null;
   /** Skip writing JSON/MD files (for platform storage mode) */
   private skipFileOutput: boolean;
+  /** UTC hour (0-23) after which daily summary generation is allowed (default: 20 / 8 PM) */
+  private generateAfterHour: number;
+  /** Whether this generator is running in continuous mode (set by aggregator service) */
+  public isContinuousMode: boolean = false;
 
   static constructorInterface = {
     parameters: [
@@ -131,6 +137,12 @@ export class DailySummaryGenerator {
         type: 'boolean',
         required: false,
         description: 'Skip writing JSON/MD files to disk (for platform storage mode).'
+      },
+      {
+        name: 'generateAfterHour',
+        type: 'number',
+        required: false,
+        description: 'UTC hour (0-23) after which the daily summary is generated. Defaults to 20 (8 PM UTC). Set to 0 to generate immediately.'
       }
     ]
   };
@@ -150,6 +162,9 @@ export class DailySummaryGenerator {
     this.mediaManifestPath = config.mediaManifestPath;
     this.blockedTopics = config.blockedTopics || ['open source'];
     this.skipFileOutput = config.skipFileOutput || false;
+    this.generateAfterHour = typeof config.generateAfterHour === 'string' 
+      ? parseInt(config.generateAfterHour, 10) 
+      : (config.generateAfterHour ?? 20);
   }
 
   /**
@@ -197,7 +212,7 @@ export class DailySummaryGenerator {
     if (summaries.length <= chunkSize) {
       console.log(`[INFO] Direct summarization of ${summaries.length} summaries`);
       const mdPrompt = createMarkdownPromptForJSON(summaries, dateStr);
-      return await retryOperation(() => this.provider.summarize(mdPrompt));
+      return await retryOperation(() => this.provider.summarize(mdPrompt, SUMMARIZE_OPTIONS.markdownConversion));
     }
 
     // Recursive case: break into chunks and summarize each chunk
@@ -212,7 +227,7 @@ export class DailySummaryGenerator {
       chunks.map(async (chunk, index) => {
         console.log(`[INFO] Processing chunk ${index + 1}/${chunks.length} (${chunk.length} items)`);
         const chunkPrompt = createMarkdownPromptForJSON(chunk, `${dateStr} - Part ${index + 1}`);
-        const chunkResult = await retryOperation(() => this.provider.summarize(chunkPrompt));
+        const chunkResult = await retryOperation(() => this.provider.summarize(chunkPrompt, SUMMARIZE_OPTIONS.markdownConversion));
         
         // Return as a structured object for next level
         return {
@@ -230,6 +245,94 @@ export class DailySummaryGenerator {
     // Recursively summarize the chunk results
     console.log(`[INFO] Combining ${chunkSummaries.length} chunk summaries`);
     return await this.hierarchicalSummarize(chunkSummaries, dateStr, chunkSize);
+  }
+
+  /**
+   * Rough token estimate (~4 chars per token, typical for English text).
+   * Used to avoid sending prompts that exceed model context limits.
+   */
+  private estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4);
+  }
+
+  /**
+   * Summarizes a topic group, automatically chunking if the content exceeds token limits.
+   * For small groups, sends a single prompt. For large groups, splits into chunks,
+   * summarizes each chunk, then merges the results.
+   * @param topic - Topic name
+   * @param objects - Content items in this topic group
+   * @param dateStr - Date string for context
+   * @returns Parsed summary JSON with topic set, or null on failure
+   */
+  private async summarizeTopicGroup(topic: string, objects: any[], dateStr: string): Promise<any | null> {
+    // Use provider's actual context length if available, with 20% buffer for the response.
+    // Falls back to 100K if the provider doesn't report context length.
+    const providerContext = this.provider.getContextLength?.() || 0;
+    const MAX_TOKENS = providerContext > 0 ? Math.floor(providerContext * 0.8) : 100000;
+
+    const fullPrompt = createJSONPromptForTopics(topic, objects, dateStr);
+    const estimatedTokens = this.estimateTokens(fullPrompt);
+
+    // If within token limit, summarize directly
+    if (estimatedTokens <= MAX_TOKENS) {
+      const summaryText = await retryOperation(() => this.provider.summarize(fullPrompt, SUMMARIZE_OPTIONS.topicSummary));
+      const summaryJSONString = summaryText.replace(/```json\n|```/g, "");
+      const summaryJSON = JSON.parse(summaryJSONString);
+      summaryJSON["topic"] = topic;
+      return summaryJSON;
+    }
+
+    // Content exceeds token limit — split objects into chunks and summarize each
+    console.log(`[INFO] Topic "${topic}" has ~${estimatedTokens} tokens (${objects.length} items), chunking to fit context limit`);
+
+    // Determine chunk size based on how much we're over the limit
+    const ratio = Math.ceil(estimatedTokens / MAX_TOKENS);
+    const chunkSize = Math.max(1, Math.ceil(objects.length / ratio));
+    const chunks: any[][] = [];
+    for (let i = 0; i < objects.length; i += chunkSize) {
+      chunks.push(objects.slice(i, i + chunkSize));
+    }
+
+    console.log(`[INFO] Split into ${chunks.length} chunks of ~${chunkSize} items each`);
+
+    // Summarize each chunk
+    const chunkSummaries: string[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkPrompt = createJSONPromptForTopics(topic, chunks[i], dateStr);
+      const chunkTokens = this.estimateTokens(chunkPrompt);
+      console.log(`[INFO] Summarizing chunk ${i + 1}/${chunks.length} (~${chunkTokens} tokens, ${chunks[i].length} items)`);
+
+      const summaryText = await retryOperation(() => this.provider.summarize(chunkPrompt, SUMMARIZE_OPTIONS.topicSummary));
+      const cleanText = summaryText.replace(/```json\n|```/g, "");
+      chunkSummaries.push(cleanText);
+    }
+
+    // Merge chunk summaries with a final summarization pass
+    const partsXml = chunkSummaries.map((s, i) => `  <part index="${i + 1}">\n${s}\n  </part>`).join('\n');
+    const mergePrompt = `Merge the following partial summaries of the topic "${topic}" for ${dateStr} into a single cohesive summary.\n\n<partial_summaries>\n${partsXml}\n</partial_summaries>\n\nRespond with a valid JSON object containing:\n- "title": The title of the topic.\n- "content": A list of messages with keys "text", "sources", "images", and "videos".`;
+
+    // If merge prompt is also too large, just concatenate the content arrays
+    if (this.estimateTokens(mergePrompt) > MAX_TOKENS) {
+      console.log(`[INFO] Merge prompt also too large, concatenating chunk results directly`);
+      const mergedContent: any[] = [];
+      for (const chunkText of chunkSummaries) {
+        try {
+          const parsed = JSON.parse(chunkText);
+          if (parsed.content && Array.isArray(parsed.content)) {
+            mergedContent.push(...parsed.content);
+          }
+        } catch {
+          mergedContent.push({ text: chunkText, sources: [], images: [], videos: [] });
+        }
+      }
+      return { topic, title: topic, content: mergedContent };
+    }
+
+    const mergedText = await retryOperation(() => this.provider.summarize(mergePrompt, SUMMARIZE_OPTIONS.topicSummary));
+    const mergedJSONString = mergedText.replace(/```json\n|```/g, "");
+    const mergedJSON = JSON.parse(mergedJSONString);
+    mergedJSON["topic"] = topic;
+    return mergedJSON;
   }
 
   /**
@@ -280,14 +383,11 @@ export class DailySummaryGenerator {
 
           if (!topic || !objects || objects.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) continue;
 
-          const prompt = createJSONPromptForTopics(topic, objects, dateStr, mediaOptions);
-          const summaryText = await retryOperation(() => this.provider.summarize(prompt));
-          const summaryJSONString = summaryText.replace(/```json\n|```/g, "");
-          let summaryJSON = JSON.parse(summaryJSONString);
-          summaryJSON["topic"] = topic;
-
-          allSummaries.push(summaryJSON);
-          groupsToSummarize++;
+          const summaryJSON = await this.summarizeTopicGroup(topic, objects, dateStr);
+          if (summaryJSON) {
+            allSummaries.push(summaryJSON);
+            groupsToSummarize++;
+          }
         }
         catch (e) {
           console.log(e);
@@ -361,13 +461,35 @@ export class DailySummaryGenerator {
   public async generateContent() {
     try {
       const today = new Date();
+      const currentHourUTC = today.getUTCHours();
+
+      // In continuous mode, only generate daily summary after the configured hour (default 20:00 UTC / 8 PM)
+      // This ensures most of the day's data has been collected before summarizing.
+      // In one-time (runOnce) mode, always generate immediately.
+      if (this.isContinuousMode && this.generateAfterHour > 0 && currentHourUTC < this.generateAfterHour) {
+        console.log(`Skipping daily summary generation - current hour (${currentHourUTC} UTC) is before threshold (${this.generateAfterHour} UTC). Will generate after ${this.generateAfterHour}:00 UTC.`);
+        return;
+      }
 
       let summary: SummaryItem[] = await this.storage.getSummaryBetweenEpoch(Math.floor((today.getTime() - (hour * 24)) / 1000), Math.floor(today.getTime() / 1000));
       
-      if (summary && summary.length <= 0) {
+      // Check if existing summary is empty/broken (e.g. from a failed run)
+      const hasEmptySummary = summary && summary.length > 0 && (
+        !summary[0].categories || 
+        summary[0].categories === '[]' || 
+        summary[0].categories === 'null' ||
+        (summary[0].markdown && summary[0].markdown.includes('No content to summarize'))
+      );
+
+      if (!summary || summary.length <= 0 || hasEmptySummary) {
         // Generate summary for today's data
         const dateStr = today.toISOString().slice(0, 10);
-        console.log(`Summarizing data for daily report: ${dateStr}`);
+        
+        if (hasEmptySummary) {
+          console.log(`Existing summary for ${dateStr} is empty/broken, regenerating...`);
+        } else {
+          console.log(`Summarizing data for daily report: ${dateStr}`);
+        }
       
         await this.generateAndStoreSummary(dateStr);
         

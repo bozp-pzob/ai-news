@@ -10,9 +10,9 @@ import { ResetDialog } from './components/ResetDialog';
 import Sidebar from './components/Sidebar';
 import { secretManager } from './services/SecretManager';
 import { UnlockDatabaseDialog } from './components/UnlockDatabaseDialog';
+import { createEmptyConfig, sanitizeConfig, createDefaultPlatformConfig } from './utils/configDefaults';
 
-// Add a variable at module level to track the last processed config
-let lastProcessedConfig: string | null = null;
+
 
 /**
  * Props for platform mode integration
@@ -48,18 +48,7 @@ function App({
 }: AppProps = {}) {
   const [configs, setConfigs] = useState<string[]>([]);
   const [selectedConfig, setSelectedConfig] = useState<string | null>(null);
-  const [config, setConfig] = useState<Config>({
-    sources: [],
-    ai: [],
-    enrichers: [],
-    generators: [],
-    providers: [],
-    storage: [],
-    settings: {
-      runOnce: false,
-      onlyFetch: false
-    }
-  });
+  const [config, setConfig] = useState<Config>(createEmptyConfig());
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [secretSettingsOpen, setSecretSettingsOpen] = useState(false);
   const [secretsManagerOpen, setSecretsManagerOpen] = useState(false);
@@ -70,6 +59,9 @@ function App({
   const [_databaseLocked, setDatabaseLocked] = useState(false);
   const { showToast } = useToast();
   
+  // Track the last processed config to prevent duplicate processing
+  const lastProcessedConfigRef = useRef<string | null>(null);
+
   // Reference to the NodeGraph component for accessing its functions
   const nodeGraphRef = useRef<any>(null);
   
@@ -86,6 +78,9 @@ function App({
 
   // Add a flag to track if we're currently in a reset operation
   const [isResetting, setIsResetting] = useState(false);
+  
+  // Add a flag to track if we're currently loading a config (to prevent false unsaved changes)
+  const isLoadingRef = useRef(false);
 
   useEffect(() => {
     // In platform mode, we don't load configs from legacy API
@@ -136,28 +131,25 @@ function App({
   // Load platform config when provided
   useEffect(() => {
     if (platformMode && platformConfigJson) {
-      const sanitizedConfig = {
-        name: externalConfigName || platformConfigJson.name || '',
-        sources: platformConfigJson.sources || [],
-        ai: platformConfigJson.ai || [],
-        enrichers: platformConfigJson.enrichers || [],
-        generators: platformConfigJson.generators || [],
-        providers: platformConfigJson.providers || [],
-        storage: platformConfigJson.storage || [],
-        settings: platformConfigJson.settings || {
-          runOnce: false,
-          onlyFetch: false
-        }
-      };
+      // Set loading flag to prevent false unsaved changes detection
+      isLoadingRef.current = true;
+      
+      const sanitizedConfig = sanitizeConfig(platformConfigJson, externalConfigName || platformConfigJson.name);
       setConfig(sanitizedConfig);
-      setSelectedConfig(sanitizedConfig.name);
+      setSelectedConfig(sanitizedConfig.name || null);
       configStateManager.loadConfig(sanitizedConfig);
+      
+      // Reset loading flag after a short delay to allow events to propagate
+      setTimeout(() => {
+        isLoadingRef.current = false;
+        setHasUnsavedChanges(false);
+      }, 100);
     }
   }, [platformMode, platformConfigJson, externalConfigName]);
 
   // Check if the database is password-protected and locked
   const checkDatabaseLockStatus = () => {
-    const persistence = (secretManager as any).persistence;
+    const persistence = secretManager.persistenceState;
     if (persistence?.enabled && persistence?.passwordProtected) {
       // Check if we can access secrets to determine if the database is locked
       const secrets = secretManager.listSecrets();
@@ -195,7 +187,8 @@ function App({
 
   const loadConfig = async (configName: string) => {
     try {
-      // Show loading indicator or disable UI here if needed
+      // Set loading flag to prevent false unsaved changes detection
+      isLoadingRef.current = true;
       
       const loadedConfig = await getConfig(configName);
       
@@ -204,24 +197,20 @@ function App({
       }
       
       // Ensure all required properties exist
-      const sanitizedConfig = {
-        name: configName, // Ensure the name is set correctly
-        sources: loadedConfig.sources || [],
-        ai: loadedConfig.ai || [],
-        enrichers: loadedConfig.enrichers || [],
-        generators: loadedConfig.generators || [],
-        providers: loadedConfig.providers || [],
-        storage: loadedConfig.storage || [],
-        settings: loadedConfig.settings || {
-          runOnce: false,
-          onlyFetch: false
-        }
-      };
+      const sanitizedConfig = sanitizeConfig(loadedConfig, configName);
       
       setConfig(sanitizedConfig);
+      configStateManager.loadConfig(sanitizedConfig);
+      
+      // Reset loading flag after a short delay to allow events to propagate
+      setTimeout(() => {
+        isLoadingRef.current = false;
+        setHasUnsavedChanges(false);
+      }, 100);
     } catch (error) {
       console.error('Error loading config:', error);
       showToast(`Failed to load configuration ${configName}. Please try again.`, 'error');
+      isLoadingRef.current = false;
     }
   };
 
@@ -231,15 +220,15 @@ function App({
     const updatedConfigString = JSON.stringify(updatedConfig);
     
     // If this is exactly the same config we just processed, break the loop
-    if (lastProcessedConfig === updatedConfigString) {
+    if (lastProcessedConfigRef.current === updatedConfigString) {
       return;
     }
     
     // Keep track of this config to prevent duplicate processing
-    lastProcessedConfig = updatedConfigString;
+    lastProcessedConfigRef.current = updatedConfigString;
     
-    // If this is a reset operation or we're in reset protection mode, don't set hasUnsavedChanges
-    if (isReset || isResetting) {
+    // If this is a reset operation, we're in reset protection mode, or we're loading a config, don't set hasUnsavedChanges
+    if (isReset || isResetting || isLoadingRef.current) {
       setConfig(updatedConfig);
       return;
     }
@@ -479,27 +468,16 @@ function App({
           importedConfig.name = userProvidedName;
         }
         
-        // Ensure all required arrays exist
-        importedConfig.sources = importedConfig.sources || [];
-        importedConfig.enrichers = importedConfig.enrichers || [];
-        importedConfig.generators = importedConfig.generators || [];
-        importedConfig.ai = importedConfig.ai || [];
-        importedConfig.storage = importedConfig.storage || [];
-        importedConfig.providers = importedConfig.providers || [];
-        
-        // Ensure settings object exists
-        importedConfig.settings = importedConfig.settings || {
-          runOnce: false,
-          onlyFetch: false
-        };
+        // Ensure all required fields exist with defaults
+        const validatedConfig = sanitizeConfig(importedConfig);
         
         // Load the imported config
-        configStateManager.loadConfig(importedConfig);
+        configStateManager.loadConfig(validatedConfig);
         configStateManager.forceSync(true);
         
         // Update local state
-        setConfig(importedConfig);
-        setSelectedConfig(importedConfig.name);
+        setConfig(validatedConfig);
+        setSelectedConfig(validatedConfig.name || null);
         
         // Update hasUnsavedChanges
         setHasUnsavedChanges(true);
@@ -509,7 +487,7 @@ function App({
           fileInputRef.current.value = '';
         }
         
-        showToast(`Configuration "${importedConfig.name}" imported successfully`, 'success');
+        showToast(`Configuration "${validatedConfig.name}" imported successfully`, 'success');
       } catch (error) {
         console.error('Error importing config:', error);
         showToast('Failed to import configuration: ' + (error instanceof Error ? error.message : 'Invalid format'), 'error');
@@ -524,35 +502,6 @@ function App({
     reader.readAsText(file);
   };
 
-  // Helper to create default platform config with pre-configured storage and AI plugins
-  const createDefaultPlatformConfig = (): Config => ({
-    name: '',
-    sources: [],
-    ai: [{
-      type: 'OpenAIProvider',
-      name: 'OpenAIProvider',
-      pluginName: 'OpenAIProvider',
-      params: {
-        usePlatformAI: true,
-      }
-    }],
-    enrichers: [],
-    generators: [],
-    providers: [],
-    storage: [{
-      type: 'PostgresStorage',
-      name: 'PostgresStorage',
-      pluginName: 'PostgresStorage',
-      params: {
-        usePlatformStorage: true,
-      }
-    }],
-    settings: {
-      runOnce: false,
-      onlyFetch: false
-    }
-  });
-
   // Handle new config creation
   const handleNewConfig = () => {
     // Clear selected config
@@ -565,19 +514,7 @@ function App({
       configStateManager.loadConfig(defaultConfig);
     } else {
       // Legacy mode: Empty config
-      setConfig({
-        name: '',
-        sources: [],
-        ai: [],
-        enrichers: [],
-        generators: [],
-        providers: [],
-        storage: [],
-        settings: {
-          runOnce: false,
-          onlyFetch: false
-        }
-      });
+      setConfig(createEmptyConfig());
     }
     setHasUnsavedChanges(false);
   };
@@ -669,19 +606,7 @@ function App({
         <div className="flex-1 overflow-hidden">
           <NodeGraph
             ref={nodeGraphRef}
-            config={selectedConfig ? config : {
-              name: '',
-              sources: [],
-              ai: [],
-              enrichers: [],
-              generators: [],
-              providers: [],
-              storage: [],
-              settings: {
-                runOnce: false,
-                onlyFetch: false
-              }
-            }}
+            config={selectedConfig ? config : createEmptyConfig()}
             onConfigUpdate={handleConfigUpdate}
             saveConfiguration={saveConfiguration}
             runAggregation={selectedConfig ? handleRunAggregation : undefined}

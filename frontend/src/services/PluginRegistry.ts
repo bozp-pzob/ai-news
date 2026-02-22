@@ -1,8 +1,18 @@
 import { PluginInfo } from '../types';
-import { getPlugins } from './api';
+import { getPlugins, PlatformType } from './api';
 
 // Static plugin file path
 const STATIC_PLUGINS_PATH = '/static/plugins.json';
+
+/**
+ * Options for filtering plugins based on user context
+ */
+export interface PluginFilterOptions {
+  /** Whether in platform mode (hides SQLiteStorage) */
+  platformMode: boolean;
+  /** Set of platform types the user has active connections for */
+  connectedPlatforms?: Set<PlatformType>;
+}
 
 /**
  * A registry service that fetches and stores plugin information from the backend.
@@ -129,19 +139,46 @@ class PluginRegistry {
   /**
    * Get plugins filtered for platform mode
    * Hides SQLiteStorage in platform mode since platform uses PostgreSQL
+   * @deprecated Use getPluginsFiltered instead for full filtering support
    */
   getPluginsForMode(platformMode: boolean): Record<string, PluginInfo[]> {
+    return this.getPluginsFiltered({ platformMode });
+  }
+
+  /**
+   * Get plugins filtered based on user context
+   * - In platform mode: Hides SQLiteStorage
+   * - Hides plugins that require a platform connection if user doesn't have one
+   */
+  getPluginsFiltered(options: PluginFilterOptions): Record<string, PluginInfo[]> {
+    const { platformMode, connectedPlatforms } = options;
+    
     if (!platformMode) {
       return this.plugins;
     }
     
-    // Filter out SQLiteStorage in platform mode
     const filtered: Record<string, PluginInfo[]> = {};
     
     for (const [category, plugins] of Object.entries(this.plugins)) {
-      filtered[category] = plugins.filter(plugin => 
-        plugin.pluginName !== 'SQLiteStorage'
-      );
+      filtered[category] = plugins.filter(plugin => {
+        // Filter out hidden plugins (deprecated or replaced by unified alternatives)
+        if (plugin.hidden) {
+          return false;
+        }
+        
+        // If plugin requires a platform connection, check if user has one
+        if (plugin.requiresPlatform && connectedPlatforms) {
+          return connectedPlatforms.has(plugin.requiresPlatform);
+        }
+        
+        // If plugin requires a platform but we don't have connection info,
+        // hide it in platform mode (user needs to connect first)
+        if (plugin.requiresPlatform && !connectedPlatforms) {
+          return false;
+        }
+        
+        return true;
+      });
     }
     
     return filtered;

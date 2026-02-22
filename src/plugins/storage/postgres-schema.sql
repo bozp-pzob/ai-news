@@ -23,6 +23,12 @@ CREATE TABLE IF NOT EXISTS users (
   -- AI usage tracking (for platform AI with daily limits)
   ai_calls_today INTEGER DEFAULT 0,
   ai_calls_today_reset_at DATE DEFAULT CURRENT_DATE,
+  -- Free run tracking (1 free run per day globally)
+  free_run_used_at DATE,
+  -- Admin: ban tracking
+  is_banned BOOLEAN DEFAULT FALSE,
+  banned_at TIMESTAMPTZ,
+  banned_reason TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -57,6 +63,10 @@ CREATE TABLE IF NOT EXISTS configs (
   last_run_duration_ms INTEGER,
   last_error TEXT,
   
+  -- Continuous run settings
+  global_interval INTEGER,  -- Milliseconds, overrides per-source intervals for continuous runs
+  active_job_id UUID,  -- Reference to currently running continuous job
+  
   -- Limits tracking (for free tier)
   runs_today INTEGER DEFAULT 0,
   runs_today_reset_at DATE DEFAULT CURRENT_DATE,
@@ -65,6 +75,16 @@ CREATE TABLE IF NOT EXISTS configs (
   total_items INTEGER DEFAULT 0,
   total_queries INTEGER DEFAULT 0,
   total_revenue DECIMAL(12, 6) DEFAULT 0,
+  
+  -- Local execution: config runs on user's local server, not on platform
+  is_local_execution BOOLEAN DEFAULT FALSE,
+  
+  -- Data access: hide raw items from non-owners (UI + API)
+  hide_items BOOLEAN DEFAULT FALSE,
+  
+  -- Admin: featured configs
+  is_featured BOOLEAN DEFAULT FALSE,
+  featured_at TIMESTAMPTZ,
   
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -83,6 +103,55 @@ CREATE TABLE IF NOT EXISTS config_shares (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   
   CHECK (shared_with_user_id IS NOT NULL OR shared_with_wallet IS NOT NULL)
+);
+
+-- ============================================
+-- DISCORD INTEGRATION (Multi-tenant bot)
+-- ============================================
+
+-- Discord guild connections (tracks which user added bot to which guild)
+CREATE TABLE IF NOT EXISTS discord_guild_connections (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  guild_id TEXT NOT NULL,                    -- Discord guild snowflake ID
+  guild_name TEXT NOT NULL,
+  guild_icon TEXT,                           -- Guild icon hash (for display)
+  bot_permissions BIGINT DEFAULT 0,          -- Bot's permission bitfield in guild
+  added_at TIMESTAMPTZ DEFAULT NOW(),
+  is_active BOOLEAN DEFAULT TRUE,            -- Bot still present in guild
+  last_verified_at TIMESTAMPTZ,              -- Last time we verified bot presence
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  -- Each user can only have one connection per guild
+  UNIQUE(user_id, guild_id)
+);
+
+-- Cached channels for connected guilds
+CREATE TABLE IF NOT EXISTS discord_guild_channels (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  guild_connection_id UUID NOT NULL REFERENCES discord_guild_connections(id) ON DELETE CASCADE,
+  channel_id TEXT NOT NULL,                  -- Discord channel snowflake ID
+  channel_name TEXT NOT NULL,
+  channel_type INTEGER NOT NULL,             -- Discord ChannelType enum value
+  category_id TEXT,                          -- Parent category ID
+  category_name TEXT,                        -- Parent category name
+  position INTEGER DEFAULT 0,                -- Channel position for ordering
+  is_accessible BOOLEAN DEFAULT TRUE,        -- Bot can read this channel
+  last_synced_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  -- Each channel appears once per connection
+  UNIQUE(guild_connection_id, channel_id)
+);
+
+-- OAuth state storage (for CSRF protection during OAuth flow)
+CREATE TABLE IF NOT EXISTS discord_oauth_states (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  state TEXT NOT NULL UNIQUE,                -- Random state token
+  redirect_url TEXT,                         -- Where to redirect after OAuth
+  expires_at TIMESTAMPTZ NOT NULL,           -- State expiration (short-lived)
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- API usage tracking
@@ -185,19 +254,37 @@ CREATE TABLE IF NOT EXISTS temp_retention (
 -- BACKGROUND JOBS
 -- ============================================
 
--- Aggregation jobs tracking (supplements Bull/Redis)
+-- Aggregation jobs tracking
 CREATE TABLE IF NOT EXISTS aggregation_jobs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   config_id UUID NOT NULL REFERENCES configs(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  bull_job_id TEXT,  -- Reference to Bull job
+  
+  -- Job type and configuration
+  job_type TEXT DEFAULT 'one-time' CHECK (job_type IN ('one-time', 'continuous')),
+  global_interval INTEGER,  -- Milliseconds, for continuous jobs
+  
+  -- Status tracking
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
   started_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
+  
+  -- Stats (for continuous jobs, these accumulate across ticks)
   items_fetched INTEGER DEFAULT 0,
   items_processed INTEGER DEFAULT 0,
+  run_count INTEGER DEFAULT 1,  -- For continuous: increments each interval tick
+  last_fetch_at TIMESTAMPTZ,  -- For continuous: updated each interval tick
+  
+  -- AI token usage and cost tracking
+  total_prompt_tokens INTEGER DEFAULT 0,
+  total_completion_tokens INTEGER DEFAULT 0,
+  total_ai_calls INTEGER DEFAULT 0,
+  estimated_cost_usd NUMERIC(10,6) DEFAULT 0,
+  
+  -- Error handling
   error_message TEXT,
   logs JSONB DEFAULT '[]',
+  
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -211,6 +298,8 @@ CREATE INDEX IF NOT EXISTS idx_users_wallet ON users(wallet_address);
 CREATE INDEX IF NOT EXISTS idx_users_tier ON users(tier);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_ai_reset ON users(ai_calls_today_reset_at);
+CREATE INDEX IF NOT EXISTS idx_users_free_run ON users(free_run_used_at);
+CREATE INDEX IF NOT EXISTS idx_users_banned ON users(is_banned) WHERE is_banned = TRUE;
 
 -- Configs
 CREATE INDEX IF NOT EXISTS idx_configs_user ON configs(user_id);
@@ -219,11 +308,26 @@ CREATE INDEX IF NOT EXISTS idx_configs_visibility ON configs(visibility);
 CREATE INDEX IF NOT EXISTS idx_configs_status ON configs(status);
 CREATE INDEX IF NOT EXISTS idx_configs_monetization ON configs(monetization_enabled) WHERE monetization_enabled = TRUE;
 CREATE INDEX IF NOT EXISTS idx_configs_public ON configs(visibility, monetization_enabled) WHERE visibility = 'public';
+CREATE INDEX IF NOT EXISTS idx_configs_featured ON configs(is_featured, featured_at DESC) WHERE is_featured = TRUE;
 
 -- Config shares
 CREATE INDEX IF NOT EXISTS idx_config_shares_config ON config_shares(config_id);
 CREATE INDEX IF NOT EXISTS idx_config_shares_user ON config_shares(shared_with_user_id);
 CREATE INDEX IF NOT EXISTS idx_config_shares_wallet ON config_shares(shared_with_wallet);
+
+-- Discord guild connections
+CREATE INDEX IF NOT EXISTS idx_discord_guild_connections_user ON discord_guild_connections(user_id);
+CREATE INDEX IF NOT EXISTS idx_discord_guild_connections_guild ON discord_guild_connections(guild_id);
+CREATE INDEX IF NOT EXISTS idx_discord_guild_connections_active ON discord_guild_connections(is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_discord_guild_connections_user_active ON discord_guild_connections(user_id, is_active) WHERE is_active = TRUE;
+
+-- Discord guild channels
+CREATE INDEX IF NOT EXISTS idx_discord_guild_channels_connection ON discord_guild_channels(guild_connection_id);
+CREATE INDEX IF NOT EXISTS idx_discord_guild_channels_accessible ON discord_guild_channels(guild_connection_id, is_accessible) WHERE is_accessible = TRUE;
+
+-- Discord OAuth states (cleanup old states)
+CREATE INDEX IF NOT EXISTS idx_discord_oauth_states_expires ON discord_oauth_states(expires_at);
+CREATE INDEX IF NOT EXISTS idx_discord_oauth_states_user ON discord_oauth_states(user_id);
 
 -- Items
 CREATE INDEX IF NOT EXISTS idx_items_config ON items(config_id);
@@ -260,8 +364,12 @@ CREATE INDEX IF NOT EXISTS idx_temp_retention_retry ON temp_retention(retry_coun
 
 -- Aggregation jobs
 CREATE INDEX IF NOT EXISTS idx_aggregation_jobs_config ON aggregation_jobs(config_id);
+CREATE INDEX IF NOT EXISTS idx_aggregation_jobs_config_created ON aggregation_jobs(config_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_aggregation_jobs_status ON aggregation_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_aggregation_jobs_running ON aggregation_jobs(status) WHERE status = 'running';
 CREATE INDEX IF NOT EXISTS idx_aggregation_jobs_user ON aggregation_jobs(user_id);
+CREATE INDEX IF NOT EXISTS idx_aggregation_jobs_user_created ON aggregation_jobs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_aggregation_jobs_continuous_running ON aggregation_jobs(job_type, status) WHERE job_type = 'continuous' AND status = 'running';
 
 -- ============================================
 -- VECTOR INDEXES (IVFFlat for ANN search)
@@ -299,6 +407,11 @@ CREATE TRIGGER configs_updated_at
 DROP TRIGGER IF EXISTS cursors_updated_at ON cursors;
 CREATE TRIGGER cursors_updated_at
   BEFORE UPDATE ON cursors
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS discord_guild_connections_updated_at ON discord_guild_connections;
+CREATE TRIGGER discord_guild_connections_updated_at
+  BEFORE UPDATE ON discord_guild_connections
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Reset daily run counter function
@@ -403,6 +516,27 @@ FROM configs c
 JOIN users u ON c.user_id = u.id
 WHERE c.visibility = 'public';
 
+-- Featured configs view (for public discovery)
+CREATE OR REPLACE VIEW featured_configs AS
+SELECT 
+  c.id,
+  c.slug,
+  c.name,
+  c.description,
+  c.monetization_enabled,
+  c.price_per_query,
+  c.total_items,
+  c.total_queries,
+  c.last_run_at,
+  c.featured_at,
+  c.created_at,
+  u.wallet_address as owner_wallet
+FROM configs c
+JOIN users u ON c.user_id = u.id
+WHERE c.is_featured = TRUE
+  AND c.visibility IN ('public', 'unlisted')
+ORDER BY c.featured_at DESC;
+
 -- User revenue summary view
 CREATE OR REPLACE VIEW user_revenue_summary AS
 SELECT 
@@ -442,5 +576,61 @@ BEGIN
   DELETE FROM api_usage WHERE created_at < NOW() - INTERVAL '90 days';
   GET DIAGNOSTICS deleted_count = ROW_COUNT;
   RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Clean up expired Discord OAuth states
+CREATE OR REPLACE FUNCTION cleanup_expired_discord_oauth_states()
+RETURNS INTEGER AS $$
+DECLARE
+  deleted_count INTEGER;
+BEGIN
+  DELETE FROM discord_oauth_states WHERE expires_at < NOW();
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Clean up old aggregation jobs (configurable retention, default 90 days)
+CREATE OR REPLACE FUNCTION cleanup_old_aggregation_jobs(retention_days INTEGER DEFAULT 90)
+RETURNS INTEGER AS $$
+DECLARE
+  deleted_count INTEGER;
+BEGIN
+  DELETE FROM aggregation_jobs 
+  WHERE created_at < NOW() - (retention_days || ' days')::INTERVAL
+    AND status != 'running';
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Reset free run tracking at midnight UTC
+CREATE OR REPLACE FUNCTION reset_free_run_used()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.free_run_used_at IS NOT NULL AND NEW.free_run_used_at < CURRENT_DATE THEN
+    NEW.free_run_used_at = NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS users_reset_free_run ON users;
+CREATE TRIGGER users_reset_free_run
+  BEFORE UPDATE ON users
+  FOR EACH ROW EXECUTE FUNCTION reset_free_run_used();
+
+-- Mark inactive Discord guild connections (bot removed from guild)
+CREATE OR REPLACE FUNCTION mark_inactive_discord_connections(guild_ids TEXT[])
+RETURNS INTEGER AS $$
+DECLARE
+  updated_count INTEGER;
+BEGIN
+  UPDATE discord_guild_connections 
+  SET is_active = FALSE, updated_at = NOW()
+  WHERE guild_id = ANY(guild_ids) AND is_active = TRUE;
+  GET DIAGNOSTICS updated_count = ROW_COUNT;
+  RETURN updated_count;
 END;
 $$ LANGUAGE plpgsql;

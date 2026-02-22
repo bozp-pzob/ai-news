@@ -59,11 +59,7 @@ export const SecretInputSelectField: React.FC<SecretInputSelectFieldProps> = (pr
             description: secret.description || 'Unnamed Secret'
           });
           setDisplayValue(`process.env.${secret.description || 'ENV_VAR'}`);
-          
-          // Update the parent with just the secret name
-          if (secret.description) {
-            props.onChange(secret.description);
-          }
+          // Keep the $SECRET:uuid$ reference in the parent — don't replace it
         } else {
           // Try to get info from secretManager
           const secretsList = secretManager.listSecrets();
@@ -74,11 +70,7 @@ export const SecretInputSelectField: React.FC<SecretInputSelectFieldProps> = (pr
               description: secretFromManager.description || 'Unnamed Secret'
             });
             setDisplayValue(`process.env.${secretFromManager.description || 'ENV_VAR'}`);
-            
-            // Update the parent with just the secret name
-            if (secretFromManager.description) {
-              props.onChange(secretFromManager.description);
-            }
+            // Keep the $SECRET:uuid$ reference in the parent — don't replace it
           } else {
             setDisplayValue(props.value);
           }
@@ -148,7 +140,6 @@ export const SecretInputSelectField: React.FC<SecretInputSelectFieldProps> = (pr
 
   // Handle selecting a secret from the dropdown
   const handleSelectSecret = (secretId: string, description?: string) => {
-    // Store the secret name/description in the parent component instead of the reference
     const secretName = description || 'ENV_VAR';
     
     // Update the selected secret info (for internal tracking)
@@ -157,11 +148,12 @@ export const SecretInputSelectField: React.FC<SecretInputSelectFieldProps> = (pr
       description: secretName
     });
     
-    // Set display value to process.env format
+    // Set display value to process.env format (for user-friendly display)
     setDisplayValue(`process.env.${secretName}`);
     
-    // Update the parent component with just the secret name
-    props.onChange(secretName);
+    // Store the $SECRET:uuid$ reference so resolveConfigSecrets can resolve it at run time
+    const secretRef = `$SECRET:${secretId}$`;
+    props.onChange(secretRef);
     
     // If a callback for secret changes is provided, call it
     if (props.onSecretChange) {
@@ -199,8 +191,9 @@ export const SecretInputSelectField: React.FC<SecretInputSelectFieldProps> = (pr
         description: secretWithMatchingName.description || 'Unnamed Secret'
       });
       
-      // Return just the secret name to parent
-      props.onChange(envVarName);
+      // Store the $SECRET:uuid$ reference so resolveConfigSecrets can resolve it at run time
+      const secretRef = `$SECRET:${secretWithMatchingName.id}$`;
+      props.onChange(secretRef);
       return;
     }
     

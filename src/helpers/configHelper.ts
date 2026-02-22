@@ -151,6 +151,10 @@ export const loadStorage = async (instances: InstanceConfig[], storages: Instanc
 
 /**
  * Resolves parameter values, including environment variables.
+ * Supports three reference formats:
+ * - Direct key lookup in secrets map (e.g., "DISCORD_TOKEN" matches secrets["DISCORD_TOKEN"])
+ * - "process.env.VAR_NAME" format (explicit env var reference)
+ * - ALL_CAPS format (e.g., "CODEX_API_KEY") — checked against secrets, then process.env
  */
 export const resolveParam = (value: string, secrets: any = {}): any => { // Ensure input is string
   if (secrets[value] || secrets[value.replace("process.env.", "")]) {
@@ -159,6 +163,11 @@ export const resolveParam = (value: string, secrets: any = {}): any => { // Ensu
   if (value.startsWith("process.env.")) {
     const envVar = value.replace("process.env.", "");
     return process.env[envVar]; // Return undefined if not found
+  }
+  // ALL_CAPS values (like CODEX_API_KEY, DISCORD_TOKEN) are treated as env var names
+  // This matches the pattern recognized by the secret sanitizer as a lookup variable
+  if (/^[A-Z][A-Z0-9_]*$/.test(value) && process.env[value] !== undefined) {
+    return process.env[value];
   }
   return value;
 };

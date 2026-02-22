@@ -3,6 +3,7 @@ import { SQLiteStorage } from "../storage/SQLiteStorage";
 import { ContentItem, SummaryItem, DiscordSummary, ActionItems, HelpInteractions, SummaryFaqs, DiscordRawData } from "../../types";
 import { writeFile } from "../../helpers/fileHelper";
 import { logger } from "../../helpers/cliHelper";
+import { createDiscordAnalysisPrompt, createDiscordDailySummaryPrompt, SUMMARIZE_OPTIONS } from "../../helpers/promptHelper";
 
 export interface DiscordSummaryGeneratorConfig {
   provider: OpenAIProvider;
@@ -291,10 +292,10 @@ export class DiscordSummaryGenerator {
       }).join('\n');
       
       logger.info(`Creating structured AI prompt for channel ${channelName} with ${messages.length} messages`);
-      const prompt = this.getChannelSummaryPrompt(transcript, channelName);
+      const prompt = createDiscordAnalysisPrompt(transcript, channelName);
       
       logger.info(`Calling AI provider for channel ${channelName} summary`);
-      const response = await this.provider.summarize(prompt);
+      const response = await this.provider.summarize(prompt, SUMMARIZE_OPTIONS.discordAnalysis);
       logger.success(`Successfully received AI summary for channel ${channelName}`);
       
       return response;
@@ -306,49 +307,14 @@ export class DiscordSummaryGenerator {
 
   /**
    * Format prompt for channel summary.
+   * Now delegates to the centralized createDiscordAnalysisPrompt in promptHelper.ts.
    * @param transcript - Chat transcript
    * @param channelName - Name of the channel
    * @returns Formatted prompt string
    * @private
    */
   private getChannelSummaryPrompt(transcript: string, channelName: string): string {
-    return `Analyze this Discord chat segment for channel "${channelName}" and provide a succinct analysis:
-            
-1. Summary (max 500 words):
-- Focus ONLY on the most important technical discussions, decisions, and problem-solving
-- Highlight concrete solutions and implementations
-- Be specific and VERY concise
-
-2. FAQ (max 20 questions):
-- Only include the most significant questions that got meaningful responses
-- Focus on unique questions, skip similar or rhetorical questions
-- Include who asked the question and who answered
-- Use the exact Discord username from the chat
-- Format: Q: <Question> (asked by <User>) A: <Answer> (answered by <User>)
-- If unanswered: Q: <Question> (asked by <User>) A: Unanswered
-- List one FAQ per line.
-
-3. Help Interactions (max 10):
-- List the significant instances where community members helped each other.
-- Be specific and concise about what kind of help was given
-- Include context about the problem that was solved
-- Mention if the help was successful
-- Format: Helper: <User> | Helpee: <User> | Context: <Problem> | Resolution: <Solution>
-- List one interaction per line.
-
-4. Action Items (max 20 total):
-- Technical Tasks: Critical development tasks only
-- Documentation Needs: Essential doc updates only
-- Feature Requests: Major feature suggestions only
-- Format: Type: <Technical|Documentation|Feature> | Description: <Description> | Mentioned By: <User>
-- List one action item per line.
-
-Chat transcript:
----
-${transcript}
----
-
-Return the analysis in the specified structured format with numbered sections (1., 2., 3., 4.). Be specific about technical content and avoid duplicating information. Ensure each FAQ, Help Interaction, and Action Item is on its own line following the specified format exactly.`;
+    return createDiscordAnalysisPrompt(transcript, channelName);
   }
 
   /**
@@ -647,28 +613,16 @@ Return the analysis in the specified structured format with numbered sections (1
     dateStr: string
   ): Promise<string> {
     try {
-      // Format context from channel summaries
-      const promptContext = summaries
-        .map(s => `### ${s.guildName} - ${s.channelName}\n${s.summary}`)
-        .join('\n\n---\n');
-      
-      // Create prompt without triple backticks to avoid artifacts
-      const prompt = `Create a comprehensive daily markdown summary of Discord discussions from ${dateStr}. 
-Here are the channel summaries:
-
-${promptContext}
-
-Please structure the final output clearly, covering these points across all channels:
-1. **Overall Discussion Highlights:** Key topics, technical decisions, and announcements. Group by theme rather than by channel.
-2. **Key Questions & Answers:** List significant questions that received answers.
-3. **Community Help & Collaboration:** Showcase important instances of users helping each other.
-4. **Action Items:** Consolidate all action items, grouped by type (Technical, Documentation, Feature). Ensure attribution (mentioned by) is included.
-
-Use markdown formatting effectively (headings, lists, bold text). Start your response directly with the markdown content, not with explanations or preamble.
-Please note that the final output should be in a single, coherent document without any markdown code block formatting.`;
+      // Create prompt using centralized prompt builder with XML-tagged channel summaries
+      const channelSummaryData = summaries.map(s => ({
+        guildName: s.guildName,
+        channelName: s.channelName,
+        summary: s.summary
+      }));
+      const prompt = createDiscordDailySummaryPrompt(channelSummaryData, dateStr);
       
       logger.info(`Sending daily summary prompt to AI provider`);
-      const result = await this.provider.summarize(prompt);
+      const result = await this.provider.summarize(prompt, SUMMARIZE_OPTIONS.discordDailySummary);
       logger.success(`Received daily summary from AI provider`);
       
       // Clean up potential artifacts

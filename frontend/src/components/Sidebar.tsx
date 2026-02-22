@@ -1,39 +1,14 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Config, PluginInfo } from '../types';
 import { pluginRegistry } from '../services/PluginRegistry';
 import { secretManager } from '../services/SecretManager';
 import { configStateManager } from '../services/ConfigStateManager';
 import { useToast } from './ToastProvider';
-
-// Define custom event for secret persistence changes
-declare global {
-  interface WindowEventMap {
-    'secret-persistence-change': CustomEvent<{ enabled: boolean; passwordProtected: boolean }>;
-  }
-}
-
-// Utility function to hash passwords before storing
-const hashPassword = async (password: string): Promise<string> => {
-  // Create a hash of the password using SHA-256
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  
-  // Convert the hash to a hex string
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  
-  return hashHex;
-};
-
-// Utility function to verify a password against a saved hash
-const verifyPassword = async (password: string, savedHash: string): Promise<boolean> => {
-  // Hash the provided password
-  const hashedPassword = await hashPassword(password);
-  
-  // Compare the hashes
-  return hashedPassword === savedHash;
-};
+import { useConnections } from '../hooks/useExternalConnections';
+import { useSecretPersistence } from '../hooks/useSecretPersistence';
+import { PlatformType } from '../services/api';
+import { ConnectPlatformDialog } from './ConnectPlatformDialog';
+import { PlatformIcon, getPlatformDisplayName } from './connections/PlatformIcon';
 
 interface SidebarProps {
   configs: string[];
@@ -113,20 +88,23 @@ const Sidebar: React.FC<SidebarProps> = ({
     storage: true
   });
   
-  // Secret persistence states
-  const [isPersistenceEnabled, setIsPersistenceEnabled] = useState<boolean>(false);
-  const [isPasswordProtected, setIsPasswordProtected] = useState<boolean>(false);
-  const [password, setPassword] = useState<string>('');
-  const [confirmPassword, setConfirmPassword] = useState<string>('');
-  const [oldPassword, setOldPassword] = useState<string>('');
-  const [isChangingPassword, setIsChangingPassword] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null); // Kept for internal state tracking, but UI notifications use Toast
-  const [success, setSuccess] = useState<string | null>(null); // Kept for internal state tracking, but UI notifications use Toast
-  const [showRemovePasswordConfirm, setShowRemovePasswordConfirm] = useState<boolean>(false);
-  const [hasSavedPassword, setHasSavedPassword] = useState<boolean>(false);
-  const [needsDatabaseUnlock, setNeedsDatabaseUnlock] = useState<boolean>(false);
-  const [isDatabaseLocked, setIsDatabaseLocked] = useState<boolean>(false);
+  // Secret persistence (state + logic extracted to hook)
+  const secretPersistence = useSecretPersistence(activeTab, showToast);
+  const {
+    isPersistenceEnabled, setIsPersistenceEnabled,
+    isPasswordProtected,
+    password, setPassword,
+    confirmPassword, setConfirmPassword,
+    oldPassword, setOldPassword,
+    isChangingPassword,
+    loading,
+    showRemovePasswordConfirm, setShowRemovePasswordConfirm,
+    hasSavedPassword,
+    isDatabaseLocked,
+    handleSavePersistence,
+    handleRemovePasswordConfirm,
+    handlePasswordProtectedToggle,
+  } = secretPersistence;
   
   // Update configName when config changes
   useEffect(() => {
@@ -134,6 +112,59 @@ const Sidebar: React.FC<SidebarProps> = ({
       setConfigName(config.name);
     }
   }, [config]);
+  
+  // Fetch user's external connections in platform mode
+  // This is used to filter which platform-specific plugins to show
+  const { connections, refetch: refetchConnections } = useConnections();
+  
+  // State for platform connection dialog
+  const [connectDialogOpen, setConnectDialogOpen] = useState(false);
+  const [connectDialogPlatform, setConnectDialogPlatform] = useState<PlatformType | undefined>();
+  
+  // Create a Set of connected platform types for efficient lookup
+  const connectedPlatforms = useMemo(() => {
+    if (!platformMode || !connections || connections.length === 0) {
+      return undefined;
+    }
+    const platforms = new Set<PlatformType>();
+    for (const conn of connections) {
+      if (conn.isActive) {
+        platforms.add(conn.platform);
+      }
+    }
+    return platforms.size > 0 ? platforms : undefined;
+  }, [platformMode, connections]);
+  
+  // Get platforms that have plugins but aren't connected
+  // This is used to show "Connect X" prompts in the sidebar
+  const unconnectedPlatforms = useMemo(() => {
+    if (!platformMode || isLoading) return [];
+    
+    // Get all plugins (unfiltered) to find which platforms have plugins
+    const allPlugins = pluginRegistry.getPlugins();
+    const platformsWithPlugins: PlatformType[] = [];
+    
+    for (const categoryPlugins of Object.values(allPlugins)) {
+      for (const plugin of categoryPlugins) {
+        if (plugin.requiresPlatform && !plugin.hidden) {
+          if (!platformsWithPlugins.includes(plugin.requiresPlatform)) {
+            platformsWithPlugins.push(plugin.requiresPlatform);
+          }
+        }
+      }
+    }
+    
+    // Filter to only platforms that aren't connected
+    return platformsWithPlugins.filter(platform => 
+      !connectedPlatforms || !connectedPlatforms.has(platform)
+    );
+  }, [platformMode, connectedPlatforms, isLoading, plugins]);
+  
+  // Handle connection success
+  const handleConnectionSuccess = () => {
+    setConnectDialogOpen(false);
+    refetchConnections();
+  };
   
   // Load plugins - in platform mode, load immediately; otherwise when on modules tab
   React.useEffect(() => {
@@ -145,8 +176,11 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     // Function to update state with plugins
     const updatePlugins = () => {
-      // In platform mode, filter out SQLiteStorage since platform uses PostgreSQL
-      const loadedPlugins = pluginRegistry.getPluginsForMode(platformMode);
+      // Filter plugins based on platform mode and user's connections
+      const loadedPlugins = pluginRegistry.getPluginsFiltered({
+        platformMode,
+        connectedPlatforms,
+      });
       setPlugins(loadedPlugins);
       setIsLoading(false);
     };
@@ -169,183 +203,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     });
 
     return unsubscribe;
-  }, [activeTab, platformMode]);
-  
-  // Initialize SecretManager when secrets tab is opened
-  useEffect(() => {
-    if (activeTab === 'secrets') {
-      const initializeSecretManager = async () => {
-        console.log("Initializing secret manager for secrets tab");
-        
-        // Check current persistence status
-        const initialStatus = {
-          persistenceEnabled: (secretManager as any).persistence?.enabled || false,
-          passwordProtected: (secretManager as any).persistence?.passwordProtected || false
-        };
-        
-        console.log("Initial persistence status:", initialStatus);
-        
-        // Check if we have a password-protected database that needs to be unlocked
-        if (initialStatus.persistenceEnabled && initialStatus.passwordProtected) {
-          // Get the list of secrets to see if we can actually access them
-          const secrets = secretManager.listSecrets();
-          const isLocked = secrets.length === 0; // If we can't access any secrets, the database is locked
-          setIsDatabaseLocked(isLocked);
-          
-          if (isLocked) {
-            console.log("Database is password-protected but appears to be locked (no secrets available)");
-            
-            // Check if we have saved settings in session storage
-            const sessionSettings = sessionStorage.getItem('secretManagerSettings');
-            if (sessionSettings) {
-              try {
-                const settingsFromSession = JSON.parse(sessionSettings);
-                if (settingsFromSession.persistenceEnabled && settingsFromSession.passwordProtected) {
-                  console.log("Need to unlock the password-protected database");
-                  setNeedsDatabaseUnlock(true);
-                  setHasSavedPassword(true);
-                  setIsPersistenceEnabled(true);
-                  setIsPasswordProtected(true);
-                  
-                  // Show an error that prompts for password
-                  setError("Please enter your password to unlock your secret database");
-                  showToast("Please enter your password to unlock your secret database", "info");
-                }
-              } catch (e) {
-                console.error("Error parsing session settings:", e);
-              }
-            }
-          }
-        } else {
-          setIsDatabaseLocked(false);
-        }
-        
-        // Set component state based on actual persistence status
-        setIsPersistenceEnabled(initialStatus.persistenceEnabled);
-        setIsPasswordProtected(initialStatus.passwordProtected);
-        
-        // Try to recover the persistence settings from session storage if persistence is disabled
-        if (!initialStatus.persistenceEnabled) {
-          const sessionSettings = sessionStorage.getItem('secretManagerSettings');
-          if (sessionSettings) {
-            try {
-              const settingsFromSession = JSON.parse(sessionSettings);
-              if (settingsFromSession.persistenceEnabled) {
-                console.log("Found saved persistence settings in session storage");
-                
-                // We need the user to enter their password first before we can restore
-                // the persistence with password protection
-                if (settingsFromSession.passwordProtected && settingsFromSession.password) {
-                  console.log("Password protection is enabled and we have a saved password hash");
-                  setHasSavedPassword(true);
-                  setIsChangingPassword(true);
-                }
-              }
-            } catch (e) {
-              console.error("Error parsing session settings:", e);
-            }
-          }
-        }
-      };
-      
-      initializeSecretManager();
-    }
-  }, [activeTab, showToast]);
-  
-  // Initialize persistence status on component mount regardless of active tab
-  useEffect(() => {
-    const initializeSecretManager = async () => {
-      try {
-        // Try to get persistence settings from session storage first
-        const sessionSettings = sessionStorage.getItem('secretManagerSettings');
-        let settingsFromSession = null;
-        
-        if (sessionSettings) {
-          try {
-            settingsFromSession = JSON.parse(sessionSettings);
-            console.log("Found session settings:", settingsFromSession);
-            // Check if there's a password saved
-            const hasPassword = !!settingsFromSession.password;
-            setHasSavedPassword(hasPassword);
-            // Only set isChangingPassword if we have a valid password and password protection is enabled
-            if (hasPassword && settingsFromSession.passwordProtected) {
-              setIsChangingPassword(true);
-            } else {
-              setIsChangingPassword(false);
-            }
-          } catch (e) {
-            console.error("Failed to parse session settings:", e);
-          }
-        }
-        
-        // Initialize the secret manager first
-        if (!(secretManager as any).isInitialized) {
-          console.log("Initializing secret manager...");
-          await secretManager.initialize();
-        }
-        
-        // Apply session settings after initialization if they exist
-        if (settingsFromSession && settingsFromSession.persistenceEnabled) {
-          console.log("Applying session settings to secret manager");
-          try {
-            // Call enablePersistence directly with the settings from session
-            console.log("Enabling persistence with settings:", {
-              passwordProtected: settingsFromSession.passwordProtected,
-              password: settingsFromSession.password ? '(password provided)' : '(no password)'
-            });
-            
-            await secretManager.enablePersistence({
-              passwordProtected: settingsFromSession.passwordProtected,
-              password: settingsFromSession.password // This works only when user has just entered their password
-            });
-            
-            console.log("Persistence settings applied successfully");
-          } catch (e) {
-            console.error("Failed to apply persistence settings:", e);
-          }
-        }
-        
-        // Get persistence status after initialization and potential settings application
-        const initialStatus = {
-          persistenceEnabled: (secretManager as any).persistence?.enabled || false,
-          passwordProtected: (secretManager as any).persistence?.passwordProtected || false
-        };
-        console.log("Initial status after initialization:", initialStatus);
-        
-        setIsPersistenceEnabled(initialStatus.persistenceEnabled);
-        setIsPasswordProtected(initialStatus.passwordProtected);
-        
-        // Check if there's a saved password hash in session storage
-        try {
-          if (sessionSettings) {
-            const parsed = JSON.parse(sessionSettings);
-            setHasSavedPassword(!!parsed.password);
-          }
-        } catch (e) {
-          console.error("Error checking for saved password:", e);
-        }
-        
-        // Do NOT set the password from session storage since it's now hashed
-        // The user will need to enter their password again
-      } catch (error) {
-        console.error("Failed to initialize secret manager:", error);
-      }
-    };
-    
-    initializeSecretManager();
-    
-    // Add event listener for persistence changes
-    const handlePersistenceChange = (event: CustomEvent<{ enabled: boolean; passwordProtected: boolean }>) => {
-      setIsPersistenceEnabled(event.detail.enabled);
-      setIsPasswordProtected(event.detail.passwordProtected);
-    };
-    
-    window.addEventListener('secret-persistence-change', handlePersistenceChange);
-    
-    return () => {
-      window.removeEventListener('secret-persistence-change', handlePersistenceChange);
-    };
-  }, []);
+  }, [activeTab, platformMode, connectedPlatforms]);
   
   // Handle saving the config name
   const handleSaveConfigName = (e?: React.FormEvent) => {
@@ -398,315 +256,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     if (!searchTerm) return true;
     return plugin.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
            plugin.description.toLowerCase().includes(searchTerm.toLowerCase());
-  };
-  
-  // Handle unlocking a password-protected database or recovering persistence settings
-  const verifyAndRecoverPersistence = async () => {
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-    
-    try {
-      // Get the saved settings with the password hash
-      const sessionSettings = sessionStorage.getItem('secretManagerSettings');
-      if (!sessionSettings) {
-        setError("No saved settings found");
-        showToast("No saved settings found", "error");
-        setLoading(false);
-        return;
-      }
-      
-      // Parse the settings and verify the password
-      const settingsFromSession = JSON.parse(sessionSettings);
-      if (!settingsFromSession.password) {
-        setError("No saved password hash found");
-        showToast("No saved password hash found", "error");
-        setLoading(false);
-        return;
-      }
-      
-      // Verify the password against the saved hash
-      const isValid = await verifyPassword(password, settingsFromSession.password);
-      if (!isValid) {
-        setError("Incorrect password. Please try again.");
-        showToast("Incorrect password. Please try again.", "error");
-        setLoading(false);
-        return;
-      }
-      
-      // Password is valid
-      console.log("Password verified successfully");
-      
-      // Handle different scenarios: database unlock vs. recovery
-      if (needsDatabaseUnlock) {
-        console.log("Unlocking existing password-protected database");
-        
-        // Since the database is already initialized with password protection,
-        // we just need to provide the password to properly unlock it
-        await secretManager.enablePersistence({
-          passwordProtected: true,
-          password
-        });
-        
-        console.log("Database unlock completed");
-        setSuccess("Database unlocked successfully");
-        showToast("Database unlocked successfully", "success");
-        setNeedsDatabaseUnlock(false);
-        setIsDatabaseLocked(false);
-      } else {
-        // Regular recovery case - persistence was disabled but we're recovering settings
-        console.log("Recovering persistence settings");
-        
-        await secretManager.enablePersistence({
-          passwordProtected: true,
-          password
-        });
-        
-        console.log("Recovered persistence settings applied:", (secretManager as any).persistence);
-        setSuccess("Persistence settings recovered with password verification");
-        showToast("Persistence settings recovered with password verification", "success");
-      }
-      
-      // Update the saved password hash
-      const updatedSettings = {
-        ...settingsFromSession,
-        password: await hashPassword(password)
-      };
-      
-      console.log("Updating stored settings with new password hash");
-      sessionStorage.setItem('secretManagerSettings', JSON.stringify(updatedSettings));
-      setHasSavedPassword(true);
-      
-      // Clear password fields after successful recovery
-      setPassword('');
-      setConfirmPassword('');
-      setOldPassword('');
-      setIsChangingPassword(false);
-    } catch (e) {
-      console.error("Error during verification process:", e);
-      setError(`Failed to process: ${e instanceof Error ? e.message : 'Unknown error'}`);
-      showToast(`Failed to process: ${e instanceof Error ? e.message : 'Unknown error'}`, "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Handle saving persistence settings
-  const handleSavePersistence = async () => {
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-    
-    try {
-      // First, check if we're disabling password protection that was previously enabled
-      if (isPersistenceEnabled && 
-          !isPasswordProtected && 
-          hasSavedPassword && 
-          (secretManager as any).persistence?.passwordProtected) {
-        // Show confirmation dialog and return early - the actual save will happen after confirmation
-        setLoading(false);
-        setShowRemovePasswordConfirm(true);
-        return;
-      }
-      
-      if (isPersistenceEnabled) {
-        // ENABLE PERSISTENCE
-
-        if (isPasswordProtected) {
-          // ENABLE WITH PASSWORD PROTECTION
-          
-          // Additional validations for password
-          if (password !== confirmPassword) {
-            setError('Passwords do not match');
-            showToast('Passwords do not match', 'error');
-            setLoading(false);
-            return;
-          }
-          
-          if (password.length < 8) {
-            setError('Password must be at least 8 characters long');
-            showToast('Password must be at least 8 characters long', 'error');
-            setLoading(false);
-            return;
-          }
-          
-          // If changing from one password to another
-          if (hasSavedPassword && isChangingPassword) {
-            // Verify old password
-            const savedHash = sessionStorage.getItem('secretManagerSettings') ? 
-              JSON.parse(sessionStorage.getItem('secretManagerSettings') || '{}').password : 
-              null;
-            
-            if (savedHash) {
-              // Check if old password matches
-              const oldHashMatches = await verifyPassword(oldPassword, savedHash);
-              if (!oldHashMatches) {
-                setError('Your current password is incorrect');
-                showToast('Your current password is incorrect', 'error');
-                setLoading(false);
-                return;
-              }
-            }
-            
-            console.log("Changing password with verification");
-            
-            // Attempt password change on the secret manager
-            const succeeded = await secretManager.changePassword(password, oldPassword);
-            if (!succeeded) {
-              setError('Failed to change password. Please check your current password.');
-              showToast('Failed to change password. Please check your current password.', 'error');
-              setLoading(false);
-              return;
-            }
-            
-            setSuccess('Password changed successfully');
-            showToast('Password changed successfully', 'success');
-          } 
-          // If first time enabling password protection or recovering from a forgot password
-          else {
-            // If previously had password protection but not changing password (recovering)
-            if (hasSavedPassword && !isChangingPassword) {
-              const savedHash = sessionStorage.getItem('secretManagerSettings') ? 
-                JSON.parse(sessionStorage.getItem('secretManagerSettings') || '{}').password : 
-                null;
-              
-              if (savedHash) {
-                // Check if new password matches the saved one
-                const newHashMatches = await verifyPassword(password, savedHash);
-                if (!newHashMatches) {
-                  setError('The password entered does not match your saved password');
-                  showToast('The password entered does not match your saved password', 'error');
-                  setLoading(false);
-                  return;
-                }
-              }
-            }
-            
-            console.log("Enabling persistence with password protection for the first time");
-            
-            // Use the enhanced enablePersistence method with proper options
-            await secretManager.enablePersistence({
-              passwordProtected: true,
-              password,
-              clearExisting: true // Ensure we have a clean slate
-            });
-            
-            setSuccess('Encrypted persistence enabled with password protection');
-            showToast('Encrypted persistence enabled with password protection', 'success');
-          }
-        } else {
-          // ENABLE WITHOUT PASSWORD PROTECTION
-          
-          // If previously had password protection, verify old password first
-          if (hasSavedPassword) {
-            const savedHash = sessionStorage.getItem('secretManagerSettings') ? 
-              JSON.parse(sessionStorage.getItem('secretManagerSettings') || '{}').password : 
-              null;
-            
-            if (savedHash && oldPassword) {
-              // Check if old password matches before removing protection
-              const oldHashMatches = await verifyPassword(oldPassword, savedHash);
-              if (!oldHashMatches) {
-                setError('Your current password is incorrect');
-                showToast('Your current password is incorrect', 'error');
-                setLoading(false);
-                return;
-              }
-            } else if (savedHash) {
-              // Need old password but it wasn't provided
-              setError('Please enter your current password to remove protection');
-              showToast('Please enter your current password to remove protection', 'error');
-              setLoading(false);
-              return;
-            }
-            
-            // Use database reset to ensure clean state
-            await (secretManager as any).resetDatabase();
-          }
-          
-          // Use the enhanced enablePersistence method without password
-          await secretManager.enablePersistence({
-            passwordProtected: false,
-            clearExisting: hasSavedPassword // Only clear if coming from password protection
-          });
-          
-          console.log("Enabling persistence without password protection");
-          setSuccess('Persistence enabled without password protection');
-          // Show warning toast about security implications
-          showToast(
-            'Secrets stored without password protection can be viewed by anyone with access to this browser. Consider enabling password protection for better security.',
-            'warning',
-            8000 // Show for 8 seconds so user has time to read
-          );
-          setHasSavedPassword(false);
-          
-          // Clear password fields
-          setPassword('');
-          setConfirmPassword('');
-          setOldPassword('');
-        }
-        
-        // Only save settings to session storage if persistence is enabled
-        const settingsToSave = {
-          persistenceEnabled: true,
-          passwordProtected: isPasswordProtected,
-          password: isPasswordProtected ? await hashPassword(password) : ''
-        };
-        console.log("Saving settings to session storage:", {
-          ...settingsToSave,
-          password: settingsToSave.password ? '********' : '' // Don't log actual password hash
-        });
-        sessionStorage.setItem('secretManagerSettings', JSON.stringify(settingsToSave));
-      } else {
-        // DISABLE PERSISTENCE
-        console.log("Disabling persistence");
-        await secretManager.disablePersistence(true);
-        console.log("After disablePersistence call, status:", (secretManager as any).persistence);
-        setSuccess('Persistence disabled and storage cleared');
-        showToast('Persistence disabled and storage cleared', 'success');
-        setHasSavedPassword(false);
-        
-        // Clear password fields and session storage for security when disabling persistence
-        setPassword('');
-        setConfirmPassword('');
-        setOldPassword('');
-        setIsChangingPassword(false);
-        
-        console.log("Removing settings from session storage");
-        sessionStorage.removeItem('secretManagerSettings');
-      }
-      
-      // Verify the persistence settings were applied correctly
-      const currentStatus = {
-        enabled: (secretManager as any).persistence?.enabled || false,
-        passwordProtected: (secretManager as any).persistence?.passwordProtected || false
-      };
-      console.log("Current secret manager status:", currentStatus);
-      
-      // Update component state to match actual status
-      setIsPersistenceEnabled(currentStatus.enabled);
-      setIsPasswordProtected(currentStatus.passwordProtected);
-      
-      // Check if database is locked (only matters if password protection is enabled)
-      if (currentStatus.enabled && currentStatus.passwordProtected) {
-        const secrets = secretManager.listSecrets();
-        setIsDatabaseLocked(secrets.length === 0);
-      } else {
-        setIsDatabaseLocked(false);
-      }
-      
-      // Dispatch event for persistence change with current status
-      console.log("Dispatching persistence change event:", currentStatus);
-      window.dispatchEvent(new CustomEvent('secret-persistence-change', {
-        detail: currentStatus
-      }));
-    } catch (err) {
-      console.error("Error saving persistence settings:", err);
-      setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      showToast(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
-    } finally {
-      setLoading(false);
-    }
   };
   
   // Handle view mode toggle
@@ -859,6 +408,35 @@ const Sidebar: React.FC<SidebarProps> = ({
                       
                       {expandedCategories[categoryKey] && (
                         <div className="mt-2 space-y-2 pl-2">
+                          {/* Show "Connect Platform" prompts for unconnected platforms in sources category */}
+                          {platformMode && (categoryKey === 'sources' || categoryKey === 'source') && unconnectedPlatforms.map(platform => (
+                            <button
+                              key={`connect-${platform}`}
+                              onClick={() => {
+                                setConnectDialogPlatform(platform);
+                                setConnectDialogOpen(true);
+                              }}
+                              className="w-full bg-stone-800/50 p-3 rounded-md border border-dashed border-stone-600 hover:border-amber-400 hover:bg-stone-800 transition-all text-left group"
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="w-8 h-8 rounded bg-stone-700 group-hover:bg-amber-500/20 flex items-center justify-center flex-shrink-0 transition-colors">
+                                  <PlatformIcon platform={platform} size="sm" className="text-stone-400 group-hover:text-amber-400 transition-colors" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-gray-300 group-hover:text-amber-300 transition-colors">
+                                    {getPlatformDisplayName(platform)}Source
+                                  </div>
+                                  <div className="text-xs text-gray-500 mt-0.5">
+                                    Connect to unlock this plugin
+                                  </div>
+                                </div>
+                                <svg className="w-4 h-4 text-stone-500 group-hover:text-amber-400 flex-shrink-0 mt-1 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                </svg>
+                              </div>
+                            </button>
+                          ))}
+                          
                           {filteredPlugins.map(plugin => (
                             <div
                               key={`${plugin.type}-${plugin.name}`}
@@ -868,7 +446,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                               title={plugin.description}
                             >
                               <div className="text-sm font-medium text-gray-300">{plugin.name}</div>
-                              <div className="text-xs text-gray-400 mt-1 line-clamp-2">{plugin.description}</div>
                             </div>
                           ))}
                         </div>
@@ -881,6 +458,23 @@ const Sidebar: React.FC<SidebarProps> = ({
           </>
         )}
       </div>
+      
+      {/* Connect Platform Dialog */}
+      {platformMode && (
+        <ConnectPlatformDialog
+          isOpen={connectDialogOpen}
+          onClose={() => {
+            setConnectDialogOpen(false);
+            setConnectDialogPlatform(undefined);
+            // Always refetch connections when dialog closes
+            // This handles webhook-based platforms (Telegram) where 
+            // connection happens asynchronously
+            refetchConnections();
+          }}
+          platform={connectDialogPlatform}
+          onConnected={handleConnectionSuccess}
+        />
+      )}
     </div>
   );
 
@@ -1174,18 +768,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         id="passwordProtect"
                         type="checkbox"
                         checked={isPasswordProtected}
-                    onChange={(e) => {
-                      // No confirmation dialog here - just update state
-                      setIsPasswordProtected(e.target.checked);
-                      // If toggling on password protection and we have a saved password, we need the old password
-                      if (e.target.checked && hasSavedPassword && (secretManager as any).persistence?.passwordProtected) {
-                        setIsChangingPassword(true);
-                      } 
-                      // If toggling on password protection with no saved password, we're creating a new password
-                      else if (e.target.checked && !hasSavedPassword) {
-                        setIsChangingPassword(false);
-                      }
-                    }}
+                    onChange={(e) => handlePasswordProtectedToggle(e.target.checked)}
                     disabled={loading || !isPersistenceEnabled}
                     className="rounded text-amber-500 focus:ring-amber-500 disabled:opacity-50 mr-2"
                     style={{ width: '16px', minWidth: '16px', height: '16px', minHeight: '16px' }}
@@ -1213,62 +796,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           Cancel
                         </button>
                         <button
-                          onClick={() => {
-                            setShowRemovePasswordConfirm(false);
-                            setIsPasswordProtected(false);
-                            // Create a function that will directly save without further confirmation
-                            const saveWithoutPasswordProtection = async () => {
-                              setLoading(true);
-                              setError(null);
-                              setSuccess(null);
-                              
-                              try {
-                                // Using the improved resetDatabase method to handle the database reset
-                                await (secretManager as any).resetDatabase();
-                                
-                                // Set up persistence options without password protection
-                                const persistenceOptions = {
-                                  passwordProtected: false,
-                                  clearExisting: true // Force clearing existing data
-                                };
-                                
-                                // Use the improved enablePersistence method
-                                await secretManager.enablePersistence(persistenceOptions);
-                                
-                                // Update session storage
-                                const settingsToSave = {
-                                  persistenceEnabled: true,
-                                  passwordProtected: false,
-                                  password: ''
-                                };
-                                sessionStorage.setItem('secretManagerSettings', JSON.stringify(settingsToSave));
-                                
-                                setHasSavedPassword(false);
-                                setSuccess('Password protection removed and encrypted data cleared');
-                                // Show warning about security implications
-                                showToast(
-                                  'Password protection removed. Secrets can now be viewed by anyone with access to this browser.',
-                                  'warning',
-                                  8000
-                                );
-                                
-                                // Clear all password fields
-                                setPassword('');
-                                setConfirmPassword('');
-                                setOldPassword('');
-                                setIsChangingPassword(false);
-                              } catch (err) {
-                                console.error("Error removing password protection:", err);
-                                setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
-                                showToast(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
-                              } finally {
-                                setLoading(false);
-                              }
-                            };
-                            
-                            // Execute the save function
-                            saveWithoutPasswordProtection();
-                          }}
+                          onClick={handleRemovePasswordConfirm}
                           className="px-3 py-1.5 bg-red-600 text-white text-xs rounded-md hover:bg-red-700"
                         >
                           Remove Protection & Delete Data
@@ -1279,7 +807,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 )}
                 
                 {/* Show the old password field when password protection is already enabled */}
-                {isPersistenceEnabled && isPasswordProtected && (((secretManager as any).persistence?.passwordProtected && hasSavedPassword) || isChangingPassword) && (
+                {isPersistenceEnabled && isPasswordProtected && ((secretManager.persistenceState?.passwordProtected && hasSavedPassword) || isChangingPassword) && (
                   <div className="mt-4">
                     <div className="mb-4">
                       <label htmlFor="old-password" className="block text-xs font-medium mb-1">

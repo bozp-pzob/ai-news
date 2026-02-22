@@ -1,26 +1,12 @@
 // frontend/src/context/AuthContext.tsx
-// @ts-nocheck - Privy types will be available after npm install
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+// @ts-ignore - Privy types resolved after npm install
 import { usePrivy, useLogout, User as PrivyUser } from '@privy-io/react-auth';
+import { API_BASE, type UserTier, type PlatformUser, userApi, ApiError } from '../services/api';
 
-/**
- * User tier in our system
- */
-export type UserTier = 'free' | 'paid' | 'admin';
-
-/**
- * Platform user (from our backend)
- */
-export interface PlatformUser {
-  id: string;
-  privyId: string;
-  email?: string;
-  walletAddress?: string;
-  tier: UserTier;
-  settings?: Record<string, any>;
-  createdAt: string;
-}
+// Re-export types for backward compatibility
+export type { UserTier, PlatformUser };
 
 /**
  * Auth context state
@@ -54,10 +40,7 @@ interface AuthContextState {
 
 const AuthContext = createContext<AuthContextState | undefined>(undefined);
 
-/**
- * API base URL
- */
-const API_BASE = process.env.REACT_APP_API_URL || '';
+
 
 /**
  * AuthProvider component
@@ -88,23 +71,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const fetchPlatformUser = useCallback(async (token: string): Promise<PlatformUser | null> => {
     try {
-      const response = await fetch(`${API_BASE}/api/v1/me`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          // Token invalid or expired
-          return null;
-        }
-        throw new Error(`Failed to fetch user: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return await userApi.getMe(token);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        // Token invalid or expired
+        return null;
+      }
       console.error('[AuthContext] Error fetching platform user:', err);
       return null;
     }
@@ -265,7 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Free users can only create 1 config (checked in backend, but we can hint here)
   const canCreateConfig = isPaidUser || isAdmin || isFreeUser;
 
-  const value: AuthContextState = {
+  const value: AuthContextState = useMemo(() => ({
     isPrivyReady: ready,
     isAuthenticated: authenticated,
     privyUser: privyUser || null,
@@ -281,7 +253,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isPaidUser,
     isAdmin,
     canCreateConfig
-  };
+  }), [
+    ready, authenticated, privyUser, user, isLoading, error, authToken,
+    login, logout, refreshUser, getAuthHeaders, isFreeUser, isPaidUser,
+    isAdmin, canCreateConfig
+  ]);
 
   return (
     <AuthContext.Provider value={value}>

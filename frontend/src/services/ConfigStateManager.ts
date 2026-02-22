@@ -1,6 +1,7 @@
 import { Config as ConfigType, PluginConfig, AggregationStatus } from '../types';
 import { Node, Connection, NodePort } from '../types/nodeTypes';
 import { createEventEmitter } from '../utils/eventEmitter';
+import { deepCopy } from '../utils/deepCopy';
 import { findNodeRecursive, syncNodePortsWithParams, cleanupStaleConnections } from '../utils/nodeHandlers';
 import { Config } from './Config';
 import { saveConfig } from '../services/api';
@@ -32,27 +33,6 @@ class ConfigStateManager {
   getConfig(): ConfigType {
     // Make sure the config is up-to-date with any node/connection changes
     this.syncConfigWithNodes();
-    
-    // Create a deep copy helper to ensure arrays are properly handled
-    const deepCopy = (obj: any): any => {
-      if (obj === null || obj === undefined) {
-        return obj;
-      }
-      
-      if (Array.isArray(obj)) {
-        return obj.map(item => deepCopy(item));
-      }
-      
-      if (typeof obj === 'object') {
-        const copy: any = {};
-        for (const key in obj) {
-          copy[key] = deepCopy(obj[key]);
-        }
-        return copy;
-      }
-      
-      return obj;
-    };
     
     // Return a deep copy to prevent direct reference modifications
     return deepCopy(this.configData.getData());
@@ -340,27 +320,6 @@ class ConfigStateManager {
   // Update a plugin's parameters
   updatePlugin(plugin: PluginConfig): boolean {
     try {
-      // Deep copy helper to ensure arrays are preserved
-      const deepCopy = (obj: any): any => {
-        if (obj === null || obj === undefined) {
-          return obj;
-        }
-        
-        if (Array.isArray(obj)) {
-          return obj.map(item => deepCopy(item));
-        }
-        
-        if (typeof obj === 'object') {
-          const copy: any = {};
-          for (const key in obj) {
-            copy[key] = deepCopy(obj[key]);
-          }
-          return copy;
-        }
-        
-        return obj;
-      };
-      
       // Make sure we have a plugin id
       if (!plugin.id) {
         console.error('Plugin has no ID');
@@ -808,28 +767,6 @@ class ConfigStateManager {
     // FIXED: Don't use JSON.parse(JSON.stringify()) as it doesn't handle array references correctly
     // const updatedConfig = JSON.parse(JSON.stringify(this.configData.getData()));
     
-    // Helper function to deep copy objects with proper array handling
-    const deepCopy = (obj: any): any => {
-      if (obj === null || obj === undefined) {
-        return obj;
-      }
-      
-      if (Array.isArray(obj)) {
-        return obj.map(item => deepCopy(item));
-      }
-      
-      if (typeof obj === 'object') {
-        const copy: any = {};
-        for (const key in obj) {
-          copy[key] = deepCopy(obj[key]);
-        }
-        return copy;
-      }
-      
-      return obj;
-    };
-    
-    // Use our deepCopy function instead of JSON.parse/stringify
     const updatedConfig = deepCopy(this.configData.getData());
     let hasChanges = false;
     

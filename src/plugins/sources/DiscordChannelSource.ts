@@ -1,11 +1,14 @@
 // src/plugins/sources/DiscordSource.ts
 
 import { ContentSource } from "./ContentSource";
-import { ContentItem, AiProvider } from "../../types";
+import { ContentItem, AiProvider, PlatformSourceConfig, isPlatformSourceConfig } from "../../types";
 import { Client, GatewayIntentBits, TextChannel, ChannelType } from "discord.js";
 import * as fs from 'fs';
 import * as path from 'path';
 import { StoragePlugin } from "../storage/StoragePlugin";
+import { externalConnectionService, discordAdapter } from '../../services/externalConnections';
+import { logger } from '../../helpers/cliHelper';
+import { createDiscordAnalysisPrompt, SUMMARIZE_OPTIONS } from '../../helpers/promptHelper';
 
 /**
  * Configuration interface for DiscordChannelSource.
@@ -20,27 +23,54 @@ interface DiscordChannelSourceConfig {
 }
 
 /**
+ * Unified config type for both self-hosted and platform modes
+ */
+type UnifiedDiscordChannelConfig = DiscordChannelSourceConfig | (PlatformSourceConfig & { provider?: AiProvider });
+
+/**
  * DiscordChannelSource class implements content fetching from Discord channels.
  * This source monitors specified Discord channels and generates summaries of conversations
  * using an AI provider. It maintains state to track processed messages and supports
  * both real-time and historical data fetching.
+ * 
+ * Supports two modes:
+ * 1. Self-hosted mode: Uses provided botToken directly (for CLI usage)
+ * 2. Platform mode: Uses shared bot via externalConnectionService (for multi-tenant platform)
  */
 export class DiscordChannelSource implements ContentSource {
   public name: string;
   public provider: AiProvider | undefined;
   public storage: StoragePlugin;
-  private botToken: string = '';
+  private botToken: string | null = null;
   private channelIds: string[];
-  private client: Client;
+  private client: Client | null = null;
+  /** Whether running in platform mode (multi-tenant) */
+  private isPlatformMode: boolean = false;
+  /** Connection ID for platform mode */
+  private connectionId: string | null = null;
+  /** Guild ID (resolved at runtime for platform mode) */
+  private guildId: string | null = null;
 
+  /** Platform type required for this source (used by frontend to filter available plugins) */
+  static requiresPlatform = 'discord';
+  
+  /** Hidden from UI - use unified DiscordSource with mode='summarized' instead */
+  static hidden = true;
+  
   static constructorInterface = {
     parameters: [
       {
         name: 'botToken',
         type: 'string',
-        required: true,
-        description: 'Discord bot token for authentication',
+        required: false,
+        description: 'Discord bot token for authentication (self-hosted mode)',
         secret: true
+      },
+      {
+        name: 'connectionId',
+        type: 'string',
+        required: false,
+        description: 'External connection ID (platform mode)'
       },
       {
         name: 'channelIds',
@@ -65,17 +95,78 @@ export class DiscordChannelSource implements ContentSource {
 
   /**
    * Creates a new instance of DiscordChannelSource.
+   * Supports both self-hosted and platform modes.
    * @param config - Configuration object containing bot token, channel IDs, and AI provider
    */
-  constructor(config: DiscordChannelSourceConfig) {
+  constructor(config: UnifiedDiscordChannelConfig) {
     this.name = config.name;
-    this.provider = config.provider;
     this.storage = config.storage;
-    this.botToken = config.botToken;
     this.channelIds = config.channelIds;
-    this.client = new Client({
-      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
-    });
+    this.provider = 'provider' in config ? config.provider : undefined;
+
+    // Check for platform mode by looking for connectionId
+    if (isPlatformSourceConfig(config)) {
+      // Platform mode - use shared bot service
+      this.isPlatformMode = true;
+      this.connectionId = config.connectionId;
+      this.guildId = config._externalId || null;
+      logger.info(`[DiscordChannelSource] Initialized in platform mode with connection ${config.connectionId}`);
+    } else if ('botToken' in config) {
+      // Self-hosted mode - use provided bot token
+      this.isPlatformMode = false;
+      this.botToken = config.botToken;
+      this.client = new Client({
+        intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+      });
+    } else {
+      throw new Error('DiscordChannelSource requires either botToken (self-hosted) or connectionId (platform mode)');
+    }
+  }
+
+  /**
+   * Get the Discord client, initializing if needed
+   */
+  private async getClient(): Promise<Client> {
+    if (this.isPlatformMode) {
+      return discordAdapter.getClient();
+    } else {
+      if (!this.client) {
+        throw new Error('Discord client not initialized');
+      }
+      if (!this.client.isReady() && this.botToken) {
+        await this.client.login(this.botToken);
+      }
+      return this.client;
+    }
+  }
+
+  /**
+   * Validate platform mode connection before fetching
+   */
+  private async validatePlatformConnection(): Promise<void> {
+    if (!this.isPlatformMode || !this.connectionId) {
+      return;
+    }
+
+    const connection = await externalConnectionService.getConnectionById(this.connectionId);
+    if (!connection) {
+      throw new Error(`Connection ${this.connectionId} not found`);
+    }
+
+    if (!connection.isActive) {
+      throw new Error(`Connection ${this.connectionId} is no longer active`);
+    }
+
+    this.guildId = connection.externalId;
+
+    const validation = await externalConnectionService.validateChannels(
+      this.connectionId,
+      this.channelIds
+    );
+
+    if (!validation.valid) {
+      throw new Error(`Some channels are not accessible: ${validation.invalidChannels.join(', ')}`);
+    }
   }
 
   /**
@@ -85,14 +176,16 @@ export class DiscordChannelSource implements ContentSource {
    * @returns Promise<ContentItem[]> Array of processed content items
    */
   public async fetchItems(): Promise<ContentItem[]> {
-    if (!this.client.isReady()) {
-      await this.client.login(this.botToken);
-    }
+    // Validate platform connection if in platform mode
+    await this.validatePlatformConnection();
+
+    // Get the client (handles login for self-hosted mode)
+    const client = await this.getClient();
 
     let discordResponse : any[] = [];
 
     for (const channelId of this.channelIds) {
-      const channel = await this.client.channels.fetch(channelId);
+      const channel = await client.channels.fetch(channelId);
 
       if (!channel || channel.type !== ChannelType.GuildText) {
         console.warn(`Channel ID ${channelId} is not a text channel or does not exist.`);
@@ -124,10 +217,10 @@ export class DiscordChannelSource implements ContentSource {
         transcript += `[${msg.author.username}]: ${msg.content}\n`;
       });
 
-      const prompt = this.formatStructuredPrompt(transcript);
+      const prompt = createDiscordAnalysisPrompt(transcript);
 
       if ( this.provider ) {
-        const summary = await this.provider.summarize(prompt);
+        const summary = await this.provider.summarize(prompt, SUMMARIZE_OPTIONS.discordAnalysis);
   
         discordResponse.push({
           type: "discordChannelSummary",
@@ -163,15 +256,17 @@ export class DiscordChannelSource implements ContentSource {
    * @returns Promise<ContentItem[]> Array of processed historical content items
    */
   public async fetchHistorical(date: string): Promise<ContentItem[]> {
-    if (!this.client.isReady()) {
-      await this.client.login(this.botToken);
-    }
+    // Validate platform connection if in platform mode
+    await this.validatePlatformConnection();
+
+    // Get the client (handles login for self-hosted mode)
+    const client = await this.getClient();
 
     const cutoffTimestamp = new Date(date).getTime();
     let discordResponse: ContentItem[] = [];
 
     for (const channelId of this.channelIds) {
-      const channel = await this.client.channels.fetch(channelId);
+      const channel = await client.channels.fetch(channelId);
       if (!channel || channel.type !== ChannelType.GuildText) {
         console.warn(`Channel ID ${channelId} is not a text channel or does not exist.`);
         continue;
@@ -220,10 +315,10 @@ export class DiscordChannelSource implements ContentSource {
         transcript += `[${msg.author.username}]: ${msg.content}\n`;
       });
 
-      const prompt = this.formatStructuredPrompt(transcript);
+      const prompt = createDiscordAnalysisPrompt(transcript);
 
       if (this.provider) {
-        const summary = await this.provider.summarize(prompt);
+        const summary = await this.provider.summarize(prompt, SUMMARIZE_OPTIONS.discordAnalysis);
         discordResponse.push({
           type: "discordChannelHistoricalSummary",
           cid: `${channelId}-historical-${date}`,
@@ -252,38 +347,12 @@ export class DiscordChannelSource implements ContentSource {
    * @returns string Formatted prompt for AI processing
    * @private
    */
+  /**
+   * Format prompt for Discord channel analysis.
+   * Now delegates to the centralized createDiscordAnalysisPrompt in promptHelper.ts.
+   * @deprecated Use createDiscordAnalysisPrompt directly instead
+   */
   private formatStructuredPrompt(transcript: string): string {
-    return `Analyze this Discord chat segment and provide a succinct analysis:
-            
-1. Summary (max 500 words):
-- Focus ONLY on the most important technical discussions, decisions, and problem-solving
-- Highlight concrete solutions and implementations
-- Be specific and VERY concise
-
-2. FAQ (max 20 questions):
-- Only include the most significant questions that got meaningful responses
-- Focus on unique questions, skip similar or rhetorical questions
-- Include who asked the question and who answered
-- Use the exact Discord username from the chat
-
-3. Help Interactions (max 10):
-- List the significant instances where community members helped each other.
-- Be specific and concise about what kind of help was given
-- Include context about the problem that was solved
-- Mention if the help was successful
-
-4. Action Items (max 20 total):
-- Technical Tasks: Critical development tasks only
-- Documentation Needs: Essential doc updates only
-- Feature Requests: Major feature suggestions only
-
-For each action item, include:
-- Clear description
-- Who mentioned it
-
-Chat transcript:
-${transcript}
-
-Return the analysis in the specified structured format. Be specific about technical content and avoid duplicating information.`;
+    return createDiscordAnalysisPrompt(transcript);
   }
 }

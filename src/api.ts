@@ -3,11 +3,17 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import http from 'http';
 import path from 'path';
+import crypto from 'crypto';
 import { ConfigService, Config } from './services/configService';
 import { AggregatorService } from './services/aggregatorService';
 import { PluginService } from './services/pluginService';
 import { WebSocketService } from './services/websocketService';
 import { databaseService } from './services/databaseService';
+import { externalConnectionService } from './services/externalConnections';
+import { jobService } from './services/jobService';
+import { userService } from './services/userService';
+import { licenseService } from './services/licenseService';
+import { cronService } from './services/cronService';
 import v1Routes from './routes/v1';
 
 // Import pop402 payment middleware
@@ -86,7 +92,7 @@ app.use('/api/v1', v1Routes);
 
 // Initialize services
 const configService = new ConfigService();
-const aggregatorService = new AggregatorService();
+const aggregatorService = AggregatorService.getInstance();
 const pluginService = new PluginService();
 
 // Initialize WebSocket service
@@ -223,7 +229,8 @@ app.get('/status/:configName', (req, res) => {
 
 // GET /job/:jobId - Get status of a specific job
 app.get('/job/:jobId', (req, res) => {
-  const jobStatus = aggregatorService.getJobStatus(req.params.jobId);
+  const jobId = req.params.jobId;
+  const jobStatus = aggregatorService.getJobStatus(jobId);
   
   if (!jobStatus) {
     res.status(404).json({ error: 'Job not found' });
@@ -276,13 +283,46 @@ app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
 });
 
+// Local server key for encrypted config execution
+// The key is generated once on startup (or loaded from env) and used to decrypt
+// configs sent from the hosted UI via the relay endpoint.
+let _localServerKey: string | null = null;
+
+export function getLocalServerKey(): string | null {
+  return _localServerKey;
+}
+
 // Initialize database and start server
 async function start() {
   try {
+    // Generate or load local server key for encrypted config execution
+    _localServerKey = process.env.LOCAL_SERVER_KEY || crypto.randomBytes(32).toString('base64');
+    if (!process.env.LOCAL_SERVER_KEY) {
+      console.log('');
+      console.log('  Local Server Key (paste this into the platform UI):');
+      console.log(`  ${_localServerKey}`);
+      console.log('');
+      console.log('  Set LOCAL_SERVER_KEY env var to use a fixed key.');
+      console.log('');
+    } else {
+      console.log('Local server key loaded from LOCAL_SERVER_KEY env var');
+    }
+
     // Initialize platform database if DATABASE_URL is set
     if (process.env.DATABASE_URL) {
       await databaseService.initPlatformDatabase();
       console.log('Platform database initialized');
+      
+      // Initialize external connection service (Discord bot, Telegram bot, etc.)
+      // This starts the bots so they can receive events
+      await externalConnectionService.initialize();
+      console.log('External connection service initialized');
+      
+      // Resume running continuous jobs
+      await resumeRunningJobs();
+      
+      // Start cron jobs (job pruning, pro validation)
+      cronService.startCronJobs();
     }
 
     // Start the server
@@ -297,11 +337,143 @@ async function start() {
   }
 }
 
+/**
+ * Resume running continuous jobs on server startup
+ * Also validates that users still have pro licenses
+ */
+async function resumeRunningJobs() {
+  try {
+    const runningJobs = await jobService.getRunningJobs();
+    console.log(`[Startup] Found ${runningJobs.length} running jobs to process`);
+    
+    for (const job of runningJobs) {
+      if (job.jobType === 'continuous') {
+        // Verify user still has pro license
+        let hasProLicense = false;
+        
+        try {
+          const user = await userService.getUserById(job.userId);
+          if (user?.tier === 'admin') {
+            hasProLicense = true;
+          } else if (user?.walletAddress) {
+            const license = await licenseService.verifyLicense(user.walletAddress);
+            hasProLicense = license.isActive;
+          }
+        } catch (error) {
+          console.error(`[Startup] Error checking user ${job.userId}:`, error);
+        }
+        
+        if (!hasProLicense) {
+          // User lost pro, stop the continuous job
+          console.log(`[Startup] User ${job.userId} no longer has pro license, cancelling job ${job.id}`);
+          await jobService.cancelJob(job.id);
+          await jobService.addJobLog(job.id, 'warn', 'Continuous job cancelled - Pro license no longer active');
+          continue;
+        }
+        
+        // Resume the continuous job
+        console.log(`[Startup] Resuming continuous job ${job.id} for config ${job.configId}`);
+        
+        try {
+          // Load config and secrets
+          const config = await userService.getConfigById(job.configId);
+          if (!config) {
+            console.error(`[Startup] Config ${job.configId} not found for job ${job.id}`);
+            await jobService.failJob(job.id, 'Config not found during resume');
+            continue;
+          }
+          
+          const secrets = await userService.getConfigSecrets(job.configId) || {};
+          let configJson = config.configJson as any;
+
+          // Inject platform credentials (same logic as the continuous run route handler)
+          // Without this, resumed jobs lack configId for multi-tenant storage and AI keys
+          const user = await userService.getUserById(job.userId);
+          const isAdmin = user?.tier === 'admin';
+
+          // Inject platform AI credentials
+          const usesPlatformAI = configJson.ai?.some((ai: any) => ai.params?.usePlatformAI === true);
+          if (isAdmin || usesPlatformAI) {
+            const model = process.env.PRO_TIER_AI_MODEL || 'openai/gpt-4o';
+            const platformApiKey = process.env.OPENAI_API_KEY;
+            const siteUrl = process.env.SITE_URL || '';
+            const siteName = process.env.SITE_NAME || '';
+
+            configJson.ai = configJson.ai?.map((ai: any) => {
+              if (ai.params?.usePlatformAI || isAdmin) {
+                return {
+                  ...ai,
+                  params: {
+                    ...ai.params,
+                    model,
+                    apiKey: platformApiKey,
+                    useOpenRouter: true,
+                    siteUrl,
+                    siteName,
+                  }
+                };
+              }
+              return ai;
+            }) || [];
+          }
+
+          // Inject platform storage credentials (configId for multi-tenant isolation)
+          const usesPlatformStorage = configJson.storage?.some((s: any) => s.params?.usePlatformStorage === true);
+          if (config.storageType === 'platform' || isAdmin || usesPlatformStorage) {
+            const platformDbUrl = process.env.DATABASE_URL;
+            configJson.storage = configJson.storage?.map((storage: any) => {
+              if (storage.params?.usePlatformStorage || config.storageType === 'platform' || isAdmin) {
+                return {
+                  ...storage,
+                  params: {
+                    ...storage.params,
+                    configId: job.configId,
+                    connectionString: platformDbUrl,
+                  }
+                };
+              }
+              return storage;
+            }) || [];
+          }
+          
+          // Start the continuous job (using existing job ID)
+          await aggregatorService.startContinuousJob(
+            job.configId,
+            job.userId,
+            config.name,
+            configJson,
+            { runOnce: false },
+            secrets,
+            job.globalInterval,
+            job.id // Pass existing job ID to resume
+          );
+          
+          await jobService.addJobLog(job.id, 'info', 'Continuous job resumed after server restart');
+          console.log(`[Startup] Successfully resumed job ${job.id}`);
+        } catch (error) {
+          console.error(`[Startup] Error resuming job ${job.id}:`, error);
+          await jobService.failJob(job.id, `Failed to resume after restart: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      } else {
+        // One-time job was interrupted - mark as failed
+        console.log(`[Startup] Marking interrupted one-time job ${job.id} as failed`);
+        await jobService.failJob(job.id, 'Server restarted during execution');
+      }
+    }
+    
+    console.log('[Startup] Finished processing running jobs');
+  } catch (error) {
+    console.error('[Startup] Error resuming running jobs:', error);
+  }
+}
+
 start();
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down...');
+  cronService.stopCronJobs();
+  await externalConnectionService.shutdown();
   await databaseService.closeAllConnections();
   server.close(() => {
     console.log('Server closed');

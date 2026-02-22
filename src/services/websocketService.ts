@@ -186,7 +186,7 @@ export class WebSocketService {
 
   private async sendJobStatusToClient(ws: WebSocket, jobId: string): Promise<void> {
     try {
-      const jobStatus = this.aggregatorService.getJobStatus(jobId);
+      const jobStatus = await this.aggregatorService.getJobStatus(jobId);
       if (jobStatus) {
         // Sanitize the job status before sending
         const sanitizedJobStatus = this.sanitizeJobStatus(jobStatus);
@@ -251,8 +251,8 @@ export class WebSocketService {
     this.sendStatusToClients(configName, status);
   }
 
-  public broadcastJobStatus(jobId: string): void {
-    const jobStatus = this.aggregatorService.getJobStatus(jobId);
+  public async broadcastJobStatus(jobId: string): Promise<void> {
+    const jobStatus = await this.aggregatorService.getJobStatus(jobId);
     if (jobStatus) {
       this.sendJobStatusToClients(jobId, jobStatus);
     }

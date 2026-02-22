@@ -4,31 +4,26 @@ import { PluginParamDialog } from './PluginParamDialog';
 import { drawNode, drawGrid, drawConnection, drawConnectionLine } from '../utils/nodeRenderer';
 import { findPortAtCoordinates, isPointInNode, removeNodeConnection, handleNodeConnection, findNodeAtCoordinates, findNodeRecursive, isPointInCollapseButton, syncNodePortsWithParams, cleanupStaleConnections } from '../utils/nodeHandlers';
 import { Node, Connection, PortInfo } from '../types/nodeTypes';
+import { deepCopy } from '../utils/deepCopy';
 import { configStateManager } from '../services/ConfigStateManager';
 import { pluginRegistry } from '../services/PluginRegistry';
 import { dependencyResolver, DependencyAnalysis, AutoAddResult } from '../services/DependencyResolver';
 import { animateCenterView } from '../utils/animation/centerViewAnimation';
-import { getConfig, configApi } from '../services/api';
+import { getConfig, configApi, runApi, runsApi, API_BASE } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { websocketService } from '../services/websocket';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { JobStatusDisplay } from './JobStatusDisplay';
 import { useToast } from './ToastProvider';
-import ReactDOM from 'react-dom';
 import { secretManager } from '../services/SecretManager';
 import { ConfigJsonEditor } from './ConfigJsonEditor';
+import { useRunOptions } from '../hooks/useRunOptions';
+import { useJobStatus } from '../hooks/useJobStatus';
+import { RunControls } from './RunControls';
 
 // Add type constants to represent the pipeline flow steps
 const PIPELINE_STEPS = ['sources', 'enrichers', 'generators'] as const;
 type PipelineStep = typeof PIPELINE_STEPS[number];
-
-// Add type for historical date settings
-interface HistoricalDateSettings {
-  enabled: boolean;
-  mode?: "single" | "range";
-  startDate?: string;
-  endDate?: string;
-}
 
 // Update the NodeGraphProps interface to include hasUnsavedChanges
 interface NodeGraphProps {
@@ -76,29 +71,28 @@ export const NodeGraph = forwardRef<
   const [draggedPlugin, setDraggedPlugin] = useState<PluginInfo | null>(null);
   const [dragPosition, setDragPosition] = useState<{ x: number, y: number } | null>(null);
   const [showPipelineFlow, setShowPipelineFlow] = useState(true);
-  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
-  // Add state to track if the job status display was manually closed by the user
-  const [jobStatusDisplayClosed, setJobStatusDisplayClosed] = useState(false);
-  // Add isAggregationRunning state to the component
-  const [isAggregationRunning, setIsAggregationRunning] = useState(false);
-  // Before the [showPipelineFlow, setShowPipelineFlow] state declaration, add:
-  const [isRunOnceJob, setIsRunOnceJob] = useState(false);
-  // Add new state for toggles
-  const [onlyFetch, setOnlyFetch] = useState(false);
-  const [onlyGenerate, setOnlyGenerate] = useState(false);
-  // Add state for run mode selection
-  const [selectedRunMode, setSelectedRunMode] = useState<"once" | "continuous">("once");
-  // Add state for run options dropdown
-  const [showRunOptions, setShowRunOptions] = useState(false);
-  const [showRunOptionsDropdown, setShowRunOptionsDropdown] = useState(false);
-  // Add state to track settings button position
-  const [settingsButtonPosition, setSettingsButtonPosition] = useState<{top: number; right: number; bottom: number; left: number} | null>(null);
-  // Add state for historical date options
-  const [useHistoricalDates, setUseHistoricalDates] = useState(false);
-  const [dateRangeMode, setDateRangeMode] = useState<"single" | "range">("single");
-  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  // Job status state (extracted to hook)
+  const jobState = useJobStatus();
+  const {
+    currentJobId, setCurrentJobId,
+    jobStatus, setJobStatus,
+    jobStatusDisplayClosed, setJobStatusDisplayClosed,
+    isAggregationRunning, setIsAggregationRunning,
+    isRunOnceJob, setIsRunOnceJob,
+    currentJobIdRef, jobTypesRef, completedJobsRef,
+    resetForNewRun, startJob, markCompleted,
+  } = jobState;
+
+  // Run options state (extracted to hook)
+  const runOptions = useRunOptions();
+  const {
+    onlyFetch, onlyGenerate,
+    selectedRunMode, setSelectedRunMode,
+    useHistoricalDates,
+    dateRangeMode,
+    startDate, endDate,
+  } = runOptions;
   // State for auto-add dependencies feature
   const [pendingDependencyAnalysis, setPendingDependencyAnalysis] = useState<DependencyAnalysis | null>(null);
   const [pendingAutoAddResult, setPendingAutoAddResult] = useState<AutoAddResult | null>(null);
@@ -107,9 +101,6 @@ export const NodeGraph = forwardRef<
   const preventConfigUpdateLoopRef = useRef(false);
   // Add a ref to track the previous config name to prevent reloading the same config
   const prevConfigNameRef = useRef<string | null>(null);
-  // After the other useRef declarations, add:
-  const jobTypesRef = useRef<Map<string, boolean>>(new Map()); // Maps jobId -> isRunOnce
-
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const backBufferRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -143,7 +134,6 @@ export const NodeGraph = forwardRef<
 
   // Create a reusable function for processing job status updates
   const createJobStatusHandler = useCallback((jobId: string) => (status: JobStatus) => {
-    
     // Check if this is a stale update by comparing timestamps with current job status
     if (jobStatus && jobStatus.jobId === status.jobId) {
       // If we have a newer update already, ignore this one
@@ -162,6 +152,10 @@ export const NodeGraph = forwardRef<
     const isJobRunOnce = jobTypesRef.current.has(jobId) 
       ? jobTypesRef.current.get(jobId)
       : isRunOnceJob;
+    
+    // Check if this job has already completed (run-once jobs only)
+    // This prevents stale 'running' status updates from reverting the UI state
+    const jobAlreadyCompleted = completedJobsRef.current.has(jobId);
     
     // For continuous jobs, special handling
     if (status.status === 'running') {
@@ -201,10 +195,12 @@ export const NodeGraph = forwardRef<
     
     // Update aggregation running state based on job status
     if (status.status === 'failed') {
+      completedJobsRef.current.add(jobId); // Mark as completed to prevent future running updates
       setIsAggregationRunning(false);
     } else if (status.status === 'completed') {
       // For run-once jobs, mark as no longer running when completed
       if (isJobRunOnce) {
+        completedJobsRef.current.add(jobId); // Mark as completed to prevent future running updates
         setIsAggregationRunning(false);
         // Don't set jobStatus to null - let the component display the completed state
       } else {
@@ -212,7 +208,11 @@ export const NodeGraph = forwardRef<
         setIsAggregationRunning(true);
       }
     } else if (status.status === 'running') {
-      setIsAggregationRunning(true);
+      // Only set to running if this job hasn't already completed
+      // This prevents stale WebSocket updates from reverting the state
+      if (!jobAlreadyCompleted) {
+        setIsAggregationRunning(true);
+      }
     }
     
     // Keep the isRunOnceJob state in sync with the current job
@@ -221,15 +221,21 @@ export const NodeGraph = forwardRef<
     }
   }, [isRunOnceJob, currentJobId, jobStatus]);
 
-  // Effect to listen for job status updates
+  // Store the latest createJobStatusHandler in a ref so the listener always has access to it
+  const createJobStatusHandlerRef = useRef(createJobStatusHandler);
   useEffect(() => {
-    // Create a function to handle any job status updates globally
+    createJobStatusHandlerRef.current = createJobStatusHandler;
+  }, [createJobStatusHandler]);
+
+  // Effect to listen for job status updates - only runs once on mount
+  useEffect(() => {
+    // Create a STABLE function that doesn't change - it accesses the latest handler via ref
     const globalJobStatusHandler = (status: JobStatus) => {
-      
       // Compare the current job ID with the incoming status
-      if (currentJobId && status.jobId === currentJobId) {
-        // Use our shared processor function
-        createJobStatusHandler(status.jobId)(status);
+      // Use ref for immediate access to avoid React state async timing issues
+      if (currentJobIdRef.current && status.jobId === currentJobIdRef.current) {
+        // Use the latest handler via ref
+        createJobStatusHandlerRef.current(status.jobId)(status);
       }
     };
     
@@ -238,7 +244,9 @@ export const NodeGraph = forwardRef<
     
     // Set up job started listener
     const handleJobStarted = (jobId: string) => {
+      currentJobIdRef.current = jobId; // Update ref immediately
       setCurrentJobId(jobId);
+      completedJobsRef.current.clear(); // Clear completed jobs tracking for new job
       
       // For newly started jobs, check if we have config.runOnce information to determine type
       // Default to the current state if we don't know
@@ -250,7 +258,9 @@ export const NodeGraph = forwardRef<
         setIsRunOnceJob(currentConfig.runOnce);
       } else if (!jobTypesRef.current.has(jobId)) {
         // If we don't have the jobType set yet, use the current state as default
-        jobTypesRef.current.set(jobId, isRunOnceJob);
+        // Note: isRunOnceJob might be stale here, but jobTypesRef should be set correctly
+        // by handleRunAggregation before this is called
+        jobTypesRef.current.set(jobId, true); // Default to run-once if unknown
       }
       
       // Connect to the job's WebSocket for status updates
@@ -260,12 +270,12 @@ export const NodeGraph = forwardRef<
     // Add job started listener
     websocketService.addJobStartedListener(handleJobStarted);
     
-    // Clean up on unmount
+    // Clean up on unmount only
     return () => {
       websocketService.removeJobStartedListener(handleJobStarted);
       websocketService.removeJobStatusListener(globalJobStatusHandler);
     };
-  }, [currentJobId, isRunOnceJob, createJobStatusHandler]);
+  }, []); // Empty dependency array - listener is stable and accesses latest via refs
 
   // Load plugins when component mounts
   useEffect(() => {
@@ -1121,7 +1131,7 @@ export const NodeGraph = forwardRef<
     ctx.restore();
   }, [nodes, connections, selectedNode, scale, offset, hoveredPort, connectingFrom, mousePosition, draggedPlugin, dragPosition, onlyFetch, onlyGenerate]);
 
-  // Update the dependency array of useEffect to prevent any circular dependencies
+  // Redraw when draw functions change (avoids isAnimatingRef in deps - refs don't trigger re-renders)
   useEffect(() => {
     // Skip redrawing during animation to prevent interference
     if (isAnimatingRef.current) {
@@ -1131,7 +1141,7 @@ export const NodeGraph = forwardRef<
     // Use our double buffer technique
     drawToBackBuffer();
     drawToScreen();
-  }, [drawToBackBuffer, drawToScreen, isAnimatingRef]);
+  }, [drawToBackBuffer, drawToScreen]);
 
   // Add a forceRedraw function using useCallback to clear and redraw the canvas
   const forceRedraw = useCallback(() => {
@@ -1673,27 +1683,6 @@ export const NodeGraph = forwardRef<
 
   // Handle adding/editing a plugin
   const handleAddPlugin = async (updatedPlugin: any) => {
-    // Deep copy helper to ensure arrays are preserved
-    const deepCopy = (obj: any): any => {
-      if (obj === null || obj === undefined) {
-        return obj;
-      }
-      
-      if (Array.isArray(obj)) {
-        return obj.map(item => deepCopy(item));
-      }
-      
-      if (typeof obj === 'object') {
-        const copy: any = {};
-        for (const key in obj) {
-          copy[key] = deepCopy(obj[key]);
-        }
-        return copy;
-      }
-      
-      return obj;
-    };
-    
     // Create a true deep copy of the updated plugin
     const pluginCopy = deepCopy(updatedPlugin);
     
@@ -2129,20 +2118,13 @@ export const NodeGraph = forwardRef<
     return () => {};
   }, [showPluginDialog, selectedPlugin]);
 
-  // Add an effect to force redraw when nodes change, particularly when their status changes
+  // Force redraw when nodes change (e.g., status updates)
   useEffect(() => {
-    // This effect should trigger whenever nodes change, especially their status
-    if (nodes.length > 0) {
-      // Check if any node has a status
-      const hasStatusNodes = nodes.some(node => node.status !== undefined && node.status !== null);
-      
-      // Force redraw on the next frame
-      if (canvasRef.current) {
-        requestAnimationFrame(() => {
-          drawToBackBuffer();
-          drawToScreen();
-        });
-      }
+    if (nodes.length > 0 && canvasRef.current) {
+      requestAnimationFrame(() => {
+        drawToBackBuffer();
+        drawToScreen();
+      });
     }
   }, [nodes, drawToBackBuffer, drawToScreen]);
 
@@ -2154,12 +2136,8 @@ export const NodeGraph = forwardRef<
     }
     
     try {
-      // Reset the job status display closed state when starting a new job
-      setJobStatusDisplayClosed(false);
-      
-      // Clear the old job status before starting a new job
-      setJobStatus(null);
-      setCurrentJobId(null);
+      // Reset all job state for a fresh run
+      resetForNewRun();
       
       // Make sure websocket is disconnected to avoid stale data
       websocketService.disconnect();
@@ -2211,7 +2189,7 @@ export const NodeGraph = forwardRef<
         const { config: cleanConfig, secrets } = await secretManager.extractSecretsForBackend(currentConfig);
         
         // Make a direct REST API call to run the aggregation
-        const response = await fetch(`/aggregate`, {
+        const response = await fetch(`${API_BASE}/aggregate`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -2232,16 +2210,70 @@ export const NodeGraph = forwardRef<
       }
       
       // Set the current job ID and mark this as a run-once job
-      setCurrentJobId(jobId);
-      setIsRunOnceJob(true);
-      jobTypesRef.current.set(jobId, true); // true = is run once
+      // startJob updates refs BEFORE state to avoid race conditions
+      startJob(jobId, true);
+      
+      // Set an initial job status immediately so the panel shows right away
+      const initialJobStatus: JobStatus = {
+        jobId,
+        configName: config.name,
+        startTime: Date.now(),
+        status: 'running',
+        progress: 0,
+        aggregationStatus: {
+          currentPhase: 'connecting',
+          stats: {
+            totalItemsFetched: 0,
+            itemsPerSource: {}
+          }
+        }
+      };
+      setJobStatus(initialJobStatus);
       
       // Connect to the job's WebSocket for status updates
       websocketService.disconnect();
       websocketService.connectToJob(jobId);
       
-      // Set aggregation as running immediately
-      setIsAggregationRunning(true);
+      // Poll for job status updates - this provides real-time updates
+      // regardless of WebSocket connectivity
+      const pollForStatus = async () => {
+        const maxPolls = 300; // Poll for up to 5 minutes
+        let pollCount = 0;
+        
+        const poll = async () => {
+          pollCount++;
+          if (pollCount > maxPolls) return;
+          
+          // Check if job is still the current one
+          if (currentJobIdRef.current !== jobId) return;
+          
+          // Check if already marked as completed
+          if (completedJobsRef.current.has(jobId)) return;
+          
+          try {
+            const status = await runApi.getJobStatus(jobId);
+            
+            // Always update the job status to show real-time progress
+            setJobStatus(status);
+            
+            if (status.status === 'completed' || status.status === 'failed') {
+              // Job finished - update UI
+              markCompleted(jobId);
+              return;
+            }
+          } catch (e) {
+            // Job might not exist anymore or network error - ignore and continue polling
+          }
+          
+          // Continue polling - faster while running for real-time feel
+          setTimeout(poll, 500);
+        };
+        
+        // Start polling immediately
+        setTimeout(poll, 500);
+      };
+      
+      pollForStatus();
     } catch (error) {
       console.error("Failed to run aggregation:", error);
       showToast(error instanceof Error ? error.message : "Failed to run aggregation. Please try again.", 'error');
@@ -2258,10 +2290,12 @@ export const NodeGraph = forwardRef<
     try {
       // If aggregation is already running, stop it
       if (isAggregationRunning) {
-        // If we have a current job ID, use that to stop the job
-        if (currentJobId) {
-          // Stop the job directly using the job ID
-          const response = await fetch(`http://localhost:3000/job/${currentJobId}/stop`, {
+        if (platformMode && platformConfigId && authToken) {
+          // Platform mode: Use v1 API to stop continuous job
+          await runsApi.stopContinuous(authToken, platformConfigId);
+        } else if (currentJobId) {
+          // Local mode: Stop the job directly using the job ID
+          const response = await fetch(`${API_BASE}/job/${currentJobId}/stop`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -2271,13 +2305,9 @@ export const NodeGraph = forwardRef<
           if (!response.ok) {
             throw new Error('Failed to stop job');
           }
-          
-          // Clear job-related state after stopping
-          setCurrentJobId(null);
-          setJobStatus(null);
         } else {
           // Fall back to the old method if we don't have a job ID for some reason
-          const response = await fetch(`http://localhost:3000/aggregate/${config.name}/stop`, {
+          const response = await fetch(`${API_BASE}/aggregate/${config.name}/stop`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -2287,9 +2317,12 @@ export const NodeGraph = forwardRef<
           if (!response.ok) {
             throw new Error('Failed to stop aggregation');
           }
-          
         }
         
+        // Clear job-related state after stopping
+        currentJobIdRef.current = null;
+        setCurrentJobId(null);
+        setJobStatus(null);
         setIsAggregationRunning(false);
         return;
       }
@@ -2303,28 +2336,8 @@ export const NodeGraph = forwardRef<
       }
       
       // This is for starting a CONTINUOUS job
-      // Get the latest config from the state manager
-      const currentConfig = configStateManager.getConfig();
-      currentConfig.runOnce = false;
-      
-      // Set onlyFetch and onlyGenerate settings
-      if (!currentConfig.settings) {
-        currentConfig.settings = { runOnce: false, onlyFetch: false };
-      }
-      currentConfig.settings.onlyFetch = onlyFetch;
-      currentConfig.settings.onlyGenerate = onlyGenerate;
-      
-      // Clear historical date settings for continuous jobs
-      currentConfig.settings.historicalDate = {
-        enabled: false
-      };
-      
-      // Reset the job status display closed state when starting a new continuous job
-      setJobStatusDisplayClosed(false);
-      
-      // Clear the old job status before starting a new job
-      setJobStatus(null);
-      setCurrentJobId(null);
+      // Reset all job state for a fresh continuous run
+      resetForNewRun();
       
       // Make sure websocket is disconnected to avoid stale data
       websocketService.disconnect();
@@ -2337,35 +2350,55 @@ export const NodeGraph = forwardRef<
         }
       }
       
-      // Extract secrets from the configuration instead of replacing them directly
-      // This keeps references like "process.env.API_KEY" in the config but sends the actual values separately
-      const { config: cleanConfig, secrets } = await secretManager.extractSecretsForBackend(currentConfig);
+      let jobId: string;
       
-      // Start the aggregation
-      const response = await fetch(`http://localhost:3000/aggregate/${config.name}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          config: cleanConfig,
-          secrets: secrets // Pass secrets as a separate object
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to start aggregation');
+      if (platformMode && platformConfigId && authToken) {
+        // Platform mode: Use v1 API which handles configId injection for storage
+        const result = await runsApi.runContinuous(authToken, platformConfigId);
+        jobId = result.jobId;
+      } else {
+        // Local mode: Use legacy /aggregate endpoint with full config
+        const currentConfig = configStateManager.getConfig();
+        currentConfig.runOnce = false;
+        
+        // Set onlyFetch and onlyGenerate settings
+        if (!currentConfig.settings) {
+          currentConfig.settings = { runOnce: false, onlyFetch: false };
+        }
+        currentConfig.settings.onlyFetch = onlyFetch;
+        currentConfig.settings.onlyGenerate = onlyGenerate;
+        
+        // Clear historical date settings for continuous jobs
+        currentConfig.settings.historicalDate = {
+          enabled: false
+        };
+        
+        // Extract secrets from the configuration instead of replacing them directly
+        const { config: cleanConfig, secrets } = await secretManager.extractSecretsForBackend(currentConfig);
+        
+        // Start the aggregation
+        const response = await fetch(`${API_BASE}/aggregate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            config: cleanConfig,
+            secrets: secrets
+          }),
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to start aggregation');
+        }
+        
+        const result = await response.json();
+        jobId = result.jobId;
       }
       
-      // Parse the response to get the job ID
-      const result = await response.json();
-      const jobId = result.jobId;
-      
       // Set the current job ID and mark as continuous
-      setCurrentJobId(jobId);
-      setIsRunOnceJob(false);
-      jobTypesRef.current.set(jobId, false); // false = continuous job
-      
+      // startJob updates refs BEFORE state to avoid race conditions
+      startJob(jobId, false);
       
       // Connect to the job's WebSocket for status updates
       websocketService.disconnect();
@@ -2398,14 +2431,16 @@ export const NodeGraph = forwardRef<
   // Add effect to make sure job status is cleared when config changes
   useEffect(() => {
     // Reset job-related state when config changes
+    currentJobIdRef.current = null;
     setCurrentJobId(null);
     setJobStatus(null);
     setIsAggregationRunning(false);
     setIsRunOnceJob(false);
     setJobStatusDisplayClosed(false);
     
-    // Clear the job types map
+    // Clear the job types map and completed jobs tracking
     jobTypesRef.current.clear();
+    completedJobsRef.current.clear();
     
     // Clean up previous job status listeners
     if (jobStatusCleanupRef.current) {
@@ -2504,324 +2539,13 @@ export const NodeGraph = forwardRef<
           )}
         </div>
         <div className="absolute top-4 right-4 z-10 flex space-x-2">
-          {/* Completely redesigned run control panel */}
-          <div className="flex items-center space-x-1.5">
-            <div className="relative">
-              {isAggregationRunning ? (
-                <button
-                  onClick={handleToggleAggregation}
-                  className="h-10 px-4 rounded-md bg-stone-800 border border-red-500/70 text-white hover:bg-stone-700 hover:border-red-500 focus:outline-none flex items-center justify-center transition-colors duration-200 shadow-md"
-                  title="Stop aggregation"
-                >
-                  <span className="flex items-center">
-                    <span className="relative flex h-2.5 w-2.5 mr-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                    </span>
-                    <span className="font-medium">Stop</span>
-                  </span>
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  {/* Run control panel with toggle switch */}
-                  <div className="flex items-center bg-stone-800/90 border-stone-600/50 rounded-md shadow-md overflow-hidden border">
-                    {/* Mode toggle switch - removed from here */}
-                    
-                    {/* Run button */}
-                    <button
-                      onClick={() => {
-                        // Always use handleRunAggregation with historical data
-                        if (useHistoricalDates || selectedRunMode === "once") {
-                          handleRunAggregation();
-                        } else {
-                          handleToggleAggregation();
-                        }
-                      }}
-                      className={`
-                        h-10 px-4 focus:outline-none flex items-center justify-center transition-colors duration-200
-                        ${useHistoricalDates 
-                          ? "bg-stone-800 text-purple-300 hover:bg-stone-700 border-l border-purple-500/30" 
-                          : selectedRunMode === "once" 
-                            ? "bg-stone-800 text-amber-300 hover:bg-stone-700" 
-                            : "bg-stone-800 text-green-400 hover:bg-stone-700"}
-                      `}
-                      title={
-                        useHistoricalDates 
-                          ? `Run with historical data: ${dateRangeMode === "single" 
-                              ? `Single date ${startDate}` 
-                              : `Date range ${startDate} to ${endDate}`}` 
-                          : (selectedRunMode === "once" ? "Run once and stop when complete" : "Run continuously until stopped")
-                      }
-                    >
-                      <span className="text-sm font-medium flex items-center">
-                        {useHistoricalDates && (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                        )}
-                        {selectedRunMode === "continuous" && !useHistoricalDates && (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                        )}
-                        Run
-                      </span>
-                    </button>
-                    {/* Settings button */}
-                    <div className="flex items-center">
-                      <button
-                        id="settings-button"
-                        onClick={() => {
-                          if (!showRunOptions) {
-                            const buttonElement = document.getElementById('settings-button');
-                            if (buttonElement) {
-                              const rect = buttonElement.getBoundingClientRect();
-                              setSettingsButtonPosition({
-                                top: rect.top,
-                                right: rect.right,
-                                bottom: rect.bottom,
-                                left: rect.left
-                              });
-                            }
-                          }
-                          setShowRunOptions(!showRunOptions);
-                        }}
-                        className={`h-10 px-3 flex items-center justify-center transition-all duration-200 ${
-                          showRunOptions 
-                            ? 'text-amber-300 bg-stone-700 shadow-inner' 
-                            : 'text-stone-300 hover:text-amber-300 hover:bg-stone-700/50'
-                        }`}
-                        title={
-                          useHistoricalDates
-                            ? `Historical data enabled: ${dateRangeMode === "single" 
-                                ? `Single date ${startDate}` 
-                                : `Date range ${startDate} to ${endDate}`}`
-                            : "Process mode settings"
-                        }
-                        aria-expanded={showRunOptions}
-                        aria-controls="process-mode-dropdown"
-                      >
-                        <div className="relative">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <circle cx="10" cy="4" r="1.75" />
-                            <circle cx="10" cy="10" r="1.75" />
-                            <circle cx="10" cy="16" r="1.75" />
-                          </svg>
-                          {(showRunOptions || useHistoricalDates) && (
-                            <span className={`absolute -top-1 -right-1 h-2 w-2 rounded-full ${
-                              useHistoricalDates ? "bg-purple-400" : "bg-amber-400"
-                            }`}></span>
-                          )}
-                        </div>
-                      </button>
-                      
-                      {/* Collapsible Process Mode Panel with improved visibility */}
-                      {showRunOptions && ReactDOM.createPortal(
-                        <div 
-                          id="process-mode-dropdown"
-                          className="fixed bg-stone-800 border border-stone-600 rounded-md shadow-xl z-[9999] transition-all duration-300 ease-in-out overflow-visible"
-                          style={{
-                            width: '220px',
-                            top: settingsButtonPosition?.bottom ? `${settingsButtonPosition.bottom + 4}px` : 'auto',
-                            left: settingsButtonPosition?.left ? `${settingsButtonPosition.left - 175}px` : 'auto',
-                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(251, 191, 36, 0.1)'
-                          }}
-                        >
-                          <div className="p-3">
-                            <div className="flex flex-col">
-                              <h3 className="text-xs text-stone-300 mb-2 font-medium">Run Mode</h3>
-                              <div className="flex items-center mb-3 justify-between">
-                                <div className="flex items-center gap-2 mr-2">
-                                  <button
-                                    onClick={() => {
-                                      if (!useHistoricalDates) {
-                                        setSelectedRunMode("once");
-                                      }
-                                    }}
-                                    className={`text-xs px-3 py-1 rounded ${
-                                      selectedRunMode === "once"
-                                        ? "bg-amber-500/20 text-amber-300 font-medium"
-                                        : "bg-stone-700/50 text-stone-400 hover:bg-stone-700"
-                                    }`}
-                                    disabled={useHistoricalDates && selectedRunMode === "once"}
-                                  >
-                                    <span className="flex items-center">
-                                      <span className={`w-2 h-2 rounded-full mr-1.5 ${selectedRunMode === "once" ? "bg-amber-400" : "bg-stone-600"}`}></span>
-                                      Run Once
-                                    </span>
-                                  </button>
-                                  
-                                  <button
-                                    onClick={() => {
-                                      if (!useHistoricalDates) {
-                                        setSelectedRunMode("continuous");
-                                      }
-                                    }}
-                                    className={`text-xs px-3 py-1 rounded ${
-                                      selectedRunMode === "continuous"
-                                        ? "bg-green-500/20 text-green-300 font-medium"
-                                        : "bg-stone-700/50 text-stone-400 hover:bg-stone-700"
-                                    } ${useHistoricalDates ? "opacity-50 cursor-not-allowed" : ""}`}
-                                    disabled={useHistoricalDates}
-                                    title={useHistoricalDates ? "Historical data mode only works with 'Run Once'" : "Run continuously until stopped"}
-                                  >
-                                    <span className="flex items-center">
-                                      <span className={`w-2 h-2 rounded-full mr-1.5 ${selectedRunMode === "continuous" ? "bg-green-400" : "bg-stone-600"}`}></span>
-                                      Stream
-                                    </span>
-                                  </button>
-                                </div>
-                              </div>
-                              
-                              <div className="h-px bg-stone-700 mb-3 w-full"></div>
-                              
-                              <h3 className="text-xs text-stone-300 mb-2 font-medium">Process Mode</h3>
-                              <div className="flex flex-col space-y-1.5">
-                                <button
-                                  onClick={() => {
-                                    setOnlyFetch(false);
-                                    setOnlyGenerate(false);
-                                    setShowRunOptions(false); // Close after selection
-                                  }}
-                                  className={`px-2 py-1.5 text-xs rounded text-left transition-colors flex items-center ${
-                                    !onlyFetch && !onlyGenerate
-                                      ? 'bg-amber-500/20 text-amber-300 font-medium'
-                                      : 'bg-stone-700/50 text-stone-400 hover:bg-stone-700'
-                                  }`}
-                                  title="Run complete pipeline with fetch and generate phases"
-                                >
-                                  <span className={`w-3 h-3 rounded-full mr-2 ${!onlyFetch && !onlyGenerate ? 'bg-amber-400' : 'bg-stone-600'}`}></span>
-                                  Complete Pipeline
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setOnlyFetch(true);
-                                    setOnlyGenerate(false);
-                                    setShowRunOptions(false); // Close after selection
-                                  }}
-                                  className={`px-2 py-1.5 text-xs rounded text-left transition-colors flex items-center ${
-                                    onlyFetch
-                                      ? 'bg-blue-500/20 text-blue-400 font-medium'
-                                      : 'bg-stone-700/50 text-stone-400 hover:bg-stone-700'
-                                  }`}
-                                  title="Only fetch data from sources - skip generation phase"
-                                >
-                                  <span className={`w-3 h-3 rounded-full mr-2 ${onlyFetch ? 'bg-blue-400' : 'bg-stone-600'}`}></span>
-                                  Fetch Data Only
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setOnlyFetch(false);
-                                    setOnlyGenerate(true);
-                                    setShowRunOptions(false); // Close after selection
-                                  }}
-                                  className={`px-2 py-1.5 text-xs rounded text-left transition-colors flex items-center ${
-                                    onlyGenerate
-                                      ? 'bg-purple-500/20 text-purple-400 font-medium'
-                                      : 'bg-stone-700/50 text-stone-400 hover:bg-stone-700'
-                                  }`}
-                                  title="Only generate content from existing data - skip fetch phase"
-                                >
-                                  <span className={`w-3 h-3 rounded-full mr-2 ${onlyGenerate ? 'bg-purple-400' : 'bg-stone-600'}`}></span>
-                                  Generate Content Only
-                                </button>
-                              </div>
-                              
-                              {/* Historical date range selector */}
-                              <div className="mt-3 border-t border-stone-600 pt-3">
-                                <div className="flex items-center justify-between mb-2">
-                                  <h3 className="text-xs text-stone-300 font-medium">Historical Data</h3>
-                                  <button 
-                                    onClick={() => {
-                                      const newHistoricalState = !useHistoricalDates;
-                                      setUseHistoricalDates(newHistoricalState);
-                                      // If enabling historical data, force run mode to "once"
-                                      if (newHistoricalState) {
-                                        setSelectedRunMode("once");
-                                      }
-                                    }}
-                                    className="relative inline-flex items-center h-4 rounded-full w-8 transition-colors focus:outline-none"
-                                    aria-pressed={useHistoricalDates}
-                                  >
-                                    <span 
-                                      className={`
-                                        inline-block w-8 h-4 rounded-full transition-colors duration-200 ease-in-out
-                                        ${useHistoricalDates ? "bg-purple-600/60" : "bg-stone-600"}
-                                      `}
-                                    />
-                                    <span 
-                                      className={`
-                                        absolute inline-block h-3 w-3 rounded-full bg-white shadow transform transition-transform duration-200 ease-in-out
-                                        ${useHistoricalDates ? "translate-x-4" : "translate-x-1"}
-                                      `}
-                                    />
-                                  </button>
-                                </div>
-                                
-                                {useHistoricalDates && (
-                                  <div className="mt-2 space-y-2">
-                                    <div className="flex items-center justify-between mb-1.5">
-                                      <div className="flex space-x-3">
-                                        <button
-                                          onClick={() => setDateRangeMode("single")}
-                                          className={`text-xs px-2 py-0.5 rounded ${
-                                            dateRangeMode === "single" 
-                                              ? "bg-purple-500/20 text-purple-300 font-medium" 
-                                              : "bg-stone-700 text-stone-400 hover:bg-stone-600"
-                                          }`}
-                                        >
-                                          Single Date
-                                        </button>
-                                        <button
-                                          onClick={() => setDateRangeMode("range")}
-                                          className={`text-xs px-2 py-0.5 rounded ${
-                                            dateRangeMode === "range" 
-                                              ? "bg-purple-500/20 text-purple-300 font-medium" 
-                                              : "bg-stone-700 text-stone-400 hover:bg-stone-600"
-                                          }`}
-                                        >
-                                          Date Range
-                                        </button>
-                                      </div>
-                                    </div>
-                                    
-                                    <div className="flex flex-col space-y-2">
-                                      <div className="flex items-center">
-                                        <label className="text-xs text-stone-400 w-16">{dateRangeMode === "single" ? "Date:" : "Start:"}</label>
-                                        <input
-                                          type="date"
-                                          value={startDate}
-                                          onChange={(e) => setStartDate(e.target.value)}
-                                          className="bg-stone-700 text-stone-200 text-xs p-1 rounded w-full border border-stone-600 focus:border-purple-500 focus:outline-none"
-                                        />
-                                      </div>
-                                      
-                                      {dateRangeMode === "range" && (
-                                        <div className="flex items-center">
-                                          <label className="text-xs text-stone-400 w-16">End:</label>
-                                          <input
-                                            type="date"
-                                            value={endDate}
-                                            onChange={(e) => setEndDate(e.target.value)}
-                                            className="bg-stone-700 text-stone-200 text-xs p-1 rounded w-full border border-stone-600 focus:border-purple-500 focus:outline-none"
-                                          />
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>,
-                        document.body
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          <RunControls
+            isAggregationRunning={isAggregationRunning}
+            onRunOnce={handleRunAggregation}
+            onToggleAggregation={handleToggleAggregation}
+            runOptions={runOptions}
+            platformMode={platformMode}
+          />
         </div>
         
         {/* Conditionally render either the graph canvas or the JSON editor based on viewMode */}
@@ -2840,8 +2564,7 @@ export const NodeGraph = forwardRef<
             
             {/* Display Job Status */}
             {jobStatus && !jobStatusDisplayClosed && (
-              <div className="absolute bottom-4 right-4 z-50 w-96 shadow-xl">
-                <div className="bg-red-500 absolute top-0 right-0 h-3 w-3 rounded-full animate-ping"></div>
+              <div className="absolute bottom-4 right-4 z-50 w-96">
                 <JobStatusDisplay 
                   key={jobStatus.jobId}
                   jobStatus={jobStatus}

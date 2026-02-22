@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ThreeScene from '../ThreeScene';
+import { ErrorBoundary } from '../ErrorBoundary';
 import { useAuth } from '../../context/AuthContext';
 
 export const Hero: React.FC = () => {
@@ -44,8 +45,10 @@ export const Hero: React.FC = () => {
     >
       {/* Right Section with 3D Scene */}
       <div className="absolute inset-0 lg:w-full z-0">
-        {/* 3D Scene */}
-        <ThreeScene mouseX={mousePos.x} mouseY={mousePos.y} />
+        {/* 3D Scene - wrapped in ErrorBoundary since Three.js can fail on some devices */}
+        <ErrorBoundary fallback={<div className="w-full h-full bg-stone-950" />}>
+          <ThreeScene mouseX={mousePos.x} mouseY={mousePos.y} />
+        </ErrorBoundary>
       </div>
 
       {/* Content */}
@@ -56,9 +59,6 @@ export const Hero: React.FC = () => {
 
           <div className="relative space-y-8">
             <div className="animate-fadeIn" style={{ animationDelay: "0.2s", opacity: 0 }}>
-              <div className="inline-block px-4 py-1 mb-4 border border-stone-800 rounded-full">
-                <span className="text-sm font-mono text-stone-400">v1.0.0 BETA</span>
-              </div>
               <h1 className="text-5xl lg:text-7xl font-bold tracking-tighter mb-4">
                 <span className="block text-white">Digital</span>
                 <span className="block pb-4 text-amber-300">
@@ -71,18 +71,12 @@ export const Hero: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap gap-4 animate-fadeIn" style={{ animationDelay: "0.4s", opacity: 0 }}>
-              {/* Launch App Button - Primary CTA */}
+              {/* Try for Free Button - Primary CTA */}
               <button 
                 onClick={handleLaunchApp}
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-11 px-8 py-2 bg-amber-300 text-black hover:bg-amber-400 relative group overflow-hidden"
+                className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-11 px-8 py-2 bg-amber-300 text-black hover:bg-amber-400"
               >
-                <span className="relative flex items-center gap-2">
-                  Launch App
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 group-hover:translate-x-1 transition-transform">
-                    <path d="M5 12h14"></path>
-                    <path d="m12 5 7 7-7 7"></path>
-                  </svg>
-                </span>
+                Try for Free
               </button>
 
               <a 

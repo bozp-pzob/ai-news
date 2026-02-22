@@ -100,6 +100,44 @@ async function runMigrations(pool: Pool): Promise<void> {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_users_ai_reset ON users(ai_calls_today_reset_at)
     `);
+
+    // Admin system: Add ban columns to users
+    await client.query(`
+      ALTER TABLE users 
+      ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS banned_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS banned_reason TEXT
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_banned ON users(is_banned) WHERE is_banned = TRUE
+    `);
+
+    // Admin system: Add featured columns to configs
+    await client.query(`
+      ALTER TABLE configs
+      ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS featured_at TIMESTAMPTZ
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_configs_featured ON configs(is_featured, featured_at DESC) WHERE is_featured = TRUE
+    `);
+
+    // Local execution: configs that run on user's local server
+    await client.query(`
+      ALTER TABLE configs
+      ADD COLUMN IF NOT EXISTS is_local_execution BOOLEAN DEFAULT FALSE
+    `);
+
+    // AI token usage and cost tracking on aggregation jobs
+    await client.query(`
+      ALTER TABLE aggregation_jobs
+      ADD COLUMN IF NOT EXISTS total_prompt_tokens INTEGER DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS total_completion_tokens INTEGER DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS total_ai_calls INTEGER DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC(10,6) DEFAULT 0
+    `);
     
     console.log('[DatabaseService] Migrations completed successfully');
   } catch (error) {

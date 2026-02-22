@@ -28,7 +28,7 @@ export const CallToAction: React.FC = () => {
       <div className="container mx-auto relative z-10">
         <div className="max-w-4xl mx-auto relative z-10 animate-fadeIn" style={{ animationDelay: '0.2s', opacity: 0 }}>
           <h2 className="text-4xl md:text-5xl font-bold mb-6 text-amber-300" style={{ WebkitBackgroundClip: 'text' }}>
-            Ready to transform your content workflow?
+            Ready to cut through the noise?
           </h2>
           <p className="text-xl mb-10 max-w-2xl mx-auto text-stone-400">
             Try Digital Gardener today and let AI help you cultivate, curate, and grow your content.

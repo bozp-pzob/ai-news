@@ -4,6 +4,7 @@ import { Request, Response, NextFunction } from 'express';
 import { PrivyClient } from '@privy-io/server-auth';
 import { databaseService } from '../services/databaseService';
 import { licenseService } from '../services/licenseService';
+import { adminService } from '../services/adminService';
 
 /**
  * User object attached to request after authentication
@@ -14,6 +15,7 @@ export interface AuthUser {
   email?: string;
   walletAddress?: string;
   tier: 'free' | 'paid' | 'admin';
+  isBanned?: boolean;   // Admin: banned status
 }
 
 /**
@@ -22,6 +24,9 @@ export interface AuthUser {
 export interface AuthenticatedRequest extends Request {
   user?: AuthUser;
   privyUser?: any;  // Raw Privy user object
+  // Impersonation: original admin user when impersonating
+  adminUser?: AuthUser;
+  isImpersonating?: boolean;
 }
 
 /**
@@ -101,7 +106,8 @@ async function getOrCreateUser(privyUser: any): Promise<AuthUser> {
       privyId: user.privy_id,
       email: user.email || undefined,
       walletAddress,
-      tier: effectiveTier
+      tier: effectiveTier,
+      isBanned: user.is_banned || false,
     };
   }
 
@@ -143,7 +149,8 @@ async function getOrCreateUser(privyUser: any): Promise<AuthUser> {
     privyId: newUser.privy_id,
     email: newUser.email || undefined,
     walletAddress: newUser.wallet_address || undefined,
-    tier: effectiveTier
+    tier: effectiveTier,
+    isBanned: false,
   };
 }
 
@@ -187,8 +194,42 @@ export async function requireAuth(
     // Get or create user in our database
     const user = await getOrCreateUser(privyUser);
 
+    // Check if user is banned
+    if (user.isBanned && user.tier !== 'admin') {
+      res.status(403).json({ 
+        error: 'Account suspended',
+        message: 'Your account has been suspended. Please contact support.'
+      });
+      return;
+    }
+
     req.user = user;
     req.privyUser = privyUser;
+
+    // Handle impersonation (admin only)
+    const impersonationToken = req.headers['x-impersonate-token'] as string;
+    if (impersonationToken && user.tier === 'admin') {
+      const session = adminService.verifyImpersonationToken(impersonationToken);
+      if (session) {
+        // Load the impersonated user
+        const impersonatedUser = await adminService.getUserById(session.targetUserId);
+        if (impersonatedUser) {
+          // Store original admin user
+          req.adminUser = user;
+          req.isImpersonating = true;
+          // Replace user with impersonated user
+          req.user = {
+            id: impersonatedUser.id,
+            privyId: impersonatedUser.privyId,
+            email: impersonatedUser.email,
+            walletAddress: impersonatedUser.walletAddress,
+            tier: impersonatedUser.tier,
+            isBanned: impersonatedUser.isBanned,
+          };
+          console.log(`[AuthMiddleware] Admin ${user.email} impersonating ${impersonatedUser.email}`);
+        }
+      }
+    }
     
     next();
   } catch (error) {
@@ -280,7 +321,15 @@ export const requirePaid = requireTier('paid', 'admin');
 export const requireAdmin = requireTier('admin');
 
 /**
+ * Check if a string is a valid UUID v4 format
+ */
+function isUUID(str: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+}
+
+/**
  * Check if user owns a specific config
+ * Supports lookup by UUID id or by slug
  */
 export async function requireConfigOwner(
   req: AuthenticatedRequest,
@@ -300,8 +349,9 @@ export async function requireConfigOwner(
   }
 
   try {
+    const whereClause = isUUID(configId) ? 'id = $1' : 'slug = $1';
     const result = await databaseService.query(
-      'SELECT user_id FROM configs WHERE id = $1',
+      `SELECT user_id FROM configs WHERE ${whereClause}`,
       [configId]
     );
 
@@ -332,6 +382,7 @@ export async function requireConfigOwner(
 
 /**
  * Check if user can access a config (owner, shared, or public)
+ * Supports lookup by UUID id or by slug
  */
 export async function requireConfigAccess(
   req: AuthenticatedRequest,
@@ -346,6 +397,9 @@ export async function requireConfigAccess(
   }
 
   try {
+    // Support lookup by UUID or slug
+    const whereClause = isUUID(configId) ? 'c.id = $1' : 'c.slug = $1';
+
     const result = await databaseService.query(
       `SELECT c.*, 
               CASE 
@@ -357,7 +411,7 @@ export async function requireConfigAccess(
        FROM configs c
        LEFT JOIN config_shares cs ON cs.config_id = c.id 
          AND (cs.shared_with_user_id = $2 OR cs.shared_with_wallet = $3)
-       WHERE c.id = $1`,
+       WHERE ${whereClause}`,
       [configId, req.user?.id || null, req.user?.walletAddress || null]
     );
 

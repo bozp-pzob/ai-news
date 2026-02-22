@@ -1,6 +1,14 @@
 import React from 'react';
 
-// Simplified version of the icon components
+// Connect / link icon
+const ConnectIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 mb-4">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+  </svg>
+);
+
+// Brain / AI icon
 const Brain = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 mb-4">
     <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"></path>
@@ -8,15 +16,7 @@ const Brain = () => (
   </svg>
 );
 
-const RefreshCw = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 mb-4">
-    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
-    <path d="M21 3v5h-5"></path>
-    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
-    <path d="M3 21v-5h5"></path>
-  </svg>
-);
-
+// File / briefing icon
 const FileText = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 mb-4">
     <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
@@ -27,52 +27,52 @@ const FileText = () => (
   </svg>
 );
 
-const Database = () => (
+// Monetize / currency icon
+const DollarSign = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 mb-4">
-    <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
-    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
-    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+    <line x1="12" x2="12" y1="2" y2="22"></line>
+    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
   </svg>
 );
 
 export const Features: React.FC = () => {
   const features = [
     {
-      title: "Smart Aggregation",
-      description: "Automatically collect and organize news from multiple sources using advanced AI algorithms.",
+      step: "01",
+      title: "Connect Your Sources",
+      description: "Link Discord servers, GitHub repos, Twitter feeds, Telegram groups, and market data in one place.",
+      icon: ConnectIcon
+    },
+    {
+      step: "02",
+      title: "AI Processes & Enriches",
+      description: "Automated pipelines fetch, structure, and enrich your content on a daily or custom schedule.",
       icon: Brain
     },
     {
-      title: "Real-time Updates",
-      description: "Stay up-to-date with continuous data synchronization and instant updates.",
-      icon: RefreshCw
-    },
-    {
-      title: "Intelligent Summaries",
-      description: "Get AI-generated daily summaries of the most important updates and developments.",
+      step: "03",
+      title: "Get Daily Briefings",
+      description: "Receive concise, actionable summaries your team, community, or stakeholders can act on immediately.",
       icon: FileText
     },
     {
-      title: "Structured Data",
-      description: "Access well-organized data perfect for both human readers and AI agents.",
-      icon: Database
+      step: "04",
+      title: "Monetize Your Data",
+      description: "Sell structured summaries and insights to other teams, AI agents, or third parties through APIs and exports.",
+      icon: DollarSign
     }
   ];
 
   return (
     <section className="py-20 relative">
-      {/* Removed background gradient */}
-      
-      {/* Removed grid overlay */}
-      
       <div className="container mx-auto px-4 relative">
         {/* Section header */}
         <div className="text-center mb-16">
           <h2 className="text-3xl md:text-4xl font-bold mb-4 text-white" style={{ WebkitBackgroundClip: 'text' }}>
-            Key Features
+            How It Works
           </h2>
           <p className="text-stone-400 max-w-2xl mx-auto">
-            Our platform combines state-of-the-art AI with powerful data aggregation tools
+            From scattered channels to structured intelligence you can use — or sell
           </p>
         </div>
 
@@ -88,6 +88,7 @@ export const Features: React.FC = () => {
             >
               <div className="h-full rounded-lg border border-stone-800 bg-stone-900/70 shadow-lg backdrop-blur-sm p-6 hover:border-amber-300/50 transition-all duration-300 group">
                 <div className="flex flex-col space-y-1.5">
+                  <div className="text-xs font-mono text-stone-600 mb-1">{feature.step}</div>
                   <div className="text-amber-300">
                     <feature.icon />
                   </div>
@@ -109,4 +110,4 @@ export const Features: React.FC = () => {
   );
 };
 
-export default Features; 
+export default Features;

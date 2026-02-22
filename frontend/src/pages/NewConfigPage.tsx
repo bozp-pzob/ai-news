@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { AuthGuard } from '../components/auth/AuthGuard';
 import { configApi, userApi, ConfigVisibility, StorageType, UserLimits } from '../services/api';
+import { AppHeader } from '../components/AppHeader';
 
 /**
  * Step indicator
@@ -592,19 +593,7 @@ function NewConfigContent() {
 export default function NewConfigPage() {
   return (
     <div className="min-h-screen bg-stone-950">
-      {/* Header */}
-      <header className="bg-stone-900 border-b border-stone-800">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <a href="/" className="text-xl font-bold text-white">
-            AI News
-          </a>
-          <nav className="flex items-center gap-4">
-            <a href="/dashboard" className="text-stone-400 hover:text-white transition-colors">
-              Dashboard
-            </a>
-          </nav>
-        </div>
-      </header>
+      <AppHeader />
 
       {/* Main content with auth guard */}
       <AuthGuard>

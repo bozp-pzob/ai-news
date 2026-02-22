@@ -1,23 +1,28 @@
 // frontend/src/pages/BuilderPage.tsx
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import App from '../App';
 import { ConfigInfoPanel, ConfigInfo } from '../components/ConfigInfoPanel';
+import { CreateConfigDialog } from '../components/CreateConfigDialog';
+import { SecretsPanel } from '../components/SecretsPanel';
 import { useAuth } from '../context/AuthContext';
-import { configApi, userApi, UserLimits, PlatformConfig } from '../services/api';
+import { configApi, localConfigApi, userApi, UserLimits, PlatformConfig } from '../services/api';
+import { localConfigStorage, LocalConfig } from '../services/localConfigStorage';
 import { useToast } from '../components/ToastProvider';
 
 /**
  * BuilderPage - Integrated config creation and editing interface
  * 
  * Routes:
- * - /builder - Create new config
- * - /builder/:id - Edit existing config
+ * - /builder?local=<id>  - Edit local (anonymous) config from localStorage
+ * - /builder/:id         - Edit existing platform config (auth required)
+ * - /builder             - No config specified: show create dialog
  */
 const BuilderPage: React.FC = () => {
   const { id } = useParams<{ id?: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { 
@@ -29,20 +34,34 @@ const BuilderPage: React.FC = () => {
     isLoading: authLoading 
   } = useAuth();
 
+  // Determine mode from URL
+  const localId = searchParams.get('local');
+  const isLocalMode = !!localId;
+  const isPlatformEdit = !!id;
+  const hasNoTarget = !id && !localId; // No config specified at all
+
   // State
   const [showConfigPanel, setShowConfigPanel] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [limits, setLimits] = useState<UserLimits | null>(null);
   const [platformConfig, setPlatformConfig] = useState<PlatformConfig | null>(null);
+  const [localConfig, setLocalConfig] = useState<LocalConfig | null>(null);
   const [configInfo, setConfigInfo] = useState<ConfigInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasUnsavedPlatformChanges, setHasUnsavedPlatformChanges] = useState(false);
+  const [showSecretsPanel, setShowSecretsPanel] = useState(false);
 
-  const isEditMode = !!id;
-  const isNewConfig = !id;
+  // Show create dialog when no target config is specified
+  useEffect(() => {
+    if (hasNoTarget && !showCreateDialog) {
+      setShowCreateDialog(true);
+      setIsLoading(false);
+    }
+  }, [hasNoTarget]);
 
-  // Load user limits
+  // Load user limits (platform mode only)
   useEffect(() => {
     async function loadLimits() {
       if (!authToken) return;
@@ -58,7 +77,25 @@ const BuilderPage: React.FC = () => {
     }
   }, [isAuthenticated, authToken]);
 
-  // Load existing config if in edit mode
+  // Load local config from localStorage
+  useEffect(() => {
+    if (!isLocalMode) return;
+    
+    const config = localConfigStorage.get(localId!);
+    if (config) {
+      setLocalConfig(config);
+      setConfigInfo({
+        name: config.name,
+        description: config.description || '',
+        visibility: 'public',
+      });
+    } else {
+      setError('Local config not found. It may have been cleared from browser storage.');
+    }
+    setIsLoading(false);
+  }, [isLocalMode, localId]);
+
+  // Load existing platform config
   useEffect(() => {
     async function loadConfig() {
       if (!id || !authToken) return;
@@ -82,49 +119,40 @@ const BuilderPage: React.FC = () => {
       }
     }
 
-    if (isEditMode) {
+    if (isPlatformEdit) {
       loadConfig();
-    } else {
-      setIsLoading(false);
-      // For new configs, show the config panel automatically
-      if (isAuthenticated && !configInfo) {
-        setShowConfigPanel(true);
-      }
     }
-  }, [id, authToken, isEditMode, isAuthenticated]);
+  }, [id, authToken, isPlatformEdit]);
 
-  // Show config panel when authenticated and creating new config
-  useEffect(() => {
-    if (isNewConfig && isAuthenticated && !configInfo && !showConfigPanel && !isLoading) {
-      setShowConfigPanel(true);
-    }
-  }, [isNewConfig, isAuthenticated, configInfo, showConfigPanel, isLoading]);
-
-  // Handle saving config info (create or update)
+  // Handle saving config info (settings panel - update only, not create)
   const handleSaveConfigInfo = useCallback(async (info: ConfigInfo) => {
-    if (!authToken) return;
-    
     setIsSaving(true);
     
     try {
-      if (isEditMode && platformConfig) {
-        // Update existing config
-        const updated = await configApi.update(authToken, platformConfig.id, {
+      if (isLocalMode && localConfig) {
+        // Update local config metadata
+        localConfigStorage.update(localConfig.id, {
+          name: info.name,
+          description: info.description,
+        });
+        setConfigInfo(info);
+        setShowConfigPanel(false);
+        showToast('Config settings saved', 'success');
+      } else if (isPlatformEdit && platformConfig && authToken) {
+        // Update existing platform config (include isLocalExecution if changed)
+        const updateData: any = {
           name: info.name,
           description: info.description,
           visibility: info.visibility,
-        });
+        };
+        if (info.isLocalExecution !== undefined) {
+          updateData.isLocalExecution = info.isLocalExecution;
+        }
+        const updated = await configApi.update(authToken, platformConfig.id, updateData);
         setPlatformConfig(updated);
         setConfigInfo(info);
         setShowConfigPanel(false);
         showToast('Config settings saved', 'success');
-      } else {
-        // Create new config - save the info and close panel
-        // The actual creation will happen when user saves the visual config
-        setConfigInfo(info);
-        setShowConfigPanel(false);
-        setHasUnsavedPlatformChanges(true);
-        showToast('Config info saved. Add your sources and save to create the config.', 'info');
       }
     } catch (err) {
       console.error('Error saving config info:', err);
@@ -132,7 +160,7 @@ const BuilderPage: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [authToken, isEditMode, platformConfig, showToast]);
+  }, [authToken, isPlatformEdit, isLocalMode, platformConfig, localConfig, showToast]);
 
   // Extract storage configuration from configJson
   const extractStorageConfig = (configJson: any): { 
@@ -140,12 +168,9 @@ const BuilderPage: React.FC = () => {
     externalDbUrl?: string,
     skipValidation?: boolean 
   } => {
-    // Look for PostgresStorage in the storage array
     const storage = configJson?.storage || [];
     
     const postgresStorage = storage.find((s: any) => {
-      // Check various properties that might identify PostgresStorage
-      // Note: type might be the plugin class name ("PostgresStorage") or just "storage"
       const isPostgres = 
         s.pluginName === 'PostgresStorage' ||
         s.type === 'PostgresStorage' ||
@@ -157,12 +182,10 @@ const BuilderPage: React.FC = () => {
     if (postgresStorage?.params) {
       const skipValidation = !!postgresStorage.params.skipValidation;
       
-      // Check if using platform storage
       if (postgresStorage.params.usePlatformStorage) {
         return { storageType: 'platform', skipValidation };
       }
       
-      // Extract connection string or build from individual params
       if (postgresStorage.params.connectionString) {
         return { 
           storageType: 'external', 
@@ -171,7 +194,6 @@ const BuilderPage: React.FC = () => {
         };
       }
       
-      // Build connection string from individual params
       const { host, port, database, user, password } = postgresStorage.params;
       if (host && database) {
         const connStr = `postgresql://${user || ''}${password ? ':' + password : ''}${user ? '@' : ''}${host}${port ? ':' + port : ''}/${database}`;
@@ -179,14 +201,12 @@ const BuilderPage: React.FC = () => {
       }
     }
 
-    // Default to external with no URL (will trigger validation error)
     return { storageType: 'external' };
   };
 
-  // Handle save from the visual builder
+  // Handle save from the visual builder (platform mode)
   const handleBuilderSave = useCallback(async (configJson: any) => {
     if (!authToken || !configInfo) {
-      // If no config info, show the panel first
       setShowConfigPanel(true);
       return false;
     }
@@ -194,22 +214,16 @@ const BuilderPage: React.FC = () => {
     setIsSaving(true);
 
     try {
-      // Extract storage configuration from the configJson
       const { storageType, externalDbUrl, skipValidation } = extractStorageConfig(configJson);
-      
-      // Determine final storage type based on tier
       const isPro = limits?.tier !== 'free';
       
-      // Free tier: Always uses platform storage (backend enforces this)
-      // Pro tier: Can choose external storage, but needs a valid DB URL
       if (isPro && storageType === 'external' && !externalDbUrl) {
         showToast('Please add a PostgresStorage plugin with your database connection details.', 'error');
         setIsSaving(false);
         return false;
       }
 
-      if (isEditMode && platformConfig) {
-        // Update existing config's JSON
+      if (isPlatformEdit && platformConfig) {
         await configApi.update(authToken, platformConfig.id, {
           configJson,
           storageType,
@@ -219,25 +233,9 @@ const BuilderPage: React.FC = () => {
         showToast('Config saved successfully', 'success');
         setHasUnsavedPlatformChanges(false);
         return true;
-      } else {
-        // Create new config with JSON
-        const created = await configApi.create(authToken, {
-          name: configInfo.name,
-          description: configInfo.description,
-          visibility: configInfo.visibility,
-          storageType,
-          externalDbUrl,
-          skipValidation,
-          configJson,
-        });
-        setPlatformConfig(created);
-        setHasUnsavedPlatformChanges(false);
-        showToast('Config created successfully!', 'success');
-        
-        // Navigate to the edit URL for the new config
-        navigate(`/builder/${created.id}`, { replace: true });
-        return true;
       }
+
+      return false;
     } catch (err) {
       console.error('Error saving config:', err);
       showToast(err instanceof Error ? err.message : 'Failed to save config', 'error');
@@ -245,7 +243,157 @@ const BuilderPage: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [authToken, configInfo, isEditMode, platformConfig, showToast, navigate, limits]);
+  }, [authToken, configInfo, isPlatformEdit, platformConfig, showToast, limits]);
+
+  // Handle save for local mode
+  const handleLocalSave = useCallback(async (configJson: any) => {
+    if (!localConfig) return false;
+
+    try {
+      // Save to localStorage
+      localConfigStorage.update(localConfig.id, { configJson });
+      
+      // Also save to local filesystem API so the backend can run it
+      try {
+        await localConfigApi.save(localConfig.name, configJson);
+      } catch {
+        // Filesystem save is optional - may not have a running backend
+      }
+
+      showToast('Config saved', 'success');
+      return true;
+    } catch (err) {
+      console.error('Error saving local config:', err);
+      showToast('Failed to save config', 'error');
+      return false;
+    }
+  }, [localConfig, showToast]);
+
+  // Handle create dialog success
+  const handleCreateSuccess = (configId: string, isLocal: boolean) => {
+    setShowCreateDialog(false);
+    if (isLocal) {
+      navigate(`/builder?local=${configId}`, { replace: true });
+    } else {
+      navigate(`/builder/${configId}`, { replace: true });
+    }
+  };
+
+  // Handle create dialog close - go back to dashboard if no config loaded
+  const handleCreateDialogClose = () => {
+    setShowCreateDialog(false);
+    if (hasNoTarget) {
+      navigate('/dashboard');
+    }
+  };
+
+  // --- LOCAL MODE RENDERING ---
+  if (isLocalMode) {
+    if (isLoading) {
+      return (
+        <Layout showNavbar={false}>
+          <div className="fixed inset-0 flex items-center justify-center bg-stone-950">
+            <div className="text-center">
+              <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-stone-400">Loading...</p>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+
+    if (error || !localConfig) {
+      return (
+        <Layout showNavbar={false}>
+          <div className="fixed inset-0 flex items-center justify-center bg-stone-950">
+            <div className="text-center max-w-md px-6">
+              <h2 className="text-2xl font-bold text-white mb-2">Config Not Found</h2>
+              <p className="text-stone-400 mb-6">{error || 'This local config could not be loaded.'}</p>
+              <button
+                onClick={() => navigate('/')}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors"
+              >
+                Go Home
+              </button>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+
+    return (
+      <Layout showNavbar={false}>
+        {/* Header for local mode */}
+        <div className="fixed top-0 left-0 right-0 h-12 bg-stone-900 border-b border-stone-700 flex items-center justify-between px-4 z-40">
+          <div className="flex items-center gap-4">
+            <a href="/" className="text-xl font-semibold text-white hover:text-amber-400 transition-colors">
+              {localConfig.name}
+            </a>
+            <span className="text-stone-500 text-xs px-2 py-0.5 bg-stone-800 rounded">Local</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowConfigPanel(true)}
+              className="px-3 py-1.5 text-stone-400 hover:text-white hover:bg-stone-800 rounded transition-colors text-sm flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Settings
+            </button>
+            <a
+              href="/"
+              className="px-3 py-1.5 text-stone-400 hover:text-white hover:bg-stone-800 rounded transition-colors text-sm"
+            >
+              Home
+            </a>
+          </div>
+        </div>
+
+        {/* Visual Builder for local mode - use platformMode=true for clean UI (Plugins tab, no config selector) */}
+        <div className="fixed left-0 right-0 bottom-0 bg-stone-950" style={{ top: '48px' }}>
+          <App 
+            platformMode={true}
+            platformConfigJson={localConfig.configJson}
+            onPlatformSave={handleLocalSave}
+            onOpenConfigSettings={() => setShowConfigPanel(true)}
+            isSaving={isSaving}
+            configName={localConfig.name}
+          />
+        </div>
+
+        {/* Config Info Panel for local mode */}
+        <ConfigInfoPanel
+          open={showConfigPanel}
+          onClose={() => setShowConfigPanel(false)}
+          onSave={handleSaveConfigInfo}
+          initialValues={configInfo || undefined}
+          limits={null}
+          isEditing={true}
+          isSaving={isSaving}
+          configId={localConfig?.id}
+        />
+      </Layout>
+    );
+  }
+
+  // --- NO TARGET: SHOW CREATE DIALOG ---
+  if (hasNoTarget) {
+    return (
+      <Layout showNavbar={false}>
+        <div className="fixed inset-0 bg-stone-950" />
+        <CreateConfigDialog
+          open={showCreateDialog}
+          onClose={handleCreateDialogClose}
+          onSuccess={handleCreateSuccess}
+          limits={limits}
+        />
+      </Layout>
+    );
+  }
+
+  // --- PLATFORM MODE RENDERING ---
 
   // Render login prompt if not authenticated
   if (isPrivyReady && !isAuthenticated && !authLoading) {
@@ -340,62 +488,28 @@ const BuilderPage: React.FC = () => {
     );
   }
 
-  // Check config creation limits
-  if (isNewConfig && limits && !limits.canCreateConfig) {
-    return (
-      <Layout showNavbar={false}>
-        <div className="fixed inset-0 flex items-center justify-center bg-stone-950">
-          <div className="text-center max-w-md px-6">
-            <svg 
-              className="w-16 h-16 mx-auto text-stone-600 mb-6"
-              fill="none" 
-              viewBox="0 0 24 24" 
-              stroke="currentColor"
-            >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth={1} 
-                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" 
-              />
-            </svg>
-            <h2 className="text-xl font-bold text-white mb-2">Config Limit Reached</h2>
-            <p className="text-stone-400 mb-6">
-              You've reached the maximum number of configs for the free tier.
-            </p>
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="px-4 py-2 text-stone-400 hover:text-white transition-colors"
-              >
-                Back to Dashboard
-              </button>
-              <a
-                href="/upgrade"
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors"
-              >
-                Upgrade to Pro
-              </a>
-            </div>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
-
   return (
     <Layout showNavbar={false}>
       {/* Fixed Header for Platform Mode */}
       <div className="fixed top-0 left-0 right-0 h-12 bg-stone-900 border-b border-stone-700 flex items-center justify-between px-4 z-40">
         <div className="flex items-center gap-4">
           <a href="/dashboard" className="text-xl font-semibold text-white hover:text-amber-400 transition-colors">
-            {configInfo?.name || platformConfig?.name || 'New Config'}
+            {configInfo?.name || platformConfig?.name || 'Config'}
           </a>
-          {(hasUnsavedPlatformChanges || (configInfo && !platformConfig)) && (
+          {hasUnsavedPlatformChanges && (
             <span className="text-amber-400 text-sm">(unsaved)</span>
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSecretsPanel(true)}
+            className="px-3 py-1.5 text-stone-400 hover:text-white hover:bg-stone-800 rounded transition-colors text-sm flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Secrets
+          </button>
           <button
             onClick={() => setShowConfigPanel(true)}
             className="px-3 py-1.5 text-stone-400 hover:text-white hover:bg-stone-800 rounded transition-colors text-sm flex items-center gap-2"
@@ -415,25 +529,10 @@ const BuilderPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Config setup reminder for new configs */}
-      {isNewConfig && !configInfo && (
-        <div className="fixed top-12 left-0 right-0 bg-amber-900/50 border-b border-amber-700 px-4 py-2 z-30 flex items-center justify-between">
-          <span className="text-amber-200 text-sm">
-            Set up your config details before building
-          </span>
-          <button
-            onClick={() => setShowConfigPanel(true)}
-            className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded transition-colors"
-          >
-            Configure
-          </button>
-        </div>
-      )}
-
       {/* Visual Builder - positioned below header */}
       <div 
         className="fixed left-0 right-0 bottom-0 bg-stone-950"
-        style={{ top: isNewConfig && !configInfo ? '88px' : '48px' }}
+        style={{ top: '48px' }}
       >
         <App 
           platformMode={true}
@@ -452,10 +551,17 @@ const BuilderPage: React.FC = () => {
         open={showConfigPanel}
         onClose={() => setShowConfigPanel(false)}
         onSave={handleSaveConfigInfo}
-        initialValues={configInfo || undefined}
+        initialValues={configInfo ? { ...configInfo, isLocalExecution: platformConfig?.isLocalExecution } : undefined}
         limits={limits}
-        isEditing={isEditMode}
+        isEditing={true}
         isSaving={isSaving}
+        configId={platformConfig?.id}
+      />
+
+      {/* Secrets Panel */}
+      <SecretsPanel
+        open={showSecretsPanel}
+        onClose={() => setShowSecretsPanel(false)}
       />
     </Layout>
   );

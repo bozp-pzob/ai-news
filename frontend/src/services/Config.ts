@@ -1,4 +1,5 @@
 import { Config as ConfigType, PluginConfig } from '../types';
+import { deepCopy } from '../utils/deepCopy';
 
 /**
  * Class to hold and manage the configuration data
@@ -153,27 +154,6 @@ export class Config {
     isChild: boolean,
     index: number
   ): void {
-    // Helper for proper deep copy with array handling
-    const deepCopy = (obj: any): any => {
-      if (obj === null || obj === undefined) {
-        return obj;
-      }
-      
-      if (Array.isArray(obj)) {
-        // Special handling for arrays to ensure each element is properly copied
-        return obj.map(item => deepCopy(item));
-      }
-      
-      if (typeof obj === 'object') {
-        const copy: any = {};
-        for (const key in obj) {
-          copy[key] = deepCopy(obj[key]);
-        }
-        return copy;
-      }
-      
-      return obj;
-    };
     
     if (isChild && plugin.parentId) {
       // Handle child node of a parent

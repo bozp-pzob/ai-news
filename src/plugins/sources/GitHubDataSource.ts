@@ -1,6 +1,17 @@
 /**
  * @fileoverview Implementation of a content source for fetching GitHub activity data
  * Handles retrieval and processing of contributor activities and repository summaries
+ * 
+ * @deprecated This plugin is deprecated. Use GitHubSource instead,
+ * which provides direct GitHub API access with rate limiting, real-time data fetching,
+ * and support for both self-hosted and platform modes.
+ * 
+ * Migration guide:
+ * - Replace `contributorsUrl` and `summaryUrl` with direct `owner` and `repo` parameters
+ * - Use `token` for authentication instead of relying on pre-processed JSON
+ * - Enable `aiSummary` for AI-powered summaries
+ * 
+ * @see GitHubSource
  */
 
 import { ContentSource } from "./ContentSource";  // Your unified interface
@@ -17,6 +28,7 @@ import fetch from "node-fetch";
  * @property {string} historicalContributorUrl - URL template for historical contributor data (supports date placeholders)
  * @property {string} githubCompany - GitHub organization/company name
  * @property {string} githubRepo - GitHub repository name
+ * @deprecated Use GitHubSourceConfig instead
  */
 interface GithubDataSourceConfig {
   name: string;
@@ -32,6 +44,7 @@ interface GithubDataSourceConfig {
  * GitHubDataSource class that implements ContentSource interface for GitHub activity data
  * Fetches and processes contributor activities and repository summaries from JSON endpoints
  * @implements {ContentSource}
+ * @deprecated Use GitHubSource instead for direct GitHub API access
  */
 export class GitHubDataSource implements ContentSource {
   /** Name identifier for this GitHub source */
@@ -97,8 +110,15 @@ export class GitHubDataSource implements ContentSource {
   /**
    * Creates a new GitHubDataSource instance
    * @param {GithubDataSourceConfig} config - Configuration object for the GitHub source
+   * @deprecated Use GitHubSource instead
    */
   constructor(config: GithubDataSourceConfig) {
+    console.warn(
+      '[DEPRECATED] GitHubDataSource is deprecated and will be removed in a future version. ' +
+      'Please migrate to GitHubSource for direct GitHub API access. ' +
+      'See documentation for migration guide.'
+    );
+    
     this.name = config.name;
     this.contributorsUrl = config.contributorsUrl;
     this.summaryUrl = config.summaryUrl;

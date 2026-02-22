@@ -1,7 +1,7 @@
 // frontend/src/components/PrivyProvider.tsx
-// @ts-nocheck - Privy types will be available after npm install
 
 import React, { ReactNode } from 'react';
+// @ts-ignore - Privy types resolved after npm install
 import { PrivyProvider as BasePrivyProvider } from '@privy-io/react-auth';
 
 interface PrivyWrapperProps {
@@ -31,7 +31,8 @@ export function PrivyProvider({ children }: PrivyWrapperProps) {
       appId={PRIVY_APP_ID}
       config={{
         // Login methods to support
-        loginMethods: ['email', 'wallet', 'google', 'twitter', 'github'],
+        // Note: Discord login provides identity only; bot authorization uses separate OAuth flow
+        loginMethods: ['email', 'wallet', 'google', 'twitter', 'github', 'discord'],
         
         // Appearance configuration
         appearance: {
@@ -45,7 +46,6 @@ export function PrivyProvider({ children }: PrivyWrapperProps) {
         // Solana wallets must be enabled in the Privy dashboard
         embeddedWallets: {
           createOnLogin: 'users-without-wallets',
-          noPromptOnSignature: false,
         },
         
         // Solana cluster configuration for funding and transactions
@@ -65,9 +65,7 @@ export function PrivyProvider({ children }: PrivyWrapperProps) {
         // Session configuration
         // Sessions last 7 days by default
       }}
-      onSuccess={(user) => {
-        console.log('[PrivyProvider] Login successful:', user.id);
-      }}
+
     >
       {children}
     </BasePrivyProvider>

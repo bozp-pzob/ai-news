@@ -1,17 +1,34 @@
 /**
  * @fileoverview Implementation of a content source for fetching raw Discord data
  * Handles detailed message retrieval, user data caching, and media content processing
+ * 
+ * Supports two modes:
+ * 1. Self-hosted mode: Uses provided botToken directly
+ * 2. Platform mode: Uses shared bot via externalConnectionService with connectionId
  */
 
 import { Client, TextChannel, Message, GuildMember, User, MessageType, MessageReaction, Collection, GatewayIntentBits, ChannelType, GuildBasedChannel, Guild, ForumChannel, ThreadChannel, AnyThreadChannel } from 'discord.js';
 import { ContentSource } from './ContentSource';
-import { ContentItem, DiscordRawData, DiscordRawDataSourceConfig, TimeBlock, DiscordAttachment, DiscordEmbed, DiscordSticker, MediaDownloadConfig } from '../../types';
+import { 
+  ContentItem, 
+  DiscordRawData, 
+  DiscordRawDataSourceConfig, 
+  PlatformSourceConfig,
+  UnifiedDiscordSourceConfig,
+  isPlatformSourceConfig,
+  TimeBlock, 
+  DiscordAttachment, 
+  DiscordEmbed, 
+  DiscordSticker, 
+  MediaDownloadConfig 
+} from '../../types';
 import { logger, createProgressBar } from '../../helpers/cliHelper';
 import { delay, retryOperation } from '../../helpers/generalHelper';
 import { isMediaFile } from '../../helpers/fileHelper';
 import { processDiscordAttachment, processDiscordEmbed, processDiscordSticker } from '../../helpers/mediaHelper';
 import { StoragePlugin } from '../storage/StoragePlugin';
 import { DiscordChannelRegistry } from '../storage/DiscordChannelRegistry';
+import { externalConnectionService, discordAdapter } from '../../services/externalConnections';
 
 const API_RATE_LIMIT_DELAY = 50; // Reduced to 50ms between API calls
 const PARALLEL_USER_FETCHES = 10; // Number of user fetches to run in parallel
@@ -52,17 +69,22 @@ export interface MediaDownloadCapable {
 /**
  * DiscordRawDataSource class that implements ContentSource interface for detailed Discord data
  * Handles comprehensive message retrieval, user data management, and media content processing
+ * 
+ * Supports two modes:
+ * 1. Self-hosted mode: Uses provided botToken directly (for CLI usage)
+ * 2. Platform mode: Uses shared bot via discordAdapter (for multi-tenant platform)
+ * 
  * @implements {ContentSource}
  */
 export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable {
   /** Name identifier for this Discord source */
   public name: string;
-  /** Discord.js client instance */
-  private client: Client;
+  /** Discord.js client instance (only used in self-hosted mode) */
+  private client: Client | null = null;
   /** List of Discord channel IDs to monitor */
   private channelIds: string[];
-  /** Discord bot token for authentication */
-  private botToken: string;
+  /** Discord bot token for authentication (self-hosted mode only) */
+  private botToken: string | null = null;
   /** Discord guild/server ID */
   private guildId: string;
   /** Store to cursors for recently pulled discord channels*/
@@ -71,21 +93,33 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
   private channelRegistry: DiscordChannelRegistry | null = null;
   /** Media download configuration */
   public mediaDownload?: MediaDownloadConfig;
+  /** Whether running in platform mode (multi-tenant) */
+  private isPlatformMode: boolean = false;
+  /** Connection ID for platform mode */
+  private connectionId: string | null = null;
+  /** User ID for platform mode validation */
+  private platformUserId: string | null = null;
 
+  /** Platform type required for this source (used by frontend to filter available plugins) */
+  static requiresPlatform = 'discord';
+  
+  /** Hidden from UI - use unified DiscordSource with mode='detailed' instead */
+  static hidden = true;
+  
   static constructorInterface = {
     parameters: [
       {
-        name: 'name',
-        type: 'string',
-        required: true,
-        description: 'Name identifier for this Discord source'
-      },
-      {
         name: 'botToken',
         type: 'string',
-        required: true,
-        description: 'Discord bot token for authentication',
+        required: false,
+        description: 'Discord bot token for authentication (self-hosted mode)',
         secret: true
+      },
+      {
+        name: 'connectionId',
+        type: 'string',
+        required: false,
+        description: 'External connection ID (platform mode)'
       },
       {
         name: 'channelIds',
@@ -96,8 +130,8 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
       {
         name: 'guildId',
         type: 'string',
-        required: true,
-        description: 'Discord guild/server ID'
+        required: false,
+        description: 'Discord guild/server ID (self-hosted mode)'
       },
       {
         name: 'storage',
@@ -116,30 +150,43 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
 
   /**
    * Creates a new DiscordRawDataSource instance
-   * @param {DiscordRawDataSourceConfig} config - Configuration object for the Discord source
+   * Supports both self-hosted and platform modes
+   * @param {UnifiedDiscordSourceConfig} config - Configuration object for the Discord source
    */
-  constructor(config: DiscordRawDataSourceConfig) {
+  constructor(config: UnifiedDiscordSourceConfig) {
     this.name = config.name;
-    this.botToken = config.botToken;
     this.channelIds = config.channelIds;
-    this.guildId = config.guildId;
     this.storage = config.storage;
     this.mediaDownload = config.mediaDownload;
-    this.client = new Client({
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
-      ]
-    });
 
-    this.client.on('error', (error) => {
-      if (error.message.includes('disallowed intents')) {
-        logger.error('Bot requires privileged intents. Please enable them in the Discord Developer Portal:\n1. Go to https://discord.com/developers/applications\n2. Select your bot application\n3. Go to "Bot" section\n4. Enable "Server Members Intent" under "Privileged Gateway Intents"');
-        process.exit(1);
-      }
-    });
+    if (isPlatformSourceConfig(config)) {
+      // Platform mode - use shared bot service
+      this.isPlatformMode = true;
+      this.connectionId = config.connectionId;
+      this.platformUserId = config._userId || null;
+      this.guildId = config._externalId || ''; // Will be resolved at runtime
+      logger.info(`[DiscordRawDataSource] Initialized in platform mode with connection ${config.connectionId}`);
+    } else {
+      // Self-hosted mode - use provided bot token
+      this.isPlatformMode = false;
+      this.botToken = config.botToken;
+      this.guildId = config.guildId;
+      this.client = new Client({
+        intents: [
+          GatewayIntentBits.Guilds,
+          GatewayIntentBits.GuildMessages,
+          GatewayIntentBits.MessageContent,
+          GatewayIntentBits.GuildMembers
+        ]
+      });
+
+      this.client.on('error', (error) => {
+        if (error.message.includes('disallowed intents')) {
+          logger.error('Bot requires privileged intents. Please enable them in the Discord Developer Portal:\n1. Go to https://discord.com/developers/applications\n2. Select your bot application\n3. Go to "Bot" section\n4. Enable "Server Members Intent" under "Privileged Gateway Intents"');
+          process.exit(1);
+        }
+      });
+    }
   }
 
   /**
@@ -147,6 +194,63 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
    */
   hasMediaDownloadEnabled(): boolean {
     return this.mediaDownload?.enabled === true;
+  }
+
+  /**
+   * Get the Discord client, initializing if needed
+   * Handles both self-hosted and platform modes
+   */
+  private async getClient(): Promise<Client> {
+    if (this.isPlatformMode) {
+      // Platform mode - use shared bot service via adapter
+      return discordAdapter.getClient();
+    } else {
+      // Self-hosted mode - use own client
+      if (!this.client) {
+        throw new Error('Discord client not initialized');
+      }
+      if (!this.client.isReady() && this.botToken) {
+        logger.info('Logging in to Discord...');
+        await this.client.login(this.botToken);
+        logger.success('Successfully logged in to Discord');
+      }
+      return this.client;
+    }
+  }
+
+  /**
+   * Validate platform mode connection before fetching
+   * Ensures user still has access to the guild
+   */
+  private async validatePlatformConnection(): Promise<void> {
+    if (!this.isPlatformMode || !this.connectionId) {
+      return;
+    }
+
+    // Get connection details
+    const connection = await externalConnectionService.getConnectionById(this.connectionId);
+    if (!connection) {
+      throw new Error(`Connection ${this.connectionId} not found`);
+    }
+
+    if (!connection.isActive) {
+      throw new Error(`Connection ${this.connectionId} is no longer active`);
+    }
+
+    // Set guildId from connection
+    this.guildId = connection.externalId;
+
+    // Validate channels are accessible
+    const validation = await externalConnectionService.validateChannels(
+      this.connectionId,
+      this.channelIds
+    );
+
+    if (!validation.valid) {
+      throw new Error(
+        `Some channels are not accessible: ${validation.invalidChannels.join(', ')}`
+      );
+    }
   }
 
   private async fetchUserData(member: GuildMember | null, user: User): Promise<DiscordRawData['users'][string]> {
@@ -176,6 +280,7 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
   private async fetchUserDataBatch(members: Map<string, GuildMember | null>, users: Map<string, User>): Promise<Map<string, DiscordRawData['users'][string]>> {
     const userData = new Map<string, DiscordRawData['users'][string]>();
     const entries = Array.from(users.entries());
+    const client = await this.getClient();
     
     for (let i = 0; i < entries.length; i += PARALLEL_USER_FETCHES) {
       const batch = entries.slice(i, i + PARALLEL_USER_FETCHES);
@@ -184,7 +289,7 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
         
         if (!member) {
           try {
-            const guild = this.client.guilds.cache.get(this.guildId);
+            const guild = client.guilds.cache.get(this.guildId);
             if (guild) {
               member = await guild.members.fetch({ user, force: true, cache: true }).catch(() => null);
               
@@ -644,11 +749,11 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
   }
 
   async fetchItems(): Promise<ContentItem[]> {
-    if (!this.client.isReady()) {
-      logger.info('Logging in to Discord...');
-      await this.client.login(this.botToken);
-      logger.success('Successfully logged in to Discord');
-    }
+    // Validate platform connection if in platform mode
+    await this.validatePlatformConnection();
+
+    // Get the client (handles login for self-hosted mode)
+    const client = await this.getClient();
 
     const items: ContentItem[] = [];
     const cutoff = new Date();
@@ -658,9 +763,9 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
     for (const channelId of this.channelIds) {
       try {
         logger.channel(`Fetching channel ${channelId}...`);
-        const channel = await retryOperation(() => this.client.channels.fetch(channelId));
-        if (!channel) {
-          logger.warning(`Channel ${channelId} does not exist.`);
+        const channel = await retryOperation(() => client.channels.fetch(channelId)) as TextChannel;
+        if (!channel || channel.type !== ChannelType.GuildText) {
+          logger.warning(`Channel ${channelId} is not a text channel or does not exist.`);
           continue;
         }
 
@@ -675,9 +780,9 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
         // For forums, use historical fetch with current date (fetchItems is for recent messages)
         if (channel.type === ChannelType.GuildForum) {
           const today = new Date();
-          const rawData = await this.fetchForumMessages(channel as ForumChannel, today);
+          const rawData = await this.fetchForumMessages(channel, today);
           if (rawData.messages.length > 0) {
-            const forumChannel = channel as ForumChannel;
+            const forumChannel = channel;
             const timestamp = Date.now();
             const formattedDate = new Date(timestamp).toISOString().replace(/[:.]/g, '-');
             const guildName = forumChannel.guild.name;
@@ -776,11 +881,11 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
   }
 
   async fetchHistorical(date: string): Promise<ContentItem[]> {
-    if (!this.client.isReady()) {
-      logger.info('Logging in to Discord...');
-      await this.client.login(this.botToken);
-      logger.success('Successfully logged in to Discord');
-    }
+    // Validate platform connection if in platform mode
+    await this.validatePlatformConnection();
+
+    // Get the client (handles login for self-hosted mode)
+    const client = await this.getClient();
 
     // Initialize channel registry if storage supports direct db access
     if (!this.channelRegistry) {
@@ -825,9 +930,9 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
 
     for (const [channelIndex, channelId] of channelsToFetch.entries()) {
       try {
-        const channel = await retryOperation(() => this.client.channels.fetch(channelId));
+        const channel = await retryOperation(() => client.channels.fetch(channelId));
         if (!channel) {
-          logger.warning(`Channel ${channelId} does not exist.`);
+          logger.warning(`Channel ${channelId} is not a text channel or does not exist.`);
           continue;
         }
 

@@ -25,6 +25,16 @@ export const PRO_PLANS = {
 export type PlanId = keyof typeof PRO_PLANS;
 
 /**
+ * Single-run payment configuration
+ * Used for pay-per-run aggregation jobs
+ */
+export const RUN_PAYMENT = {
+  price: parseInt(process.env.RUN_SINGLE_PRICE_CENTS || '10', 10), // cents
+  priceDisplay: parseFloat(process.env.RUN_SINGLE_PRICE_CENTS || '10') / 100, // dollars
+  description: 'Single aggregation run',
+} as const;
+
+/**
  * Configuration
  */
 const SKU = process.env.POP402_SKU || 'pro';

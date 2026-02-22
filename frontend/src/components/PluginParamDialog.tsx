@@ -5,7 +5,12 @@ import { SecretInputField } from './SecretInputField';
 import { SecretInputSelectField } from './SecretInputSelectField';
 import { pluginRegistry } from '../services/PluginRegistry';
 import { useToast } from './ToastProvider';
+import { deepCopy } from '../utils/deepCopy';
 import { isSensitiveParam, isLookupVariable } from '../utils/secretValidation';
+import { ConnectionChannelPicker } from './ConnectionChannelPicker';
+import { GitHubRepoPicker } from './GitHubRepoPicker';
+import { PlatformType, ExternalConnection } from '../services/api';
+import { MediaDownloadConfig } from './MediaDownloadConfig';
 
 // Re-export for backwards compatibility with existing code
 const isSensitiveParameter = isSensitiveParam;
@@ -274,7 +279,19 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
             // For required fields, use a placeholder to indicate it's required
             updatedParams[param.name] = param.required ? '' : '';
           }
-        } else if (param.required) {
+        }
+        
+        // Special handling for DiscordSource mode - set default to 'detailed'
+        if (pluginSchema?.pluginName === 'DiscordSource' && param.name === 'mode' && !updatedParams.mode) {
+          updatedParams.mode = 'detailed';
+        }
+        
+        // Special handling for GitHubSource mode - set default to 'summarized'
+        if (pluginSchema?.pluginName === 'GitHubSource' && param.name === 'mode' && !updatedParams.mode) {
+          updatedParams.mode = 'summarized';
+        }
+        
+        if (param.required) {
           // Ensure required fields don't have empty values
           if (
             updatedParams[param.name] === '' || 
@@ -396,27 +413,6 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
       }
     }
     
-    // Deep copy all params to avoid reference issues, with special handling for arrays
-    const deepCopy = (obj: any): any => {
-      if (obj === null || obj === undefined) {
-        return obj;
-      }
-      
-      if (Array.isArray(obj)) {
-        return obj.map(item => deepCopy(item));
-      }
-      
-      if (typeof obj === 'object') {
-        const copy: any = {};
-        for (const key in obj) {
-          copy[key] = deepCopy(obj[key]);
-        }
-        return copy;
-      }
-      
-      return obj;
-    };
-    
     // Create a true deep copy of all parameters
     const paramsCopy = deepCopy(params);
   
@@ -536,19 +532,29 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     
     // Check if plugin has provider/storage parameters in constructor interface
     const hasProviderParameter = constructorInterface?.parameters.some((param: { name: string }) => param.name === 'provider') ?? false;
-    const isProviderRequired = constructorInterface?.parameters.some(
-      (param: { name: string; required: boolean }) => param.name === 'provider' && param.required
-    ) ?? false;
+    
+    // For DiscordSource, provider is only required in 'summarized' mode
+    const isDiscordSource = pluginSchema?.pluginName === 'DiscordSource';
+    const isProviderRequired = isDiscordSource 
+      ? params.mode === 'summarized'
+      : constructorInterface?.parameters.some(
+          (param: { name: string; required: boolean }) => param.name === 'provider' && param.required
+        ) ?? false;
     
     const hasStorageParameter = constructorInterface?.parameters.some((param: { name: string }) => param.name === 'storage') ?? false;
-    const isStorageRequired = constructorInterface?.parameters.some(
-      (param: { name: string; required: boolean }) => param.name === 'storage' && param.required
-    ) ?? false;
+    
+    // For DiscordSource, storage is required in 'detailed' and 'summarized' modes but not 'simple'
+    const isStorageRequired = isDiscordSource
+      ? params.mode !== 'simple'
+      : constructorInterface?.parameters.some(
+          (param: { name: string; required: boolean }) => param.name === 'storage' && param.required
+        ) ?? false;
     
     return (
       <div className="space-y-4">
         {/* Only render provider field if it's explicitly in the constructor interface */}
-        {hasProviderParameter && (
+        {/* For DiscordSource, only show in summarized mode */}
+        {hasProviderParameter && (!isDiscordSource || params.mode === 'summarized') && (
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-300 mb-1">
               Provider
@@ -575,7 +581,8 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         )}
         
         {/* Only render storage field if it's explicitly in the constructor interface */}
-        {hasStorageParameter && (
+        {/* For DiscordSource, hide in simple mode (not required) */}
+        {hasStorageParameter && (!isDiscordSource || params.mode !== 'simple') && (
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-300 mb-1">
               Storage
@@ -684,6 +691,188 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
           </div>
         )}
 
+        {/* Mode selector for unified DiscordSource */}
+        {pluginSchema?.pluginName === 'DiscordSource' && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Mode
+              <span className="text-red-500 ml-1">*</span>
+            </label>
+            <select
+              value={params.mode || 'detailed'}
+              onChange={(e) => {
+                const newMode = e.target.value;
+                handleParamChange('mode', newMode);
+                // Clear provider if switching away from summarized mode
+                if (newMode !== 'summarized' && params.provider) {
+                  handleParamChange('provider', '');
+                }
+                // Clear channels when switching to/from simple mode (different channel types)
+                if ((newMode === 'simple') !== (params.mode === 'simple')) {
+                  handleParamChange('channelIds', []);
+                }
+              }}
+              className="py-2 px-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+            >
+              <option value="detailed">Detailed - Full message data with metadata</option>
+              <option value="summarized">AI Summary - AI-generated conversation summaries</option>
+              <option value="simple">Simple - Basic messages from announcement channels</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-400">
+              {params.mode === 'summarized' 
+                ? 'Requires an AI provider to generate summaries'
+                : params.mode === 'simple'
+                ? 'Only shows announcement channels - basic message content without extra processing'
+                : 'Full message data with reactions, attachments, and user metadata'}
+            </p>
+          </div>
+        )}
+
+        {/* Connection/Channel Picker for platform-specific sources (Discord, Telegram, etc.) */}
+        {platformMode && pluginSchema?.requiresPlatform && (
+          <ConnectionChannelPicker
+            platform={pluginSchema.requiresPlatform as PlatformType}
+            selectedConnectionId={params.connectionId}
+            selectedChannelIds={params.channelIds || []}
+            onConnectionChange={(connectionId, connection) => {
+              handleParamChange('connectionId', connectionId || '');
+              // Also set the name if it's empty and we have a connection
+              if (connection && !customName) {
+                setCustomName(`${connection.externalName} Source`);
+              }
+            }}
+            onChannelsChange={(channelIds) => {
+              handleParamChange('channelIds', channelIds);
+            }}
+            channelsRequired={constructorInterface?.parameters.some(
+              (p: any) => p.name === 'channelIds' && p.required
+            )}
+            // For Simple mode, only show announcement channels (Discord channel type 5)
+            channelTypeFilter={
+              pluginSchema?.pluginName === 'DiscordSource' && params.mode === 'simple' 
+                ? [5] 
+                : undefined
+            }
+            noChannelsMessage={
+              pluginSchema?.pluginName === 'DiscordSource' && params.mode === 'simple'
+                ? 'No announcement channels found in this server. Simple mode only works with announcement channels.'
+                : undefined
+            }
+          />
+        )}
+
+        {/* Media Download Config - only for DiscordSource in detailed mode */}
+        {pluginSchema?.pluginName === 'DiscordSource' && (!params.mode || params.mode === 'detailed') && (
+          <div className="mb-4">
+            <MediaDownloadConfig
+              value={params.mediaDownload}
+              onChange={(settings) => handleParamChange('mediaDownload', settings)}
+              platformMode={platformMode}
+            />
+          </div>
+        )}
+
+        {/* GitHub Repo Picker - for GitHubSource */}
+        {pluginSchema?.pluginName === 'GitHubSource' && (
+          <div className="mb-4">
+            <GitHubRepoPicker
+              selectedConnectionId={params.connectionId}
+              selectedRepos={params.repos || []}
+              onConnectionChange={(connectionId, connection) => {
+                handleParamChange('connectionId', connectionId || '');
+                // Also set the name if it's empty and we have a connection
+                if (connection && !customName) {
+                  setCustomName(`${connection.externalName} GitHub Source`);
+                }
+              }}
+              onReposChange={(repos) => {
+                handleParamChange('repos', repos);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Mode selector for GitHubSource */}
+        {pluginSchema?.pluginName === 'GitHubSource' && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Mode
+            </label>
+            <select
+              value={params.mode || 'summarized'}
+              onChange={(e) => {
+                handleParamChange('mode', e.target.value);
+              }}
+              className="py-2 px-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+            >
+              <option value="summarized">Summarized - Single summary per repo with all activity</option>
+              <option value="raw">Raw - Individual items for each PR, issue, commit</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-400">
+              {params.mode === 'raw' 
+                ? 'Outputs individual ContentItems for each PR, issue, commit, review, plus summary'
+                : 'Outputs a single comprehensive summary per repo (default)'}
+            </p>
+          </div>
+        )}
+
+        {/* AI Summary toggle for GitHubSource - only show in summarized mode */}
+        {pluginSchema?.pluginName === 'GitHubSource' && params.mode === 'summarized' && (
+          <div className="mb-4 p-3 bg-stone-700 rounded-lg border border-stone-600">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={params.aiSummary?.enabled || false}
+                onChange={(e) => {
+                  handleParamChange('aiSummary', { 
+                    ...params.aiSummary, 
+                    enabled: e.target.checked 
+                  });
+                  // If disabling, also clear the provider
+                  if (!e.target.checked) {
+                    handleParamChange('provider', '');
+                  }
+                }}
+                className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-stone-600 text-amber-600 focus:ring-amber-500"
+              />
+              <div className="flex-1">
+                <div className="font-medium text-white text-sm">AI-Powered Summary</div>
+                <p className="text-gray-400 text-xs mt-1">
+                  Use AI to generate more detailed and insightful summaries of GitHub activity.
+                </p>
+              </div>
+            </label>
+            
+            {/* Provider selector - only show when AI summary is enabled */}
+            {params.aiSummary?.enabled && (
+              <div className="mt-3 pt-3 border-t border-stone-600">
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  AI Provider
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                <select
+                  value={params.provider || ''}
+                  onChange={(e) => handleParamChange('provider', e.target.value)}
+                  className="py-2 px-2 w-full rounded-md border-gray-600 bg-stone-600 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                  required
+                >
+                  <option value="">Select an AI provider</option>
+                  {availableProviders.map(provider => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
+                {availableProviders.length === 0 && (
+                  <p className="mt-1 text-xs text-amber-400">
+                    No AI providers configured. Add an AI provider to your pipeline first.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Render constructor interface parameters */}
         {constructorInterface && (constructorInterface.parameters as Array<{
           name: string;
@@ -704,6 +893,28 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
           // Skip usePlatformStorage and usePlatformAI - handled above with special UI
           if (key === 'usePlatformStorage' || key === 'usePlatformAI') {
             return null;
+          }
+          
+          // In platform mode with requiresPlatform, hide connection-related fields
+          // These are handled by the ConnectionChannelPicker above
+          if (platformMode && pluginSchema?.requiresPlatform) {
+            const connectionFields = ['connectionId', 'channelIds', 'chatIds', 'botToken', 'guildId'];
+            if (connectionFields.includes(key)) {
+              return null;
+            }
+          }
+          
+          // Skip mode and mediaDownload fields for DiscordSource - handled with special UI above
+          if (pluginSchema?.pluginName === 'DiscordSource' && (key === 'mode' || key === 'mediaDownload')) {
+            return null;
+          }
+          
+          // Skip GitHubSource fields handled with custom UI above
+          if (pluginSchema?.pluginName === 'GitHubSource') {
+            const githubHandledFields = ['repos', 'connectionId', 'mode', 'aiSummary', 'interval', 'provider'];
+            if (githubHandledFields.includes(key)) {
+              return null;
+            }
           }
           
           // In platform mode, hide connection params when using platform storage

@@ -148,7 +148,7 @@ async function recordPayment(
     INSERT INTO payments (
       config_id, user_id, payer_wallet, amount, platform_fee, owner_amount,
       tx_signature, memo, status
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed')
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'verified')
   `, [configId, userId, walletAddress, amount, platformFee, ownerAmount, signature, memo]);
 
   // Update config stats
@@ -183,6 +183,13 @@ export async function requirePayment(
   next: NextFunction
 ): Promise<void> {
   try {
+    // Owner/admin bypass — owners never pay for their own config's data
+    const accessType = (req as any).accessType;
+    if (accessType === 'owner' || accessType === 'admin') {
+      next();
+      return;
+    }
+
     const configId = req.params.id || req.params.configId;
     
     if (!configId) {
@@ -190,19 +197,22 @@ export async function requirePayment(
       return;
     }
 
-    // Get config details
-    const configResult = await databaseService.query(
-      `SELECT id, monetization_enabled, price_per_query, owner_wallet, user_id
-       FROM configs WHERE id = $1`,
-      [configId]
-    );
+    // Use config from requireConfigAccess if available, otherwise query DB
+    let config = (req as any).config;
+    if (!config) {
+      const configResult = await databaseService.query(
+        `SELECT id, monetization_enabled, price_per_query, owner_wallet, user_id
+         FROM configs WHERE id = $1`,
+        [configId]
+      );
 
-    if (configResult.rows.length === 0) {
-      res.status(404).json({ error: 'Config not found' });
-      return;
+      if (configResult.rows.length === 0) {
+        res.status(404).json({ error: 'Config not found' });
+        return;
+      }
+
+      config = configResult.rows[0];
     }
-
-    const config = configResult.rows[0];
 
     // If monetization is not enabled, allow access
     if (!config.monetization_enabled) {

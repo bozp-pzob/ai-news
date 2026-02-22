@@ -7,15 +7,7 @@
 
 const FACILITATOR_URL = 'https://facilitator.pop402.com';
 
-/**
- * Challenge response from pop402 facilitator
- */
-export interface Challenge {
-  id: string;
-  message: string;
-  expiresAt: number;
-  expiresIn: number;
-}
+import { Challenge } from './api';
 
 /**
  * Get a challenge from pop402 facilitator for wallet authentication
@@ -88,7 +80,7 @@ export async function signChallengeMessage(
   
   // Convert to base58 - using a simple implementation
   // In production, you might use a library like bs58
-  return uint8ArrayToBase58(signatureBytes);
+  return encodeBase58(signatureBytes);
 }
 
 /**
@@ -96,7 +88,7 @@ export async function signChallengeMessage(
  */
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
-function uint8ArrayToBase58(bytes: Uint8Array): string {
+export function encodeBase58(bytes: Uint8Array): string {
   const digits = [0];
   
   for (let i = 0; i < bytes.length; i++) {

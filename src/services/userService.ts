@@ -42,6 +42,8 @@ export interface Config {
   totalItems: number;
   totalQueries: number;
   totalRevenue: number;
+  isLocalExecution: boolean;
+  hideItems: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -75,6 +77,8 @@ export interface UpdateConfigParams {
   configJson?: object;
   secrets?: Record<string, string>;
   status?: 'idle' | 'running' | 'error' | 'paused';
+  isLocalExecution?: boolean;
+  hideItems?: boolean;
 }
 
 /**
@@ -173,6 +177,8 @@ function rowToConfig(row: any): Config {
     totalItems: row.total_items,
     totalQueries: row.total_queries,
     totalRevenue: row.total_revenue ? parseFloat(row.total_revenue) : 0,
+    isLocalExecution: row.is_local_execution || false,
+    hideItems: row.hide_items || false,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at)
   };
@@ -422,6 +428,16 @@ export async function updateConfig(configId: string, params: UpdateConfigParams)
     values.push(params.status);
   }
 
+  if (params.isLocalExecution !== undefined) {
+    updates.push(`is_local_execution = $${paramIndex++}`);
+    values.push(params.isLocalExecution);
+  }
+
+  if (params.hideItems !== undefined) {
+    updates.push(`hide_items = $${paramIndex++}`);
+    values.push(params.hideItems);
+  }
+
   if (updates.length === 0) {
     throw new Error('No updates provided');
   }
@@ -438,6 +454,29 @@ export async function updateConfig(configId: string, params: UpdateConfigParams)
   }
 
   return rowToConfig(result.rows[0]);
+}
+
+/**
+ * Get a user by ID
+ */
+export async function getUserById(userId: string): Promise<AuthUser | null> {
+  const result = await databaseService.query(
+    'SELECT id, privy_id, wallet_address, email, tier FROM users WHERE id = $1',
+    [userId]
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    privyId: row.privy_id,
+    walletAddress: row.wallet_address || undefined,
+    email: row.email || undefined,
+    tier: row.tier,
+  };
 }
 
 /**
@@ -485,43 +524,85 @@ export async function getUserConfigs(userId: string): Promise<Config[]> {
 }
 
 /**
- * Get public configs (for discovery)
+ * Valid sort options for public config discovery
+ */
+export type PublicConfigSort = 'trending' | 'popular' | 'newest' | 'revenue';
+
+/**
+ * Get public configs (for discovery) with ranking support
  */
 export async function getPublicConfigs(options: {
   limit?: number;
   offset?: number;
   search?: string;
+  sort?: PublicConfigSort;
 }): Promise<{ configs: Config[]; total: number }> {
-  const { limit = 20, offset = 0, search } = options;
+  const { limit = 20, offset = 0, search, sort = 'trending' } = options;
 
-  let whereClause = "visibility = 'public'";
+  let whereClause = "c.visibility = 'public'";
   const params: any[] = [];
   let paramIndex = 1;
 
   if (search) {
-    whereClause += ` AND (name ILIKE $${paramIndex} OR description ILIKE $${paramIndex})`;
+    whereClause += ` AND (c.name ILIKE $${paramIndex} OR c.description ILIKE $${paramIndex})`;
     params.push(`%${search}%`);
     paramIndex++;
   }
 
   // Get total count
   const countResult = await databaseService.query(
-    `SELECT COUNT(*) as count FROM configs WHERE ${whereClause}`,
+    `SELECT COUNT(*) as count FROM configs c WHERE ${whereClause}`,
     params
   );
   const total = parseInt(countResult.rows[0].count);
 
-  // Get paginated results
+  // Build ORDER BY based on sort option
+  // Uses a live_items subquery to get accurate item counts even when the
+  // configs.total_items counter is stale (DB trigger not yet applied).
+  // Trending uses a composite ranking score:
+  //   - total_queries (primary signal: how many people fetch data from this config)
+  //   - live item count * 0.1 (secondary signal: data volume/activity)
+  //   - total_revenue * 100 (quality signal: monetized configs with paying users rank higher)
+  const liveItemsExpr = '(SELECT COUNT(*) FROM items i WHERE i.config_id = c.id)';
+  let orderBy: string;
+  switch (sort) {
+    case 'popular':
+      orderBy = 'c.total_queries DESC, c.created_at DESC';
+      break;
+    case 'newest':
+      orderBy = 'c.created_at DESC';
+      break;
+    case 'revenue':
+      orderBy = 'c.total_revenue DESC, c.total_queries DESC';
+      break;
+    case 'trending':
+    default:
+      orderBy = `(COALESCE(c.total_queries, 0) * 1.0 + COALESCE(${liveItemsExpr}, 0) * 0.1 + COALESCE(c.total_revenue, 0) * 100) DESC, c.created_at DESC`;
+      break;
+  }
+
+  // Get paginated results with live item counts from the items table
+  // (configs.total_items may be stale if the DB trigger wasn't applied)
   params.push(limit, offset);
   const result = await databaseService.query(
-    `SELECT * FROM configs WHERE ${whereClause}
-     ORDER BY total_queries DESC, created_at DESC
+    `SELECT c.*,
+            (SELECT COUNT(*) FROM items i WHERE i.config_id = c.id) AS live_item_count
+     FROM configs c WHERE ${whereClause}
+     ORDER BY ${orderBy}
      LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
     params
   );
 
   return {
-    configs: result.rows.map(rowToConfig),
+    configs: result.rows.map((row: any) => {
+      const config = rowToConfig(row);
+      // Use live count from the items table if the cached counter is 0
+      const liveCount = parseInt(row.live_item_count) || 0;
+      if (config.totalItems === 0 && liveCount > 0) {
+        config.totalItems = liveCount;
+      }
+      return config;
+    }),
     total
   };
 }
@@ -759,6 +840,7 @@ export const userService = {
   updateConfig,
   getConfigById,
   getConfigBySlug,
+  getUserById,
   getUserConfigs,
   getPublicConfigs,
   deleteConfig,

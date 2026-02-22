@@ -1,5 +1,6 @@
 // src/types.ts
 
+import { z } from 'zod';
 import { StoragePlugin } from "./plugins/storage/StoragePlugin";
 
 /**
@@ -49,6 +50,10 @@ export interface AggregationStatus {
     totalItemsFetched?: number;
     itemsPerSource?: Record<string, number>;
     lastFetchTimes?: Record<string, number>;
+    totalPromptTokens?: number;
+    totalCompletionTokens?: number;
+    totalAiCalls?: number;
+    estimatedCostUsd?: number;
   };
 }
 
@@ -79,6 +84,10 @@ export interface JobStatus {
       totalItemsFetched?: number;
       itemsPerSource?: Record<string, number>;
       lastFetchTimes?: Record<string, number>;
+      totalPromptTokens?: number;
+      totalCompletionTokens?: number;
+      totalAiCalls?: number;
+      estimatedCostUsd?: number;
     };
   };
 }
@@ -131,15 +140,46 @@ export interface ImageGenerationOptions {
   aspectRatio?: string;
   imageSize?: '1K' | '2K' | '4K';
 }
+/**
+ * Tracks cumulative token usage and estimated cost for AI API calls.
+ */
+export interface AiUsageStats {
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalTokens: number;
+  totalCalls: number;
+  estimatedCostUsd: number;
+}
+
+/**
+ * Options for AI summarization calls.
+ * Allows callers to specify system prompts, temperature overrides, and JSON output mode.
+ * Based on prompt engineering research recommending separation of system instructions
+ * from user content, and task-specific temperature tuning.
+ */
+export interface SummarizeOptions {
+  /** System-level instructions separated from user content for better instruction following */
+  systemPrompt?: string;
+  /** Override the default temperature for this call (e.g., 0.3 for factual, 0.7 for creative) */
+  temperature?: number;
+  /** Request JSON output mode from the model when supported */
+  jsonMode?: boolean;
+}
 
 /**
  * Interface for AI providers that can process text.
  * Defines core AI capabilities used throughout the system.
  */
 export interface AiProvider {
-  summarize(text: string): Promise<string>;
+  summarize(text: string, options?: SummarizeOptions): Promise<string>;
   topics(text: string): Promise<string[]>;
   image(text: string, options?: ImageGenerationOptions): Promise<string[]>;
+  /** Get the model's maximum context length in tokens (0 if unknown) */
+  getContextLength(): number;
+  /** Get cumulative token usage and cost stats since last reset */
+  getUsageStats(): AiUsageStats;
+  /** Reset cumulative usage stats to zero */
+  resetUsageStats(): void;
 }
 
 /**
@@ -690,4 +730,702 @@ export interface PostgresStorageConfig {
   ssl?: boolean | object;
   poolSize?: number;
   configId?: string;
+}
+
+// ============================================
+// DISCORD MULTI-TENANT TYPES
+// ============================================
+
+/**
+ * Discord channel types (from Discord API)
+ * @see https://discord.com/developers/docs/resources/channel#channel-object-channel-types
+ */
+export enum DiscordChannelType {
+  GUILD_TEXT = 0,
+  DM = 1,
+  GUILD_VOICE = 2,
+  GROUP_DM = 3,
+  GUILD_CATEGORY = 4,
+  GUILD_ANNOUNCEMENT = 5,
+  ANNOUNCEMENT_THREAD = 10,
+  PUBLIC_THREAD = 11,
+  PRIVATE_THREAD = 12,
+  GUILD_STAGE_VOICE = 13,
+  GUILD_DIRECTORY = 14,
+  GUILD_FORUM = 15,
+  GUILD_MEDIA = 16,
+}
+
+/**
+ * Discord guild connection - tracks which user added bot to which guild
+ */
+export interface DiscordGuildConnection {
+  id: string;
+  userId: string;
+  guildId: string;
+  guildName: string;
+  guildIcon?: string;
+  botPermissions: number;
+  addedAt: Date;
+  isActive: boolean;
+  lastVerifiedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Discord guild channel - cached channel info for connected guilds
+ */
+export interface DiscordGuildChannel {
+  id: string;
+  guildConnectionId: string;
+  channelId: string;
+  channelName: string;
+  channelType: DiscordChannelType;
+  categoryId?: string;
+  categoryName?: string;
+  position: number;
+  isAccessible: boolean;
+  lastSyncedAt: Date;
+}
+
+/**
+ * Discord OAuth state - for CSRF protection during OAuth flow
+ */
+export interface DiscordOAuthState {
+  id: string;
+  userId: string;
+  state: string;
+  redirectUrl?: string;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
+/**
+ * Discord OAuth callback data from Discord's redirect
+ */
+export interface DiscordOAuthCallbackData {
+  code: string;
+  state: string;
+  guildId: string;
+  permissions?: string;
+}
+
+/**
+ * Discord OAuth token response
+ */
+export interface DiscordOAuthTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  refresh_token: string;
+  scope: string;
+  guild?: {
+    id: string;
+    name: string;
+    icon?: string;
+    owner_id: string;
+    permissions: string;
+  };
+}
+
+/**
+ * Discord API user response
+ */
+export interface DiscordApiUser {
+  id: string;
+  username: string;
+  discriminator: string;
+  global_name?: string;
+  avatar?: string;
+  email?: string;
+}
+
+/**
+ * Discord API guild response
+ */
+export interface DiscordApiGuild {
+  id: string;
+  name: string;
+  icon?: string;
+  owner_id: string;
+  permissions?: string;
+  features: string[];
+}
+
+/**
+ * Discord API channel response
+ */
+export interface DiscordApiChannel {
+  id: string;
+  type: number;
+  guild_id?: string;
+  position?: number;
+  name?: string;
+  topic?: string;
+  parent_id?: string;
+  permission_overwrites?: Array<{
+    id: string;
+    type: number;
+    allow: string;
+    deny: string;
+  }>;
+}
+
+/**
+ * Platform mode source config (generic)
+ * Used when running on the multi-tenant platform with external connections
+ * Works for Discord, Telegram, Slack, etc.
+ */
+export interface PlatformSourceConfig {
+  name: string;
+  connectionId: string;           // Reference to external_connections.id
+  channelIds: string[];           // Selected channel/resource IDs
+  storage: StoragePlugin;
+  mediaDownload?: MediaDownloadConfig;
+  // Injected at runtime by platform
+  _userId?: string;
+  _platform?: string;             // 'discord', 'telegram', 'slack'
+  _externalId?: string;           // guild_id, chat_id, workspace_id
+}
+
+/**
+ * Legacy alias for backward compatibility
+ * @deprecated Use PlatformSourceConfig instead
+ */
+export type PlatformDiscordSourceConfig = PlatformSourceConfig;
+
+/**
+ * Combined Discord source config (supports both modes)
+ */
+export type UnifiedDiscordSourceConfig = DiscordRawDataSourceConfig | PlatformSourceConfig;
+
+/**
+ * Check if config is platform mode (generic)
+ */
+export function isPlatformSourceConfig(config: any): config is PlatformSourceConfig {
+  return 'connectionId' in config;
+}
+
+/**
+ * Legacy alias for backward compatibility
+ * @deprecated Use isPlatformSourceConfig instead
+ */
+export function isPlatformDiscordConfig(config: UnifiedDiscordSourceConfig): config is PlatformSourceConfig {
+  return isPlatformSourceConfig(config);
+}
+
+/**
+ * Discord guild connection with channels (for API responses)
+ */
+export interface DiscordGuildConnectionWithChannels extends DiscordGuildConnection {
+  channels: DiscordGuildChannel[];
+}
+
+/**
+ * Create guild connection request
+ */
+export interface CreateGuildConnectionRequest {
+  code: string;
+  state: string;
+  guildId: string;
+  permissions?: number;
+}
+
+/**
+ * Guild connection API response
+ */
+export interface GuildConnectionResponse {
+  id: string;
+  guildId: string;
+  guildName: string;
+  guildIcon?: string;
+  isActive: boolean;
+  addedAt: string;
+  channelCount?: number;
+}
+
+// ============================================
+// GITHUB API TYPES (Zod Schemas)
+// ============================================
+
+/**
+ * GitHub user schema for API responses
+ */
+export const GitHubUserSchema = z.object({
+  login: z.string(),
+  avatarUrl: z.string().optional(),
+});
+
+/**
+ * GitHub label schema
+ */
+export const GitHubLabelSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: z.string(),
+  description: z.string().nullable().optional(),
+});
+
+/**
+ * GitHub reaction schema
+ */
+export const GitHubReactionSchema = z.object({
+  id: z.string(),
+  content: z.string(), // THUMBS_UP, THUMBS_DOWN, LAUGH, HOORAY, CONFUSED, HEART, ROCKET, EYES
+  createdAt: z.string(),
+  user: GitHubUserSchema.nullable().optional(),
+});
+
+// ============================================
+// Pull Request Schemas
+// ============================================
+
+/**
+ * GitHub PR file change schema
+ */
+export const GitHubPRFileSchema = z.object({
+  path: z.string(),
+  additions: z.number().default(0),
+  deletions: z.number().default(0),
+  changeType: z.string().optional(), // ADDED, DELETED, MODIFIED, RENAMED, COPIED
+});
+
+/**
+ * GitHub PR review schema
+ */
+export const GitHubPRReviewSchema = z.object({
+  id: z.string(),
+  state: z.string(), // APPROVED, CHANGES_REQUESTED, COMMENTED, PENDING, DISMISSED
+  body: z.string().nullable().default(''),
+  createdAt: z.string(),
+  submittedAt: z.string().optional(),
+  author: GitHubUserSchema.nullable().optional(),
+  url: z.string().optional(),
+});
+
+/**
+ * GitHub PR comment schema
+ */
+export const GitHubPRCommentSchema = z.object({
+  id: z.string(),
+  body: z.string().nullable().default(''),
+  createdAt: z.string(),
+  updatedAt: z.string().optional(),
+  author: GitHubUserSchema.nullable().optional(),
+  url: z.string().optional(),
+  reactions: z.object({
+    totalCount: z.number().default(0),
+    nodes: z.array(GitHubReactionSchema).default([]),
+  }).optional(),
+});
+
+/**
+ * GitHub commit within a PR schema
+ */
+export const GitHubCommitInPRSchema = z.object({
+  commit: z.object({
+    oid: z.string(),
+    message: z.string(),
+    messageHeadline: z.string().optional(),
+    committedDate: z.string(),
+    author: z.object({
+      name: z.string().optional(),
+      email: z.string().optional(),
+      date: z.string().optional(),
+      user: GitHubUserSchema.nullable().optional(),
+    }).optional(),
+    additions: z.number().default(0),
+    deletions: z.number().default(0),
+    changedFiles: z.number().default(0),
+  }),
+});
+
+/**
+ * GitHub closing issue reference schema
+ */
+export const GitHubClosingIssueSchema = z.object({
+  id: z.string(),
+  number: z.number(),
+  title: z.string(),
+  state: z.string(),
+});
+
+/**
+ * Raw pull request schema from GitHub API
+ */
+export const RawPullRequestSchema = z.object({
+  id: z.string(),
+  number: z.number(),
+  title: z.string(),
+  body: z.string().nullable().default(''),
+  state: z.string(), // OPEN, CLOSED, MERGED
+  merged: z.boolean().default(false),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  closedAt: z.string().nullable().optional(),
+  mergedAt: z.string().nullable().optional(),
+  headRefOid: z.string().optional(),
+  baseRefOid: z.string().optional(),
+  additions: z.number().default(0),
+  deletions: z.number().default(0),
+  changedFiles: z.number().default(0),
+  author: GitHubUserSchema.nullable().optional(),
+  labels: z.object({
+    nodes: z.array(GitHubLabelSchema).default([]),
+  }).optional(),
+  commits: z.object({
+    totalCount: z.number().default(0),
+    nodes: z.array(GitHubCommitInPRSchema).default([]),
+  }).optional(),
+  closingIssuesReferences: z.object({
+    nodes: z.array(GitHubClosingIssueSchema).default([]),
+  }).optional(),
+  reactions: z.object({
+    totalCount: z.number().default(0),
+    nodes: z.array(GitHubReactionSchema).default([]),
+  }).optional(),
+  reviews: z.object({
+    nodes: z.array(GitHubPRReviewSchema).default([]),
+  }).optional(),
+  comments: z.object({
+    nodes: z.array(GitHubPRCommentSchema).default([]),
+  }).optional(),
+  files: z.object({
+    nodes: z.array(GitHubPRFileSchema).default([]),
+  }).optional(),
+});
+
+// ============================================
+// Issue Schemas
+// ============================================
+
+/**
+ * GitHub issue comment schema
+ */
+export const GitHubIssueCommentSchema = z.object({
+  id: z.string(),
+  body: z.string().nullable().default(''),
+  createdAt: z.string(),
+  updatedAt: z.string().optional(),
+  author: GitHubUserSchema.nullable().optional(),
+  url: z.string().optional(),
+  reactions: z.object({
+    totalCount: z.number().default(0),
+    nodes: z.array(GitHubReactionSchema).default([]),
+  }).optional(),
+});
+
+/**
+ * Raw issue schema from GitHub API
+ */
+export const RawIssueSchema = z.object({
+  id: z.string(),
+  number: z.number(),
+  title: z.string(),
+  body: z.string().nullable().default(''),
+  state: z.string(), // OPEN, CLOSED
+  locked: z.boolean().default(false),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  closedAt: z.string().nullable().optional(),
+  author: GitHubUserSchema.nullable().optional(),
+  labels: z.object({
+    nodes: z.array(GitHubLabelSchema).default([]),
+  }).optional(),
+  reactions: z.object({
+    totalCount: z.number().default(0),
+    nodes: z.array(GitHubReactionSchema).default([]),
+  }).optional(),
+  comments: z.object({
+    totalCount: z.number().default(0),
+    nodes: z.array(GitHubIssueCommentSchema).default([]),
+  }).optional(),
+});
+
+// ============================================
+// Commit Schemas
+// ============================================
+
+/**
+ * Raw commit schema from GitHub API
+ */
+export const RawCommitSchema = z.object({
+  oid: z.string(),
+  message: z.string(),
+  messageHeadline: z.string().optional(),
+  committedDate: z.string(),
+  author: z.object({
+    name: z.string().optional(),
+    email: z.string().optional(),
+    date: z.string().optional(),
+    user: GitHubUserSchema.nullable().optional(),
+  }).optional(),
+  additions: z.number().default(0),
+  deletions: z.number().default(0),
+  changedFiles: z.number().default(0),
+});
+
+// ============================================
+// Repository Schemas
+// ============================================
+
+/**
+ * GitHub repository schema
+ */
+export const GitHubRepositorySchema = z.object({
+  id: z.number(),
+  nodeId: z.string().optional(),
+  name: z.string(),
+  fullName: z.string(),
+  private: z.boolean(),
+  owner: z.object({
+    login: z.string(),
+    id: z.number().optional(),
+  }),
+  htmlUrl: z.string(),
+  description: z.string().nullable().optional(),
+  fork: z.boolean().optional(),
+  url: z.string().optional(),
+  defaultBranch: z.string().optional(),
+  stargazersCount: z.number().optional(),
+  forksCount: z.number().optional(),
+  language: z.string().nullable().optional(),
+  pushedAt: z.string().nullable().optional(),
+  updatedAt: z.string().optional(),
+});
+
+// ============================================
+// User Schemas (for OAuth)
+// ============================================
+
+/**
+ * GitHub authenticated user schema
+ */
+export const GitHubAuthenticatedUserSchema = z.object({
+  login: z.string(),
+  id: z.number(),
+  nodeId: z.string().optional(),
+  avatarUrl: z.string(),
+  gravatarId: z.string().nullable().optional(),
+  url: z.string(),
+  htmlUrl: z.string(),
+  name: z.string().nullable().optional(),
+  company: z.string().nullable().optional(),
+  blog: z.string().nullable().optional(),
+  location: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  hireable: z.boolean().nullable().optional(),
+  bio: z.string().nullable().optional(),
+  twitterUsername: z.string().nullable().optional(),
+  publicRepos: z.number(),
+  publicGists: z.number(),
+  followers: z.number(),
+  following: z.number(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+// ============================================
+// Inferred Types from Schemas
+// ============================================
+
+export type RawPullRequest = z.infer<typeof RawPullRequestSchema>;
+export type RawIssue = z.infer<typeof RawIssueSchema>;
+export type RawCommit = z.infer<typeof RawCommitSchema>;
+export type GitHubRepository = z.infer<typeof GitHubRepositorySchema>;
+export type GitHubAuthenticatedUser = z.infer<typeof GitHubAuthenticatedUserSchema>;
+export type GitHubPRReview = z.infer<typeof GitHubPRReviewSchema>;
+export type GitHubPRComment = z.infer<typeof GitHubPRCommentSchema>;
+export type GitHubIssueComment = z.infer<typeof GitHubIssueCommentSchema>;
+export type GitHubLabel = z.infer<typeof GitHubLabelSchema>;
+export type GitHubPRFile = z.infer<typeof GitHubPRFileSchema>;
+
+// ============================================
+// GitHub Activity Types (for daily activity tracking)
+// ============================================
+
+/**
+ * Comment on an issue or PR (conversation comment, not inline code review)
+ */
+export interface RawComment {
+  id: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  author?: { login: string; avatarUrl?: string };
+  issueNumber: number;
+  issueTitle?: string;
+  isPullRequest: boolean;
+  htmlUrl: string;
+}
+
+/**
+ * Inline code review comment on a PR
+ */
+export interface RawReviewComment {
+  id: string;
+  body: string;
+  path: string;
+  line?: number;
+  side?: string;
+  createdAt: string;
+  author?: { login: string; avatarUrl?: string };
+  prNumber: number;
+  prTitle?: string;
+  htmlUrl: string;
+  diffHunk?: string;
+  inReplyToId?: string;
+}
+
+/**
+ * PR review submission (approve/request changes/comment)
+ */
+export interface RawReviewSubmission {
+  id: string;
+  body?: string;
+  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING';
+  submittedAt: string;
+  author?: { login: string; avatarUrl?: string };
+  prNumber: number;
+  prTitle?: string;
+  htmlUrl: string;
+}
+
+/**
+ * Minimal info for a merged PR (when tracking merges on old PRs)
+ */
+export interface MergedPRInfo {
+  number: number;
+  title: string;
+  author: string;
+  mergedAt: string;
+  mergedBy?: string;
+  htmlUrl: string;
+}
+
+/**
+ * Minimal info for a closed issue (when tracking closes on old issues)
+ */
+export interface ClosedIssueInfo {
+  number: number;
+  title: string;
+  author: string;
+  closedAt: string;
+  htmlUrl: string;
+  stateReason?: 'completed' | 'not_planned' | 'reopened' | null;
+}
+
+/**
+ * Activity types configuration for GitHubSource
+ */
+export interface GitHubActivityTypes {
+  newPRs?: boolean;           // PRs created today (default: true)
+  newIssues?: boolean;        // Issues created today (default: true)
+  commits?: boolean;          // Commits today (default: true)
+  comments?: boolean;         // Comments on any PR/issue today (default: true)
+  reviews?: boolean;          // PR reviews submitted today (default: true)
+  reviewComments?: boolean;   // Inline code review comments today (default: true)
+  mergedPRs?: boolean;        // PRs merged today (default: true)
+  closedIssues?: boolean;     // Issues closed today (default: true)
+}
+
+// ============================================
+// GitHub Fetch Options
+// ============================================
+
+/**
+ * Options for fetching GitHub data
+ */
+export interface FetchOptions {
+  /** Start date for filtering (ISO string or Date) */
+  since?: string | Date;
+  /** End date for filtering (ISO string or Date) */
+  until?: string | Date;
+  /** Maximum number of items to fetch (for pagination limits) */
+  limit?: number;
+}
+
+// ============================================
+// GraphQL Response Types
+// ============================================
+
+/**
+ * GitHub GraphQL pagination info
+ */
+export interface GitHubPageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
+/**
+ * GitHub GraphQL search response wrapper
+ */
+export interface GitHubSearchResponse<T> {
+  search: {
+    nodes: T[];
+    pageInfo: GitHubPageInfo;
+  };
+}
+
+/**
+ * GitHub GraphQL repository response wrapper
+ */
+export interface GitHubRepositoryResponse<T> {
+  repository: {
+    defaultBranchRef: {
+      target: {
+        history: {
+          nodes: T[];
+          pageInfo: GitHubPageInfo;
+        };
+      };
+    };
+  };
+}
+
+/**
+ * GitHub GraphQL response with optional errors
+ */
+export type GitHubGraphQLResponse<T> = {
+  data: GitHubSearchResponse<T> | GitHubRepositoryResponse<T>;
+  errors?: Array<{ message: string; type?: string }>;
+};
+
+// ============================================
+// GitHub Stats Types
+// ============================================
+
+/**
+ * Statistics for a single contributor
+ */
+export interface ContributorStats {
+  username: string;
+  avatarUrl?: string;
+  prsOpened: number;
+  prsMerged: number;
+  prsClosed: number;
+  issuesOpened: number;
+  issuesClosed: number;
+  commits: number;
+  reviews: number;
+  comments: number;
+  additions: number;
+  deletions: number;
+}
+
+/**
+ * Daily statistics for a repository
+ */
+export interface DailyStats {
+  date: string;
+  repository: string;
+  prsOpened: number;
+  prsMerged: number;
+  prsClosed: number;
+  issuesOpened: number;
+  issuesClosed: number;
+  commits: number;
+  activeContributors: string[];
+  contributors: ContributorStats[];
 }

@@ -5,6 +5,7 @@ module.exports = function(app) {
   // Uses REACT_APP_API_URL env var or defaults to localhost:3000
   const apiTarget = process.env.REACT_APP_API_URL || 'http://localhost:3000';
   
+  // Proxy /api routes to the backend
   app.use(
     '/api',
     createProxyMiddleware({
@@ -15,6 +16,22 @@ module.exports = function(app) {
       },
       onError: (err, req, res) => {
         console.error(`[Proxy] API error:`, err.message);
+        res.status(502).json({ error: 'Backend server unavailable', details: err.message });
+      }
+    })
+  );
+
+  // Proxy legacy endpoints used by the NodeGraph local/builder mode
+  app.use(
+    ['/aggregate', '/job', '/jobs', '/status', '/config', '/configs', '/plugins'],
+    createProxyMiddleware({
+      target: apiTarget,
+      changeOrigin: true,
+      onProxyReq: (proxyReq) => {
+        console.log(`[Proxy] Legacy request: ${proxyReq.method} ${proxyReq.path} -> ${apiTarget}`);
+      },
+      onError: (err, req, res) => {
+        console.error(`[Proxy] Legacy API error:`, err.message);
         res.status(502).json({ error: 'Backend server unavailable', details: err.message });
       }
     })

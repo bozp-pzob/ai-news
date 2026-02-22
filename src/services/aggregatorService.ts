@@ -1,19 +1,79 @@
 import { ContentAggregator } from "../aggregator/ContentAggregator";
 import { loadDirectoryModules, loadItems, loadProviders, loadStorage } from "../helpers/configHelper";
 import { Config } from "./configService";
-import { AggregationStatus, JobStatus } from "../types";
+import { AggregationStatus, AiProvider, AiUsageStats, JobStatus } from "../types";
 import EventEmitter from "events";
 import { HistoricalAggregator } from "../aggregator/HistoricalAggregator";
 import { callbackDateRangeLogic } from "../helpers/dateHelper";
+import { jobService, AggregationJob, JobType } from "./jobService";
+
+/**
+ * In-memory tracking for active jobs
+ * We need to keep intervals in memory since NodeJS.Timeout can't be serialized
+ */
+interface ActiveJobState {
+  intervals: NodeJS.Timeout[];
+  aggregator: ContentAggregator;
+  configName: string;
+}
 
 export class AggregatorService {
+  private static instance: AggregatorService | null = null;
+  
   private activeAggregators: { [key: string]: ContentAggregator } = {};
   private eventEmitter: EventEmitter = new EventEmitter();
-  private jobs: Map<string, JobStatus> = new Map();
+  
+  // In-memory tracking for active jobs (for intervals that can't be persisted)
+  private activeJobStates: Map<string, ActiveJobState> = new Map();
 
   constructor() {
     // Set maximum listeners to avoid warnings (since we might have many configs)
     this.eventEmitter.setMaxListeners(100);
+    
+    // Store as singleton instance
+    if (!AggregatorService.instance) {
+      AggregatorService.instance = this;
+    }
+  }
+  
+  /**
+   * Get the singleton instance of AggregatorService
+   * Creates one if it doesn't exist
+   */
+  public static getInstance(): AggregatorService {
+    if (!AggregatorService.instance) {
+      AggregatorService.instance = new AggregatorService();
+    }
+    return AggregatorService.instance;
+  }
+
+  /**
+   * Collect and sum usage stats from all AI provider instances, then reset them.
+   * This avoids double-counting across ticks.
+   */
+  private collectAndResetAiUsage(aiConfigs: any[]): AiUsageStats {
+    const totals: AiUsageStats = {
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+      totalTokens: 0,
+      totalCalls: 0,
+      estimatedCostUsd: 0,
+    };
+
+    for (const aiConfig of aiConfigs) {
+      const provider = aiConfig.instance as AiProvider;
+      if (provider.getUsageStats && provider.resetUsageStats) {
+        const stats = provider.getUsageStats();
+        totals.totalPromptTokens += stats.totalPromptTokens;
+        totals.totalCompletionTokens += stats.totalCompletionTokens;
+        totals.totalTokens += stats.totalTokens;
+        totals.totalCalls += stats.totalCalls;
+        totals.estimatedCostUsd += stats.estimatedCostUsd;
+        provider.resetUsageStats();
+      }
+    }
+
+    return totals;
   }
 
   // Event emitter methods
@@ -25,53 +85,55 @@ export class AggregatorService {
     this.eventEmitter.off(event, listener);
   }
 
-  private emitStatusUpdate(configName: string, jobId?: string): void {
+  private async emitStatusUpdate(configName: string, jobId?: string): Promise<void> {
     if (this.activeAggregators[configName]) {
       const status = this.activeAggregators[configName].getStatus();
 
       this.eventEmitter.emit(`status:${configName}`, status);
       
-      // If there's a job ID, update and emit job status too
-      if (jobId && this.jobs.has(jobId)) {
-        const jobStatus = this.jobs.get(jobId)!;
-        
-        // Only update the status if the job isn't already marked as completed or failed
-        // This prevents a completed job from going back to "running"
-        if (jobStatus.status !== 'completed' && jobStatus.status !== 'failed') {
-          jobStatus.status = status.status === 'running' ? 'running' : 'completed';
-          
-          // Calculate progress based on current phase
-          if (status.currentPhase === 'fetching') {
-            jobStatus.progress = 25;
-          } else if (status.currentPhase === 'enriching') {
-            jobStatus.progress = 50;
-          } else if (status.currentPhase === 'generating') {
-            jobStatus.progress = 75;
-          } else if (status.currentPhase === 'idle' && status.status === 'running') {
-            // Only set progress to 100% if the job is actually complete
-            // If status is running, maintain the previous progress value instead of jumping to 100%
-            // This prevents the progress bar from prematurely jumping to 100%
-            // Do nothing here to maintain the previous progress value
-          }
+      // If there's a job ID and it's a DB job (UUID), emit job status update
+      if (jobId && jobId.length === 36) {
+        const job = await jobService.getJob(jobId);
+        if (job) {
+          const jobStatus = this.jobToJobStatus(job);
+          jobStatus.aggregationStatus = {
+            currentSource: status.currentSource,
+            currentPhase: status.currentPhase,
+            errors: status.errors,
+            stats: status.stats
+          };
+          this.eventEmitter.emit(`job:${jobId}`, jobStatus);
         }
-        
-        // Always update aggregation status details regardless of job status
-        // This allows monitoring even for completed jobs
-        jobStatus.aggregationStatus = {
-          currentSource: status.currentSource,
-          currentPhase: status.currentPhase,
-          errors: status.errors,
-          stats: status.stats
-        };
-        
-        this.jobs.set(jobId, jobStatus);
-        this.eventEmitter.emit(`job:${jobId}`, jobStatus);
       }
     }
   }
 
+  /**
+   * Convert AggregationJob to JobStatus for backwards compatibility
+   */
+  private jobToJobStatus(job: AggregationJob): JobStatus {
+    return {
+      jobId: job.id,
+      configName: '', // Will need to look this up if needed
+      startTime: job.startedAt?.getTime() || job.createdAt.getTime(),
+      status: job.status === 'cancelled' ? 'failed' : job.status as any,
+      progress: job.status === 'completed' ? 100 : job.status === 'running' ? 50 : 0,
+      error: job.errorMessage,
+      intervals: this.activeJobStates.get(job.id)?.intervals,
+      aggregationStatus: {
+        stats: {
+          totalItemsFetched: job.itemsFetched,
+          totalPromptTokens: job.totalPromptTokens,
+          totalCompletionTokens: job.totalCompletionTokens,
+          totalAiCalls: job.totalAiCalls,
+          estimatedCostUsd: job.estimatedCostUsd,
+        }
+      }
+    };
+  }
+
   // New method to update source status before fetching
-  private updateSourceStatus(configName: string, sourceName?: string, jobId?: string): void {
+  private async updateSourceStatus(configName: string, sourceName?: string, jobId?: string): Promise<void> {
     if (this.activeAggregators[configName]) {
       // Manually set the current source in the aggregator's status
       const aggregator = this.activeAggregators[configName];
@@ -82,33 +144,28 @@ export class AggregatorService {
       
       this.eventEmitter.emit(`status:${configName}`, status);
       
-      // If there's a job ID, update and emit job status too
-      if (jobId && this.jobs.has(jobId)) {
-        const jobStatus = this.jobs.get(jobId)!;
-        
-        if (jobStatus.status !== 'completed' && jobStatus.status !== 'failed') {
-          jobStatus.status = 'running';
-          jobStatus.progress = 25; // fetching phase
+      // If there's a job ID and it's a DB job (UUID), emit job status update
+      if (jobId && jobId.length === 36) {
+        const job = await jobService.getJob(jobId);
+        if (job) {
+          const jobStatus = this.jobToJobStatus(job);
+          jobStatus.aggregationStatus = {
+            currentSource: sourceName,
+            currentPhase: 'fetching',
+            errors: status.errors,
+            stats: status.stats
+          };
+          this.eventEmitter.emit(`job:${jobId}`, jobStatus);
         }
-        
-        // Always update aggregation status
-        jobStatus.aggregationStatus = {
-          currentSource: sourceName,
-          currentPhase: 'fetching',
-          errors: status.errors,
-          stats: status.stats
-        };
-        
-        this.jobs.set(jobId, jobStatus);
-        this.eventEmitter.emit(`job:${jobId}`, jobStatus);
       }
     }
   }
 
   // Method to emit job status updates
-  private emitJobStatusUpdate(jobId: string): void {
-    if (this.jobs.has(jobId)) {
-      const jobStatus = this.jobs.get(jobId)!;
+  private async emitJobStatusUpdate(jobId: string): Promise<void> {
+    const job = await jobService.getJob(jobId);
+    if (job) {
+      const jobStatus = this.jobToJobStatus(job);
       this.eventEmitter.emit(`job:${jobId}`, jobStatus);
     }
   }
@@ -120,11 +177,46 @@ export class AggregatorService {
     }, interval);
   }
 
+  /**
+   * Start a continuous aggregation job (for pro users)
+   */
+  async startContinuousJob(
+    configId: string,
+    userId: string,
+    configName: string,
+    config: Config,
+    settings: any,
+    secrets: any,
+    globalInterval?: number,
+    existingJobId?: string
+  ): Promise<string> {
+    // Create a job in the database (or use existing for resume)
+    const jobId = existingJobId || await jobService.createJob({
+      configId,
+      userId,
+      jobType: 'continuous',
+      globalInterval,
+    });
+    
+    // Start the continuous aggregation process in the background
+    this.startContinuousAggregationProcess(jobId, configName, config, settings, secrets, globalInterval).catch(async error => {
+      console.error(`Error in continuous aggregation process for job ${jobId}:`, error);
+      await jobService.failJob(jobId, error.message || 'Unknown error');
+      await jobService.addJobLog(jobId, 'error', error.message || 'Unknown error');
+    });
+    
+    return jobId;
+  }
+
+  /**
+   * Legacy method for backwards compatibility
+   */
   async startAggregation(configName: string, config: Config, settings: any, secrets: any): Promise<string> {
-    // Create a job ID
+    // For legacy API calls without configId/userId, generate a temporary job ID
+    // This maintains backwards compatibility with the old in-memory system
     const jobId = Math.random().toString(36).substr(2, 9);
     
-    // Initialize job status
+    // Initialize legacy job status (for backwards compatibility)
     const jobStatus: JobStatus = {
       jobId,
       configName,
@@ -133,24 +225,34 @@ export class AggregatorService {
       progress: 0
     };
     
-    this.jobs.set(jobId, jobStatus);
     this.eventEmitter.emit(`job:${jobId}`, jobStatus);
     
-    // Start the continuous aggregation process in the background without blocking
+    // Start the continuous aggregation process
     this.startContinuousAggregationProcess(jobId, configName, config, settings, secrets).catch(error => {
       console.error(`Error in background continuous aggregation process for job ${jobId}:`, error);
-      // Error handling is done inside startContinuousAggregationProcess, so no need to handle it here
     });
     
-    // Return the job ID immediately
     return jobId;
   }
 
-  private async startContinuousAggregationProcess(jobId: string, configName: string, config: Config, settings: any, secrets: any): Promise<void> {
-    const jobStatus = this.jobs.get(jobId)!;
+  private async startContinuousAggregationProcess(
+    jobId: string,
+    configName: string,
+    config: Config,
+    settings: any,
+    secrets: any,
+    globalInterval?: number
+  ): Promise<void> {
+    // Check if this is a DB-backed job (UUIDs are 36 chars)
+    const isDbJob = jobId.length === 36;
     
-    // Initialize the intervals array
-    jobStatus.intervals = [];
+    // Initialize active job state for interval tracking
+    const activeState: ActiveJobState = {
+      intervals: [],
+      aggregator: null as any,
+      configName,
+    };
+    this.activeJobStates.set(jobId, activeState);
     
     // Ensure settings exists
     if (!settings) {
@@ -169,11 +271,9 @@ export class AggregatorService {
       const generatorClasses = await loadDirectoryModules("generators");
       const storageClasses = await loadDirectoryModules("storage");
 
-      // Update job status
-      jobStatus.status = 'running';
-      jobStatus.progress = 10;
-      this.jobs.set(jobId, jobStatus);
-      this.emitJobStatusUpdate(jobId);
+      if (isDbJob) {
+        await jobService.addJobLog(jobId, 'info', 'Loading configurations...');
+      }
 
       // Load configurations
       let aiConfigs = await loadItems(config.ai, aiClasses, "ai", secrets);
@@ -182,13 +282,9 @@ export class AggregatorService {
       let generatorConfigs = await loadItems(config.generators, generatorClasses, "generators", secrets);
       let storageConfigs = await loadItems(config.storage, storageClasses, "storage", secrets);
 
-      // Update job status
-      jobStatus.progress = 20;
-      this.jobs.set(jobId, jobStatus);
-      this.emitJobStatusUpdate(jobId);
-
       // Set up dependencies
       sourceConfigs = await loadProviders(sourceConfigs, aiConfigs);
+      sourceConfigs = await loadStorage(sourceConfigs, storageConfigs);
       enricherConfigs = await loadProviders(enricherConfigs, aiConfigs);
       generatorConfigs = await loadProviders(generatorConfigs, aiConfigs);
       generatorConfigs = await loadStorage(generatorConfigs, storageConfigs);
@@ -205,79 +301,144 @@ export class AggregatorService {
 
       // Store the aggregator instance
       this.activeAggregators[configName] = aggregator;
+      activeState.aggregator = aggregator;
 
-      // Update job status
-      jobStatus.progress = 40;
-      this.jobs.set(jobId, jobStatus);
-      this.emitJobStatusUpdate(jobId);
-
-      // Start fetching and generating content if not in generate-only mode
-      if (!settings?.onlyGenerate) {
-        for (const config of sourceConfigs) {
-          this.updateSourceStatus(configName, config.instance.name, jobId); // Set source name before fetch
-          await aggregator.fetchAndStore(config.instance.name);
-          this.emitStatusUpdate(configName, jobId);
-          
-          // Initialize intervals array if it doesn't exist
-          if (!jobStatus.intervals) {
-            jobStatus.intervals = [];
-          }
-          
-          // Track interval ID for cleanup
-          const intervalId = setInterval(() => {
-            this.updateSourceStatus(configName, config.instance.name, jobId); // Set source name before fetch
-            aggregator.fetchAndStore(config.instance.name)
-              .then(() => this.emitStatusUpdate(configName, jobId));
-          }, config.interval);
-          
-          // Add the interval ID to the job for tracking
-          if (!jobStatus.intervals) {
-            jobStatus.intervals = [];
-          }
-          jobStatus.intervals.push(intervalId);
-        }
+      if (isDbJob) {
+        await jobService.addJobLog(jobId, 'info', 'Starting continuous aggregation...');
       }
 
-      // Update job status
-      jobStatus.progress = 70;
-      this.jobs.set(jobId, jobStatus);
-      this.emitJobStatusUpdate(jobId);
+      // Start fetching and generating content
+      if (!settings?.onlyGenerate) {
+        for (const sourceConfig of sourceConfigs) {
+          await this.updateSourceStatus(configName, sourceConfig.instance.name, jobId);
+          await aggregator.fetchAndStore(sourceConfig.instance.name);
+          await this.emitStatusUpdate(configName, jobId);
+          
+          // Use global interval if provided, otherwise use per-source interval
+          const interval = globalInterval || sourceConfig.interval;
+          
+          // Track interval ID for cleanup
+          const intervalId = setInterval(async () => {
+            await this.updateSourceStatus(configName, sourceConfig.instance.name, jobId);
+            const itemsBefore = aggregator.getStatus().stats?.totalItemsFetched || 0;
+            
+            await aggregator.fetchAndStore(sourceConfig.instance.name);
+            
+            const itemsAfter = aggregator.getStatus().stats?.totalItemsFetched || 0;
+            const newItems = itemsAfter - itemsBefore;
+            
+            // Collect AI usage from this tick
+            const tickUsage = this.collectAndResetAiUsage(aiConfigs);
+            
+            // Record this tick in the database (only for DB-backed jobs)
+            if (isDbJob) {
+              await jobService.recordContinuousTick(jobId, {
+                itemsFetched: newItems,
+                itemsProcessed: newItems,
+                promptTokens: tickUsage.totalPromptTokens,
+                completionTokens: tickUsage.totalCompletionTokens,
+                aiCalls: tickUsage.totalCalls,
+                estimatedCostUsd: tickUsage.estimatedCostUsd,
+              });
+            }
+            
+            await this.emitStatusUpdate(configName, jobId);
+          }, interval);
+          
+          activeState.intervals.push(intervalId);
+        }
+      }
 
       if (!settings?.onlyFetch) {
         for (const generator of generatorConfigs) {
+          // Mark generators as running in continuous mode so they can defer
+          // summary generation until end of day instead of generating immediately
+          if (generator.instance.isContinuousMode !== undefined) {
+            generator.instance.isContinuousMode = true;
+          }
+          
           await generator.instance.generateContent();
-          this.emitStatusUpdate(configName, jobId);
+          await this.emitStatusUpdate(configName, jobId);
+          
+          // Use global interval if provided, otherwise use per-generator interval
+          const interval = globalInterval || generator.interval;
           
           // Track interval ID for cleanup
-          const intervalId = setInterval(() => {
-            generator.instance.generateContent()
-              .then(() => this.emitStatusUpdate(configName, jobId));
-          }, generator.interval);
+          const intervalId = setInterval(async () => {
+            await generator.instance.generateContent();
+            
+            // Collect AI usage from generator tick
+            const genUsage = this.collectAndResetAiUsage(aiConfigs);
+            if (isDbJob && genUsage.totalCalls > 0) {
+              await jobService.recordContinuousTick(jobId, {
+                itemsFetched: 0,
+                itemsProcessed: 0,
+                promptTokens: genUsage.totalPromptTokens,
+                completionTokens: genUsage.totalCompletionTokens,
+                aiCalls: genUsage.totalCalls,
+                estimatedCostUsd: genUsage.estimatedCostUsd,
+              });
+            }
+            
+            await this.emitStatusUpdate(configName, jobId);
+          }, interval);
           
-          // Add the interval ID to the job for tracking
-          jobStatus.intervals.push(intervalId);
+          activeState.intervals.push(intervalId);
         }
       }
       
-      // Update job status to completed (continuous aggregation is now set up)
-      // jobStatus.status = 'completed';
-      // jobStatus.progress = 100;
-      // this.jobs.set(jobId, jobStatus);
-      // this.emitJobStatusUpdate(jobId);
+      if (isDbJob) {
+        await jobService.addJobLog(jobId, 'info', `Continuous aggregation started with ${activeState.intervals.length} intervals`);
+      }
+      
     } catch (error: any) {
       // Handle errors
-      jobStatus.status = 'failed';
-      jobStatus.error = error.message || 'Unknown error during aggregation';
-      this.jobs.set(jobId, jobStatus);
-      this.emitJobStatusUpdate(jobId);
+      if (isDbJob) {
+        await jobService.failJob(jobId, error.message || 'Unknown error during aggregation');
+        await jobService.addJobLog(jobId, 'error', error.message || 'Unknown error');
+      }
+      
+      // Clean up
+      this.cleanupJobState(jobId);
     }
   }
 
+  /**
+   * Run a one-time aggregation job
+   */
+  async runOneTimeJob(
+    configId: string,
+    userId: string,
+    configName: string,
+    config: Config,
+    settings: any,
+    secrets: any
+  ): Promise<string> {
+    // Create a job in the database
+    const jobId = await jobService.createJob({
+      configId,
+      userId,
+      jobType: 'one-time',
+    });
+    
+    // Start the aggregation process in the background
+    this.runAggregationProcess(jobId, configName, config, settings, secrets).catch(async error => {
+      console.error(`Error in aggregation process for job ${jobId}:`, error);
+      await jobService.failJob(jobId, error.message || 'Unknown error');
+      await jobService.addJobLog(jobId, 'error', error.message || 'Unknown error');
+    });
+    
+    return jobId;
+  }
+
+  /**
+   * Legacy method for backwards compatibility
+   */
   async runAggregationOnce(configName: string, config: Config, settings: any, secrets: any): Promise<string> {
-    // Create a job ID
+    // For legacy API calls without configId/userId, generate a temporary job ID
     const jobId = Math.random().toString(36).substr(2, 9);
     
-    // Initialize job status
+    // Initialize legacy job status
     const jobStatus: JobStatus = {
       jobId,
       configName,
@@ -286,23 +447,21 @@ export class AggregatorService {
       progress: 0
     };
     
-    this.jobs.set(jobId, jobStatus);
     this.eventEmitter.emit(`job:${jobId}`, jobStatus);
     
-    // Start the aggregation process in the background without blocking
+    // Start the aggregation process
     this.runAggregationProcess(jobId, configName, config, settings, secrets).catch(error => {
       console.error(`Error in background aggregation process for job ${jobId}:`, error);
-      // Error handling is done inside runAggregationProcess, so no need to handle it here
     });
     
-    // Return the job ID immediately
     return jobId;
   }
 
   private async runAggregationProcess(jobId: string, configName: string, config: Config, settings: any, secrets: any): Promise<void> {
-    const jobStatus = this.jobs.get(jobId)!;
+    // Check if this is a DB-backed job
+    const isDbJob = jobId.length === 36; // UUIDs are 36 chars
     
-    // Log config summary (not params - may contain credentials)
+    // Log config summary
     console.log('[AggregatorService] Received config:', {
       storageCount: config.storage?.length || 0,
       generatorCount: config.generators?.length || 0,
@@ -310,9 +469,6 @@ export class AggregatorService {
       aiCount: config.ai?.length || 0,
       enricherCount: config.enrichers?.length || 0,
     });
-    
-    // Initialize the intervals array (even though one-time jobs don't use intervals)
-    jobStatus.intervals = [];
     
     // Ensure settings exists
     if (!settings) {
@@ -331,11 +487,9 @@ export class AggregatorService {
       const generatorClasses = await loadDirectoryModules("generators");
       const storageClasses = await loadDirectoryModules("storage");
 
-      // Update job status
-      jobStatus.status = 'running';
-      jobStatus.progress = 10;
-      this.jobs.set(jobId, jobStatus);
-      this.emitJobStatusUpdate(jobId);
+      if (isDbJob) {
+        await jobService.addJobLog(jobId, 'info', 'Loading configurations...');
+      }
 
       // Load configurations
       let aiConfigs = await loadItems(config.ai, aiClasses, "ai", secrets);
@@ -344,27 +498,15 @@ export class AggregatorService {
       let generatorConfigs = await loadItems(config.generators, generatorClasses, "generators", secrets);
       let storageConfigs = await loadItems(config.storage, storageClasses, "storage", secrets);
 
-      // Update job status after loading configurations
-      jobStatus.progress = 20;
-      this.jobs.set(jobId, jobStatus);
-      this.emitJobStatusUpdate(jobId);
-
       // Set up dependencies
       sourceConfigs = await loadProviders(sourceConfigs, aiConfigs);
+      sourceConfigs = await loadStorage(sourceConfigs, storageConfigs);
       enricherConfigs = await loadProviders(enricherConfigs, aiConfigs);
       generatorConfigs = await loadProviders(generatorConfigs, aiConfigs);
       generatorConfigs = await loadStorage(generatorConfigs, storageConfigs);
       
       // Check if we're running in historical mode
       const isHistoricalMode = settings?.historicalDate?.enabled === true;
-      
-      // Update job status
-      jobStatus.aggregationStatus = { 
-        mode: isHistoricalMode ? 'historical' : 'standard',
-        config: settings?.historicalDate || {}
-      };
-      this.jobs.set(jobId, jobStatus);
-      this.emitJobStatusUpdate(jobId);
 
       if (isHistoricalMode) {
         // Use HistoricalAggregator for historical data
@@ -393,80 +535,68 @@ export class AggregatorService {
         const { mode, startDate, endDate } = settings.historicalDate;
         
         if (mode === 'range') {
-          // Date range mode
           dateFilter.after = startDate;
           dateFilter.before = endDate;
         } else {
-          // Single date mode
           dateFilter.filterType = 'during';
           dateFilter.date = startDate;
         }
         
-        // Update job status
-        jobStatus.progress = 30;
-        jobStatus.aggregationStatus = { 
-          mode: 'historical',
-          config: settings.historicalDate,
-          filter: dateFilter
-        };
-        this.jobs.set(jobId, jobStatus);
-        this.emitJobStatusUpdate(jobId);
-        
         // Fetch historical data if not in generate-only mode
         if (!settings?.onlyGenerate) {
-          for (const config of sourceConfigs) {
-            if (config.instance?.fetchHistorical) {
-              this.updateSourceStatus(configName, config.instance.name, jobId);
+          for (const sourceConfig of sourceConfigs) {
+            if (sourceConfig.instance?.fetchHistorical) {
+              await this.updateSourceStatus(configName, sourceConfig.instance.name, jobId);
               
               if (mode === 'range') {
-                await aggregator.fetchAndStoreRange(config.instance.name, dateFilter);
+                await aggregator.fetchAndStoreRange(sourceConfig.instance.name, dateFilter);
               } else {
-                await aggregator.fetchAndStore(config.instance.name, startDate);
+                await aggregator.fetchAndStore(sourceConfig.instance.name, startDate);
               }
               
-              this.emitStatusUpdate(configName, jobId);
+              await this.emitStatusUpdate(configName, jobId);
             }
           }
         }
-        
-        // Update job status
-        jobStatus.progress = 60;
-        this.jobs.set(jobId, jobStatus);
-        this.emitJobStatusUpdate(jobId);
         
         // Generate content if not in fetch-only mode
         if (!settings?.onlyFetch) {
           if (mode === 'range') {
             for (const generator of generatorConfigs) {
               await generator.instance.storage.init();
-              // Use callbackDateRangeLogic to process each date in the range
               await callbackDateRangeLogic(dateFilter, (dateStr: string) => 
                 generator.instance.generateAndStoreSummary(dateStr)
               );
-              this.emitStatusUpdate(configName, jobId);
+              await this.emitStatusUpdate(configName, jobId);
             }
           } else {
-            // Single date mode
             for (const generator of generatorConfigs) {
               await generator.instance.storage.init();
               await generator.instance.generateAndStoreSummary(startDate);
-              this.emitStatusUpdate(configName, jobId);
+              await this.emitStatusUpdate(configName, jobId);
             }
           }
         }
         
-        // Update job status to completed
-        jobStatus.status = 'completed';
-        jobStatus.progress = 100;
-        this.jobs.set(jobId, jobStatus);
-        this.emitJobStatusUpdate(jobId);
+        // Collect AI usage and complete the job
+        const historicalAiUsage = this.collectAndResetAiUsage(aiConfigs);
+        if (isDbJob) {
+          if (historicalAiUsage.totalCalls > 0) {
+            await jobService.updateJobProgress(jobId, {
+              promptTokens: historicalAiUsage.totalPromptTokens,
+              completionTokens: historicalAiUsage.totalCompletionTokens,
+              aiCalls: historicalAiUsage.totalCalls,
+              estimatedCostUsd: historicalAiUsage.estimatedCostUsd,
+            });
+          }
+          await jobService.completeJob(jobId);
+          await jobService.addJobLog(jobId, 'info', `Historical aggregation completed. AI: ${historicalAiUsage.totalCalls} calls, $${historicalAiUsage.estimatedCostUsd.toFixed(4)} estimated cost.`);
+        }
         
-        return; // Exit early, we're done with historical processing
+        return;
       }
       
-      // Standard non-historical aggregation continues below...
-      // Always create a new aggregator for one-time runs to avoid cache issues
-      // This ensures we get fresh data on each run
+      // Standard non-historical aggregation
       const aggregator = new ContentAggregator();
       sourceConfigs.forEach((config) => aggregator.registerSource(config.instance));
       enricherConfigs.forEach((config) => aggregator.registerEnricher(config.instance));
@@ -480,148 +610,174 @@ export class AggregatorService {
       const previousAggregator = this.activeAggregators[configName];
       this.activeAggregators[configName] = aggregator;
 
-      for (const storage of storageConfigs) {
-        await storage.instance.init();
-      }
+      let totalItemsFetched = 0;
 
-      // Update job status
-      jobStatus.progress = 30;
-      this.jobs.set(jobId, jobStatus);
-      this.emitJobStatusUpdate(jobId);
-
-      // Run all sources once without setting up intervals if not in generate-only mode
+      // Run all sources once
       if (!settings?.onlyGenerate) {
-        for (const config of sourceConfigs) {
-          this.updateSourceStatus(configName, config.instance.name, jobId); // Set source name before fetch
-          await aggregator.fetchAndStore(config.instance.name);
-          this.emitStatusUpdate(configName, jobId);
+        if (isDbJob) {
+          await jobService.addJobLog(jobId, 'info', 'Fetching from sources...');
         }
+        
+        for (const sourceConfig of sourceConfigs) {
+          await this.updateSourceStatus(configName, sourceConfig.instance.name, jobId);
+          await aggregator.fetchAndStore(sourceConfig.instance.name);
+          await this.emitStatusUpdate(configName, jobId);
+        }
+        
+        totalItemsFetched = aggregator.getStatus().stats?.totalItemsFetched || 0;
       }
 
-      // Update job status
-      this.updateSourceStatus(configName, undefined, jobId);
-      jobStatus.progress = 60;
-      this.jobs.set(jobId, jobStatus);
-      this.emitJobStatusUpdate(jobId);
-
-      // Run all generators once if not in fetch-only mode
+      // Run all generators once
       if (!settings?.onlyFetch) {
+        if (isDbJob) {
+          await jobService.addJobLog(jobId, 'info', 'Generating summaries...');
+        }
+        
         for (const generator of generatorConfigs) {
           await generator.instance.generateContent();
-          this.emitStatusUpdate(configName, jobId);
+          await this.emitStatusUpdate(configName, jobId);
         }
       }
       
-      // If there was a previously running continuous aggregator, restore it
-      // Otherwise, remove this temporary aggregator after a delay
+      // Restore previous aggregator or clean up
       if (previousAggregator && this.isAggregationRunning(configName)) {
         setTimeout(() => {
           this.activeAggregators[configName] = previousAggregator;
-          // Don't update job status here as it would overwrite the completed status
-          // Just emit the aggregator status without the job ID
           this.eventEmitter.emit(`status:${configName}`, previousAggregator.getStatus());
-        }, 1000); // Short delay to ensure status updates are processed
+        }, 1000);
       } else {
         setTimeout(() => {
           if (this.activeAggregators[configName] === aggregator) {
             delete this.activeAggregators[configName];
-            // Don't update job status here either
             this.eventEmitter.emit(`status:${configName}`, {
               status: 'stopped',
               lastUpdated: Date.now()
             });
           }
-        }, 30000); // Keep the aggregator around for 30 seconds for status checks
+        }, 30000);
       }
       
-      // Update job status to completed
-      jobStatus.status = 'completed';
-      jobStatus.progress = 100;
-      this.jobs.set(jobId, jobStatus);
-      this.emitJobStatusUpdate(jobId);
+      // Collect final AI usage stats
+      const aiUsage = this.collectAndResetAiUsage(aiConfigs);
+      
+      // Update job stats and complete
+      if (isDbJob) {
+        await jobService.updateJobProgress(jobId, {
+          itemsFetched: totalItemsFetched,
+          itemsProcessed: totalItemsFetched,
+          promptTokens: aiUsage.totalPromptTokens,
+          completionTokens: aiUsage.totalCompletionTokens,
+          aiCalls: aiUsage.totalCalls,
+          estimatedCostUsd: aiUsage.estimatedCostUsd,
+        });
+        await jobService.completeJob(jobId);
+        await jobService.addJobLog(jobId, 'info', `Aggregation completed. Fetched ${totalItemsFetched} items. AI: ${aiUsage.totalCalls} calls, ${aiUsage.totalPromptTokens + aiUsage.totalCompletionTokens} tokens, $${aiUsage.estimatedCostUsd.toFixed(4)} estimated cost.`);
+      }
+      
     } catch (error: any) {
       // Handle errors
-      jobStatus.status = 'failed';
-      jobStatus.error = error.message || 'Unknown error during aggregation';
-      this.jobs.set(jobId, jobStatus);
-      this.emitJobStatusUpdate(jobId);
+      if (isDbJob) {
+        await jobService.failJob(jobId, error.message || 'Unknown error during aggregation');
+        await jobService.addJobLog(jobId, 'error', error.message || 'Unknown error');
+      }
+      throw error;
     }
   }
 
-  stopAggregation(configName: string): void {
+  /**
+   * Stop a continuous job
+   */
+  async stopContinuousJob(jobId: string): Promise<boolean> {
+    const job = await jobService.getJob(jobId);
+    if (!job || job.status !== 'running') {
+      return false;
+    }
     
-    // Find any jobs associated with this config and mark them as stopped
-    const configJobs = this.getJobsByConfig(configName);
+    // Clean up intervals and aggregator
+    this.cleanupJobState(jobId);
     
-    configJobs.forEach(job => {
-      // Only stop jobs that are still running
-      if (job.status === 'running' || job.status === 'pending') {
-        // Clear intervals associated with this job
-        if (job.intervals && job.intervals.length > 0) {
-          job.intervals.forEach(interval => clearInterval(interval));
-          job.intervals = [];
-        }
-        
-        // Update job status
-        job.status = 'failed';
-        job.error = 'Aggregation was stopped';
-        
-        // Emit job status update
-        this.emitJobStatusUpdate(job.jobId);
+    // Mark job as completed (not failed, since it was intentionally stopped)
+    await jobService.completeJob(jobId);
+    await jobService.addJobLog(jobId, 'info', 'Continuous job stopped by user');
+    
+    return true;
+  }
+
+  /**
+   * Clean up job state (intervals and aggregator)
+   */
+  private cleanupJobState(jobId: string): void {
+    const activeState = this.activeJobStates.get(jobId);
+    if (activeState) {
+      // Clear all intervals
+      activeState.intervals.forEach(intervalId => clearInterval(intervalId));
+      
+      // Remove aggregator
+      if (activeState.configName && this.activeAggregators[activeState.configName]) {
+        delete this.activeAggregators[activeState.configName];
       }
-    });
+      
+      // Remove from active states
+      this.activeJobStates.delete(jobId);
+    }
+  }
+
+  /**
+   * Resume running jobs on server startup.
+   * Marks interrupted one-time jobs as failed and cancels orphaned continuous
+   * jobs that cannot be resumed (no in-memory state / config / secrets).
+   */
+  async resumeRunningJobs(): Promise<void> {
+    try {
+      const runningJobs = await jobService.getRunningJobs();
+      console.log(`[AggregatorService] Found ${runningJobs.length} running jobs to clean up`);
+      
+      for (const job of runningJobs) {
+        if (job.jobType === 'continuous') {
+          // Continuous jobs cannot be auto-resumed without config/secrets.
+          // Cancel them so they don't appear as phantom "active" jobs in the UI.
+          console.log(`[AggregatorService] Cancelling orphaned continuous job ${job.id} for config ${job.configId}`);
+          await jobService.cancelJob(job.id);
+          await jobService.addJobLog(job.id, 'info', 'Server restarted — continuous job cancelled. Please restart it manually.');
+        } else {
+          // One-time job was interrupted - mark as failed
+          console.log(`[AggregatorService] Marking interrupted one-time job ${job.id} as failed`);
+          await jobService.failJob(job.id, 'Server restarted during execution');
+        }
+      }
+    } catch (error) {
+      console.error('[AggregatorService] Error resuming running jobs:', error);
+    }
+  }
+
+  /**
+   * Stop aggregation by config name (legacy method)
+   */
+  stopAggregation(configName: string): void {
+    // Find any active jobs for this config and stop them
+    for (const [jobId, state] of this.activeJobStates.entries()) {
+      if (state.configName === configName) {
+        this.cleanupJobState(jobId);
+      }
+    }
     
     // Remove the aggregator instance
     if (this.activeAggregators[configName]) {
       delete this.activeAggregators[configName];
-      
-      // Emit status update
       this.emitStatusUpdate(configName);
     }
   }
 
-  // Add method to stop a job by its ID
+  /**
+   * Stop a job by its ID (legacy method)
+   */
   stopJob(jobId: string): boolean {
-    // Check if job exists
-    if (!this.jobs.has(jobId)) {
-      return false;
+    // Check if it's an active job
+    if (this.activeJobStates.has(jobId)) {
+      this.cleanupJobState(jobId);
+      return true;
     }
-    
-    const jobStatus = this.jobs.get(jobId)!;
-    const configName = jobStatus.configName;
-    
-    // Only stop jobs that are still running
-    if (jobStatus.status !== 'running' && jobStatus.status !== 'pending') {
-      return false;
-    }
-    
-    // Store reference to job's interval timers
-    if (!jobStatus.intervals) {
-      jobStatus.intervals = [];
-    }
-    
-    // Clear all interval timers associated with this job
-    if (jobStatus.intervals && jobStatus.intervals.length > 0) {
-      jobStatus.intervals.forEach(intervalId => {
-        clearInterval(intervalId);
-      });
-      jobStatus.intervals = [];
-    }
-    
-    // Update job status to indicate it's been stopped
-    jobStatus.status = 'failed';
-    jobStatus.error = 'Job was manually stopped';
-    this.jobs.set(jobId, jobStatus);
-    
-    // Emit job status update to notify clients
-    this.emitJobStatusUpdate(jobId);
-    
-    // If this is the current running job for this config, stop the aggregator
-    if (this.activeAggregators[configName]) {
-      this.stopAggregation(configName);
-    }
-    
-    return true;
+    return false;
   }
 
   isAggregationRunning(configName: string): boolean {
@@ -639,15 +795,43 @@ export class AggregatorService {
     };
   }
   
-  getJobStatus(jobId: string): JobStatus | null {
-    return this.jobs.has(jobId) ? this.jobs.get(jobId)! : null;
+  /**
+   * Get job status (from database)
+   */
+  async getJobStatus(jobId: string): Promise<JobStatus | null> {
+    // Check if it's a UUID (DB job) or short ID (legacy)
+    if (jobId.length === 36) {
+      const job = await jobService.getJob(jobId);
+      return job ? this.jobToJobStatus(job) : null;
+    }
+    
+    // Legacy in-memory check - not supported anymore
+    return null;
   }
   
-  getAllJobs(): JobStatus[] {
-    return Array.from(this.jobs.values());
+  /**
+   * Get all jobs (from database)
+   */
+  async getAllJobs(): Promise<AggregationJob[]> {
+    const result = await jobService.getJobsByUser('', { limit: 100, offset: 0 });
+    return result.jobs;
   }
   
+  /**
+   * Get jobs by config (from database)
+   */
+  async getJobsByConfigId(configId: string): Promise<AggregationJob[]> {
+    const result = await jobService.getJobsByConfig(configId, { limit: 100, offset: 0 });
+    return result.jobs;
+  }
+
+  /**
+   * Legacy method - get jobs by config name
+   * @deprecated Use getJobsByConfigId instead
+   */
   getJobsByConfig(configName: string): JobStatus[] {
-    return Array.from(this.jobs.values()).filter(job => job.configName === configName);
+    // This is a legacy method that returns in-memory jobs
+    // For DB-backed jobs, use getJobsByConfigId
+    return [];
   }
-} 
+}

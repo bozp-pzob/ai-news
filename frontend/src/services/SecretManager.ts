@@ -24,7 +24,7 @@ interface StoredSecret {
 }
 
 // Persistent storage options
-interface PersistenceOptions {
+export interface PersistenceOptions {
   enabled: boolean;       // Whether to use persistent storage
   storageKey?: string;    // Custom storage key for the database
   passwordProtected?: boolean; // Whether to require a password for encryption/decryption
@@ -70,6 +70,16 @@ class SecretManager {
 
   private constructor() {
     // Initialize will be called explicitly
+  }
+
+  /** Read-only access to persistence configuration */
+  get persistenceState(): Readonly<PersistenceOptions> {
+    return this.persistence;
+  }
+
+  /** Whether the SecretManager has been initialized */
+  get initialized(): boolean {
+    return this.isInitialized;
   }
 
   static getInstance(): SecretManager {
@@ -2728,7 +2738,8 @@ console.debug('Creating SecretManager singleton instance');
 const secretManagerInstance = SecretManager.getInstance();
 
 // Check if we have persistence settings in sessionStorage
-let initialPersistenceOptions: PersistenceOptions = { enabled: false };
+// Default to enabled so secrets survive page refreshes without requiring manual opt-in
+let initialPersistenceOptions: PersistenceOptions = { enabled: true };
 try {
   const sessionSettings = sessionStorage.getItem('secretManagerSettings');
   if (sessionSettings) {
@@ -2739,13 +2750,16 @@ try {
       hasPassword: !!settings.password
     });
     
-    if (settings.persistenceEnabled) {
+    // Respect explicit user choice if they disabled persistence
+    if (settings.persistenceEnabled === false) {
+      initialPersistenceOptions = { enabled: false };
+    } else if (settings.passwordProtected) {
       initialPersistenceOptions = {
         enabled: true,
-        passwordProtected: settings.passwordProtected,
+        passwordProtected: true,
         // We can't use the password directly from storage (it's hashed),
         // but we can mark it as password protected for now
-        password: settings.passwordProtected ? '' : undefined
+        password: ''
       };
     }
   }

@@ -1,31 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { fetchGitHubStats, GitHubStats as GitHubStatsType } from '../../lib/github';
+import React from 'react';
 
-// Simplified Star icon
-const StarIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-yellow-500 mx-auto mb-4">
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+// Source types icon (link/chain)
+const SourcesIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-amber-400 mx-auto mb-4">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
   </svg>
 );
 
-// Simplified GitFork icon
-const GitForkIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-indigo-500 mx-auto mb-4">
-    <circle cx="12" cy="18" r="3"></circle>
-    <circle cx="6" cy="6" r="3"></circle>
-    <circle cx="18" cy="6" r="3"></circle>
-    <path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"></path>
-    <path d="M12 12v3"></path>
+// Platforms icon (grid)
+const PlatformsIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-amber-400 mx-auto mb-4">
+    <rect width="7" height="7" x="3" y="3" rx="1"></rect>
+    <rect width="7" height="7" x="14" y="3" rx="1"></rect>
+    <rect width="7" height="7" x="14" y="14" rx="1"></rect>
+    <rect width="7" height="7" x="3" y="14" rx="1"></rect>
   </svg>
 );
 
-// Simplified Users icon
-const UsersIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-green-500 mx-auto mb-4">
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-    <circle cx="9" cy="7" r="4"></circle>
-    <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
-    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+// Summaries icon (file-text)
+const SummariesIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-amber-400 mx-auto mb-4">
+    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+    <polyline points="14 2 14 8 20 8"></polyline>
+    <line x1="16" x2="8" y1="13" y2="13"></line>
+    <line x1="16" x2="8" y1="17" y2="17"></line>
+    <line x1="10" x2="8" y1="9" y2="9"></line>
   </svg>
 );
 
@@ -41,85 +41,41 @@ const Card = ({ children, delay }: { children: React.ReactNode, delay: number })
   </div>
 );
 
-// GitHub repo information - Make sure these are correct!
-const REPO_OWNER = "bozp-pzob";
-const REPO_NAME = "digital-gardener";
-
 export const GithubStats: React.FC = () => {
-  const [stats, setStats] = useState<GitHubStatsType>({
-    stars: 0,
-    forks: 0,
-    contributors: 0
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const loadGitHubStats = async () => {
-      try {
-        setLoading(true);
-        const data = await fetchGitHubStats(REPO_OWNER, REPO_NAME);
-        setStats(data);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching GitHub stats:', err);
-        setError('Failed to load GitHub stats');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadGitHubStats();
-  }, []);
-
   return (
     <section className="py-20 relative overflow-hidden">
-      {/* Removed background gradient */}
-      
-      {/* Removed background glow */}
-
       <div className="container px-4 mx-auto relative">
         <div className="text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-4 text-white inline-block" style={{ WebkitBackgroundClip: 'text' }}>
-            Project Stats
+            By the Numbers
           </h2>
           <p className="text-stone-400 max-w-2xl mx-auto mb-12">
-            Join our growing community of developers and contributors
+            Built to scale with your organization
           </p>
 
-          {loading ? (
-            <div className="flex justify-center items-center h-40">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-300"></div>
-            </div>
-          ) : error ? (
-            <div className="text-red-400 max-w-2xl mx-auto mb-12">
-              {error}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-              <Card delay={0.2}>
-                <StarIcon />
-                <div className="text-3xl font-bold text-white">{stats.stars}</div>
-                <div className="text-stone-400">GitHub Stars</div>
-              </Card>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+            <Card delay={0.2}>
+              <SourcesIcon />
+              <div className="text-3xl font-bold text-white">13+</div>
+              <div className="text-stone-400">Source Types</div>
+            </Card>
 
-              <Card delay={0.3}>
-                <GitForkIcon />
-                <div className="text-3xl font-bold text-white">{stats.forks}</div>
-                <div className="text-stone-400">Forks</div>
-              </Card>
+            <Card delay={0.3}>
+              <PlatformsIcon />
+              <div className="text-3xl font-bold text-white">5</div>
+              <div className="text-stone-400">Platforms Integrated</div>
+            </Card>
 
-              <Card delay={0.4}>
-                <UsersIcon />
-                <div className="text-3xl font-bold text-white">{stats.contributors}+</div>
-                <div className="text-stone-400">Contributors</div>
-              </Card>
-            </div>
-          )}
+            <Card delay={0.4}>
+              <SummariesIcon />
+              <div className="text-3xl font-bold text-white">1,000s</div>
+              <div className="text-stone-400">Summaries Generated</div>
+            </Card>
+          </div>
         </div>
       </div>
     </section>
   );
 };
 
-export default GithubStats; 
+export default GithubStats;

@@ -3,6 +3,17 @@ export interface PluginInfo {
   pluginName: string;
   type: PluginType;
   description: string;
+  /**
+   * Platform type that this plugin requires a connection for (e.g., 'discord', 'telegram').
+   * If set, the plugin will only be shown when the user has an active connection
+   * for this platform. Only applies in platform mode.
+   */
+  requiresPlatform?: 'discord' | 'telegram' | 'slack';
+  /**
+   * If true, this plugin is hidden from the UI but still functional.
+   * Used for deprecated plugins or plugins replaced by unified alternatives.
+   */
+  hidden?: boolean;
   configSchema: {
     [key: string]: {
       type: 'string' | 'number' | 'boolean' | 'string[]';
@@ -77,6 +88,10 @@ export interface AggregationStatus {
     totalItemsFetched?: number;
     itemsPerSource?: Record<string, number>;
     lastFetchTimes?: Record<string, number>;
+    totalPromptTokens?: number;
+    totalCompletionTokens?: number;
+    totalAiCalls?: number;
+    estimatedCostUsd?: number;
   };
 }
 
@@ -106,6 +121,10 @@ export interface JobStatus {
       totalItemsFetched?: number;
       itemsPerSource?: Record<string, number>;
       lastFetchTimes?: Record<string, number>;
+      totalPromptTokens?: number;
+      totalCompletionTokens?: number;
+      totalAiCalls?: number;
+      estimatedCostUsd?: number;
     };
   };
 }
