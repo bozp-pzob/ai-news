@@ -130,6 +130,20 @@ function extractTypeInfo(filePath) {
       }
     }
     
+    // Extract requiresPlatform (for platform-specific sources like Discord, Telegram)
+    let requiresPlatform = null;
+    const requiresPlatformMatch = content.match(/static\s+requiresPlatform\s*=\s*(['"])(.*?)\1/);
+    if (requiresPlatformMatch && requiresPlatformMatch[2]) {
+      requiresPlatform = requiresPlatformMatch[2];
+    }
+    
+    // Extract hidden flag (for deprecated/hidden plugins)
+    let hidden = false;
+    const hiddenMatch = content.match(/static\s+hidden\s*=\s*(true|false)/);
+    if (hiddenMatch && hiddenMatch[1] === 'true') {
+      hidden = true;
+    }
+    
     // Process constructor interface
     let constructorInterface = extractStaticField(content, 'constructorInterface');
     if (constructorInterface) {
@@ -144,7 +158,9 @@ function extractTypeInfo(filePath) {
     return { 
       constructorInterface, 
       configSchema, 
-      description 
+      description,
+      requiresPlatform,
+      hidden
     };
   } catch (error) {
     console.error(`Error processing file ${filePath}:`, error);
@@ -152,7 +168,9 @@ function extractTypeInfo(filePath) {
     return { 
       constructorInterface: null, 
       configSchema: {}, 
-      description: '' 
+      description: '',
+      requiresPlatform: null,
+      hidden: false
     };
   }
 }
@@ -183,7 +201,7 @@ async function buildPluginsJson() {
     // Process each file
     for (const file of files) {
       const filePath = path.join(fullPath, file);
-      const { constructorInterface, configSchema, description } = extractTypeInfo(filePath);
+      const { constructorInterface, configSchema, description, requiresPlatform, hidden } = extractTypeInfo(filePath);
       
       // Create plugin info object
       const pluginName = path.basename(file, '.ts');
@@ -195,6 +213,16 @@ async function buildPluginsJson() {
         configSchema: configSchema || {},
         constructorInterface: constructorInterface
       };
+      
+      // Only add requiresPlatform if it's defined (for platform-specific sources)
+      if (requiresPlatform) {
+        pluginInfo.requiresPlatform = requiresPlatform;
+      }
+      
+      // Only add hidden if true (for deprecated/hidden plugins)
+      if (hidden) {
+        pluginInfo.hidden = true;
+      }
       
       plugins[type].push(pluginInfo);
     }

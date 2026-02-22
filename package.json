@@ -30,7 +30,9 @@
     "mcp": "ts-node --transpile-only src/mcp/server.ts",
     "worker": "ts-node --transpile-only src/workers/aggregationWorker.ts",
     "migrate-to-postgres": "ts-node --transpile-only scripts/migrate-to-postgres.ts",
-    "backfill-embeddings": "ts-node --transpile-only scripts/backfill-embeddings.ts"
+    "backfill-embeddings": "ts-node --transpile-only scripts/backfill-embeddings.ts",
+    "bootstrap-admin": "ts-node --transpile-only scripts/bootstrap-admin.ts",
+    "check-duplicates": "ts-node --transpile-only scripts/check-duplicates.ts"
   },
   "keywords": [
     "digital-gardener",
@@ -50,6 +52,7 @@
     "@mozilla/readability": "^0.6.0",
     "@mui/icons-material": "^7.3.7",
     "@mui/material": "^7.1.0",
+    "@octokit/auth-app": "^8.1.2",
     "@pop402/x402-express": "^1.0.2",
     "@privy-io/server-auth": "^1.32.5",
     "@types/jsdom": "^27.0.0",
@@ -65,8 +68,10 @@
     "ioredis": "^5.9.1",
     "jsdom": "^27.4.0",
     "node-fetch": "^3.3.2",
+    "octokit": "^5.0.5",
     "openai": "^6.15.0",
     "puppeteer-stream": "^3.0.22",
+    "p-retry": "^7.1.1",
     "pg": "^8.16.3",
     "pgvector": "^0.2.1",
     "react": "^19.1.0",
@@ -74,10 +79,12 @@
     "rss-parser": "^3.12.0",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.4",
+    "telegraf": "^4.16.3",
     "ts-node": "^10.9.2",
     "twitter-api-v2": "^1.19.0",
     "uuid": "^13.0.0",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/body-parser": "^1.19.5",

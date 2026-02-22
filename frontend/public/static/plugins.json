@@ -1,6 +1,49 @@
 {
   "source": [
     {
+      "name": "TelegramSource",
+      "pluginName": "TelegramSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "botToken",
+            "type": "string",
+            "required": false,
+            "description": "Telegram bot token for authentication (self-hosted mode)",
+            "secret": true
+          },
+          {
+            "name": "connectionId",
+            "type": "string",
+            "required": false,
+            "description": "External connection ID (platform mode)"
+          },
+          {
+            "name": "chatIds",
+            "type": "array",
+            "required": false,
+            "description": "List of Telegram chat IDs to monitor (self-hosted mode)"
+          },
+          {
+            "name": "channelIds",
+            "type": "array",
+            "required": false,
+            "description": "List of channel IDs to monitor (platform mode, same as chat IDs)"
+          },
+          {
+            "name": "storage",
+            "type": "object",
+            "required": true,
+            "description": "Storage plugin for cursor management"
+          }
+        ]
+      },
+      "requiresPlatform": "telegram"
+    },
+    {
       "name": "SolanaAnalyticsSource",
       "pluginName": "SolanaAnalyticsSource",
       "type": "source",
@@ -60,6 +103,59 @@
       }
     },
     {
+      "name": "GitHubSource",
+      "pluginName": "GitHubSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "repos",
+            "type": "array",
+            "required": false,
+            "description": "Repository URLs or \"owner/repo\" strings to track"
+          },
+          {
+            "name": "connectionId",
+            "type": "string",
+            "required": false,
+            "description": "GitHub App connection ID (for private repos)"
+          },
+          {
+            "name": "mode",
+            "type": "string",
+            "required": false,
+            "description": "Operating mode: \"raw\" or \"summarized\" (default: \"summarized\")"
+          },
+          {
+            "name": "interval",
+            "type": "number",
+            "required": false,
+            "description": "Fetch interval in seconds (for period labeling)"
+          },
+          {
+            "name": "contributorsToExclude",
+            "type": "array",
+            "required": false,
+            "description": "Usernames to exclude (bots, etc.)"
+          },
+          {
+            "name": "aiSummary",
+            "type": "object",
+            "required": false,
+            "description": "AI summary configuration { enabled: boolean, provider?: AiProvider }"
+          },
+          {
+            "name": "activityTypes",
+            "type": "object",
+            "required": false,
+            "description": "Activity types to track (newPRs, newIssues, commits, comments, reviews, reviewComments, mergedPRs, closedIssues)"
+          }
+        ]
+      }
+    },
+    {
       "name": "GitHubDataSource",
       "pluginName": "GitHubDataSource",
       "type": "source",
@@ -107,6 +203,67 @@
       }
     },
     {
+      "name": "DiscordSource",
+      "pluginName": "DiscordSource",
+      "type": "source",
+      "description": "Fetch messages from Discord channels with multiple modes",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "mode",
+            "type": "string",
+            "required": true,
+            "description": "Operating mode: detailed (full data), summarized (AI summaries), or simple (announcement channels only)"
+          },
+          {
+            "name": "connectionId",
+            "type": "string",
+            "required": false,
+            "description": "External connection ID (platform mode)"
+          },
+          {
+            "name": "channelIds",
+            "type": "array",
+            "required": true,
+            "description": "List of Discord channel IDs to monitor"
+          },
+          {
+            "name": "storage",
+            "type": "object",
+            "required": false,
+            "description": "Storage plugin (required for detailed and summarized modes)"
+          },
+          {
+            "name": "provider",
+            "type": "AiProvider",
+            "required": false,
+            "description": "AI provider (required for summarized mode)"
+          },
+          {
+            "name": "botToken",
+            "type": "string",
+            "required": false,
+            "description": "Discord bot token (self-hosted mode)",
+            "secret": true
+          },
+          {
+            "name": "guildId",
+            "type": "string",
+            "required": false,
+            "description": "Discord guild/server ID (self-hosted mode)"
+          },
+          {
+            "name": "mediaDownload",
+            "type": "object",
+            "required": false,
+            "description": "Media download configuration (detailed mode only)"
+          }
+        ]
+      },
+      "requiresPlatform": "discord"
+    },
+    {
       "name": "DiscordRawDataSource",
       "pluginName": "DiscordRawDataSource",
       "type": "source",
@@ -115,17 +272,17 @@
       "constructorInterface": {
         "parameters": [
           {
-            "name": "name",
-            "type": "string",
-            "required": true,
-            "description": "Name identifier for this Discord source"
-          },
-          {
             "name": "botToken",
             "type": "string",
-            "required": true,
-            "description": "Discord bot token for authentication",
+            "required": false,
+            "description": "Discord bot token for authentication (self-hosted mode)",
             "secret": true
+          },
+          {
+            "name": "connectionId",
+            "type": "string",
+            "required": false,
+            "description": "External connection ID (platform mode)"
           },
           {
             "name": "channelIds",
@@ -136,8 +293,8 @@
           {
             "name": "guildId",
             "type": "string",
-            "required": true,
-            "description": "Discord guild/server ID"
+            "required": false,
+            "description": "Discord guild/server ID (self-hosted mode)"
           },
           {
             "name": "storage",
@@ -152,7 +309,9 @@
             "description": "Media download configuration"
           }
         ]
-      }
+      },
+      "requiresPlatform": "discord",
+      "hidden": true
     },
     {
       "name": "DiscordChannelSource",
@@ -165,9 +324,15 @@
           {
             "name": "botToken",
             "type": "string",
-            "required": true,
-            "description": "Discord bot token for authentication",
+            "required": false,
+            "description": "Discord bot token for authentication (self-hosted mode)",
             "secret": true
+          },
+          {
+            "name": "connectionId",
+            "type": "string",
+            "required": false,
+            "description": "External connection ID (platform mode)"
           },
           {
             "name": "channelIds",
@@ -188,7 +353,9 @@
             "description": "Optional AI provider for content processing"
           }
         ]
-      }
+      },
+      "requiresPlatform": "discord",
+      "hidden": true
     },
     {
       "name": "DiscordAnnouncementSource",
@@ -201,9 +368,15 @@
           {
             "name": "botToken",
             "type": "string",
-            "required": true,
-            "description": "Discord bot token for authentication",
+            "required": false,
+            "description": "Discord bot token for authentication (self-hosted mode)",
             "secret": true
+          },
+          {
+            "name": "connectionId",
+            "type": "string",
+            "required": false,
+            "description": "External connection ID (platform mode)"
           },
           {
             "name": "channelIds",
@@ -212,7 +385,9 @@
             "description": "Array of Discord channel IDs to monitor for announcements"
           }
         ]
-      }
+      },
+      "requiresPlatform": "discord",
+      "hidden": true
     },
     {
       "name": "ContentSource",
@@ -621,6 +796,12 @@
             "type": "boolean",
             "required": false,
             "description": "Skip writing JSON/MD files to disk (for platform storage mode)."
+          },
+          {
+            "name": "generateAfterHour",
+            "type": "number",
+            "required": false,
+            "description": "UTC hour (0-23) after which the daily summary is generated. Defaults to 20 (8 PM UTC). Set to 0 to generate immediately."
           }
         ]
       }
@@ -650,7 +831,8 @@
             "description": "Path to the SQLite database file"
           }
         ]
-      }
+      },
+      "hidden": true
     },
     {
       "name": "PostgresStorage",

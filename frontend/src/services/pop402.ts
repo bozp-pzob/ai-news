@@ -5,9 +5,9 @@
  * for the pop402 payment protocol.
  */
 
-const FACILITATOR_URL = 'https://facilitator.pop402.com';
-
 import { Challenge } from './api';
+
+const FACILITATOR_URL = 'https://facilitator.pop402.com';
 
 /**
  * Get a challenge from pop402 facilitator for wallet authentication
