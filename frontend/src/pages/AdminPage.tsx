@@ -59,19 +59,19 @@ function AdminContent() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">Admin Dashboard</h1>
-          <p className="text-stone-400 mt-1">Manage users, configs, and system settings</p>
+          <h1 className="text-2xl font-bold text-stone-800">Admin Dashboard</h1>
+          <p className="text-stone-500 mt-1">Manage users, configs, and system settings</p>
         </div>
         <button
           onClick={() => navigate('/dashboard')}
-          className="px-4 py-2 bg-stone-700 hover:bg-stone-600 text-white rounded-lg text-sm"
+          className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-sm"
         >
           Back to Dashboard
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-stone-700 mb-6">
+      <div className="border-b border-stone-200 mb-6">
         <div className="flex gap-1">
           {tabs.map(tab => (
             <button
@@ -79,8 +79,8 @@ function AdminContent() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.id
-                  ? 'border-amber-500 text-white'
-                  : 'border-transparent text-stone-400 hover:text-white'
+                  ? 'border-emerald-500 text-stone-800'
+                  : 'border-transparent text-stone-400 hover:text-stone-800'
               }`}
             >
               {tab.icon}
@@ -103,7 +103,7 @@ function AdminContent() {
  */
 export default function AdminPage() {
   return (
-    <div className="min-h-screen bg-stone-950">
+    <div className="min-h-screen bg-stone-50">
       <AppHeader adminBadge maxWidth="max-w-7xl" />
 
       {/* Main content with auth guard - requires admin tier */}

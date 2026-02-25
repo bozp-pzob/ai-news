@@ -260,7 +260,7 @@ export class TelegramAdapter extends BaseAdapter {
         chatType: chat.type,
       });
 
-      await ctx.reply('Successfully connected! This group is now linked to your AI News account.');
+      await ctx.reply('Successfully connected! This group is now linked to your Digital Gardener account.');
     } catch (error: any) {
       console.error('[TelegramAdapter] Connection error:', error);
       await ctx.reply(`Connection failed: ${error.message}`);

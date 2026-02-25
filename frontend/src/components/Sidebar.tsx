@@ -272,8 +272,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   // Render plugins/modules content - shared between platform mode and legacy 'modules' tab
   const renderPluginsContent = () => (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-4 border-b border-amber-100/20">
-        <h3 className="text-lg font-medium text-amber-300">
+      <div className="px-4 py-4 border-b border-stone-200">
+        <h3 className="text-lg font-medium text-emerald-600">
           {platformMode ? 'Available Plugins' : 'Available Modules'}
         </h3>
         
@@ -284,7 +284,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             placeholder="Search plugins..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-3 py-2 bg-stone-800 rounded-md border border-stone-700 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm placeholder-gray-500 text-gray-200"
+            className="w-full px-3 py-2 bg-white rounded-md border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm placeholder-stone-400 text-stone-800"
           />
         </div>
         
@@ -292,13 +292,13 @@ const Sidebar: React.FC<SidebarProps> = ({
         {platformMode && (
           <div className="mt-4 space-y-3">
             {/* View mode toggle */}
-            <div className="flex rounded-md overflow-hidden bg-stone-800 border border-stone-700">
+            <div className="flex rounded-md overflow-hidden bg-white border border-stone-300">
               <button
                 onClick={() => onViewModeChange && onViewModeChange('graph')}
                 className={`flex-1 px-3 py-1.5 text-xs font-medium flex items-center justify-center ${
                   viewMode === 'graph' 
-                    ? 'bg-amber-500/20 text-amber-300' 
-                    : 'hover:bg-stone-700 hover:text-amber-300/80 text-stone-400'
+                    ? 'bg-emerald-50 text-emerald-600' 
+                    : 'hover:bg-stone-100 hover:text-emerald-600 text-stone-400'
                 }`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
@@ -310,8 +310,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => onViewModeChange && onViewModeChange('json')}
                 className={`flex-1 px-3 py-1.5 text-xs font-medium flex items-center justify-center ${
                   viewMode === 'json' 
-                    ? 'bg-amber-500/20 text-amber-300' 
-                    : 'hover:bg-stone-700 hover:text-amber-300/80 text-stone-400'
+                    ? 'bg-emerald-50 text-emerald-600' 
+                    : 'hover:bg-stone-100 hover:text-emerald-600 text-stone-400'
                 }`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
@@ -328,8 +328,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                 disabled={!hasUnsavedChanges || isSaving}
                 className={`w-full py-2 rounded text-sm flex items-center justify-center ${
                   hasUnsavedChanges && !isSaving
-                    ? 'bg-amber-400 hover:bg-amber-500 text-black'
-                    : 'bg-stone-800 text-stone-500 cursor-not-allowed'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-stone-100 text-stone-400 cursor-not-allowed'
                 }`}
               >
                 {isSaving ? (
@@ -354,13 +354,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="overflow-y-auto flex-grow p-4">
         {isLoading ? (
           <div className="flex flex-col justify-center items-center h-32">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-400"></div>
-            <span className="mt-3 text-sm text-amber-100/60">Loading plugins...</span>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+            <span className="mt-3 text-sm text-stone-400">Loading plugins...</span>
           </div>
         ) : (
           <>
             {Object.keys(plugins).length === 0 ? (
-              <div className="text-center py-8 text-amber-100/60">
+              <div className="text-center py-8 text-stone-400">
                 No plugins available
               </div>
             ) : (
@@ -387,11 +387,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <div key={categoryKey} className="pb-2">
                       <button
                         onClick={() => toggleCategory(categoryKey)}
-                        className="flex justify-between items-center w-full px-2 py-2 rounded-md hover:bg-stone-800"
+                        className="flex justify-between items-center w-full px-2 py-2 rounded-md hover:bg-stone-100"
                       >
-                        <h4 className="text-sm font-medium text-amber-300 flex items-center">
+                        <h4 className="text-sm font-medium text-emerald-600 flex items-center">
                           {category}
-                          <span className="ml-2 text-xs text-amber-100/60">
+                          <span className="ml-2 text-xs text-stone-400">
                             ({filteredPlugins.length})
                           </span>
                         </h4>
@@ -416,21 +416,21 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 setConnectDialogPlatform(platform);
                                 setConnectDialogOpen(true);
                               }}
-                              className="w-full bg-stone-800/50 p-3 rounded-md border border-dashed border-stone-600 hover:border-amber-400 hover:bg-stone-800 transition-all text-left group"
+                              className="w-full bg-stone-50 p-3 rounded-md border border-dashed border-stone-300 hover:border-emerald-300 hover:bg-emerald-50 transition-all text-left group"
                             >
                               <div className="flex items-start gap-3">
-                                <div className="w-8 h-8 rounded bg-stone-700 group-hover:bg-amber-500/20 flex items-center justify-center flex-shrink-0 transition-colors">
-                                  <PlatformIcon platform={platform} size="sm" className="text-stone-400 group-hover:text-amber-400 transition-colors" />
+                                <div className="w-8 h-8 rounded bg-stone-100 group-hover:bg-emerald-50 flex items-center justify-center flex-shrink-0 transition-colors">
+                                  <PlatformIcon platform={platform} size="sm" className="text-stone-400 group-hover:text-emerald-600 transition-colors" />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-gray-300 group-hover:text-amber-300 transition-colors">
+                                  <div className="text-sm font-medium text-stone-600 group-hover:text-emerald-600 transition-colors">
                                     {getPlatformDisplayName(platform)}Source
                                   </div>
-                                  <div className="text-xs text-gray-500 mt-0.5">
+                                  <div className="text-xs text-stone-400 mt-0.5">
                                     Connect to unlock this plugin
                                   </div>
                                 </div>
-                                <svg className="w-4 h-4 text-stone-500 group-hover:text-amber-400 flex-shrink-0 mt-1 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <svg className="w-4 h-4 text-stone-500 group-hover:text-emerald-600 flex-shrink-0 mt-1 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                                 </svg>
                               </div>
@@ -442,10 +442,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                               key={`${plugin.type}-${plugin.name}`}
                               draggable={true}
                               onDragStart={(e) => handleDragStart(plugin, e)}
-                              className="bg-stone-800 p-3 rounded-md border border-stone-700 hover:border-amber-400/50 transition-colors cursor-move"
+                              className="bg-white p-3 rounded-md border border-stone-200 hover:border-emerald-300 transition-colors cursor-move"
                               title={plugin.description}
                             >
-                              <div className="text-sm font-medium text-gray-300">{plugin.name}</div>
+                              <div className="text-sm font-medium text-stone-600">{plugin.name}</div>
                             </div>
                           ))}
                         </div>
@@ -490,18 +490,18 @@ const Sidebar: React.FC<SidebarProps> = ({
         return (
           <div className="px-4 py-3 space-y-3">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-base font-medium text-amber-300">Configurations</h3>
+              <h3 className="text-base font-medium text-emerald-600">Configurations</h3>
             </div>
             
             {/* View mode toggle */}
             <div className="flex items-center text-stone-400">
-              <div className="flex rounded-md overflow-hidden bg-stone-800 border border-stone-700">
+              <div className="flex rounded-md overflow-hidden bg-white border border-stone-300">
                 <button
                   onClick={() => onViewModeChange && onViewModeChange('graph')}
                   className={`px-3 py-1.5 text-xs font-medium flex items-center ${
                     viewMode === 'graph' 
-                      ? 'bg-amber-500/20 text-amber-300' 
-                      : 'hover:bg-stone-700 hover:text-amber-300/80'
+                      ? 'bg-emerald-50 text-emerald-600' 
+                      : 'hover:bg-stone-100 hover:text-emerald-600'
                   }`}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
@@ -513,8 +513,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                   onClick={() => onViewModeChange && onViewModeChange('json')}
                   className={`px-3 py-1.5 text-xs font-medium flex items-center ${
                     viewMode === 'json' 
-                      ? 'bg-amber-500/20 text-amber-300' 
-                      : 'hover:bg-stone-700 hover:text-amber-300/80'
+                      ? 'bg-emerald-50 text-emerald-600' 
+                      : 'hover:bg-stone-100 hover:text-emerald-600'
                   }`}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
@@ -534,8 +534,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                     disabled={!hasUnsavedChanges}
                     className={`w-full py-1.5 rounded text-sm flex items-center justify-center ${
                       hasUnsavedChanges 
-                        ? 'bg-amber-400 hover:bg-amber-500 text-black'
-                        : 'bg-stone-800 text-stone-500 cursor-not-allowed'
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'bg-stone-100 text-stone-400 cursor-not-allowed'
                     }`}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -549,8 +549,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                     disabled={!hasUnsavedChanges}
                     className={`w-full py-1.5 rounded text-sm flex items-center justify-center ${
                       hasUnsavedChanges 
-                        ? 'bg-stone-700 hover:bg-stone-600 text-white'
-                        : 'bg-stone-800 text-stone-500 cursor-not-allowed'
+                        ? 'bg-stone-100 hover:bg-stone-200 text-stone-700'
+                        : 'bg-stone-100 text-stone-400 cursor-not-allowed'
                     }`}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -565,10 +565,10 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className="mb-3">
               <div className="relative">
                 <div className="flex items-center justify-between mb-3">
-                  <label className="block text-xs font-medium text-amber-300">Current Configuration</label>
+                  <label className="block text-xs font-medium text-emerald-600">Current Configuration</label>
                   <button 
                     onClick={onNewConfig}
-                    className="text-xs px-2 py-0.5 bg-stone-800 text-white rounded hover:bg-stone-700 border border-stone-700"
+                    className="text-xs px-2 py-0.5 bg-white text-stone-700 rounded hover:bg-stone-50 border border-stone-300"
                     title="Create new configuration"
                   >
                     + New
@@ -577,7 +577,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 
                 <button
                   onClick={() => setConfigDropdownOpen(!configDropdownOpen)}
-                  className="w-full px-2.5 py-1.5 bg-stone-800 text-white rounded-md border border-stone-700 flex justify-between items-center hover:bg-stone-700 text-sm"
+                  className="w-full px-2.5 py-1.5 bg-white text-stone-700 rounded-md border border-stone-300 flex justify-between items-center hover:bg-stone-50 text-sm"
                 >
                   <span className="truncate">{selectedConfig || "Select a configuration"}</span>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 ml-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -586,7 +586,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </button>
                 
                 {configDropdownOpen && (
-                  <div className="absolute z-10 mt-1 w-full bg-stone-800 rounded-md shadow-lg max-h-60 overflow-auto">
+                  <div className="absolute z-10 mt-1 w-full bg-white rounded-md shadow-lg max-h-60 overflow-auto">
                     {configs.length > 0 ? (
                       configs.map((config) => (
                         <button
@@ -595,15 +595,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                             onConfigSelect(config);
                             setConfigDropdownOpen(false);
                           }}
-                          className={`w-full text-left px-3 py-1.5 hover:bg-stone-700 text-sm ${
-                            selectedConfig === config ? 'bg-stone-700' : ''
+                          className={`w-full text-left px-3 py-1.5 hover:bg-stone-100 text-sm ${
+                            selectedConfig === config ? 'bg-stone-100' : ''
                           }`}
                         >
                           {config}
                         </button>
                       ))
                     ) : (
-                      <div className="px-3 py-2 text-gray-400 text-sm">No configurations available</div>
+                      <div className="px-3 py-2 text-stone-500 text-sm">No configurations available</div>
                     )}
                   </div>
                 )}
@@ -612,7 +612,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             
             {/* Configuration Name Settings */}
             {selectedConfig && config && onConfigNameSave && (
-              <div className="mb-3 bg-stone-800/70 p-2.5 rounded-md border border-stone-700">
+              <div className="mb-3 bg-stone-50 p-2.5 rounded-md border border-stone-200">
                 {isEditingConfigName ? (
                   <form onSubmit={handleSaveConfigName} className="space-y-2">
                     <input
@@ -620,7 +620,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       id="configName"
                       value={configName}
                       onChange={(e) => setConfigName(e.target.value)}
-                      className="p-1.5 w-full rounded-md border-stone-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm"
+                      className="p-1.5 w-full rounded-md border-stone-300 bg-white text-stone-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm"
                       required
                       placeholder="Enter configuration name"
                     />
@@ -631,13 +631,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                           setIsEditingConfigName(false);
                           setConfigName(config.name || '');
                         }}
-                        className="px-2 py-0.5 text-xs bg-stone-700 text-white rounded hover:bg-stone-600 border border-stone-600"
+                        className="px-2 py-0.5 text-xs bg-stone-100 text-stone-700 rounded hover:bg-stone-200 border border-stone-300"
                       >
                         Cancel
                       </button>
               <button
                         type="submit"
-                        className="px-2 py-0.5 text-xs bg-amber-500 text-black rounded hover:bg-amber-400"
+                        className="px-2 py-0.5 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-500"
               >
                         Save
               </button>
@@ -645,7 +645,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </form>
                 ) : (
                   <div className="w-full flex flex-row justify-between items-center">
-                    <div className="text-sm text-gray-300 truncate py-1">{config.name || "Unnamed configuration"}</div>
+                    <div className="text-sm text-stone-600 truncate py-1">{config.name || "Unnamed configuration"}</div>
                     <div className="flex items-center justify-between mb-1">
                     {!isEditingConfigName && (
                       <button
@@ -653,7 +653,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           setConfigName(config.name || '');
                           setIsEditingConfigName(true);
                         }}
-                        className="text-amber-400 hover:text-amber-300 bg-stone-700 p-1 rounded"
+                        className="text-emerald-600 hover:text-emerald-500 bg-stone-100 p-1 rounded"
                         title="Rename configuration"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -669,11 +669,11 @@ const Sidebar: React.FC<SidebarProps> = ({
             
             {/* Import/Export */}
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-amber-300 mb-4">Import/Export</label>
+              <label className="block text-xs font-medium text-emerald-600 mb-4">Import/Export</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={onExportJSON}
-                  className="px-2 py-1.5 bg-stone-800 text-white rounded-md hover:bg-stone-700 border border-stone-700 flex items-center justify-center text-xs"
+                  className="px-2 py-1.5 bg-white text-stone-700 rounded-md hover:bg-stone-50 border border-stone-300 flex items-center justify-center text-xs"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" className="mr-1">
                     <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
@@ -684,7 +684,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 
                 <button
                   onClick={onImportJSON}
-                  className="px-2 py-1.5 bg-stone-800 text-white rounded-md hover:bg-stone-700 border border-stone-700 flex items-center justify-center text-xs"
+                  className="px-2 py-1.5 bg-white text-stone-700 rounded-md hover:bg-stone-50 border border-stone-300 flex items-center justify-center text-xs"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" className="mr-1">
                     <path d="M.5 3a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h14a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5H.5zm1 5.5A.5.5 0 0 1 2 8h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1-.5-.5z"/>
@@ -703,12 +703,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       case 'secrets':
         return (
           <div className="px-4 py-4 space-y-4 overflow-y-auto h-full">
-            <h3 className="text-lg font-medium text-amber-300 mb-2">Secrets Management</h3>
+            <h3 className="text-lg font-medium text-emerald-600 mb-2">Secrets Management</h3>
             
             <div className="flex flex-col space-y-3">
               <button
                 onClick={onOpenSecretsManager}
-                className="w-full px-3 py-3 bg-stone-800 text-white rounded-md hover:bg-stone-700 border border-amber-400/30 flex items-center"
+                className="w-full px-3 py-3 bg-white text-stone-700 rounded-md hover:bg-stone-50 border border-emerald-300 flex items-center"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" className="mr-2">
                   <path d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
@@ -720,7 +720,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               {isPersistenceEnabled && isPasswordProtected && isDatabaseLocked && onUnlockDatabase && (
                 <button
                   onClick={onUnlockDatabase}
-                  className="w-full px-3 py-3 bg-stone-800 text-white rounded-md hover:bg-stone-700 border border-amber-400/30 flex items-center"
+                  className="w-full px-3 py-3 bg-white text-stone-700 rounded-md hover:bg-stone-50 border border-emerald-300 flex items-center"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" className="mr-2">
                     <path d="M3.5 11.5a3.5 3.5 0 1 1 3.163-5H14L15.5 8 14 9.5l-1-1-1 1-1-1-1 1-1-1-1 1H6.663a3.5 3.5 0 0 1-3.163 2zM2.5 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
@@ -731,11 +731,11 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
             
             <div className="mt-6">
-              <h4 className="text-sm font-medium text-amber-300 mb-3">Secret Persistence</h4>
+              <h4 className="text-sm font-medium text-emerald-600 mb-3">Secret Persistence</h4>
               
               {/* Error and success messages have been replaced by Toast notifications */}
               
-              <p className="text-xs text-gray-300 mb-3">
+              <p className="text-xs text-stone-600 mb-3">
                 By default, secrets are only stored in memory and will be lost when you refresh or close the page.
                 Enable secure persistence to keep your secrets available between browser sessions.
               </p>
@@ -748,7 +748,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     checked={isPersistenceEnabled}
                     onChange={(e) => setIsPersistenceEnabled(e.target.checked)}
                     disabled={loading}
-                    className="rounded text-amber-500 focus:ring-amber-500 mr-2 disabled:opacity-50"
+                    className="rounded text-emerald-500 focus:ring-emerald-500 mr-2 disabled:opacity-50"
                     style={{ width: '16px', height: '16px' }}
                   />
                   <label htmlFor="enablePersistence" className="text-sm font-medium">
@@ -757,7 +757,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 
                 {isPersistenceEnabled && (
-                    <div className="bg-blue-900/20 border border-blue-500/30 text-blue-200 px-3 py-2 rounded mb-3 text-xs">
+                    <div className="bg-blue-50 border border-blue-200 text-blue-600 px-3 py-2 rounded mb-3 text-xs">
                       Secrets will be stored in your browser using encrypted storage.
                       They will never be sent to any server except when needed for API calls.
                     </div>
@@ -770,10 +770,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                         checked={isPasswordProtected}
                     onChange={(e) => handlePasswordProtectedToggle(e.target.checked)}
                     disabled={loading || !isPersistenceEnabled}
-                    className="rounded text-amber-500 focus:ring-amber-500 disabled:opacity-50 mr-2"
+                    className="rounded text-emerald-500 focus:ring-emerald-500 disabled:opacity-50 mr-2"
                     style={{ width: '16px', minWidth: '16px', height: '16px', minHeight: '16px' }}
                   />
-                  <label htmlFor="passwordProtect" className={`text-sm font-medium ${!isPersistenceEnabled ? 'text-gray-500' : ''}`}>
+                  <label htmlFor="passwordProtect" className={`text-sm font-medium ${!isPersistenceEnabled ? 'text-stone-400' : ''}`}>
                         Protect with password (recommended)
                       </label>
                     </div>
@@ -781,9 +781,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {/* Password Protection Confirmation Dialog */}
                 {showRemovePasswordConfirm && (
                   <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-stone-800 p-4 rounded-md shadow-lg w-80 border border-amber-400/30 shadow-amber-300/5">
-                      <h4 className="text-amber-300 font-medium mb-2">Remove Password Protection?</h4>
-                      <p className="text-xs text-gray-300 mb-4">
+                    <div className="bg-white p-4 rounded-md shadow-lg w-80 border border-stone-200">
+                      <h4 className="text-emerald-600 font-medium mb-2">Remove Password Protection?</h4>
+                      <p className="text-xs text-stone-600 mb-4">
                         WARNING: This will permanently delete all your encrypted secrets and secure data.
                         This action is designed to help when you've forgotten your password, but it means all protected data will be lost.
                         This cannot be undone. Do you want to proceed?
@@ -791,7 +791,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <div className="flex justify-end space-x-2">
                         <button
                           onClick={() => setShowRemovePasswordConfirm(false)}
-                          className="px-3 py-1.5 bg-stone-700 text-white text-xs rounded-md hover:bg-stone-600"
+                          className="px-3 py-1.5 bg-stone-100 text-stone-700 text-xs rounded-md hover:bg-stone-200"
                         >
                           Cancel
                         </button>
@@ -816,13 +816,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                               <input
                                 type="password"
                         id="old-password"
-                        className="w-full bg-stone-700 border border-stone-600 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-amber-500 text-xs"
+                        className="w-full bg-white border border-stone-300 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs"
                                 value={oldPassword}
                                 onChange={(e) => setOldPassword(e.target.value)}
                         disabled={loading || !isPersistenceEnabled}
                         placeholder="Enter your current password"
                       />
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="text-xs text-stone-500 mt-1">
                         Enter your current password to update to a new password
                       </p>
                     </div>
@@ -839,7 +839,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           <input
                             type="password"
                         id="password"
-                        className="w-full bg-stone-700 border border-stone-600 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-amber-500 text-xs"
+                        className="w-full bg-white border border-stone-300 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                         disabled={loading || !isPersistenceEnabled}
@@ -853,7 +853,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           <input
                             type="password"
                         id="confirm-password"
-                        className="w-full bg-stone-700 border border-stone-600 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-amber-500 text-xs"
+                        className="w-full bg-white border border-stone-300 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                         disabled={loading || !isPersistenceEnabled}
@@ -861,7 +861,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           />
                         </div>
                         
-                    <p className="text-xs text-gray-400 mb-4">
+                    <p className="text-xs text-stone-500 mb-4">
                       {isChangingPassword 
                         ? "Your new password will be used to encrypt your secrets. Make sure to remember it." 
                         : "This password will be used to encrypt your secrets. If you forget this password, you will lose access to your stored secrets."}
@@ -873,7 +873,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     onClick={handleSavePersistence}
                     disabled={loading}
-                    className="w-full px-3 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full px-3 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {loading ? (
                       <span className="flex items-center justify-center">
@@ -897,13 +897,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <div className="bg-stone-900 border-r border-amber-100/20 h-full flex flex-col overflow-hidden" style={{ width: '270px' }}>
+    <div className="bg-white border-r border-stone-200 h-full flex flex-col overflow-hidden" style={{ width: '270px' }}>
       {/* Navigation Tabs */}
-      <div className="flex border-b border-amber-100/20 shrink-0">
+      <div className="flex border-b border-stone-200 shrink-0">
         {/* In platform mode, only show Plugins tab */}
         {platformMode ? (
           <button
-            className="flex-1 py-2 text-center text-sm text-amber-300 border-b-2 border-amber-300"
+            className="flex-1 py-2 text-center text-sm text-emerald-600 border-b-2 border-emerald-600"
           >
             Plugins
           </button>
@@ -912,8 +912,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               className={`flex-1 py-2 text-center text-sm ${
                 activeTab === 'configs' 
-                  ? 'text-amber-300 border-b-2 border-amber-300' 
-                  : 'text-amber-100/60 hover:text-amber-100'
+                  ? 'text-emerald-600 border-b-2 border-emerald-600' 
+                  : 'text-stone-400 hover:text-stone-800'
               }`}
               onClick={() => setActiveTab('configs')}
             >
@@ -922,8 +922,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               className={`flex-1 py-2 text-center text-sm ${
                 activeTab === 'modules' 
-                  ? 'text-amber-300 border-b-2 border-amber-300' 
-                  : 'text-amber-100/60 hover:text-amber-100'
+                  ? 'text-emerald-600 border-b-2 border-emerald-600' 
+                  : 'text-stone-400 hover:text-stone-800'
               }`}
               onClick={() => setActiveTab('modules')}
             >
@@ -932,8 +932,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               className={`flex-1 py-2 text-center text-sm ${
                 activeTab === 'secrets' 
-                  ? 'text-amber-300 border-b-2 border-amber-300' 
-                  : 'text-amber-100/60 hover:text-amber-100'
+                  ? 'text-emerald-600 border-b-2 border-emerald-600' 
+                  : 'text-stone-400 hover:text-stone-800'
               }`}
               onClick={() => setActiveTab('secrets')}
             >
@@ -950,14 +950,14 @@ const Sidebar: React.FC<SidebarProps> = ({
       
       {/* Footer with Status */}
       {selectedConfig && (
-        <div className="px-4 py-3 border-t border-amber-100/20 text-xs text-amber-100/60 shrink-0">
+        <div className="px-4 py-3 border-t border-stone-200 text-xs text-stone-400 shrink-0">
           <div className="flex items-center">
             <span className="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
             <span>Configuration: {selectedConfig}</span>
           </div>
           {hasUnsavedChanges && (
             <div className="flex items-center mt-1">
-              <span className="w-2 h-2 rounded-full bg-amber-500 mr-2"></span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2"></span>
               <span>Unsaved changes</span>
             </div>
           )}

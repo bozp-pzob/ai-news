@@ -544,13 +544,13 @@ function App({
 
   // In platform mode, the parent handles positioning; in legacy mode, we're fixed fullscreen
   const containerClass = platformMode 
-    ? "absolute inset-0 flex flex-col bg-stone-950 text-white overflow-hidden"
-    : "fixed inset-0 flex flex-col bg-stone-950 text-white overflow-hidden";
+    ? "absolute inset-0 flex flex-col bg-stone-50 text-stone-800 overflow-hidden"
+    : "fixed inset-0 flex flex-col bg-stone-50 text-stone-800 overflow-hidden";
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-stone-950 text-white overflow-hidden">
+    <div className="fixed inset-0 flex flex-col bg-stone-50 text-stone-800 overflow-hidden">
       {/* Full-width Toolbar */}
-      <div className="h-12 bg-stone-900 border-b border-stone-700 flex items-center px-4 flex-shrink-0">
+      <div className="h-12 bg-white border-b border-stone-200 shadow-sm flex items-center px-4 flex-shrink-0">
         <h1 className="text-xl font-semibold">Digital Gardener</h1>
       </div>
       

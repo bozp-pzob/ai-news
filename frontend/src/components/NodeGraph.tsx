@@ -194,7 +194,14 @@ export const NodeGraph = forwardRef<
     setJobStatus(status);
     
     // Update aggregation running state based on job status
-    if (status.status === 'failed') {
+    if (status.status === 'cancelled') {
+      // Job was cancelled (e.g. license expired) — stop running and show notification
+      completedJobsRef.current.add(jobId);
+      setIsAggregationRunning(false);
+      if (status.cancelReason === 'license_expired') {
+        showToast('Your continuous run was stopped because your Pro subscription expired. Renew to restart.', 'warning');
+      }
+    } else if (status.status === 'failed') {
       completedJobsRef.current.add(jobId); // Mark as completed to prevent future running updates
       setIsAggregationRunning(false);
     } else if (status.status === 'completed') {
@@ -934,13 +941,13 @@ export const NodeGraph = forwardRef<
       const { from, to } = connection;
       
       // Set up simple line style
-      ctx.strokeStyle = 'rgba(255, 215, 0, 0.7)'; // Gold with moderate opacity
+      ctx.strokeStyle = 'rgba(5, 150, 105, 0.5)'; // Emerald-600 with reduced opacity
       ctx.lineWidth = 10; // Medium thickness
       ctx.setLineDash([25, 20]); // Clear dashed pattern
       ctx.lineCap = 'round'; // Rounded ends of dashes
       
       // Add a subtle glow
-      ctx.shadowColor = 'rgba(255, 165, 0, 0.3)';
+      ctx.shadowColor = 'rgba(5, 150, 105, 0.2)';
       ctx.shadowBlur = 8;
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = 0;
@@ -973,7 +980,7 @@ export const NodeGraph = forwardRef<
     if (!ctx) return;
     
     // Clear the back buffer with a dark background
-    ctx.fillStyle = '#121212'; // Very dark background
+    ctx.fillStyle = '#fafaf9'; // Light stone-50 background
     ctx.fillRect(0, 0, backBufferRef.current.width, backBufferRef.current.height);
     
     // Save canvas state for transformations
@@ -1020,7 +1027,7 @@ export const NodeGraph = forwardRef<
       const centerY = backBufferRef.current.height / 2;
       
       ctx.font = '18px Arial';
-      ctx.fillStyle = `rgba(251, 191, 36, 1)`; // Brighter yellow amber color
+      ctx.fillStyle = `rgba(5, 150, 105, 1)`; // Emerald-600 color
       ctx.textAlign = 'center';
       
       let message = 'Drag plugins from the sidebar to build your graph';
@@ -2508,7 +2515,7 @@ export const NodeGraph = forwardRef<
           {viewMode === 'graph' && (
             <button
               onClick={centerView}
-              className="w-10 h-10 bg-stone-800/90 text-amber-300 border-stone-600/50 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30"
+              className="w-10 h-10 bg-white/90 text-emerald-600 border-stone-200 rounded hover:bg-stone-100 focus:outline-none flex items-center justify-center border border-emerald-400/30"
               title="Center view"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2529,7 +2536,7 @@ export const NodeGraph = forwardRef<
                   formatJsonButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
                 }
               }}
-              className="w-10 h-10 bg-stone-800/90 text-amber-300 border-stone-600/50 rounded hover:bg-stone-600 focus:outline-none flex items-center justify-center border border-amber-400/30"
+              className="w-10 h-10 bg-white/90 text-emerald-600 border-stone-200 rounded hover:bg-stone-100 focus:outline-none flex items-center justify-center border border-emerald-400/30"
               title="Format JSON"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">

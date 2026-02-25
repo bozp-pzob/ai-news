@@ -29,9 +29,9 @@ export function LoginButton({
 
   // Variant classes
   const variantClasses = {
-    primary: 'bg-amber-600 hover:bg-amber-700 text-white',
-    secondary: 'bg-stone-700 hover:bg-stone-600 text-white',
-    ghost: 'bg-transparent hover:bg-stone-800 text-stone-300 hover:text-white',
+    primary: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+    secondary: 'bg-stone-100 hover:bg-stone-200 text-stone-700',
+    ghost: 'bg-transparent hover:bg-stone-100 text-stone-600 hover:text-stone-800',
   };
 
   // Show loading state while Privy initializes
@@ -41,7 +41,7 @@ export function LoginButton({
         className={`
           ${sizeClasses[size]} 
           rounded-lg 
-          bg-stone-700 
+          bg-stone-200 
           animate-pulse
           ${className}
         `}
@@ -104,7 +104,7 @@ export function LoginLink({ className = '' }: { className?: string }) {
   return (
     <button
       onClick={login}
-      className={`text-stone-300 hover:text-white transition-colors ${className}`}
+      className={`text-stone-600 hover:text-stone-800 transition-colors ${className}`}
     >
       Sign In
     </button>

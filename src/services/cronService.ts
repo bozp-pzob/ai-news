@@ -63,9 +63,8 @@ export async function validateContinuousJobsProStatus(): Promise<void> {
         if (!hasProLicense) {
           console.log(`[CronService] User ${job.userId} no longer has pro license, stopping job ${job.id}`);
           
-          // Stop the continuous job
-          await aggregatorService.stopContinuousJob(job.id);
-          await jobService.addJobLog(job.id, 'warn', 'Continuous job stopped - Pro license expired or revoked');
+          // Stop the continuous job with license-expired status
+          await aggregatorService.stopContinuousJobForExpiredLicense(job.id);
           
           stoppedCount++;
         }

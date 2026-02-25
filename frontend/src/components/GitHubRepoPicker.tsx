@@ -180,7 +180,7 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
     onReposChange([]);
   };
 
-  const inputClasses = "p-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500";
+  const inputClasses = "p-2 w-full rounded-md border-stone-300 bg-white text-stone-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500";
 
   return (
     <>
@@ -188,14 +188,14 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
         {/* Mode Toggle / Connection Picker */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="block text-sm font-medium text-gray-300">
+            <label className="block text-sm font-medium text-stone-600">
               Repository Source
             </label>
             {activeConnections.length > 0 && !internalConnectionId && (
               <button
                 type="button"
                 onClick={() => setShowConnectDialog(true)}
-                className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1"
+                className="text-xs text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
               >
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -225,7 +225,7 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
                 <button
                   type="button"
                   onClick={handleClearConnection}
-                  className="px-3 py-2 text-sm text-gray-400 hover:text-gray-200 border border-gray-600 rounded-md"
+                  className="px-3 py-2 text-sm text-stone-500 hover:text-stone-800 border border-stone-300 rounded-md"
                   title="Switch to public repos"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -235,19 +235,19 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
               )}
             </div>
           ) : (
-            <div className="p-3 bg-stone-700 rounded-lg border border-stone-600">
+            <div className="p-3 bg-stone-50 rounded-lg border border-stone-200">
               <div className="flex items-start gap-2">
-                <svg className="w-5 h-5 text-gray-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-5 h-5 text-stone-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div className="flex-1">
-                  <p className="text-sm text-gray-300">
+                  <p className="text-sm text-stone-600">
                     Track public GitHub repos (rate limited to 60 req/hr)
                   </p>
                   <button
                     type="button"
                     onClick={() => setShowConnectDialog(true)}
-                    className="mt-2 text-xs text-amber-400 hover:text-amber-300"
+                    className="mt-2 text-xs text-emerald-600 hover:text-emerald-700"
                   >
                     Connect GitHub App for private repos →
                   </button>
@@ -255,7 +255,7 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
               </div>
             </div>
           )}
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-stone-400">
             {internalConnectionId 
               ? 'Select repos from your GitHub App connection' 
               : 'Enter public repo URLs or connect a GitHub App for private repos'}
@@ -284,7 +284,7 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
               <button
                 type="button"
                 onClick={handleAddPublicRepo}
-                className="px-4 py-2 text-sm font-medium text-black bg-amber-400 rounded-md hover:bg-amber-500"
+                className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700"
               >
                 Add
               </button>
@@ -299,13 +299,13 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
                 {selectedRepos.map(repo => (
                   <div 
                     key={repo}
-                    className="flex items-center justify-between p-2 bg-stone-700 rounded-md border border-stone-600"
+                    className="flex items-center justify-between p-2 bg-stone-50 rounded-md border border-stone-200"
                   >
                     <div className="flex items-center gap-2">
-                      <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 text-stone-400" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
                       </svg>
-                      <span className="text-sm text-gray-200">{repo}</span>
+                      <span className="text-sm text-stone-700">{repo}</span>
                     </div>
                     <button
                       type="button"
@@ -322,7 +322,7 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
             )}
             
             {selectedRepos.length === 0 && (
-              <p className="mt-2 text-xs text-amber-400">
+              <p className="mt-2 text-xs text-emerald-600">
                 Add at least one repository to track
               </p>
             )}
@@ -333,13 +333,13 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
         {internalConnectionId && (
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-gray-300">
+              <label className="block text-sm font-medium text-stone-600">
                 Select Repositories
                 <span className="text-red-500 ml-1">*</span>
               </label>
               <div className="flex items-center gap-2">
                 {selectedRepos.length > 0 && (
-                  <span className="text-xs text-amber-400">
+                  <span className="text-xs text-emerald-600">
                     {selectedRepos.length} selected
                   </span>
                 )}
@@ -347,7 +347,7 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
                   type="button"
                   onClick={() => syncRepos()}
                   disabled={isSyncing}
-                  className="text-xs text-gray-400 hover:text-amber-400 flex items-center gap-1"
+                  className="text-xs text-stone-500 hover:text-emerald-600 flex items-center gap-1"
                 >
                   <svg 
                     className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} 
@@ -363,18 +363,18 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
             </div>
 
             {reposLoading ? (
-              <div className="p-4 bg-stone-700 rounded-md border border-stone-600 text-center">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-amber-400 mx-auto mb-2"></div>
-                <span className="text-sm text-gray-400">Loading repositories...</span>
+              <div className="p-4 bg-stone-50 rounded-md border border-stone-200 text-center">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500 mx-auto mb-2"></div>
+                <span className="text-sm text-stone-500">Loading repositories...</span>
               </div>
             ) : repos.length === 0 ? (
-              <div className="p-4 bg-stone-700 rounded-md border border-stone-600 text-center">
-                <span className="text-sm text-gray-400">
+              <div className="p-4 bg-stone-50 rounded-md border border-stone-200 text-center">
+                <span className="text-sm text-stone-500">
                   No repositories found. Make sure your GitHub App has access to repositories.
                 </span>
               </div>
             ) : (
-              <div className="max-h-64 overflow-y-auto bg-stone-700 rounded-md border border-stone-600">
+              <div className="max-h-64 overflow-y-auto bg-white rounded-md border border-stone-200">
                 {/* Group by owner */}
                 {Object.entries(
                   repos.reduce((acc, repo) => {
@@ -384,16 +384,16 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
                     return acc;
                   }, {} as Record<string, ExternalChannel[]>)
                 ).map(([owner, ownerRepos]) => (
-                  <div key={owner} className="border-b border-stone-600 last:border-b-0">
+                  <div key={owner} className="border-b border-stone-200 last:border-b-0">
                     {/* Owner header */}
-                    <div className="px-3 py-2 bg-stone-800">
-                      <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    <div className="px-3 py-2 bg-stone-50">
+                      <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">
                         {owner}
                       </span>
                     </div>
                     
                     {/* Repos */}
-                    <div className="divide-y divide-stone-600">
+                    <div className="divide-y divide-stone-100">
                       {ownerRepos.map(repo => {
                         const fullName = repo.metadata?.fullName || repo.externalName || `${owner}/${repo.metadata?.name}`;
                         const isSelected = selectedRepos.includes(fullName);
@@ -402,23 +402,23 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
                         return (
                           <label
                             key={repo.id}
-                            className={`flex items-center px-3 py-2 cursor-pointer hover:bg-stone-650 ${
-                              isSelected ? 'bg-amber-500/10' : ''
+                            className={`flex items-center px-3 py-2 cursor-pointer hover:bg-stone-50 ${
+                              isSelected ? 'bg-emerald-50' : ''
                             }`}
                           >
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => handleRepoToggle(fullName)}
-                              className="h-4 w-4 rounded border-gray-600 bg-stone-600 text-amber-600 focus:ring-amber-500"
+                              className="h-4 w-4 rounded border-stone-300 bg-white text-emerald-600 focus:ring-emerald-500"
                             />
                             <div className="ml-2 flex-1">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-300">
+                                <span className="text-sm text-stone-600">
                                   {repo.metadata?.name || repo.externalName}
                                 </span>
                                 {isPrivate && (
-                                  <span className="px-1.5 py-0.5 text-xs bg-stone-600 text-gray-400 rounded">
+                                  <span className="px-1.5 py-0.5 text-xs bg-stone-100 text-stone-500 rounded">
                                     private
                                   </span>
                                 )}
@@ -430,7 +430,7 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
                               )}
                             </div>
                             {repo.metadata?.stars && repo.metadata.stars > 0 && (
-                              <span className="text-xs text-gray-500 flex items-center gap-1">
+                              <span className="text-xs text-stone-400 flex items-center gap-1">
                                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                                   <path d="M12 .587l3.668 7.568 8.332 1.151-6.064 5.828 1.48 8.279-7.416-3.967-7.417 3.967 1.481-8.279-6.064-5.828 8.332-1.151z"/>
                                 </svg>
@@ -447,7 +447,7 @@ export const GitHubRepoPicker: React.FC<GitHubRepoPickerProps> = ({
             )}
             
             {selectedRepos.length === 0 && !reposLoading && repos.length > 0 && (
-              <p className="mt-2 text-xs text-amber-400">
+              <p className="mt-2 text-xs text-emerald-600">
                 Select at least one repository to track
               </p>
             )}

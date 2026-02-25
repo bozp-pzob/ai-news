@@ -21,7 +21,7 @@ interface AuthGuardProps {
 function DefaultLoading() {
   return (
     <div className="flex items-center justify-center p-8">
-      <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+      <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
     </div>
   );
 }
@@ -31,9 +31,9 @@ function DefaultLoading() {
  */
 function DefaultLoginPrompt({ onLogin }: { onLogin: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center p-8 bg-stone-800 rounded-lg border border-stone-700">
+    <div className="flex flex-col items-center justify-center p-8 bg-white rounded-lg border border-stone-200">
       <svg 
-        className="w-12 h-12 text-stone-500 mb-4" 
+        className="w-12 h-12 text-stone-400 mb-4" 
         fill="none" 
         viewBox="0 0 24 24" 
         stroke="currentColor"
@@ -45,15 +45,15 @@ function DefaultLoginPrompt({ onLogin }: { onLogin: () => void }) {
           d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" 
         />
       </svg>
-      <h3 className="text-lg font-medium text-white mb-2">
+      <h3 className="text-lg font-medium text-stone-800 mb-2">
         Sign in required
       </h3>
-      <p className="text-stone-400 text-sm text-center mb-4 max-w-sm">
+      <p className="text-stone-500 text-sm text-center mb-4 max-w-sm">
         You need to sign in to access this content.
       </p>
       <button
         onClick={onLogin}
-        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors"
+        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
       >
         Sign In
       </button>
@@ -72,9 +72,9 @@ function UpgradePrompt({ currentTier, requiredTier }: { currentTier: UserTier; r
   };
 
   return (
-    <div className="flex flex-col items-center justify-center p-8 bg-stone-800 rounded-lg border border-stone-700">
+    <div className="flex flex-col items-center justify-center p-8 bg-white rounded-lg border border-stone-200">
       <svg 
-        className="w-12 h-12 text-amber-500 mb-4" 
+        className="w-12 h-12 text-emerald-500 mb-4" 
         fill="none" 
         viewBox="0 0 24 24" 
         stroke="currentColor"
@@ -86,16 +86,16 @@ function UpgradePrompt({ currentTier, requiredTier }: { currentTier: UserTier; r
           d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" 
         />
       </svg>
-      <h3 className="text-lg font-medium text-white mb-2">
+      <h3 className="text-lg font-medium text-stone-800 mb-2">
         Upgrade Required
       </h3>
-      <p className="text-stone-400 text-sm text-center mb-4 max-w-sm">
+      <p className="text-stone-500 text-sm text-center mb-4 max-w-sm">
         This feature requires a {requiredTier.map(t => tierLabels[t]).join(' or ')} plan.
         You're currently on the {tierLabels[currentTier]} plan.
       </p>
       <a
         href="/upgrade"
-        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors"
+        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
       >
         Upgrade Now
       </a>
@@ -108,7 +108,7 @@ function UpgradePrompt({ currentTier, requiredTier }: { currentTier: UserTier; r
  */
 function AuthErrorState({ error, onRetry }: { error: string; onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center p-8 bg-stone-800 rounded-lg border border-stone-700">
+    <div className="flex flex-col items-center justify-center p-8 bg-white rounded-lg border border-stone-200">
       <svg 
         className="w-12 h-12 text-red-500 mb-4" 
         fill="none" 
@@ -122,15 +122,15 @@ function AuthErrorState({ error, onRetry }: { error: string; onRetry: () => void
           d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" 
         />
       </svg>
-      <h3 className="text-lg font-medium text-white mb-2">
+      <h3 className="text-lg font-medium text-stone-800 mb-2">
         Authentication Error
       </h3>
-      <p className="text-stone-400 text-sm text-center mb-4 max-w-sm">
+      <p className="text-stone-500 text-sm text-center mb-4 max-w-sm">
         {error || 'Failed to load your profile. Please try again.'}
       </p>
       <button
         onClick={onRetry}
-        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors"
+        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
       >
         Retry
       </button>

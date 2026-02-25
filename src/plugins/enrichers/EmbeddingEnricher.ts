@@ -1,18 +1,17 @@
 // src/plugins/enrichers/EmbeddingEnricher.ts
 
-import { EnricherPlugin, ContentItem } from "../../types";
-import { embeddingService, EmbeddingConfig } from "../../services/embeddingService";
+import { EnricherPlugin, ContentItem, AiProvider } from "../../types";
 
 /**
  * Configuration for the embedding enricher
  */
 export interface EmbeddingEnricherConfig {
+  /** AI provider to use for generating embeddings (required) */
+  provider: AiProvider | string;
   /** Minimum text length to generate embeddings (default: 50) */
   minLength?: number;
   /** Maximum number of items to process in a single batch (default: 50) */
   batchSize?: number;
-  /** OpenAI model to use for embeddings */
-  model?: string;
   /** Whether to skip items that already have embeddings (default: true) */
   skipExisting?: boolean;
   /** Whether to include title in embedding text (default: true) */
@@ -22,8 +21,8 @@ export interface EmbeddingEnricherConfig {
 /**
  * EmbeddingEnricher adds vector embeddings to content items for semantic search.
  * 
- * This enricher uses OpenAI's text-embedding-3-small model to generate
- * 1536-dimensional embeddings that can be used for:
+ * This enricher uses an AI provider's embed() method to generate
+ * vector embeddings that can be used for:
  * - Semantic search across content
  * - Finding similar content
  * - Clustering and categorization
@@ -31,10 +30,20 @@ export interface EmbeddingEnricherConfig {
  * The embeddings are stored in the `embedding` field of each content item.
  */
 export class EmbeddingEnricher implements EnricherPlugin {
-  private config: Required<EmbeddingEnricherConfig>;
+  public provider: AiProvider | string;
+  private minLength: number;
+  private batchSize: number;
+  private skipExisting: boolean;
+  private includeTitle: boolean;
 
   static constructorInterface = {
     parameters: [
+      {
+        name: 'provider',
+        type: 'AiProvider',
+        required: true,
+        description: 'AI provider to use for generating embeddings'
+      },
       {
         name: 'minLength',
         type: 'number',
@@ -46,12 +55,6 @@ export class EmbeddingEnricher implements EnricherPlugin {
         type: 'number',
         required: false,
         description: 'Maximum items per batch (default: 50)'
-      },
-      {
-        name: 'model',
-        type: 'string',
-        required: false,
-        description: 'OpenAI embedding model (default: text-embedding-3-small)'
       },
       {
         name: 'skipExisting',
@@ -70,23 +73,21 @@ export class EmbeddingEnricher implements EnricherPlugin {
 
   /**
    * Creates a new EmbeddingEnricher instance.
-   * @param config - Configuration options
+   * @param config - Configuration options including the AI provider
    */
-  constructor(config: EmbeddingEnricherConfig = {}) {
-    this.config = {
-      minLength: config.minLength ?? 50,
-      batchSize: config.batchSize ?? 50,
-      model: config.model ?? 'text-embedding-3-small',
-      skipExisting: config.skipExisting ?? true,
-      includeTitle: config.includeTitle ?? true,
-    };
+  constructor(config: EmbeddingEnricherConfig) {
+    this.provider = config.provider;
+    this.minLength = Math.max(1, Number(config.minLength) || 50);
+    this.batchSize = Math.max(1, Number(config.batchSize) || 50);
+    this.skipExisting = config.skipExisting ?? true;
+    this.includeTitle = config.includeTitle ?? true;
   }
 
   /**
-   * Check if the embedding service is properly configured
+   * Check if the provider is properly configured (injected as an AiProvider instance)
    */
-  private isServiceConfigured(): boolean {
-    return embeddingService.isConfigured();
+  private isProviderReady(): boolean {
+    return typeof this.provider !== 'string' && this.provider != null;
   }
 
   /**
@@ -95,7 +96,7 @@ export class EmbeddingEnricher implements EnricherPlugin {
   private prepareText(item: ContentItem): string {
     const parts: string[] = [];
 
-    if (this.config.includeTitle && item.title) {
+    if (this.includeTitle && item.title) {
       parts.push(item.title);
     }
 
@@ -111,13 +112,13 @@ export class EmbeddingEnricher implements EnricherPlugin {
    */
   private shouldProcess(item: ContentItem): boolean {
     // Skip if already has embedding and skipExisting is true
-    if (this.config.skipExisting && item.embedding && item.embedding.length > 0) {
+    if (this.skipExisting && item.embedding && item.embedding.length > 0) {
       return false;
     }
 
     // Check minimum length
     const text = this.prepareText(item);
-    if (text.length < this.config.minLength) {
+    if (text.length < this.minLength) {
       return false;
     }
 
@@ -131,9 +132,9 @@ export class EmbeddingEnricher implements EnricherPlugin {
    * @returns Promise<ContentItem[]> - Array of enriched content items with embeddings
    */
   public async enrich(contentItems: ContentItem[]): Promise<ContentItem[]> {
-    // Check if service is configured
-    if (!this.isServiceConfigured()) {
-      console.warn('[EmbeddingEnricher] OPENAI_API_KEY not set, skipping embeddings');
+    // Check if provider is ready (injected by loadProviders)
+    if (!this.isProviderReady()) {
+      console.warn('[EmbeddingEnricher] AI provider not configured, skipping embeddings');
       return contentItems;
     }
 
@@ -161,16 +162,16 @@ export class EmbeddingEnricher implements EnricherPlugin {
 
     console.log(`[EmbeddingEnricher] Generating embeddings for ${itemsToProcess.length} items`);
 
-    // Process in batches
-    const embeddingConfig: EmbeddingConfig = {
-      model: this.config.model,
-      batchSize: this.config.batchSize,
-    };
-
     try {
-      // Generate embeddings in batches
+      // Process in batches using the AI provider
       const texts = itemsToProcess.map(item => item.text);
-      const embeddings = await embeddingService.embedBatch(texts, embeddingConfig);
+      const allEmbeddings: number[][] = [];
+
+      for (let i = 0; i < texts.length; i += this.batchSize) {
+        const batch = texts.slice(i, i + this.batchSize);
+        const batchEmbeddings = await (this.provider as AiProvider).embed(batch);
+        allEmbeddings.push(...batchEmbeddings);
+      }
 
       // Create result array (copy of original)
       const enrichedItems = [...contentItems];
@@ -178,7 +179,7 @@ export class EmbeddingEnricher implements EnricherPlugin {
       // Apply embeddings to the correct items
       for (let i = 0; i < itemsToProcess.length; i++) {
         const { index } = itemsToProcess[i];
-        const embedding = embeddings[i];
+        const embedding = allEmbeddings[i];
 
         if (embedding && embedding.length > 0) {
           enrichedItems[index] = {
@@ -188,7 +189,7 @@ export class EmbeddingEnricher implements EnricherPlugin {
         }
       }
 
-      console.log(`[EmbeddingEnricher] Successfully generated ${embeddings.filter(e => e.length > 0).length} embeddings`);
+      console.log(`[EmbeddingEnricher] Successfully generated ${allEmbeddings.filter(e => e.length > 0).length} embeddings`);
       
       return enrichedItems;
     } catch (error) {
@@ -202,17 +203,18 @@ export class EmbeddingEnricher implements EnricherPlugin {
    * Generate embedding for a single item (utility method)
    */
   public async embedSingle(item: ContentItem): Promise<number[] | null> {
-    if (!this.isServiceConfigured()) {
+    if (!this.isProviderReady()) {
       return null;
     }
 
     const text = this.prepareText(item);
-    if (text.length < this.config.minLength) {
+    if (text.length < this.minLength) {
       return null;
     }
 
     try {
-      return await embeddingService.embed(text, { model: this.config.model });
+      const results = await (this.provider as AiProvider).embed([text]);
+      return results[0] || null;
     } catch (error) {
       console.error('[EmbeddingEnricher] Error generating single embedding:', error);
       return null;

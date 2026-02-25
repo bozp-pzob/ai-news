@@ -11,20 +11,38 @@ interface RunsTabProps {
 /**
  * Status badge component
  */
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, isLicenseExpired }: { status: string; isLicenseExpired?: boolean }) {
   const colors: Record<string, string> = {
-    pending: 'bg-yellow-900/50 text-yellow-400',
-    running: 'bg-blue-900/50 text-blue-400',
-    completed: 'bg-green-900/50 text-green-400',
-    failed: 'bg-red-900/50 text-red-400',
-    cancelled: 'bg-stone-700 text-stone-400',
+    pending: 'bg-yellow-100 text-yellow-700',
+    running: 'bg-blue-100 text-blue-700',
+    completed: 'bg-green-100 text-green-700',
+    failed: 'bg-red-100 text-red-700',
+    cancelled: 'bg-stone-100 text-stone-500',
+    expired: 'bg-amber-100 text-amber-700',
   };
 
+  // Show "Expired" for cancelled jobs due to license expiration
+  if (status === 'cancelled' && isLicenseExpired) {
+    return (
+      <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors.expired}`}>
+        Expired
+      </span>
+    );
+  }
+
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[status] || 'bg-stone-700 text-stone-400'}`}>
+    <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[status] || 'bg-stone-100 text-stone-500'}`}>
       {status.charAt(0).toUpperCase() + status.slice(1)}
     </span>
   );
+}
+
+/**
+ * Check if a run was cancelled due to license expiration
+ */
+function isRunLicenseExpired(run: AggregationRun): boolean {
+  if (run.status !== 'cancelled' || !run.logs?.length) return false;
+  return run.logs.some(log => log.message?.includes('Pro license expired'));
 }
 
 /**
@@ -36,8 +54,8 @@ function JobTypeBadge({ jobType }: { jobType: string }) {
   return (
     <span className={`px-2 py-0.5 rounded text-xs ${
       isContinuous 
-        ? 'bg-purple-900/50 text-purple-400' 
-        : 'bg-stone-700 text-stone-300'
+        ? 'bg-purple-100 text-purple-700' 
+        : 'bg-stone-100 text-stone-600'
     }`}>
       {isContinuous ? 'Continuous' : 'One-time'}
     </span>
@@ -88,9 +106,9 @@ function RunDetailsModal({
   if (isLoading) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-stone-800 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+        <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
           <div className="flex items-center justify-center py-8">
-            <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
           </div>
         </div>
       </div>
@@ -100,13 +118,13 @@ function RunDetailsModal({
   if (error || !run) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-stone-800 rounded-lg p-6 max-w-2xl w-full mx-4">
-          <div className="text-center py-8 text-red-400">
+        <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4">
+          <div className="text-center py-8 text-red-600">
             {error || 'Run not found'}
           </div>
           <button
             onClick={onClose}
-            className="w-full mt-4 px-4 py-2 bg-stone-700 hover:bg-stone-600 text-white rounded-lg"
+            className="w-full mt-4 px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg"
           >
             Close
           </button>
@@ -117,12 +135,12 @@ function RunDetailsModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-stone-800 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto border border-stone-700">
+        <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto border border-stone-200">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-medium text-white">Run Details</h3>
+          <h3 className="text-lg font-medium text-stone-800">Run Details</h3>
           <button
             onClick={onClose}
-            className="text-stone-400 hover:text-white"
+            className="text-stone-400 hover:text-stone-800"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -133,73 +151,73 @@ function RunDetailsModal({
         <div className="space-y-4">
           {/* Status and Type */}
           <div className="flex items-center gap-2">
-            <StatusBadge status={run.status} />
+            <StatusBadge status={run.status} isLicenseExpired={isRunLicenseExpired(run)} />
             <JobTypeBadge jobType={run.jobType} />
           </div>
 
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-stone-900 rounded-lg p-3">
-              <p className="text-stone-400 text-xs">Items Fetched</p>
-              <p className="text-white text-lg font-medium">{run.itemsFetched.toLocaleString()}</p>
+            <div className="bg-stone-50 rounded-lg p-3">
+              <p className="text-stone-500 text-xs">Items Fetched</p>
+              <p className="text-stone-800 text-lg font-medium">{run.itemsFetched.toLocaleString()}</p>
             </div>
-            <div className="bg-stone-900 rounded-lg p-3">
-              <p className="text-stone-400 text-xs">Items Processed</p>
-              <p className="text-white text-lg font-medium">{run.itemsProcessed.toLocaleString()}</p>
+            <div className="bg-stone-50 rounded-lg p-3">
+              <p className="text-stone-500 text-xs">Items Processed</p>
+              <p className="text-stone-800 text-lg font-medium">{run.itemsProcessed.toLocaleString()}</p>
             </div>
-            <div className="bg-stone-900 rounded-lg p-3">
-              <p className="text-stone-400 text-xs">Run Count</p>
-              <p className="text-white text-lg font-medium">{run.runCount}</p>
+            <div className="bg-stone-50 rounded-lg p-3">
+              <p className="text-stone-500 text-xs">Run Count</p>
+              <p className="text-stone-800 text-lg font-medium">{run.runCount}</p>
             </div>
-            <div className="bg-stone-900 rounded-lg p-3">
-              <p className="text-stone-400 text-xs">Duration</p>
-              <p className="text-white text-lg font-medium">{formatDuration(run.startedAt, run.completedAt)}</p>
+            <div className="bg-stone-50 rounded-lg p-3">
+              <p className="text-stone-500 text-xs">Duration</p>
+              <p className="text-stone-800 text-lg font-medium">{formatDuration(run.startedAt, run.completedAt)}</p>
             </div>
           </div>
 
           {/* Timestamps */}
-          <div className="bg-stone-900 rounded-lg p-4 space-y-2">
+          <div className="bg-stone-50 rounded-lg p-4 space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-stone-400">Created</span>
-              <span className="text-stone-300">{new Date(run.createdAt).toLocaleString()}</span>
+              <span className="text-stone-500">Created</span>
+              <span className="text-stone-600">{new Date(run.createdAt).toLocaleString()}</span>
             </div>
             {run.startedAt && (
               <div className="flex justify-between text-sm">
-                <span className="text-stone-400">Started</span>
-                <span className="text-stone-300">{new Date(run.startedAt).toLocaleString()}</span>
+                <span className="text-stone-500">Started</span>
+                <span className="text-stone-600">{new Date(run.startedAt).toLocaleString()}</span>
               </div>
             )}
             {run.completedAt && (
               <div className="flex justify-between text-sm">
-                <span className="text-stone-400">Completed</span>
-                <span className="text-stone-300">{new Date(run.completedAt).toLocaleString()}</span>
+                <span className="text-stone-500">Completed</span>
+                <span className="text-stone-600">{new Date(run.completedAt).toLocaleString()}</span>
               </div>
             )}
             {run.lastFetchAt && (
               <div className="flex justify-between text-sm">
-                <span className="text-stone-400">Last Fetch</span>
-                <span className="text-stone-300">{new Date(run.lastFetchAt).toLocaleString()}</span>
+                <span className="text-stone-500">Last Fetch</span>
+                <span className="text-stone-600">{new Date(run.lastFetchAt).toLocaleString()}</span>
               </div>
             )}
             {run.globalInterval && (
               <div className="flex justify-between text-sm">
-                <span className="text-stone-400">Interval</span>
-                <span className="text-stone-300">{formatInterval(run.globalInterval)}</span>
+                <span className="text-stone-500">Interval</span>
+                <span className="text-stone-600">{formatInterval(run.globalInterval)}</span>
               </div>
             )}
           </div>
 
           {/* Error */}
           {run.errorMessage && (
-            <div className="bg-red-900/20 border border-red-800 rounded-lg p-4">
-              <p className="text-red-400 text-xs mb-1">Error</p>
-              <p className="text-red-300 text-sm font-mono">{run.errorMessage}</p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-600 text-xs mb-1">Error</p>
+              <p className="text-red-500 text-sm font-mono">{run.errorMessage}</p>
             </div>
           )}
 
           {/* Logs */}
           {run.logs && run.logs.length > 0 && (
-            <div className="bg-stone-900 rounded-lg p-4">
+            <div className="bg-stone-50 rounded-lg p-4">
               <p className="text-stone-400 text-xs mb-2">Logs</p>
               <div className="space-y-1 max-h-48 overflow-y-auto">
                 {run.logs.map((log, i) => (
@@ -223,7 +241,7 @@ function RunDetailsModal({
 
         <button
           onClick={onClose}
-          className="w-full mt-6 px-4 py-2 bg-stone-700 hover:bg-stone-600 text-white rounded-lg"
+            className="w-full mt-6 px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg"
         >
           Close
         </button>
@@ -242,7 +260,7 @@ export function RunsTab({ configId }: RunsTabProps) {
   if (isLoading && runs.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -250,10 +268,10 @@ export function RunsTab({ configId }: RunsTabProps) {
   if (error) {
     return (
       <div className="text-center py-12">
-        <p className="text-red-400 mb-4">{error}</p>
+        <p className="text-red-600 mb-4">{error}</p>
         <button
           onClick={refresh}
-          className="px-4 py-2 bg-stone-700 hover:bg-stone-600 text-white rounded-lg"
+          className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg"
         >
           Retry
         </button>
@@ -279,15 +297,15 @@ export function RunsTab({ configId }: RunsTabProps) {
         </p>
         <button
           onClick={refresh}
-          className="text-sm text-amber-400 hover:text-amber-300"
+          className="text-sm text-emerald-600 hover:text-emerald-700"
         >
           Refresh
         </button>
       </div>
 
       {/* Runs List */}
-      <div className="bg-stone-800 rounded-lg border border-stone-700 overflow-hidden">
-        <div className="divide-y divide-stone-700">
+      <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
+        <div className="divide-y divide-stone-200">
           {runs.map((run) => (
             <div 
               key={run.id} 
@@ -296,7 +314,7 @@ export function RunsTab({ configId }: RunsTabProps) {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <StatusBadge status={run.status} />
+                  <StatusBadge status={run.status} isLicenseExpired={isRunLicenseExpired(run)} />
                   <JobTypeBadge jobType={run.jobType} />
                 </div>
                 <span className="text-stone-500 text-xs">
@@ -305,12 +323,12 @@ export function RunsTab({ configId }: RunsTabProps) {
               </div>
               
               <div className="mt-2 flex items-center gap-4 text-sm">
-                <span className="text-stone-400">
-                  <span className="text-white">{run.itemsFetched.toLocaleString()}</span> items
+                <span className="text-stone-500">
+                  <span className="text-stone-800">{run.itemsFetched.toLocaleString()}</span> items
                 </span>
                 {run.jobType === 'continuous' && (
-                  <span className="text-stone-400">
-                    <span className="text-white">{run.runCount}</span> ticks
+                  <span className="text-stone-500">
+                    <span className="text-stone-800">{run.runCount}</span> ticks
                   </span>
                 )}
                 <span className="text-stone-400">
@@ -333,7 +351,7 @@ export function RunsTab({ configId }: RunsTabProps) {
         <button
           onClick={loadMore}
           disabled={isLoading}
-          className="w-full py-2 text-sm text-amber-400 hover:text-amber-300 disabled:text-stone-500"
+          className="w-full py-2 text-sm text-emerald-600 hover:text-emerald-700 disabled:text-stone-400"
         >
           {isLoading ? 'Loading...' : 'Load more'}
         </button>

@@ -37,15 +37,15 @@ export function AppHeader({ adminBadge, maxWidth = 'max-w-6xl', limits, children
 
   return (
     <>
-      <header className="bg-stone-900 border-b border-stone-800">
+      <header className="bg-white border-b border-stone-200 shadow-sm">
         <div className={`${maxWidth} mx-auto px-4 py-4 flex items-center justify-between`}>
           {/* Left: Logo */}
           <div className="flex items-center gap-3">
-            <a href="/" className="text-xl font-bold text-white">
-              AI News
+            <a href="/" className="text-xl font-bold text-emerald-700">
+              Digital Gardener
             </a>
             {adminBadge && (
-              <span className="px-2 py-0.5 bg-purple-900/50 text-purple-400 text-xs rounded font-medium">
+              <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded font-medium">
                 Admin
               </span>
             )}
@@ -57,8 +57,8 @@ export function AppHeader({ adminBadge, maxWidth = 'max-w-6xl', limits, children
               onClick={() => navigate('/explore')}
               className={`text-sm transition-colors ${
                 location.pathname === '/explore'
-                  ? 'text-amber-400'
-                  : 'text-stone-400 hover:text-white'
+                  ? 'text-emerald-600 font-medium'
+                  : 'text-stone-500 hover:text-stone-800'
               }`}
             >
               Explore
@@ -66,7 +66,7 @@ export function AppHeader({ adminBadge, maxWidth = 'max-w-6xl', limits, children
             {!isOnDashboard && (
               <button
                 onClick={() => navigate('/dashboard')}
-                className="text-stone-400 hover:text-white text-sm transition-colors"
+                className="text-stone-500 hover:text-stone-800 text-sm transition-colors"
               >
                 Dashboard
               </button>
@@ -76,13 +76,12 @@ export function AppHeader({ adminBadge, maxWidth = 'max-w-6xl', limits, children
             <button
               onClick={() => {
                 if (!isAuthenticated) {
-                  // For non-auth users, still open dialog - it works in local mode
                   setShowCreateDialog(true);
                 } else {
                   setShowCreateDialog(true);
                 }
               }}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-lg font-medium transition-colors flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg font-medium transition-colors flex items-center gap-1.5"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -99,7 +98,7 @@ export function AppHeader({ adminBadge, maxWidth = 'max-w-6xl', limits, children
             ) : (
               <button
                 onClick={login}
-                className="text-stone-400 hover:text-white text-sm transition-colors"
+                className="text-stone-500 hover:text-stone-800 text-sm transition-colors"
               >
                 Sign In
               </button>

@@ -34,6 +34,7 @@ import {
 } from '../../types';
 import { StoragePlugin } from '../storage/StoragePlugin';
 import { generateSummarizeInput, SUMMARIZE_OPTIONS } from '../../helpers/promptHelper';
+import { condenseGitHubText, condenseDiffHunk } from '../../helpers/textCondenser';
 import { externalConnectionService } from '../../services/externalConnections/ExternalConnectionService';
 import { Octokit } from 'octokit';
 
@@ -1134,7 +1135,7 @@ export class GitHubSource implements ContentSource {
         type: 'githubPullRequest',
         source: this.name,
         title: pr.title,
-        text: pr.body || '',
+        text: condenseGitHubText(pr.body || ''),
         link: `${baseGithubUrl}pull/${pr.number}`,
         date: dateEpoch,
         metadata: {
@@ -1167,7 +1168,7 @@ export class GitHubSource implements ContentSource {
         type: 'githubIssue',
         source: this.name,
         title: issue.title,
-        text: issue.body || '',
+        text: condenseGitHubText(issue.body || ''),
         link: `${baseGithubUrl}issues/${issue.number}`,
         date: dateEpoch,
         metadata: {
@@ -1194,7 +1195,7 @@ export class GitHubSource implements ContentSource {
         type: 'githubCommit',
         source: this.name,
         title: commit.messageHeadline || commit.message.split('\n')[0],
-        text: commit.message,
+        text: commit.messageHeadline || commit.message.split('\n')[0],
         link: `${baseGithubUrl}commit/${commit.oid}`,
         date: dateEpoch,
         metadata: {
@@ -1249,7 +1250,7 @@ export class GitHubSource implements ContentSource {
         type: 'githubComment',
         source: this.name,
         title: `Comment on ${parentType} #${comment.issueNumber}`,
-        text: comment.body || '',
+        text: condenseGitHubText(comment.body || ''),
         link: comment.htmlUrl || `${baseGithubUrl}issues/${comment.issueNumber}#issuecomment-${comment.id}`,
         date: dateEpoch,
         metadata: {
@@ -1272,7 +1273,7 @@ export class GitHubSource implements ContentSource {
         type: 'githubReviewComment',
         source: this.name,
         title: `Code comment on PR #${reviewComment.prNumber}: ${reviewComment.path}`,
-        text: reviewComment.body || '',
+        text: condenseGitHubText(reviewComment.body || ''),
         link: reviewComment.htmlUrl || `${baseGithubUrl}pull/${reviewComment.prNumber}`,
         date: dateEpoch,
         metadata: {
@@ -1284,7 +1285,7 @@ export class GitHubSource implements ContentSource {
           side: reviewComment.side,
           author: reviewComment.author?.login,
           authorAvatar: reviewComment.author?.avatarUrl,
-          diffHunk: reviewComment.diffHunk,
+          diffHunk: reviewComment.diffHunk ? condenseDiffHunk(reviewComment.diffHunk) : reviewComment.diffHunk,
           inReplyToId: reviewComment.inReplyToId,
           createdAt: reviewComment.createdAt,
         },
@@ -1304,7 +1305,7 @@ export class GitHubSource implements ContentSource {
         type: 'githubReviewSubmission',
         source: this.name,
         title: `${review.state} review on PR #${review.prNumber}: ${review.prTitle}`,
-        text: review.body || `@${review.author?.login || 'unknown'} ${stateText} PR #${review.prNumber}`,
+        text: condenseGitHubText(review.body || `@${review.author?.login || 'unknown'} ${stateText} PR #${review.prNumber}`),
         link: review.htmlUrl || `${baseGithubUrl}pull/${review.prNumber}`,
         date: dateEpoch,
         metadata: {
@@ -1763,7 +1764,7 @@ export class GitHubSource implements ContentSource {
       }
     }
 
-    return parts.join('\n');
+    return condenseGitHubText(parts.join('\n'));
   }
 
   /**
@@ -1888,7 +1889,7 @@ export class GitHubSource implements ContentSource {
       }
     }
 
-    return parts.join('\n');
+    return condenseGitHubText(parts.join('\n'));
   }
 
   /**

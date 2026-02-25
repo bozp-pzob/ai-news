@@ -375,7 +375,7 @@ async function resumeRunningJobs() {
         console.log(`[Startup] Resuming continuous job ${job.id} for config ${job.configId}`);
         
         try {
-          // Load config and secrets
+          // Load config metadata (needed for name, storageType, etc.)
           const config = await userService.getConfigById(job.configId);
           if (!config) {
             console.error(`[Startup] Config ${job.configId} not found for job ${job.id}`);
@@ -383,60 +383,128 @@ async function resumeRunningJobs() {
             continue;
           }
           
-          const secrets = await userService.getConfigSecrets(job.configId) || {};
-          let configJson = config.configJson as any;
+          // Try to load the encrypted resolved config/secrets from the job record first.
+          // These contain the fully-resolved config (with all $SECRET:uuid$ references and
+          // platform credentials already injected) from when the job was originally started.
+          const resolvedConfig = await jobService.getJobResolvedConfig(job.id);
+          const resolvedSecrets = await jobService.getJobResolvedSecrets(job.id);
+          
+          let configJson: any;
+          let secrets: Record<string, string>;
+          
+          if (resolvedConfig && resolvedSecrets) {
+            // Use the encrypted resolved config — all secrets are already baked in.
+            // Re-inject platform credentials since env vars may have rotated since last start.
+            console.log(`[Startup] Using encrypted resolved config for job ${job.id}`);
+            configJson = resolvedConfig;
+            secrets = resolvedSecrets;
+            
+            const user = await userService.getUserById(job.userId);
+            const isAdmin = user?.tier === 'admin';
+            
+            // Re-inject platform AI credentials (env vars may have changed)
+            const usesPlatformAI = configJson.ai?.some((ai: any) => ai.params?.usePlatformAI === true);
+            if (isAdmin || usesPlatformAI) {
+              const model = process.env.PRO_TIER_AI_MODEL || 'openai/gpt-4o';
+              const platformApiKey = process.env.OPENAI_API_KEY;
+              const siteUrl = process.env.SITE_URL || '';
+              const siteName = process.env.SITE_NAME || '';
 
-          // Inject platform credentials (same logic as the continuous run route handler)
-          // Without this, resumed jobs lack configId for multi-tenant storage and AI keys
-          const user = await userService.getUserById(job.userId);
-          const isAdmin = user?.tier === 'admin';
+              configJson.ai = configJson.ai?.map((ai: any) => {
+                if (ai.params?.usePlatformAI || isAdmin) {
+                  return {
+                    ...ai,
+                    params: {
+                      ...ai.params,
+                      model,
+                      apiKey: platformApiKey,
+                      useOpenRouter: true,
+                      siteUrl,
+                      siteName,
+                    }
+                  };
+                }
+                return ai;
+              }) || [];
+            }
 
-          // Inject platform AI credentials
-          const usesPlatformAI = configJson.ai?.some((ai: any) => ai.params?.usePlatformAI === true);
-          if (isAdmin || usesPlatformAI) {
-            const model = process.env.PRO_TIER_AI_MODEL || 'openai/gpt-4o';
-            const platformApiKey = process.env.OPENAI_API_KEY;
-            const siteUrl = process.env.SITE_URL || '';
-            const siteName = process.env.SITE_NAME || '';
+            // Re-inject platform storage credentials (env vars may have changed)
+            const usesPlatformStorage = configJson.storage?.some((s: any) => s.params?.usePlatformStorage === true);
+            if (config.storageType === 'platform' || isAdmin || usesPlatformStorage) {
+              const platformDbUrl = process.env.DATABASE_URL;
+              configJson.storage = configJson.storage?.map((storage: any) => {
+                if (storage.params?.usePlatformStorage || config.storageType === 'platform' || isAdmin) {
+                  return {
+                    ...storage,
+                    params: {
+                      ...storage.params,
+                      configId: job.configId,
+                      connectionString: platformDbUrl,
+                    }
+                  };
+                }
+                return storage;
+              }) || [];
+            }
+          } else {
+            // Legacy fallback: no encrypted resolved config on the job.
+            // Load from configs table and re-inject platform credentials.
+            // NOTE: $SECRET:uuid$ references in config_json won't resolve correctly,
+            // but ALL_CAPS and process.env.X references will work.
+            console.log(`[Startup] No encrypted resolved config for job ${job.id}, using legacy fallback`);
+            secrets = await userService.getConfigSecrets(job.configId) || {};
+            configJson = config.configJson as any;
 
-            configJson.ai = configJson.ai?.map((ai: any) => {
-              if (ai.params?.usePlatformAI || isAdmin) {
-                return {
-                  ...ai,
-                  params: {
-                    ...ai.params,
-                    model,
-                    apiKey: platformApiKey,
-                    useOpenRouter: true,
-                    siteUrl,
-                    siteName,
-                  }
-                };
-              }
-              return ai;
-            }) || [];
-          }
+            const user = await userService.getUserById(job.userId);
+            const isAdmin = user?.tier === 'admin';
 
-          // Inject platform storage credentials (configId for multi-tenant isolation)
-          const usesPlatformStorage = configJson.storage?.some((s: any) => s.params?.usePlatformStorage === true);
-          if (config.storageType === 'platform' || isAdmin || usesPlatformStorage) {
-            const platformDbUrl = process.env.DATABASE_URL;
-            configJson.storage = configJson.storage?.map((storage: any) => {
-              if (storage.params?.usePlatformStorage || config.storageType === 'platform' || isAdmin) {
-                return {
-                  ...storage,
-                  params: {
-                    ...storage.params,
-                    configId: job.configId,
-                    connectionString: platformDbUrl,
-                  }
-                };
-              }
-              return storage;
-            }) || [];
+            // Inject platform AI credentials
+            const usesPlatformAI = configJson.ai?.some((ai: any) => ai.params?.usePlatformAI === true);
+            if (isAdmin || usesPlatformAI) {
+              const model = process.env.PRO_TIER_AI_MODEL || 'openai/gpt-4o';
+              const platformApiKey = process.env.OPENAI_API_KEY;
+              const siteUrl = process.env.SITE_URL || '';
+              const siteName = process.env.SITE_NAME || '';
+
+              configJson.ai = configJson.ai?.map((ai: any) => {
+                if (ai.params?.usePlatformAI || isAdmin) {
+                  return {
+                    ...ai,
+                    params: {
+                      ...ai.params,
+                      model,
+                      apiKey: platformApiKey,
+                      useOpenRouter: true,
+                      siteUrl,
+                      siteName,
+                    }
+                  };
+                }
+                return ai;
+              }) || [];
+            }
+
+            // Inject platform storage credentials (configId for multi-tenant isolation)
+            const usesPlatformStorage = configJson.storage?.some((s: any) => s.params?.usePlatformStorage === true);
+            if (config.storageType === 'platform' || isAdmin || usesPlatformStorage) {
+              const platformDbUrl = process.env.DATABASE_URL;
+              configJson.storage = configJson.storage?.map((storage: any) => {
+                if (storage.params?.usePlatformStorage || config.storageType === 'platform' || isAdmin) {
+                  return {
+                    ...storage,
+                    params: {
+                      ...storage.params,
+                      configId: job.configId,
+                      connectionString: platformDbUrl,
+                    }
+                  };
+                }
+                return storage;
+              }) || [];
+            }
           }
           
-          // Start the continuous job (using existing job ID)
+          // Start the continuous job (using existing job ID to resume)
           await aggregatorService.startContinuousJob(
             job.configId,
             job.userId,

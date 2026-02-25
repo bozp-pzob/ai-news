@@ -64,10 +64,12 @@ export interface JobStatus {
   jobId: string;
   configName: string;
   startTime: number;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   progress?: number; // 0-100
   error?: string;
   result?: any;
+  /** Reason for cancellation (e.g. 'license_expired') — helps frontend show targeted messaging */
+  cancelReason?: string;
   intervals?: NodeJS.Timeout[]; // Array of interval IDs for cleanup when stopping
   aggregationStatus?: {
     currentSource?: string;
@@ -174,6 +176,8 @@ export interface AiProvider {
   summarize(text: string, options?: SummarizeOptions): Promise<string>;
   topics(text: string): Promise<string[]>;
   image(text: string, options?: ImageGenerationOptions): Promise<string[]>;
+  /** Generate vector embeddings for one or more texts. Returns one embedding array per input text. */
+  embed(texts: string[], model?: string): Promise<number[][]>;
   /** Get the model's maximum context length in tokens (0 if unknown) */
   getContextLength(): number;
   /** Get cumulative token usage and cost stats since last reset */

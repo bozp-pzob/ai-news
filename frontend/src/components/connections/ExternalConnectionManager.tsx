@@ -75,28 +75,28 @@ export const ExternalConnectionManager: React.FC<ExternalConnectionManagerProps>
 
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+        <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 border border-stone-200">
           <div className="flex items-center gap-3 mb-4">
-            <PlatformIcon platform={authResult.platform} size="lg" className="text-gray-300" />
-            <h3 className="text-lg font-medium text-white">
+            <PlatformIcon platform={authResult.platform} size="lg" className="text-stone-600" />
+            <h3 className="text-lg font-medium text-stone-800">
               Connect {getPlatformDisplayName(authResult.platform)}
             </h3>
           </div>
           
           {authResult.instructions && (
-            <p className="text-gray-300 mb-4">{authResult.instructions}</p>
+            <p className="text-stone-600 mb-4">{authResult.instructions}</p>
           )}
 
-          <div className="bg-gray-900 rounded-lg p-3 mb-4">
-            <p className="text-xs text-gray-500 mb-1">Connection Link:</p>
+          <div className="bg-stone-50 rounded-lg p-3 mb-4">
+            <p className="text-xs text-stone-500 mb-1">Connection Link:</p>
             <div className="flex items-center gap-2">
-              <code className="text-sm text-indigo-400 flex-1 truncate">{authResult.url}</code>
+              <code className="text-sm text-emerald-600 flex-1 truncate">{authResult.url}</code>
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(authResult.url);
                   showToast('Link copied!', 'success');
                 }}
-                className="p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+                className="p-1.5 rounded bg-stone-100 hover:bg-stone-200 text-stone-600"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
@@ -108,7 +108,7 @@ export const ExternalConnectionManager: React.FC<ExternalConnectionManagerProps>
           <div className="flex gap-3">
             <button
               onClick={() => window.open(authResult.url, '_blank')}
-              className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
+              className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors"
             >
               Open Link
             </button>
@@ -117,7 +117,7 @@ export const ExternalConnectionManager: React.FC<ExternalConnectionManagerProps>
                 clearAuthResult();
                 refetch();
               }}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+              className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg text-sm font-medium transition-colors"
             >
               Done
             </button>
@@ -133,8 +133,8 @@ export const ExternalConnectionManager: React.FC<ExternalConnectionManagerProps>
 
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-          <h3 className="text-lg font-medium text-white mb-4">Choose a Platform</h3>
+        <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 border border-stone-200">
+          <h3 className="text-lg font-medium text-stone-800 mb-4">Choose a Platform</h3>
           
           <div className="space-y-2">
             {enabledPlatforms.map((p) => (
@@ -142,12 +142,12 @@ export const ExternalConnectionManager: React.FC<ExternalConnectionManagerProps>
                 key={p.platform}
                 onClick={() => handleAddConnection(p.platform)}
                 disabled={isAuthLoading}
-                className="w-full flex items-center gap-3 p-3 rounded-lg bg-gray-700/50 hover:bg-gray-700 transition-colors text-left"
+                className="w-full flex items-center gap-3 p-3 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors text-left"
               >
-                <PlatformIcon platform={p.platform} size="lg" className="text-gray-300" />
+                <PlatformIcon platform={p.platform} size="lg" className="text-stone-600" />
                 <div className="flex-1">
-                  <div className="text-white font-medium">{p.displayName}</div>
-                  <div className="text-xs text-gray-400">{p.description}</div>
+                  <div className="text-stone-800 font-medium">{p.displayName}</div>
+                  <div className="text-xs text-stone-500">{p.description}</div>
                 </div>
               </button>
             ))}
@@ -155,7 +155,7 @@ export const ExternalConnectionManager: React.FC<ExternalConnectionManagerProps>
 
           <button
             onClick={() => setShowPlatformSelector(false)}
-            className="mt-4 w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+            className="mt-4 w-full px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg text-sm font-medium transition-colors"
           >
             Cancel
           </button>
@@ -167,8 +167,8 @@ export const ExternalConnectionManager: React.FC<ExternalConnectionManagerProps>
   if (isLoading || isLoadingPlatforms) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-        <span className="ml-3 text-gray-400">Loading connections...</span>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+        <span className="ml-3 text-stone-500">Loading connections...</span>
       </div>
     );
   }
@@ -191,7 +191,7 @@ export const ExternalConnectionManager: React.FC<ExternalConnectionManagerProps>
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-medium text-white">
+        <h3 className="text-lg font-medium text-stone-800">
           {platform ? `Connected ${getPlatformDisplayName(platform)} Servers` : 'Connected Platforms'}
         </h3>
         <button
@@ -203,7 +203,7 @@ export const ExternalConnectionManager: React.FC<ExternalConnectionManagerProps>
             }
           }}
           disabled={isAuthLoading}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-800 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
         >
           {isAuthLoading ? (
             <>
@@ -227,18 +227,18 @@ export const ExternalConnectionManager: React.FC<ExternalConnectionManagerProps>
 
       {/* Connection list */}
       {connections.length === 0 ? (
-        <div className="text-center py-12 bg-gray-800/50 rounded-lg border border-gray-700">
+        <div className="text-center py-12 bg-stone-50 rounded-lg border border-stone-200">
           {platform ? (
-            <PlatformIcon platform={platform} size="xl" className="mx-auto text-gray-500" />
+             <PlatformIcon platform={platform} size="xl" className="mx-auto text-stone-400" />
           ) : (
-            <svg className="mx-auto h-12 w-12 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="mx-auto h-12 w-12 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
           )}
-          <h3 className="mt-4 text-sm font-medium text-white">
+          <h3 className="mt-4 text-sm font-medium text-stone-800">
             No {platform ? getPlatformDisplayName(platform) : ''} connections
           </h3>
-          <p className="mt-2 text-sm text-gray-400">
+          <p className="mt-2 text-sm text-stone-500">
             Add a {platform ? getPlatformDisplayName(platform) : 'platform'} connection to use as a data source
           </p>
           <button
@@ -250,7 +250,7 @@ export const ExternalConnectionManager: React.FC<ExternalConnectionManagerProps>
               }
             }}
             disabled={isAuthLoading}
-            className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
+            className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

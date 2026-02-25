@@ -103,8 +103,8 @@ export const ChannelPicker: React.FC<ChannelPickerProps> = ({
   if (isLoadingConnections) {
     return (
       <div className="flex items-center justify-center py-4">
-        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-500"></div>
-        <span className="ml-2 text-sm text-gray-400">Loading connections...</span>
+        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-500"></div>
+        <span className="ml-2 text-sm text-stone-500">Loading connections...</span>
       </div>
     );
   }
@@ -119,8 +119,8 @@ export const ChannelPicker: React.FC<ChannelPickerProps> = ({
 
   if (connections.length === 0) {
     return (
-      <div className="text-center py-6 bg-gray-800/50 rounded-lg border border-gray-700">
-        <div className="mx-auto h-10 w-10 text-gray-500 flex items-center justify-center">
+      <div className="text-center py-6 bg-stone-50 rounded-lg border border-stone-200">
+        <div className="mx-auto h-10 w-10 text-stone-400 flex items-center justify-center">
           {platform ? (
             <PlatformIcon platform={platform} size="xl" />
           ) : (
@@ -129,10 +129,10 @@ export const ChannelPicker: React.FC<ChannelPickerProps> = ({
             </svg>
           )}
         </div>
-        <p className="mt-2 text-sm text-gray-400">
+        <p className="mt-2 text-sm text-stone-500">
           No {platform ? getPlatformDisplayName(platform) : ''} connections found
         </p>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-stone-400">
           Connect from your dashboard first
         </p>
       </div>
@@ -143,13 +143,13 @@ export const ChannelPicker: React.FC<ChannelPickerProps> = ({
     <div className="space-y-4">
       {/* Connection selector */}
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1">
+        <label className="block text-sm font-medium text-stone-600 mb-1">
           {platform ? getPlatformDisplayName(platform) : 'Connection'}
         </label>
         <select
           value={selectedConnectionId || ''}
           onChange={handleConnectionSelect}
-          className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
         >
           <option value="">Select a connection...</option>
           {connections.map((conn) => (
@@ -168,13 +168,13 @@ export const ChannelPicker: React.FC<ChannelPickerProps> = ({
               Channels {maxChannels && `(max ${maxChannels})`}
             </label>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-stone-500">
                 {selectedChannelIds.length} selected
               </span>
               <button
                 onClick={syncChannels}
                 disabled={isSyncing}
-                className="text-xs text-indigo-400 hover:text-indigo-300 disabled:text-gray-500"
+                className="text-xs text-emerald-600 hover:text-emerald-700 disabled:text-stone-400"
               >
                 {isSyncing ? 'Syncing...' : 'Refresh'}
               </button>
@@ -182,31 +182,31 @@ export const ChannelPicker: React.FC<ChannelPickerProps> = ({
           </div>
 
           {isLoadingChannels ? (
-            <div className="flex items-center justify-center py-4 bg-gray-800/50 rounded-lg">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-500"></div>
-              <span className="ml-2 text-sm text-gray-400">Loading channels...</span>
+            <div className="flex items-center justify-center py-4 bg-stone-50 rounded-lg">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-500"></div>
+              <span className="ml-2 text-sm text-stone-500">Loading channels...</span>
             </div>
           ) : channels.length === 0 ? (
-            <div className="text-center py-4 bg-gray-800/50 rounded-lg">
-              <p className="text-sm text-gray-400">No accessible channels found</p>
+            <div className="text-center py-4 bg-stone-50 rounded-lg">
+              <p className="text-sm text-stone-500">No accessible channels found</p>
             </div>
           ) : (
-            <div className="max-h-64 overflow-y-auto bg-gray-800/50 rounded-lg border border-gray-700">
+            <div className="max-h-64 overflow-y-auto bg-white rounded-lg border border-stone-200">
               {Object.entries(groupedChannels).map(([category, categoryChannels]) => (
-                <div key={category} className="border-b border-gray-700 last:border-b-0">
+                <div key={category} className="border-b border-stone-200 last:border-b-0">
                   {/* Category header */}
                   <button
                     onClick={() => handleSelectCategory(categoryChannels)}
-                    className="w-full px-3 py-2 flex items-center justify-between bg-gray-700/50 hover:bg-gray-700 text-left text-sm font-medium text-gray-300"
+                    className="w-full px-3 py-2 flex items-center justify-between bg-stone-50 hover:bg-stone-100 text-left text-sm font-medium text-stone-600"
                   >
                     <span>{category}</span>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-stone-400">
                       {categoryChannels.filter(c => selectedChannelIds.includes(c.externalId)).length}/{categoryChannels.length}
                     </span>
                   </button>
 
                   {/* Channels in category */}
-                  <div className="divide-y divide-gray-700/50">
+                  <div className="divide-y divide-stone-100">
                     {categoryChannels.map((channel) => {
                       const isSelected = selectedChannelIds.includes(channel.externalId);
                       const isDisabled = !isSelected && !!maxChannels && selectedChannelIds.length >= maxChannels;
@@ -216,7 +216,7 @@ export const ChannelPicker: React.FC<ChannelPickerProps> = ({
                           key={channel.externalId}
                           className={`
                             flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors
-                            ${isSelected ? 'bg-indigo-500/10' : 'hover:bg-gray-700/50'}
+                            ${isSelected ? 'bg-emerald-50' : 'hover:bg-stone-50'}
                             ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
                           `}
                         >
@@ -225,10 +225,10 @@ export const ChannelPicker: React.FC<ChannelPickerProps> = ({
                             checked={isSelected}
                             onChange={() => handleChannelToggle(channel.externalId)}
                             disabled={isDisabled}
-                            className="w-4 h-4 rounded border-gray-500 bg-gray-700 text-indigo-500 focus:ring-indigo-500"
+                            className="w-4 h-4 rounded border-stone-300 bg-white text-emerald-500 focus:ring-emerald-500"
                           />
-                          <span className="text-gray-400">#</span>
-                          <span className={`text-sm ${isSelected ? 'text-white' : 'text-gray-300'}`}>
+                          <span className="text-stone-400">#</span>
+                          <span className={`text-sm ${isSelected ? 'text-stone-800' : 'text-stone-600'}`}>
                             {channel.externalName}
                           </span>
                         </label>

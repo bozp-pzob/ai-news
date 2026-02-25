@@ -160,7 +160,7 @@ function ListFieldInput({ field, values, onChange }: ListFieldInputProps) {
 
   return (
     <div>
-      <label className="block text-sm font-medium text-stone-300 mb-1">
+      <label className="block text-sm font-medium text-stone-600 mb-1">
         {field.label} {field.required && <span className="text-red-400">*</span>}
       </label>
 
@@ -174,12 +174,12 @@ function ListFieldInput({ field, values, onChange }: ListFieldInputProps) {
           }}
           onKeyDown={handleKeyDown}
           placeholder={field.placeholder}
-          className="flex-1 px-3 py-2 bg-stone-800 border border-stone-600 rounded-lg text-white placeholder-stone-500 focus:border-amber-500 focus:outline-none text-sm"
+          className="flex-1 px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 placeholder-stone-400 focus:border-emerald-500 focus:outline-none text-sm"
         />
         <button
           type="button"
           onClick={handleAdd}
-          className="px-3 py-2 bg-stone-700 hover:bg-stone-600 text-stone-300 hover:text-white rounded-lg text-sm font-medium transition-colors border border-stone-600"
+          className="px-3 py-2 bg-stone-100 hover:bg-stone-200 text-stone-600 hover:text-stone-800 rounded-lg text-sm font-medium transition-colors border border-stone-300"
         >
           Add
         </button>
@@ -197,7 +197,7 @@ function ListFieldInput({ field, values, onChange }: ListFieldInputProps) {
           {values.map((item) => (
             <div
               key={item}
-              className="flex items-center justify-between px-3 py-1.5 bg-stone-800 rounded-lg border border-stone-700"
+              className="flex items-center justify-between px-3 py-1.5 bg-stone-50 rounded-lg border border-stone-200"
             >
               <div className="flex items-center gap-2 min-w-0">
                 {isUrlList && (
@@ -205,7 +205,7 @@ function ListFieldInput({ field, values, onChange }: ListFieldInputProps) {
                     <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                   </svg>
                 )}
-                <span className="text-sm text-stone-300 truncate">{item}</span>
+                <span className="text-sm text-stone-600 truncate">{item}</span>
               </div>
               <button
                 type="button"
@@ -222,7 +222,7 @@ function ListFieldInput({ field, values, onChange }: ListFieldInputProps) {
       )}
 
       {values.length === 0 && field.required && (
-        <p className="mt-2 text-xs text-amber-400/80">Add at least one item to continue</p>
+        <p className="mt-2 text-xs text-emerald-600/80">Add at least one item to continue</p>
       )}
     </div>
   );
@@ -239,7 +239,7 @@ interface TextFieldInputProps {
 function TextFieldInput({ field, value, onChange }: TextFieldInputProps) {
   return (
     <div>
-      <label className="block text-sm font-medium text-stone-300 mb-1">
+      <label className="block text-sm font-medium text-stone-600 mb-1">
         {field.label} {field.required && <span className="text-red-400">*</span>}
       </label>
       <input
@@ -247,7 +247,7 @@ function TextFieldInput({ field, value, onChange }: TextFieldInputProps) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
-        className="w-full px-3 py-2 bg-stone-800 border border-stone-600 rounded-lg text-white placeholder-stone-500 focus:border-amber-500 focus:outline-none text-sm"
+        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 placeholder-stone-400 focus:border-emerald-500 focus:outline-none text-sm"
       />
       {field.helpText && (
         <p className="mt-1 text-xs text-stone-500">{field.helpText}</p>
@@ -421,34 +421,34 @@ export function CreateConfigDialog({ open, onClose, onSuccess, limits }: CreateC
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/70 z-50" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/30 z-50" onClick={onClose} />
 
       {/* Dialog */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div
-          className="bg-stone-900 rounded-xl shadow-2xl border border-stone-700 w-full max-w-2xl max-h-[85vh] flex flex-col"
+          className="bg-white rounded-xl shadow-2xl border border-stone-200 w-full max-w-2xl max-h-[85vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-stone-700">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200">
             <div className="flex items-center gap-3">
               {step === 'details' && (
                 <button
                   onClick={handleBack}
-                  className="p-1 text-stone-400 hover:text-white transition-colors"
+                  className="p-1 text-stone-400 hover:text-stone-800 transition-colors"
                 >
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
               )}
-              <h2 className="text-lg font-semibold text-white">
+              <h2 className="text-lg font-semibold text-stone-800">
                 {step === 'choose' ? 'Create New Config' : isBlank ? 'New Blank Config' : selectedTemplate?.name}
               </h2>
             </div>
             <button
               onClick={onClose}
-              className="p-1 text-stone-400 hover:text-white transition-colors"
+              className="p-1 text-stone-400 hover:text-stone-800 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -463,17 +463,17 @@ export function CreateConfigDialog({ open, onClose, onSuccess, limits }: CreateC
                 {/* Blank config option */}
                 <button
                   onClick={handleSelectBlank}
-                  className="w-full text-left p-4 rounded-lg border border-stone-600 hover:border-amber-500 hover:bg-stone-800/50 transition-colors group"
+                  className="w-full text-left p-4 rounded-lg border border-stone-200 hover:border-emerald-500 hover:bg-stone-50 transition-colors group"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-lg bg-stone-800 border border-stone-600 group-hover:border-amber-500 flex items-center justify-center text-stone-400 group-hover:text-amber-400 transition-colors">
+                    <div className="w-12 h-12 rounded-lg bg-stone-50 border border-stone-200 group-hover:border-emerald-500 flex items-center justify-center text-stone-400 group-hover:text-emerald-600 transition-colors">
                       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                       </svg>
                     </div>
                     <div>
-                      <div className="font-medium text-white">Start from scratch</div>
-                      <div className="text-sm text-stone-400">
+                      <div className="font-medium text-stone-800">Start from scratch</div>
+                      <div className="text-sm text-stone-500">
                         Create a blank config and add sources manually
                       </div>
                     </div>
@@ -482,17 +482,17 @@ export function CreateConfigDialog({ open, onClose, onSuccess, limits }: CreateC
 
                 {/* Templates section */}
                 <div className="pt-2">
-                  <h3 className="text-sm font-medium text-stone-400 mb-3">Or start from a template</h3>
+                  <h3 className="text-sm font-medium text-stone-500 mb-3">Or start from a template</h3>
 
                   {isLoadingTemplates ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {[1, 2, 3, 4].map((i) => (
-                        <div key={i} className="p-4 rounded-lg border border-stone-700 animate-pulse">
+                         <div key={i} className="p-4 rounded-lg border border-stone-200 animate-pulse">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-stone-700" />
+                            <div className="w-10 h-10 rounded-lg bg-stone-200" />
                             <div className="flex-1">
-                              <div className="h-4 bg-stone-700 rounded w-24 mb-2" />
-                              <div className="h-3 bg-stone-700 rounded w-36" />
+                              <div className="h-4 bg-stone-200 rounded w-24 mb-2" />
+                              <div className="h-3 bg-stone-200 rounded w-36" />
                             </div>
                           </div>
                         </div>
@@ -504,15 +504,15 @@ export function CreateConfigDialog({ open, onClose, onSuccess, limits }: CreateC
                         <button
                           key={t.id}
                           onClick={() => handleSelectTemplate(t)}
-                          className="text-left p-4 rounded-lg border border-stone-700 hover:border-amber-500 hover:bg-stone-800/50 transition-colors group"
+                          className="text-left p-4 rounded-lg border border-stone-200 hover:border-emerald-500 hover:bg-stone-50 transition-colors group"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-stone-800 flex items-center justify-center text-stone-400 group-hover:text-amber-400 transition-colors">
+                            <div className="w-10 h-10 rounded-lg bg-stone-50 flex items-center justify-center text-stone-400 group-hover:text-emerald-600 transition-colors">
                               <TemplateIcon icon={t.icon} className="w-5 h-5" />
                             </div>
                             <div className="min-w-0">
-                              <div className="font-medium text-white text-sm">{t.name}</div>
-                              <div className="text-xs text-stone-400 truncate">{t.description}</div>
+                              <div className="font-medium text-stone-800 text-sm">{t.name}</div>
+                              <div className="text-xs text-stone-500 truncate">{t.description}</div>
                             </div>
                           </div>
                         </button>
@@ -528,7 +528,7 @@ export function CreateConfigDialog({ open, onClose, onSuccess, limits }: CreateC
               <div className="space-y-5">
                 {/* Name */}
                 <div>
-                  <label className="block text-sm font-medium text-stone-300 mb-1">
+                  <label className="block text-sm font-medium text-stone-600 mb-1">
                     Config Name <span className="text-red-400">*</span>
                   </label>
                   <input
@@ -537,13 +537,13 @@ export function CreateConfigDialog({ open, onClose, onSuccess, limits }: CreateC
                     onChange={(e) => setName(e.target.value)}
                     placeholder="My Community Context"
                     autoFocus
-                    className="w-full px-3 py-2 bg-stone-800 border border-stone-600 rounded-lg text-white placeholder-stone-500 focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 placeholder-stone-400 focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
 
                 {/* Description */}
                 <div>
-                  <label className="block text-sm font-medium text-stone-300 mb-1">
+                  <label className="block text-sm font-medium text-stone-600 mb-1">
                     Description
                   </label>
                   <textarea
@@ -551,15 +551,15 @@ export function CreateConfigDialog({ open, onClose, onSuccess, limits }: CreateC
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Describe what this config aggregates..."
                     rows={2}
-                    className="w-full px-3 py-2 bg-stone-800 border border-stone-600 rounded-lg text-white placeholder-stone-500 focus:border-amber-500 focus:outline-none resize-none"
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 placeholder-stone-400 focus:border-emerald-500 focus:outline-none resize-none"
                   />
                 </div>
 
                 {/* Template-specific fields */}
                 {hasTemplateFields && (
                   <div className="space-y-4 pt-1">
-                    <div className="border-t border-stone-700/50 pt-4">
-                      <h3 className="text-sm font-medium text-stone-400 mb-3">
+                    <div className="border-t border-stone-200 pt-4">
+                      <h3 className="text-sm font-medium text-stone-500 mb-3">
                         {selectedTemplate?.name} Settings
                       </h3>
                       {templateFields.map((field) =>
@@ -590,7 +590,7 @@ export function CreateConfigDialog({ open, onClose, onSuccess, limits }: CreateC
                 {/* Visibility - only for authenticated users */}
                 {isAuthenticated && (
                   <div>
-                    <label className="block text-sm font-medium text-stone-300 mb-2">
+                    <label className="block text-sm font-medium text-stone-600 mb-2">
                       Visibility
                     </label>
                     <div className="space-y-2">
@@ -599,8 +599,8 @@ export function CreateConfigDialog({ open, onClose, onSuccess, limits }: CreateC
                           key={v}
                           className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                             visibility === v
-                              ? 'border-amber-500 bg-amber-900/20'
-                              : 'border-stone-600 hover:border-stone-500'
+                              ? 'border-emerald-500 bg-emerald-50'
+                              : 'border-stone-200 hover:border-stone-300'
                           } ${v === 'private' && !canBePrivate ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                           <input
@@ -612,11 +612,11 @@ export function CreateConfigDialog({ open, onClose, onSuccess, limits }: CreateC
                               canBePrivate || v !== 'private' ? setVisibility(v) : null
                             }
                             disabled={v === 'private' && !canBePrivate}
-                            className="mt-0.5 accent-amber-500"
+                            className="mt-0.5 accent-emerald-500"
                           />
                           <div>
-                            <div className="font-medium text-white capitalize text-sm">{v}</div>
-                            <div className="text-stone-400 text-xs">
+                            <div className="font-medium text-stone-800 capitalize text-sm">{v}</div>
+                            <div className="text-stone-500 text-xs">
                               {v === 'public' && 'Anyone can discover and query this config'}
                               {v === 'unlisted' && 'Only people with the link can access'}
                               {v === 'private' &&
@@ -633,8 +633,8 @@ export function CreateConfigDialog({ open, onClose, onSuccess, limits }: CreateC
 
                 {/* Local mode notice */}
                 {!isAuthenticated && (
-                  <div className="p-3 bg-stone-800 rounded-lg border border-stone-700">
-                    <p className="text-stone-400 text-sm">
+                  <div className="p-3 bg-stone-50 rounded-lg border border-stone-200">
+                    <p className="text-stone-500 text-sm">
                       This config will be stored in your browser. Sign in to save configs to the cloud and run them on the platform.
                     </p>
                   </div>
@@ -652,17 +652,17 @@ export function CreateConfigDialog({ open, onClose, onSuccess, limits }: CreateC
 
           {/* Footer - only show on details step */}
           {step === 'details' && (
-            <div className="px-6 py-4 border-t border-stone-700 flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-stone-200 flex justify-end gap-3">
               <button
                 onClick={onClose}
-                className="px-4 py-2 text-stone-400 hover:text-white transition-colors"
+                className="px-4 py-2 text-stone-500 hover:text-stone-800 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreate}
                 disabled={isCreating || !name.trim()}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-700 disabled:text-stone-500 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-stone-200 disabled:text-stone-400 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
               >
                 {isCreating ? (
                   <>

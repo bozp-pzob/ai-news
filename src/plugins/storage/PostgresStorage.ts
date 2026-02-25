@@ -188,6 +188,13 @@ export class PostgresStorage implements StoragePlugin {
   }
 
   /**
+   * Returns the underlying database pool for direct access.
+   */
+  public getDb(): any {
+    return this.pool;
+  }
+
+  /**
    * Get a client from the pool
    */
   private async getClient(): Promise<PoolClient> {

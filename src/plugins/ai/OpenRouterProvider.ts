@@ -326,6 +326,68 @@ export class OpenRouterProvider implements AiProvider {
   }
 
   /**
+   * Generate vector embeddings for one or more texts.
+   * Uses the OpenAI-compatible embeddings API via OpenRouter.
+   * Falls back to direct OpenAI client if available.
+   * @param texts - Array of text strings to embed
+   * @param model - Optional embedding model override (default: text-embedding-3-small)
+   * @returns Promise<number[][]> Array of embedding vectors, one per input text
+   */
+  public async embed(texts: string[], model?: string): Promise<number[][]> {
+    const embeddingModel = model || 'text-embedding-3-small';
+    const maxTokens = 8191;
+    const batchSize = Math.max(1, 100);
+    const timeoutMs = 30_000;
+
+    if (texts.length === 0) return [];
+
+    const results: number[][] = [];
+    const truncate = (text: string): string => {
+      const maxChars = maxTokens * 4;
+      return text.length <= maxChars ? text : text.substring(0, maxChars - 3) + '...';
+    };
+    const prepare = (text: string): string => text.replace(/\s+/g, ' ').trim();
+
+    try {
+      for (let i = 0; i < texts.length; i += batchSize) {
+        const batch = texts.slice(i, i + batchSize);
+        const preparedBatch = batch.map(t => prepare(truncate(t))).filter(t => t.length > 0);
+
+        if (preparedBatch.length === 0) {
+          results.push(...batch.map(() => []));
+          continue;
+        }
+
+        const response = await this.openai.embeddings.create(
+          { model: embeddingModel, input: preparedBatch },
+          { timeout: timeoutMs, maxRetries: 0 }
+        );
+
+        if (response.usage) {
+          this._usage.totalPromptTokens += response.usage.prompt_tokens || 0;
+          this._usage.totalTokens += response.usage.total_tokens || 0;
+          this._usage.totalCalls++;
+        }
+
+        let responseIndex = 0;
+        for (const originalText of batch) {
+          if (prepare(truncate(originalText)).length > 0) {
+            results.push(response.data[responseIndex].embedding);
+            responseIndex++;
+          } else {
+            results.push([]);
+          }
+        }
+      }
+    } catch (error) {
+      logger.error(`[OpenRouterProvider] Error generating embeddings: ${error}`);
+      return texts.map(() => []);
+    }
+
+    return results;
+  }
+
+  /**
    * Generates an image based on the provided text description.
    * Uses DALL-E 3 model to create a 1024x1024 image.
    * Note: Requires OPENAI_DIRECT_KEY environment variable for image generation.

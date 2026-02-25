@@ -27,7 +27,7 @@ export function ConfirmModal({
   if (!isOpen) return null;
 
   const buttonStyles = {
-    amber: 'bg-amber-600 hover:bg-amber-700',
+    amber: 'bg-emerald-600 hover:bg-emerald-700',
     red: 'bg-red-600 hover:bg-red-700',
     purple: 'bg-purple-600 hover:bg-purple-700',
     green: 'bg-green-600 hover:bg-green-700',
@@ -35,14 +35,14 @@ export function ConfirmModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-stone-900 rounded-xl border border-stone-700 max-w-md w-full p-6">
-        <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>
-        <p className="text-stone-400 text-sm mb-4">{message}</p>
+      <div className="bg-white rounded-xl border border-stone-200 max-w-md w-full p-6">
+        <h3 className="text-lg font-semibold text-stone-800 mb-2">{title}</h3>
+        <p className="text-stone-500 text-sm mb-4">{message}</p>
         {children}
         <div className="flex justify-end gap-3 mt-6">
           <button
             onClick={onCancel}
-            className="px-4 py-2 bg-stone-700 hover:bg-stone-600 text-white rounded-lg text-sm"
+            className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg text-sm"
           >
             Cancel
           </button>

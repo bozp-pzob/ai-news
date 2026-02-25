@@ -196,7 +196,7 @@ export const SecretInputField: React.FC<SecretInputFieldProps> = ({
 
   return (
     <div className={`mb-4 ${className}`}>
-      <label className="block text-sm font-medium text-gray-300 mb-1" htmlFor={id}>
+      <label className="block text-sm font-medium text-stone-600 mb-1" htmlFor={id}>
         {label}
         {required && <span className="text-red-500 ml-1">*</span>}
       </label>
@@ -210,13 +210,13 @@ export const SecretInputField: React.FC<SecretInputFieldProps> = ({
           onBlur={handleBlur}
           placeholder={placeholder}
           autoFocus={autoFocus}
-          className="p-2 w-full pr-14 rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+          className="p-2 w-full pr-14 rounded-md border-stone-300 bg-white text-stone-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
           required={required}
         />
         
         {/* Visual indicator when a secret is stored */}
         {hasStoredSecret && !isEdited && !allowPlainText && (
-          <span className="absolute right-10 top-1/2 transform -translate-y-1/2 text-xs px-1.5 py-0.5 rounded-full bg-green-800 text-green-200">
+          <span className="absolute right-10 top-1/2 transform -translate-y-1/2 text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">
             Secured
           </span>
         )}
@@ -236,12 +236,12 @@ export const SecretInputField: React.FC<SecretInputFieldProps> = ({
       </div>
       
       {description && (
-        <p className="mt-1 text-xs text-gray-400">{description}</p>
+        <p className="mt-1 text-xs text-stone-400">{description}</p>
       )}
       
       {/* Security notice - only show when not in plain text mode */}
       {!allowPlainText && (
-        <p className="mt-1 text-xs text-amber-400">
+        <p className="mt-1 text-xs text-emerald-600">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>

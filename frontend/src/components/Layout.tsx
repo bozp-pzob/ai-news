@@ -12,7 +12,7 @@ const Layout: React.FC<LayoutProps> = ({ children, showNavbar = true }) => {
   const isLandingPage = location.pathname === '/';
   
   // Apply background color based on route
-  const bgClass = isLandingPage ? 'bg-stone-950' : 'bg-white';
+  const bgClass = isLandingPage ? 'bg-stone-50' : 'bg-white';
 
   return (
     <div className={`min-h-screen flex flex-col ${bgClass} relative overflow-hidden`}>

@@ -80,8 +80,8 @@ export const UnlockDatabaseDialog: React.FC<UnlockDatabaseDialogProps> = ({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-      <div className="bg-stone-800 rounded-lg shadow-xl max-w-md w-full p-6 text-white">
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-stone-800">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-medium flex items-center">
             <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
@@ -91,7 +91,7 @@ export const UnlockDatabaseDialog: React.FC<UnlockDatabaseDialogProps> = ({
           </h2>
           <button 
             onClick={onClose} 
-            className="text-gray-400 hover:text-white"
+            className="text-stone-400 hover:text-stone-800"
             aria-label="Close"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -101,7 +101,7 @@ export const UnlockDatabaseDialog: React.FC<UnlockDatabaseDialogProps> = ({
         </div>
         
         {error && (
-          <div className="bg-red-900/30 border border-red-500 text-red-200 px-4 py-3 rounded mb-4">
+          <div className="bg-red-50 border border-red-300 text-red-600 px-4 py-3 rounded mb-4">
             {error}
             {attemptCount > 2 && (
               <div className="text-xs mt-1">
@@ -111,7 +111,7 @@ export const UnlockDatabaseDialog: React.FC<UnlockDatabaseDialogProps> = ({
           </div>
         )}
         
-        <p className="text-sm text-gray-300 mb-4">
+        <p className="text-sm text-stone-500 mb-4">
           Your database is encrypted with a password. Please enter your password to unlock it.
         </p>
         
@@ -128,7 +128,7 @@ export const UnlockDatabaseDialog: React.FC<UnlockDatabaseDialogProps> = ({
               autoFocus
               disabled={loading}
               required
-              className="bg-stone-700 border border-stone-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              className="bg-white border border-stone-300 rounded px-3 py-2 text-stone-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               placeholder="Enter your password"
             />
           </div>
@@ -138,7 +138,7 @@ export const UnlockDatabaseDialog: React.FC<UnlockDatabaseDialogProps> = ({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-4 py-2 bg-stone-700 text-white rounded hover:bg-stone-600 focus:outline-none focus:ring-2 focus:ring-stone-500"
+              className="px-4 py-2 bg-stone-100 text-stone-700 rounded hover:bg-stone-200 focus:outline-none focus:ring-2 focus:ring-stone-300"
             >
               Cancel
             </button>
@@ -146,8 +146,8 @@ export const UnlockDatabaseDialog: React.FC<UnlockDatabaseDialogProps> = ({
             <button
               type="submit"
               disabled={loading || !password}
-              className={`px-4 py-2 rounded focus:outline-none focus:ring-2 focus:ring-amber-500 ${
-                loading ? 'bg-amber-700 text-amber-200' : 'bg-amber-500 text-black hover:bg-amber-400'
+              className={`px-4 py-2 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                loading ? 'bg-emerald-300 text-emerald-700' : 'bg-emerald-600 text-white hover:bg-emerald-500'
               }`}
             >
               {loading ? (

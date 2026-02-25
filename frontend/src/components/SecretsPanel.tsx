@@ -128,23 +128,23 @@ export function SecretsPanel({ open, onClose }: SecretsPanelProps) {
     <>
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-black/50 z-40"
+        className="fixed inset-0 bg-black/30 z-40"
         onClick={onClose}
       />
       
       {/* Panel */}
-      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-stone-900 border-l border-stone-700 z-50 flex flex-col shadow-xl">
+      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white border-l border-stone-200 z-50 flex flex-col shadow-xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-700">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200">
           <div>
-            <h2 className="text-lg font-semibold text-white">Secrets</h2>
-            <p className="text-xs text-stone-400">
+            <h2 className="text-lg font-semibold text-stone-800">Secrets</h2>
+            <p className="text-xs text-stone-500">
               Stored in this browser only
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-stone-400 hover:text-white transition-colors"
+            className="p-1 text-stone-400 hover:text-stone-800 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -155,11 +155,11 @@ export function SecretsPanel({ open, onClose }: SecretsPanelProps) {
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {/* Info banner */}
-          <div className="p-3 bg-blue-900/20 border border-blue-800 rounded-lg text-xs text-blue-300">
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-600">
             <p className="font-medium mb-1">How secrets work</p>
             <p>
               Secrets are encrypted and stored only in this browser. When you add a secret to a plugin parameter field,
-              a <code className="bg-blue-900/50 px-1 rounded">$SECRET:id$</code> reference is saved in the config.
+              a <code className="bg-blue-100 px-1 rounded">$SECRET:id$</code> reference is saved in the config.
               The actual value is resolved at runtime before executing.
             </p>
           </div>
@@ -180,12 +180,12 @@ export function SecretsPanel({ open, onClose }: SecretsPanelProps) {
           {secrets.map((secret) => (
             <div
               key={secret.id}
-              className="p-3 bg-stone-800 border border-stone-700 rounded-lg"
+              className="p-3 bg-stone-50 border border-stone-200 rounded-lg"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono bg-stone-700 text-stone-300 px-1.5 py-0.5 rounded">
+                    <span className="text-xs font-mono bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded">
                       {secret.type}
                     </span>
                     <span className="text-xs text-stone-500">
@@ -193,7 +193,7 @@ export function SecretsPanel({ open, onClose }: SecretsPanelProps) {
                     </span>
                   </div>
                   {secret.description && (
-                    <p className="text-sm text-stone-300 mt-1 truncate">
+                    <p className="text-sm text-stone-600 mt-1 truncate">
                       {secret.description}
                     </p>
                   )}
@@ -205,7 +205,7 @@ export function SecretsPanel({ open, onClose }: SecretsPanelProps) {
                   {/* Copy reference */}
                   <button
                     onClick={() => handleCopyRef(secret.id)}
-                    className="p-1.5 text-stone-400 hover:text-white hover:bg-stone-700 rounded transition-colors"
+                    className="p-1.5 text-stone-400 hover:text-stone-800 hover:bg-stone-100 rounded transition-colors"
                     title="Copy $SECRET:id$ reference"
                   >
                     {copiedId === secret.id ? (
@@ -221,7 +221,7 @@ export function SecretsPanel({ open, onClose }: SecretsPanelProps) {
                   {/* Remove */}
                   <button
                     onClick={() => handleRemoveSecret(secret.id)}
-                    className="p-1.5 text-stone-400 hover:text-red-400 hover:bg-stone-700 rounded transition-colors"
+                    className="p-1.5 text-stone-400 hover:text-red-400 hover:bg-stone-100 rounded transition-colors"
                     title="Remove secret"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -235,7 +235,7 @@ export function SecretsPanel({ open, onClose }: SecretsPanelProps) {
 
           {/* Add Secret Form */}
           {showAddForm && (
-            <div className="p-4 bg-stone-800 border border-stone-600 rounded-lg space-y-3">
+            <div className="p-4 bg-stone-50 border border-stone-200 rounded-lg space-y-3">
               <div>
                 <label className="block text-xs font-medium text-stone-400 mb-1">
                   Type
@@ -243,7 +243,7 @@ export function SecretsPanel({ open, onClose }: SecretsPanelProps) {
                 <select
                   value={newType}
                   onChange={(e) => setNewType(e.target.value)}
-                  className="w-full px-3 py-2 bg-stone-700 border border-stone-600 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:border-emerald-500 focus:outline-none"
                 >
                   {SECRET_TYPES.map((t) => (
                     <option key={t.value} value={t.value}>
@@ -262,7 +262,7 @@ export function SecretsPanel({ open, onClose }: SecretsPanelProps) {
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
                   placeholder="e.g. OpenAI API Key for production"
-                  className="w-full px-3 py-2 bg-stone-700 border border-stone-600 rounded-lg text-white text-sm placeholder-stone-500 focus:border-amber-500 focus:outline-none"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm placeholder-stone-400 focus:border-emerald-500 focus:outline-none"
                 />
               </div>
 
@@ -275,7 +275,7 @@ export function SecretsPanel({ open, onClose }: SecretsPanelProps) {
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
                   placeholder="sk-..."
-                  className="w-full px-3 py-2 bg-stone-700 border border-stone-600 rounded-lg text-white text-sm font-mono placeholder-stone-500 focus:border-amber-500 focus:outline-none"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm font-mono placeholder-stone-400 focus:border-emerald-500 focus:outline-none"
                 />
               </div>
 
@@ -291,14 +291,14 @@ export function SecretsPanel({ open, onClose }: SecretsPanelProps) {
                     setNewDescription('');
                     setAddError(null);
                   }}
-                  className="flex-1 px-3 py-2 bg-stone-700 hover:bg-stone-600 text-white text-sm rounded-lg transition-colors"
+                  className="flex-1 px-3 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-sm rounded-lg transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAddSecret}
                   disabled={isAdding || !newValue.trim()}
-                  className="flex-1 px-3 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-700 disabled:text-stone-500 text-white text-sm font-medium rounded-lg transition-colors"
+                  className="flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-stone-200 disabled:text-stone-400 text-white text-sm font-medium rounded-lg transition-colors"
                 >
                   {isAdding ? 'Storing...' : 'Store Secret'}
                 </button>
@@ -308,14 +308,14 @@ export function SecretsPanel({ open, onClose }: SecretsPanelProps) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-stone-700 flex justify-between items-center">
+        <div className="px-6 py-4 border-t border-stone-200 flex justify-between items-center">
           <p className="text-xs text-stone-500">
             {secrets.length} secret{secrets.length !== 1 ? 's' : ''} stored
           </p>
           {!showAddForm && (
             <button
               onClick={() => setShowAddForm(true)}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-lg font-medium transition-colors flex items-center gap-2"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg font-medium transition-colors flex items-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

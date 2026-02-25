@@ -14,23 +14,23 @@ export interface StatCardProps {
 }
 
 const VALUE_COLORS: Record<StatCardColor, string> = {
-  default: 'text-white',
-  muted: 'text-stone-400',
-  amber: 'text-amber-400',
-  blue: 'text-blue-400',
-  purple: 'text-purple-400',
-  red: 'text-red-400',
-  green: 'text-green-400',
+  default: 'text-stone-800',
+  muted: 'text-stone-500',
+  amber: 'text-emerald-600',
+  blue: 'text-blue-600',
+  purple: 'text-purple-600',
+  red: 'text-red-600',
+  green: 'text-green-600',
 };
 
 const ICON_COLORS: Record<StatCardColor, string> = {
-  default: 'text-stone-500',
+  default: 'text-stone-400',
   muted: 'text-stone-400',
-  amber: 'text-amber-400',
-  blue: 'text-blue-400',
-  purple: 'text-purple-400',
-  red: 'text-red-400',
-  green: 'text-green-400',
+  amber: 'text-emerald-500',
+  blue: 'text-blue-500',
+  purple: 'text-purple-500',
+  red: 'text-red-500',
+  green: 'text-green-500',
 };
 
 /**
@@ -46,16 +46,16 @@ export const StatCard: React.FC<StatCardProps> = React.memo(({
   trend,
 }) => {
   return (
-    <div className="bg-stone-800 rounded-lg p-5 border border-stone-700">
+    <div className="bg-white rounded-lg p-5 border border-stone-200">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-stone-400 text-sm font-medium">{title}</p>
+          <p className="text-stone-500 text-sm font-medium">{title}</p>
           <p className={`text-2xl font-bold mt-1 ${VALUE_COLORS[color]}`}>{value}</p>
           {subtitle && (
             <p className="text-stone-500 text-xs mt-1">{subtitle}</p>
           )}
           {trend && (
-            <p className={`text-xs mt-2 ${trend.value >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
+            <p className={`text-xs mt-2 ${trend.value >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
               {trend.value >= 0 ? '+' : ''}{trend.value}% {trend.label}
             </p>
           )}

@@ -19,15 +19,15 @@ export function TimeRangeSelector({ value, onChange }: TimeRangeSelectorProps) {
   ];
 
   return (
-    <div className="flex gap-1 bg-stone-800 rounded-lg p-1">
+    <div className="flex gap-1 bg-stone-100 rounded-lg p-1">
       {ranges.map(range => (
         <button
           key={range.value}
           onClick={() => onChange(range.value)}
           className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
             value === range.value
-              ? 'bg-stone-700 text-white'
-              : 'text-stone-400 hover:text-white'
+              ? 'bg-white text-emerald-700 shadow-sm'
+              : 'text-stone-500 hover:text-stone-800'
           }`}
         >
           {range.label}

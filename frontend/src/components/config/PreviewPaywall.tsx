@@ -109,7 +109,7 @@ export function PreviewPaywall({
       return (
         <button
           disabled
-          className="w-full px-6 py-3 bg-amber-700 text-white rounded-lg font-medium flex items-center justify-center gap-2 cursor-wait"
+          className="w-full px-6 py-3 bg-emerald-700 text-white rounded-lg font-medium flex items-center justify-center gap-2 cursor-wait"
         >
           <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle
@@ -133,7 +133,7 @@ export function PreviewPaywall({
       return (
         <button
           onClick={login}
-          className="w-full px-6 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-medium transition-colors"
+          className="w-full px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors"
         >
           Sign in to unlock
         </button>
@@ -146,7 +146,7 @@ export function PreviewPaywall({
         <button
           onClick={handleCreateWallet}
           disabled={isCreatingWallet}
-          className="w-full px-6 py-3 bg-amber-600 hover:bg-amber-500 disabled:bg-amber-800 text-white rounded-lg font-medium transition-colors"
+          className="w-full px-6 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white rounded-lg font-medium transition-colors"
         >
           {isCreatingWallet ? 'Creating wallet...' : 'Create Solana Wallet to Unlock'}
         </button>
@@ -157,7 +157,7 @@ export function PreviewPaywall({
     return (
       <button
         onClick={handlePurchase}
-        className="w-full px-6 py-3 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white rounded-lg font-medium transition-colors"
+          className="w-full px-6 py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
       >
         Unlock for 24 hours — ${payment.pricePerQuery.toFixed(4)} {payment.currency}
       </button>
@@ -167,13 +167,13 @@ export function PreviewPaywall({
   return (
     <div className="relative mt-4">
       {/* Gradient fade overlay above the paywall box */}
-      <div className="absolute -top-16 left-0 right-0 h-16 bg-gradient-to-t from-stone-950 to-transparent pointer-events-none z-10" />
+      <div className="absolute -top-16 left-0 right-0 h-16 bg-gradient-to-t from-white to-transparent pointer-events-none z-10" />
 
-      <div className="bg-stone-800/80 border border-amber-900/50 rounded-lg p-6 backdrop-blur-sm space-y-4">
+      <div className="bg-white/80 border border-emerald-200 rounded-lg p-6 backdrop-blur-sm space-y-4">
         {/* Lock icon + headline */}
         <div className="text-center">
           <svg
-            className="w-10 h-10 mx-auto text-amber-500 mb-3"
+            className="w-10 h-10 mx-auto text-emerald-500 mb-3"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -185,12 +185,12 @@ export function PreviewPaywall({
               d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
             />
           </svg>
-          <p className="text-white font-medium mb-1">
+          <p className="text-stone-800 font-medium mb-1">
             Showing {previewLimit} of {total.toLocaleString()} {contentType}
           </p>
           <p className="text-stone-400 text-sm">
             Purchase 24-hour full access for{' '}
-            <span className="text-amber-400 font-medium">
+            <span className="text-emerald-600 font-medium">
               ${payment.pricePerQuery.toFixed(4)} {payment.currency}
             </span>
           </p>
@@ -207,7 +207,7 @@ export function PreviewPaywall({
         )}
 
         {/* API Access details (collapsible) */}
-        <div className="border-t border-stone-700 pt-3">
+        <div className="border-t border-stone-200 pt-3">
           <button
             onClick={() => setShowApiDetails(!showApiDetails)}
             className="flex items-center gap-1 text-stone-500 hover:text-stone-300 text-xs transition-colors mx-auto"
@@ -229,36 +229,36 @@ export function PreviewPaywall({
           </button>
 
           {showApiDetails && (
-            <div className="mt-3 text-stone-400 text-xs space-y-2 bg-stone-900 rounded p-3">
+            <div className="mt-3 text-stone-500 text-xs space-y-2 bg-stone-50 rounded p-3">
               <p>
                 Access data programmatically with an{' '}
-                <code className="text-stone-300 bg-stone-800 px-1 rounded">
+                <code className="text-stone-600 bg-stone-100 px-1 rounded">
                   X-Payment-Proof
                 </code>{' '}
                 header.
               </p>
-              <p className="font-medium text-stone-300">Endpoints:</p>
+              <p className="font-medium text-stone-600">Endpoints:</p>
               <ul className="list-disc list-inside space-y-1 pl-1">
                 <li>
-                  <code className="text-stone-300 bg-stone-800 px-1 rounded">
+                  <code className="text-stone-600 bg-stone-100 px-1 rounded">
                     POST /api/v1/configs/{configId}/access/purchase
                   </code>
                 </li>
                 <li>
-                  <code className="text-stone-300 bg-stone-800 px-1 rounded">
+                  <code className="text-stone-600 bg-stone-100 px-1 rounded">
                     GET /api/v1/configs/{configId}/items
                   </code>
                 </li>
                 <li>
-                  <code className="text-stone-300 bg-stone-800 px-1 rounded">
+                  <code className="text-stone-600 bg-stone-100 px-1 rounded">
                     GET /api/v1/configs/{configId}/content
                   </code>
                 </li>
               </ul>
-              <p className="text-stone-500 mt-2">
+              <p className="text-stone-400 mt-2">
                 First call POST without proof → get 402 with payment details → pay on Solana → retry
                 with{' '}
-                <code className="text-stone-300 bg-stone-800 px-1 rounded">
+                <code className="text-stone-600 bg-stone-100 px-1 rounded">
                   {'X-Payment-Proof: {"signature":"...","memo":"..."}'}
                 </code>
               </p>

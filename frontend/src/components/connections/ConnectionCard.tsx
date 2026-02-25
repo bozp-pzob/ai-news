@@ -34,8 +34,8 @@ export const ConnectionCard: React.FC<ConnectionCardProps> = ({
       className={`
         relative group p-4 rounded-lg border transition-all
         ${isSelected 
-          ? 'bg-indigo-600/20 border-indigo-500 ring-1 ring-indigo-500' 
-          : 'bg-gray-800/50 border-gray-700 hover:border-gray-600'}
+          ? 'bg-emerald-50 border-emerald-500 ring-1 ring-emerald-500' 
+          : 'bg-white border-stone-200 hover:border-stone-300'}
         ${onSelect ? 'cursor-pointer' : ''}
         ${isRemoving ? 'opacity-50 pointer-events-none' : ''}
       `}
@@ -47,26 +47,26 @@ export const ConnectionCard: React.FC<ConnectionCardProps> = ({
           <img
             src={iconUrl}
             alt={connection.externalName}
-            className="w-12 h-12 rounded-full bg-gray-700 flex-shrink-0"
+            className="w-12 h-12 rounded-full bg-stone-100 flex-shrink-0"
             onError={(e) => {
               // Hide broken images and show platform icon instead
               (e.target as HTMLImageElement).style.display = 'none';
             }}
           />
         ) : (
-          <div className="w-12 h-12 rounded-full bg-gray-700 flex-shrink-0 flex items-center justify-center">
-            <PlatformIcon platform={connection.platform} size="lg" className="text-gray-400" />
+          <div className="w-12 h-12 rounded-full bg-stone-100 flex-shrink-0 flex items-center justify-center">
+            <PlatformIcon platform={connection.platform} size="lg" className="text-stone-400" />
           </div>
         )}
 
         {/* Connection info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h4 className="text-white font-medium truncate">{connection.externalName}</h4>
-            <PlatformIcon platform={connection.platform} size="sm" className="text-gray-400 flex-shrink-0" />
+            <h4 className="text-stone-800 font-medium truncate">{connection.externalName}</h4>
+            <PlatformIcon platform={connection.platform} size="sm" className="text-stone-400 flex-shrink-0" />
           </div>
           
-          <div className="mt-1 flex items-center gap-3 text-sm text-gray-400">
+          <div className="mt-1 flex items-center gap-3 text-sm text-stone-500">
             {showChannelCount && (
               <span className="flex items-center gap-1">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -89,7 +89,7 @@ export const ConnectionCard: React.FC<ConnectionCardProps> = ({
             )}
           </div>
 
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-stone-400">
             {getPlatformDisplayName(connection.platform)} - Added {new Date(connection.addedAt).toLocaleDateString()}
           </p>
         </div>
@@ -101,7 +101,7 @@ export const ConnectionCard: React.FC<ConnectionCardProps> = ({
               e.stopPropagation();
               onRemove();
             }}
-            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-gray-700/50 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-all"
+            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-stone-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
             title="Remove connection"
           >
             {isRemoving ? (
@@ -118,7 +118,7 @@ export const ConnectionCard: React.FC<ConnectionCardProps> = ({
       {/* Selection indicator */}
       {isSelected && (
         <div className="absolute top-2 right-2">
-          <svg className="w-5 h-5 text-indigo-400" fill="currentColor" viewBox="0 0 20 20">
+          <svg className="w-5 h-5 text-emerald-500" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
           </svg>
         </div>

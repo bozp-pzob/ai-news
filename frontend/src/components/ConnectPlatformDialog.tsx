@@ -96,22 +96,22 @@ export const ConnectPlatformDialog: React.FC<ConnectPlatformDialogProps> = ({
     : 'Choose a platform to connect as a data source.');
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-stone-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-stone-700">
+        <div className="px-6 py-4 border-b border-stone-200">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-white">{dialogTitle}</h3>
+            <h3 className="text-lg font-semibold text-stone-800">{dialogTitle}</h3>
             <button
               onClick={onClose}
-              className="text-stone-400 hover:text-white transition-colors"
+              className="text-stone-400 hover:text-stone-800 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
-          <p className="mt-1 text-sm text-stone-400">{dialogDescription}</p>
+          <p className="mt-1 text-sm text-stone-500">{dialogDescription}</p>
         </div>
 
         {/* Content */}
@@ -119,7 +119,7 @@ export const ConnectPlatformDialog: React.FC<ConnectPlatformDialogProps> = ({
           {/* Loading platforms */}
           {platformsLoading && (
             <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
             </div>
           )}
 
@@ -131,13 +131,13 @@ export const ConnectPlatformDialog: React.FC<ConnectPlatformDialogProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h4 className="text-lg font-medium text-white mb-2">Connected Successfully!</h4>
-              <p className="text-stone-400 text-sm mb-6">
+              <h4 className="text-lg font-medium text-stone-800 mb-2">Connected Successfully!</h4>
+              <p className="text-stone-500 text-sm mb-6">
                 {connectionResult.connectionName} has been connected. You can now select channels to monitor.
               </p>
               <button
                 onClick={handleSuccessContinue}
-                className="px-6 py-2 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition-colors"
+                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors"
               >
                 Continue
               </button>
@@ -152,8 +152,8 @@ export const ConnectPlatformDialog: React.FC<ConnectPlatformDialogProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
-              <h4 className="text-lg font-medium text-white mb-2">Connection Failed</h4>
-              <p className="text-stone-400 text-sm mb-6">
+              <h4 className="text-lg font-medium text-stone-800 mb-2">Connection Failed</h4>
+              <p className="text-stone-500 text-sm mb-6">
                 {connectionResult.error || 'An unknown error occurred.'}
               </p>
               <div className="flex gap-3 justify-center">
@@ -162,13 +162,13 @@ export const ConnectPlatformDialog: React.FC<ConnectPlatformDialogProps> = ({
                     setConnectionStatus('idle');
                     setConnectionResult(null);
                   }}
-                  className="px-6 py-2 bg-stone-700 hover:bg-stone-600 text-white font-medium rounded-lg transition-colors"
+                  className="px-6 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium rounded-lg transition-colors"
                 >
                   Try Again
                 </button>
                 <button
                   onClick={onClose}
-                  className="px-6 py-2 bg-stone-600 hover:bg-stone-500 text-white font-medium rounded-lg transition-colors"
+                  className="px-6 py-2 bg-stone-200 hover:bg-stone-300 text-stone-700 font-medium rounded-lg transition-colors"
                 >
                   Cancel
                 </button>
@@ -188,14 +188,14 @@ export const ConnectPlatformDialog: React.FC<ConnectPlatformDialogProps> = ({
                   <PlatformIcon 
                     platform={selectedPlatform} 
                     size="xl" 
-                    className="text-white"
+                    className="text-stone-700"
                   />
                 </div>
               </div>
-              <h4 className="text-lg font-medium text-white mb-2">
+              <h4 className="text-lg font-medium text-stone-800 mb-2">
                 Connecting to {getPlatformDisplayName(selectedPlatform)}...
               </h4>
-              <p className="text-stone-400 text-sm">
+              <p className="text-stone-500 text-sm">
                 Complete the authorization in the popup window.
               </p>
               <p className="text-stone-500 text-xs mt-4">
@@ -211,26 +211,26 @@ export const ConnectPlatformDialog: React.FC<ConnectPlatformDialogProps> = ({
                 <PlatformIcon 
                   platform={authResult.platform} 
                   size="lg" 
-                  className="text-white" 
+                  className="text-stone-700" 
                 />
-                <h4 className="text-lg font-medium text-white">
+                <h4 className="text-lg font-medium text-stone-800">
                   Connect {getPlatformDisplayName(authResult.platform)}
                 </h4>
               </div>
               
               {authResult.instructions && (
-                <p className="text-stone-300 text-sm mb-4">{authResult.instructions}</p>
+                <p className="text-stone-600 text-sm mb-4">{authResult.instructions}</p>
               )}
 
-              <div className="bg-stone-900 rounded-lg p-3 mb-4">
+              <div className="bg-stone-50 rounded-lg p-3 mb-4">
                 <p className="text-xs text-stone-500 mb-1">Connection Link:</p>
                 <div className="flex items-center gap-2">
-                  <code className="text-sm text-amber-400 flex-1 truncate">{authResult.url}</code>
+                  <code className="text-sm text-emerald-600 flex-1 truncate">{authResult.url}</code>
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(authResult.url);
                     }}
-                    className="p-1.5 rounded bg-stone-700 hover:bg-stone-600 text-stone-300 transition-colors"
+                    className="p-1.5 rounded bg-stone-100 hover:bg-stone-200 text-stone-600 transition-colors"
                     title="Copy link"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -243,13 +243,13 @@ export const ConnectPlatformDialog: React.FC<ConnectPlatformDialogProps> = ({
               <div className="flex gap-3">
                 <button
                   onClick={() => window.open(authResult.url, '_blank')}
-                  className="flex-1 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition-colors"
+                  className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors"
                 >
                   Open Link
                 </button>
                 <button
                   onClick={onClose}
-                  className="px-4 py-2 bg-stone-700 hover:bg-stone-600 text-white font-medium rounded-lg transition-colors"
+                  className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium rounded-lg transition-colors"
                 >
                   Done
                 </button>
@@ -265,7 +265,7 @@ export const ConnectPlatformDialog: React.FC<ConnectPlatformDialogProps> = ({
                 <button
                   onClick={() => handleConnect(preselectedPlatform)}
                   disabled={authLoading}
-                  className="w-full flex items-center gap-4 p-4 rounded-lg bg-stone-700/50 hover:bg-stone-700 transition-colors text-left border border-stone-600 hover:border-amber-500/50"
+                  className="w-full flex items-center gap-4 p-4 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors text-left border border-stone-200 hover:border-emerald-500/50"
                 >
                   <div 
                     className="w-12 h-12 rounded-lg flex items-center justify-center"
@@ -274,11 +274,11 @@ export const ConnectPlatformDialog: React.FC<ConnectPlatformDialogProps> = ({
                     <PlatformIcon 
                       platform={preselectedPlatform} 
                       size="lg" 
-                      className="text-white" 
+                      className="text-stone-700" 
                     />
                   </div>
                   <div className="flex-1">
-                    <div className="text-white font-medium">
+                    <div className="text-stone-800 font-medium">
                       Connect {getPlatformDisplayName(preselectedPlatform)}
                     </div>
                     <div className="text-xs text-stone-400 mt-0.5">
@@ -298,7 +298,7 @@ export const ConnectPlatformDialog: React.FC<ConnectPlatformDialogProps> = ({
                     key={p.platform}
                     onClick={() => handleConnect(p.platform)}
                     disabled={authLoading}
-                    className="w-full flex items-center gap-4 p-4 rounded-lg bg-stone-700/50 hover:bg-stone-700 transition-colors text-left border border-stone-600 hover:border-amber-500/50"
+                    className="w-full flex items-center gap-4 p-4 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors text-left border border-stone-200 hover:border-emerald-500/50"
                   >
                     <div 
                       className="w-12 h-12 rounded-lg flex items-center justify-center"
@@ -307,11 +307,11 @@ export const ConnectPlatformDialog: React.FC<ConnectPlatformDialogProps> = ({
                       <PlatformIcon 
                         platform={p.platform} 
                         size="lg" 
-                        className="text-white" 
+                        className="text-stone-700" 
                       />
                     </div>
                     <div className="flex-1">
-                      <div className="text-white font-medium">{p.displayName}</div>
+                      <div className="text-stone-800 font-medium">{p.displayName}</div>
                       <div className="text-xs text-stone-400 mt-0.5">{p.description}</div>
                     </div>
                     <svg className="w-5 h-5 text-stone-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -333,7 +333,7 @@ export const ConnectPlatformDialog: React.FC<ConnectPlatformDialogProps> = ({
 
         {/* Footer with error */}
         {error && connectionStatus === 'idle' && (
-          <div className="px-6 py-3 bg-red-500/10 border-t border-red-500/20">
+          <div className="px-6 py-3 bg-red-50 border-t border-red-200">
             <p className="text-sm text-red-400">{error}</p>
           </div>
         )}

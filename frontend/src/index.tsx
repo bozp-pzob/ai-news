@@ -25,8 +25,8 @@ const ConnectionsPage = React.lazy(() => import('./pages/ConnectionsPage'));
 
 // Shared loading fallback for lazy-loaded pages
 const PageLoadingFallback = (
-  <div className="flex items-center justify-center min-h-screen bg-stone-950">
-    <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+  <div className="flex items-center justify-center min-h-screen bg-stone-50">
+    <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
   </div>
 );
 

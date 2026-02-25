@@ -38,15 +38,15 @@ export function TopicsTab({ configId, authToken }: TopicsTabProps) {
   const maxCount = Math.max(...topics.map(t => t.count));
 
   return (
-    <div className="bg-stone-800 rounded-lg p-4 border border-stone-700">
-      <h3 className="font-medium text-white mb-4">Top Topics</h3>
+    <div className="bg-white rounded-lg p-4 border border-stone-200">
+      <h3 className="font-medium text-stone-800 mb-4">Top Topics</h3>
       <div className="space-y-2">
         {topics.map((topic, i) => (
           <div key={i} className="flex items-center gap-3">
-            <div className="w-32 text-stone-300 truncate">{topic.topic}</div>
-            <div className="flex-1 bg-stone-700 rounded-full h-2 overflow-hidden">
+            <div className="w-32 text-stone-600 truncate">{topic.topic}</div>
+            <div className="flex-1 bg-stone-200 rounded-full h-2 overflow-hidden">
               <div 
-                className="bg-amber-500 h-full rounded-full"
+                className="bg-emerald-500 h-full rounded-full"
                 style={{ width: `${(topic.count / maxCount) * 100}%` }}
               />
             </div>

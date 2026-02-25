@@ -8,8 +8,8 @@
  * (URL + encryption key) stored ONLY in the browser. Never sent to the hosted DB.
  */
 
-const STORAGE_KEY = 'ai-news-local-configs';
-const LOCAL_SERVER_PREFIX = 'ai-news-local-server:';
+const STORAGE_KEY = 'digital-gardener-local-configs';
+const LOCAL_SERVER_PREFIX = 'digital-gardener-local-server:';
 
 export interface LocalConfig {
   id: string;

@@ -177,15 +177,15 @@ export const ConfigJsonEditor: React.FC<ConfigJsonEditorProps> = ({
       const isErrorLine = lineNum === errorLine;
       
       // Set different classes based on line status
-      let lineClass = "text-gray-500";
+      let lineClass = "text-stone-400";
       let bgClass = "";
       
       if (isErrorLine) {
-        lineClass = "text-red-300 font-bold";
-        bgClass = "bg-red-900/30";
+        lineClass = "text-red-500 font-bold";
+        bgClass = "bg-red-50";
       } else if (isCurrentLine) {
-        lineClass = "text-amber-300";
-        bgClass = "bg-stone-700/50";
+        lineClass = "text-emerald-600";
+        bgClass = "bg-emerald-50/50";
       }
       
       lineNumbersHTML += `<div class="text-right pr-2 select-none ${lineClass} ${bgClass}" 
@@ -671,13 +671,13 @@ export const ConfigJsonEditor: React.FC<ConfigJsonEditorProps> = ({
   };
 
   return (
-    <div className="h-full flex flex-col bg-stone-900 text-stone-200">
+    <div className="h-full flex flex-col bg-white text-stone-700">
       <div className="absolute top-4 right-4 z-10 flex items-center justify-end opacity-0">
         <div className="flex space-x-2">
           {!readOnly && (
             <button
               onClick={formatJson}
-              className="json-editor-format-button w-10 h-10 bg-stone-800/90 text-amber-300 border-stone-600/50 rounded hover:bg-stone-700 focus:outline-none flex items-center justify-center border border-amber-400/30"
+              className="json-editor-format-button w-10 h-10 bg-white/90 text-emerald-600 border-stone-200 rounded hover:bg-stone-50 focus:outline-none flex items-center justify-center border border-emerald-300"
               title="Format JSON with proper indentation"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -690,7 +690,7 @@ export const ConfigJsonEditor: React.FC<ConfigJsonEditorProps> = ({
       
       <div className="flex-1 flex flex-col pt-16">
         {error && (
-          <div className="mx-4 mt-2 mb-2 p-3 bg-red-900/50 border border-red-700 text-red-200 rounded-md text-sm">
+          <div className="mx-4 mt-2 mb-2 p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm">
             {error}
             {errorLine && (
               <div className="mt-1 font-medium">
@@ -700,11 +700,11 @@ export const ConfigJsonEditor: React.FC<ConfigJsonEditorProps> = ({
           </div>
         )}
         
-        <div className="flex-1 flex mx-4 bg-stone-800 rounded-md border border-stone-700 overflow-hidden">
+        <div className="flex-1 flex mx-4 bg-stone-50 rounded-md border border-stone-200 overflow-hidden">
           {/* Line numbers column */}
           <div 
             ref={lineNumbersRef}
-            className="py-4 pl-2 pr-0 bg-stone-900 text-xs font-mono border-r border-stone-700 overflow-hidden w-14 flex-shrink-0"
+            className="py-4 pl-2 pr-0 bg-stone-100 text-xs font-mono border-r border-stone-200 overflow-hidden w-14 flex-shrink-0"
             style={{ lineHeight: '1.5rem' }}
           />
           
@@ -713,7 +713,7 @@ export const ConfigJsonEditor: React.FC<ConfigJsonEditorProps> = ({
             <textarea
               ref={textAreaRef}
               className="absolute w-full h-full p-4 bg-transparent font-mono text-sm
-                        border-none focus:outline-none resize-none overflow-auto text-white"
+                        border-none focus:outline-none resize-none overflow-auto text-stone-800"
               value={jsonText}
               onChange={handleTextChange}
               onKeyDown={handleKeyDown}
@@ -734,8 +734,8 @@ export const ConfigJsonEditor: React.FC<ConfigJsonEditorProps> = ({
       </div>
       
       {/* Status indicator */}
-      <div className="px-4 py-2 bg-stone-900 text-xs text-stone-400 flex items-center">
-        <span className={`w-2 h-2 rounded-full mr-2 ${error ? 'bg-red-500' : hasUnsavedChanges ? 'bg-amber-500' : 'bg-green-500'}`}></span>
+      <div className="px-4 py-2 bg-stone-50 text-xs text-stone-500 flex items-center border-t border-stone-200">
+        <span className={`w-2 h-2 rounded-full mr-2 ${error ? 'bg-red-500' : hasUnsavedChanges ? 'bg-emerald-500' : 'bg-green-500'}`}></span>
         <span>
           {error 
             ? "JSON Error" 

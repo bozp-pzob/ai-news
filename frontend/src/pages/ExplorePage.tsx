@@ -52,21 +52,21 @@ function FeaturedCard({ config }: { config: PlatformConfig }) {
   return (
     <button
       onClick={() => navigate(`/configs/${config.id}`)}
-      className="flex-shrink-0 w-72 bg-gradient-to-br from-amber-900/40 to-stone-800 rounded-xl border border-amber-700/40 p-5 hover:border-amber-600/60 transition-all hover:shadow-lg hover:shadow-amber-900/20 text-left group"
+      className="flex-shrink-0 w-72 bg-gradient-to-br from-emerald-50 to-white rounded-xl border border-emerald-200 p-5 hover:border-emerald-300 transition-all hover:shadow-lg hover:shadow-black/5 text-left group"
     >
       <div className="flex items-center gap-2 mb-3">
-        <svg className="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
+        <svg className="w-4 h-4 text-emerald-600" fill="currentColor" viewBox="0 0 24 24">
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
         </svg>
-        <span className="text-amber-400 text-xs font-semibold uppercase tracking-wider">Featured</span>
+        <span className="text-emerald-600 text-xs font-semibold uppercase tracking-wider">Featured</span>
       </div>
-      <h3 className="font-semibold text-white truncate group-hover:text-amber-200 transition-colors">
+      <h3 className="font-semibold text-stone-800 truncate group-hover:text-emerald-600 transition-colors">
         {config.name}
       </h3>
       {config.description && (
-        <p className="text-stone-400 text-sm mt-1.5 line-clamp-2">{config.description}</p>
+        <p className="text-stone-500 text-sm mt-1.5 line-clamp-2">{config.description}</p>
       )}
-      <div className="flex items-center gap-3 mt-4 text-xs text-stone-500">
+      <div className="flex items-center gap-3 mt-4 text-xs text-stone-400">
         <span className="flex items-center gap-1">
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -99,13 +99,13 @@ function ExploreConfigCard({ config }: { config: PlatformConfig }) {
   return (
     <button
       onClick={() => navigate(`/configs/${config.id}`)}
-      className="bg-stone-800/80 rounded-xl border border-stone-700/80 p-5 hover:border-stone-600 hover:bg-stone-800 transition-all text-left group w-full"
+      className="bg-white rounded-xl border border-stone-200 p-5 hover:border-stone-300 hover:bg-stone-50 transition-all text-left group w-full shadow-sm"
     >
       {/* Header: Name + Status */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-white truncate group-hover:text-amber-200 transition-colors">
+            <h3 className="font-semibold text-stone-800 truncate group-hover:text-emerald-600 transition-colors">
               {config.name}
             </h3>
             {config.status && (
@@ -113,25 +113,25 @@ function ExploreConfigCard({ config }: { config: PlatformConfig }) {
             )}
           </div>
           {config.description && (
-            <p className="text-stone-400 text-sm mt-1 line-clamp-2">{config.description}</p>
+            <p className="text-stone-500 text-sm mt-1 line-clamp-2">{config.description}</p>
           )}
         </div>
         {config.monetizationEnabled && (
-          <span className="flex-shrink-0 px-2 py-0.5 bg-amber-900/50 text-amber-400 text-xs rounded-md font-medium">
+          <span className="flex-shrink-0 px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs rounded-md font-medium">
             ${config.pricePerQuery?.toFixed(4)}/q
           </span>
         )}
       </div>
 
       {/* Stats Row */}
-      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-stone-700/60">
+      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-stone-200">
         {/* Queries */}
         <div className="flex items-center gap-1.5 text-sm">
           <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
-          <span className="text-white font-medium">{formatNumber(config.totalQueries)}</span>
-          <span className="text-stone-500 text-xs">queries</span>
+          <span className="text-stone-800 font-medium">{formatNumber(config.totalQueries)}</span>
+          <span className="text-stone-400 text-xs">queries</span>
         </div>
 
         {/* Items */}
@@ -139,22 +139,22 @@ function ExploreConfigCard({ config }: { config: PlatformConfig }) {
           <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <span className="text-white font-medium">{formatNumber(config.totalItems)}</span>
-          <span className="text-stone-500 text-xs">items</span>
+          <span className="text-stone-800 font-medium">{formatNumber(config.totalItems)}</span>
+          <span className="text-stone-400 text-xs">items</span>
         </div>
 
         {/* Revenue (only if > 0) */}
         {config.totalRevenue !== undefined && config.totalRevenue > 0 && (
           <div className="flex items-center gap-1.5 text-sm">
-            <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="text-amber-400 font-medium">${config.totalRevenue.toFixed(2)}</span>
+            <span className="text-emerald-600 font-medium">${config.totalRevenue.toFixed(2)}</span>
           </div>
         )}
 
         {/* Last Run */}
-        <div className="ml-auto text-xs text-stone-500">
+        <div className="ml-auto text-xs text-stone-400">
           {formatRelativeTime(config.lastRunAt)}
         </div>
       </div>
@@ -172,7 +172,7 @@ function SortDropdown({ value, onChange }: { value: SortOption; onChange: (v: So
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-3 py-2 bg-stone-800 border border-stone-700 rounded-lg text-sm text-white hover:border-stone-600 transition-colors"
+        className="flex items-center gap-2 px-3 py-2 bg-white border border-stone-300 rounded-lg text-sm text-stone-800 hover:border-stone-400 transition-colors"
       >
         <svg className="w-4 h-4 text-stone-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
@@ -188,19 +188,19 @@ function SortDropdown({ value, onChange }: { value: SortOption; onChange: (v: So
           {/* Backdrop */}
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           {/* Dropdown */}
-          <div className="absolute right-0 mt-1 w-56 bg-stone-800 border border-stone-700 rounded-lg shadow-xl z-20 py-1">
+          <div className="absolute right-0 mt-1 w-56 bg-white border border-stone-200 rounded-lg shadow-lg z-20 py-1">
             {SORT_OPTIONS.map(option => (
               <button
                 key={option.value}
                 onClick={() => { onChange(option.value); setOpen(false); }}
                 className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
                   option.value === value
-                    ? 'bg-amber-900/30 text-amber-400'
-                    : 'text-white hover:bg-stone-700'
+                    ? 'bg-emerald-50 text-emerald-600'
+                    : 'text-stone-800 hover:bg-stone-50'
                 }`}
               >
                 <div className="font-medium">{option.label}</div>
-                <div className="text-xs text-stone-500 mt-0.5">{option.description}</div>
+                <div className="text-xs text-stone-400 mt-0.5">{option.description}</div>
               </button>
             ))}
           </div>
@@ -228,12 +228,12 @@ function SearchInput({ value, onChange }: { value: string; onChange: (v: string)
         placeholder="Search configs..."
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="w-full pl-10 pr-4 py-2 bg-stone-800 border border-stone-700 rounded-lg text-sm text-white placeholder:text-stone-500 focus:outline-none focus:border-amber-600 focus:ring-1 focus:ring-amber-600/50 transition-colors"
+        className="w-full pl-10 pr-4 py-2 bg-white border border-stone-300 rounded-lg text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/50 transition-colors"
       />
       {value && (
         <button
           onClick={() => onChange('')}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -248,17 +248,17 @@ function SearchInput({ value, onChange }: { value: string; onChange: (v: string)
 
 function ConfigCardSkeleton() {
   return (
-    <div className="bg-stone-800/80 rounded-xl border border-stone-700/80 p-5 animate-pulse">
+    <div className="bg-white rounded-xl border border-stone-200 p-5 animate-pulse shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
-          <div className="h-5 bg-stone-700 rounded w-2/3" />
-          <div className="h-4 bg-stone-700/60 rounded w-full mt-2" />
+          <div className="h-5 bg-stone-200 rounded w-2/3" />
+          <div className="h-4 bg-stone-100 rounded w-full mt-2" />
         </div>
       </div>
-      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-stone-700/60">
-        <div className="h-4 bg-stone-700/60 rounded w-16" />
-        <div className="h-4 bg-stone-700/60 rounded w-16" />
-        <div className="ml-auto h-3 bg-stone-700/60 rounded w-12" />
+      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-stone-200">
+        <div className="h-4 bg-stone-100 rounded w-16" />
+        <div className="h-4 bg-stone-100 rounded w-16" />
+        <div className="ml-auto h-3 bg-stone-100 rounded w-12" />
       </div>
     </div>
   );
@@ -266,16 +266,16 @@ function ConfigCardSkeleton() {
 
 function FeaturedCardSkeleton() {
   return (
-    <div className="flex-shrink-0 w-72 bg-stone-800/60 rounded-xl border border-stone-700/40 p-5 animate-pulse">
+    <div className="flex-shrink-0 w-72 bg-white rounded-xl border border-stone-200 p-5 animate-pulse shadow-sm">
       <div className="flex items-center gap-2 mb-3">
-        <div className="w-4 h-4 bg-stone-700 rounded" />
-        <div className="h-3 bg-stone-700 rounded w-16" />
+        <div className="w-4 h-4 bg-stone-200 rounded" />
+        <div className="h-3 bg-stone-200 rounded w-16" />
       </div>
-      <div className="h-5 bg-stone-700 rounded w-3/4" />
-      <div className="h-4 bg-stone-700/60 rounded w-full mt-2" />
+      <div className="h-5 bg-stone-200 rounded w-3/4" />
+      <div className="h-4 bg-stone-100 rounded w-full mt-2" />
       <div className="flex gap-3 mt-4">
-        <div className="h-3 bg-stone-700/60 rounded w-16" />
-        <div className="h-3 bg-stone-700/60 rounded w-16" />
+        <div className="h-3 bg-stone-100 rounded w-16" />
+        <div className="h-3 bg-stone-100 rounded w-16" />
       </div>
     </div>
   );
@@ -289,10 +289,10 @@ function EmptyState({ search }: { search: string }) {
       <svg className="w-16 h-16 mx-auto text-stone-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
       </svg>
-      <h3 className="text-lg font-medium text-white mb-2">
+      <h3 className="text-lg font-medium text-stone-800 mb-2">
         {search ? 'No configs found' : 'No public configs yet'}
       </h3>
-      <p className="text-stone-400 max-w-sm mx-auto">
+      <p className="text-stone-500 max-w-sm mx-auto">
         {search
           ? `No configs match "${search}". Try a different search term.`
           : 'Be the first to create a public config and share your data pipeline with the community.'}
@@ -393,8 +393,8 @@ function ExploreContent() {
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Page Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white">Explore Configs</h1>
-        <p className="text-stone-400 mt-2">
+        <h1 className="text-3xl font-bold text-stone-800">Explore Configs</h1>
+        <p className="text-stone-500 mt-2">
           Discover public data pipelines created by the community. Ranked by usage, data volume, and revenue.
         </p>
       </div>
@@ -403,12 +403,12 @@ function ExploreContent() {
       {!featuredLoading && featuredConfigs.length > 0 && !debouncedSearch && (
         <div className="mb-10">
           <div className="flex items-center gap-2 mb-4">
-            <svg className="w-5 h-5 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
             </svg>
-            <h2 className="text-lg font-semibold text-white">Featured</h2>
+            <h2 className="text-lg font-semibold text-stone-800">Featured</h2>
           </div>
-          <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin scrollbar-thumb-stone-700">
+          <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin scrollbar-thumb-stone-300">
             {featuredLoading
               ? Array.from({ length: 3 }).map((_, i) => <FeaturedCardSkeleton key={i} />)
               : featuredConfigs.map(config => (
@@ -426,9 +426,9 @@ function ExploreContent() {
 
       {/* Results count */}
       {!isLoading && !error && total > 0 && (
-        <p className="text-sm text-stone-500 mb-4">
+        <p className="text-sm text-stone-400 mb-4">
           {total} config{total !== 1 ? 's' : ''} found
-          {debouncedSearch && <> matching "<span className="text-stone-300">{debouncedSearch}</span>"</>}
+          {debouncedSearch && <> matching "<span className="text-stone-700">{debouncedSearch}</span>"</>}
         </p>
       )}
 
@@ -438,7 +438,7 @@ function ExploreContent() {
           <p className="text-red-400 mb-4">{error}</p>
           <button
             onClick={loadConfigs}
-            className="px-4 py-2 bg-stone-700 hover:bg-stone-600 text-white rounded-lg text-sm"
+            className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-sm"
           >
             Retry
           </button>
@@ -465,7 +465,7 @@ function ExploreContent() {
           <button
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="px-3 py-1.5 bg-stone-800 border border-stone-700 rounded-lg text-sm text-white hover:bg-stone-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-sm text-stone-800 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Previous
           </button>
@@ -477,14 +477,14 @@ function ExploreContent() {
               .map((p, idx, arr) => (
                 <React.Fragment key={p}>
                   {idx > 0 && arr[idx - 1] !== p - 1 && (
-                    <span className="text-stone-600 px-1">...</span>
+                    <span className="text-stone-400 px-1">...</span>
                   )}
                   <button
                     onClick={() => setPage(p)}
                     className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
                       p === page
-                        ? 'bg-amber-600 text-white'
-                        : 'bg-stone-800 text-stone-400 hover:bg-stone-700 hover:text-white'
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-white text-stone-500 hover:bg-stone-50 hover:text-stone-800'
                     }`}
                   >
                     {p}
@@ -496,7 +496,7 @@ function ExploreContent() {
           <button
             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
-            className="px-3 py-1.5 bg-stone-800 border border-stone-700 rounded-lg text-sm text-white hover:bg-stone-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-sm text-stone-800 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Next
           </button>
@@ -511,7 +511,7 @@ function ExploreContent() {
  */
 export default function ExplorePage() {
   return (
-    <div className="min-h-screen bg-stone-950">
+    <div className="min-h-screen bg-stone-50">
       <AppHeader />
       <ExploreContent />
     </div>

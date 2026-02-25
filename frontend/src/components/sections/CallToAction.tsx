@@ -18,26 +18,20 @@ export const CallToAction: React.FC = () => {
   };
 
   return (
-    <section className="py-24 px-6 text-center relative overflow-hidden">
-      {/* Removed background effects */}
-      
-      {/* Removed radial gradient */}
-      
-      {/* Removed animated grid */}
-      
+    <section className="py-24 px-6 text-center relative overflow-hidden bg-stone-50">
       <div className="container mx-auto relative z-10">
         <div className="max-w-4xl mx-auto relative z-10 animate-fadeIn" style={{ animationDelay: '0.2s', opacity: 0 }}>
-          <h2 className="text-4xl md:text-5xl font-bold mb-6 text-amber-300" style={{ WebkitBackgroundClip: 'text' }}>
-            Ready to cut through the noise?
+          <h2 className="text-4xl md:text-5xl font-bold mb-6 text-emerald-700">
+            Ready to grow something amazing?
           </h2>
-          <p className="text-xl mb-10 max-w-2xl mx-auto text-stone-400">
-            Try Digital Gardener today and let AI help you cultivate, curate, and grow your content.
+          <p className="text-xl mb-10 max-w-2xl mx-auto text-stone-500">
+            Start your Digital Garden today and let AI help you cultivate, curate, and harvest your content.
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button 
               onClick={handleLaunchAppClick}
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-12 px-10 py-2 relative group overflow-hidden bg-amber-300 text-black hover:bg-amber-400"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-12 px-10 py-2 relative group overflow-hidden bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
             >
               <span className="relative flex items-center gap-2 font-medium">
                 Launch App
@@ -52,7 +46,7 @@ export const CallToAction: React.FC = () => {
               href="https://github.com/bozp-pzob/digital-gardener" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-12 px-10 py-2 border border-amber-300/30 bg-transparent text-white hover:bg-amber-300/10"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-12 px-10 py-2 border border-emerald-600/30 bg-white text-stone-700 hover:bg-emerald-50"
             >
               <span className="flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">

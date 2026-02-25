@@ -177,17 +177,17 @@ export const ConnectionChannelPicker: React.FC<ConnectionChannelPickerProps> = (
   if (!connectionsLoading && activeConnections.length === 0) {
     return (
       <>
-        <div className="p-4 bg-stone-700 rounded-lg border border-amber-500/30">
+        <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
           <div className="flex items-center gap-2 mb-2">
-            <PlatformIcon platform={platform} size="md" className="text-amber-400" />
-            <span className="font-medium text-white">No {platformNames[platform]} Connected</span>
+            <PlatformIcon platform={platform} size="md" className="text-emerald-600" />
+            <span className="font-medium text-stone-800">No {platformNames[platform]} Connected</span>
           </div>
-          <p className="text-stone-400 text-sm mb-3">
+          <p className="text-stone-500 text-sm mb-3">
             You need to connect a {platformNames[platform].toLowerCase()} before you can use this source.
           </p>
           <button
             onClick={() => setShowConnectDialog(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg text-sm transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg text-sm transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -212,14 +212,14 @@ export const ConnectionChannelPicker: React.FC<ConnectionChannelPickerProps> = (
         {/* Connection Picker */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="block text-sm font-medium text-gray-300">
+            <label className="block text-sm font-medium text-stone-600">
               {connLabel}
               <span className="text-red-500 ml-1">*</span>
             </label>
             <button
               type="button"
               onClick={() => setShowConnectDialog(true)}
-              className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1"
+              className="text-xs text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -231,7 +231,7 @@ export const ConnectionChannelPicker: React.FC<ConnectionChannelPickerProps> = (
             value={internalConnectionId || ''}
             onChange={handleConnectionChange}
             disabled={connectionsLoading}
-            className="py-2 px-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+            className="py-2 px-2 w-full rounded-md border-stone-300 bg-white text-stone-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
           >
             <option value="">
               {connectionsLoading ? 'Loading...' : `Select a ${platformNames[platform].toLowerCase()}`}
@@ -242,7 +242,7 @@ export const ConnectionChannelPicker: React.FC<ConnectionChannelPickerProps> = (
               </option>
             ))}
           </select>
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-stone-400">
             Select which {platformNames[platform].toLowerCase()} to pull data from
           </p>
         </div>
@@ -251,13 +251,13 @@ export const ConnectionChannelPicker: React.FC<ConnectionChannelPickerProps> = (
       {internalConnectionId && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="block text-sm font-medium text-gray-300">
+            <label className="block text-sm font-medium text-stone-600">
               {chanLabel}
               {channelsRequired && <span className="text-red-500 ml-1">*</span>}
             </label>
             <div className="flex items-center gap-2">
               {selectedChannelIds.length > 0 && (
-                <span className="text-xs text-amber-400">
+                <span className="text-xs text-emerald-600">
                   {selectedChannelIds.length} selected
                 </span>
               )}
@@ -265,7 +265,7 @@ export const ConnectionChannelPicker: React.FC<ConnectionChannelPickerProps> = (
                 type="button"
                 onClick={() => syncChannels()}
                 disabled={isSyncing}
-                className="text-xs text-gray-400 hover:text-amber-400 flex items-center gap-1"
+                className="text-xs text-stone-500 hover:text-emerald-600 flex items-center gap-1"
               >
                 <svg 
                   className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} 
@@ -281,57 +281,57 @@ export const ConnectionChannelPicker: React.FC<ConnectionChannelPickerProps> = (
           </div>
 
           {channelsLoading ? (
-            <div className="p-4 bg-stone-700 rounded-md border border-stone-600 text-center">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-amber-400 mx-auto mb-2"></div>
-              <span className="text-sm text-gray-400">Loading channels...</span>
+            <div className="p-4 bg-stone-50 rounded-md border border-stone-200 text-center">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500 mx-auto mb-2"></div>
+              <span className="text-sm text-stone-500">Loading channels...</span>
             </div>
           ) : filteredChannels.length === 0 ? (
-            <div className="p-4 bg-stone-700 rounded-md border border-stone-600 text-center">
-              <span className="text-sm text-gray-400">
+            <div className="p-4 bg-stone-50 rounded-md border border-stone-200 text-center">
+              <span className="text-sm text-stone-500">
                 {noChannelsMessage || 'No channels available. Try refreshing.'}
               </span>
             </div>
           ) : (
-            <div className="max-h-64 overflow-y-auto bg-stone-700 rounded-md border border-stone-600">
+            <div className="max-h-64 overflow-y-auto bg-white rounded-md border border-stone-200">
               {Object.entries(filteredGroupedChannels).map(([category, categoryChannels]) => {
                 const categoryIds = categoryChannels.map(c => c.externalId);
                 const selectedInCategory = categoryIds.filter(id => selectedChannelIds.includes(id)).length;
                 const allSelected = selectedInCategory === categoryChannels.length;
                 
                 return (
-                  <div key={category} className="border-b border-stone-600 last:border-b-0">
+                  <div key={category} className="border-b border-stone-200 last:border-b-0">
                     {/* Category header */}
                     <div 
-                      className="flex items-center justify-between px-3 py-2 bg-stone-800 cursor-pointer hover:bg-stone-750"
+                      className="flex items-center justify-between px-3 py-2 bg-stone-50 cursor-pointer hover:bg-stone-100"
                       onClick={() => handleSelectAllInCategory(categoryChannels)}
                     >
-                      <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">
                         {category}
                       </span>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-stone-400">
                         {selectedInCategory}/{categoryChannels.length}
                       </span>
                     </div>
                     
                     {/* Channels in category */}
-                    <div className="divide-y divide-stone-600">
+                    <div className="divide-y divide-stone-100">
                       {categoryChannels.map(channel => {
                         const isSelected = selectedChannelIds.includes(channel.externalId);
                         return (
                           <label
                             key={channel.id}
-                            className={`flex items-center px-3 py-2 cursor-pointer hover:bg-stone-650 ${
-                              isSelected ? 'bg-amber-500/10' : ''
+                            className={`flex items-center px-3 py-2 cursor-pointer hover:bg-stone-50 ${
+                              isSelected ? 'bg-emerald-50' : ''
                             }`}
                           >
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => handleChannelToggle(channel.externalId)}
-                              className="h-4 w-4 rounded border-gray-600 bg-stone-600 text-amber-600 focus:ring-amber-500"
+                              className="h-4 w-4 rounded border-stone-300 bg-white text-emerald-600 focus:ring-emerald-500"
                             />
-                            <span className="ml-2 text-sm text-gray-300 flex items-center gap-1">
-                              <span className="text-gray-500">#</span>
+                            <span className="ml-2 text-sm text-stone-600 flex items-center gap-1">
+                              <span className="text-stone-400">#</span>
                               {channel.externalName}
                             </span>
                           </label>
@@ -343,7 +343,7 @@ export const ConnectionChannelPicker: React.FC<ConnectionChannelPickerProps> = (
               })}
             </div>
           )}
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-stone-400">
             Select which channels to monitor for messages
           </p>
         </div>

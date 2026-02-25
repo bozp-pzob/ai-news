@@ -6,6 +6,8 @@ import EventEmitter from "events";
 import { HistoricalAggregator } from "../aggregator/HistoricalAggregator";
 import { callbackDateRangeLogic } from "../helpers/dateHelper";
 import { jobService, AggregationJob, JobType } from "./jobService";
+import { userService } from "./userService";
+import { licenseService } from "./licenseService";
 
 /**
  * In-memory tracking for active jobs
@@ -15,6 +17,7 @@ interface ActiveJobState {
   intervals: NodeJS.Timeout[];
   aggregator: ContentAggregator;
   configName: string;
+  userId?: string;
 }
 
 export class AggregatorService {
@@ -112,13 +115,25 @@ export class AggregatorService {
    * Convert AggregationJob to JobStatus for backwards compatibility
    */
   private jobToJobStatus(job: AggregationJob): JobStatus {
+    // Determine cancel reason from logs if the job was cancelled
+    let cancelReason: string | undefined;
+    if (job.status === 'cancelled' && job.logs?.length) {
+      const hasLicenseExpiredLog = job.logs.some(
+        (log) => log.message?.includes('Pro license expired')
+      );
+      if (hasLicenseExpiredLog) {
+        cancelReason = 'license_expired';
+      }
+    }
+
     return {
       jobId: job.id,
       configName: '', // Will need to look this up if needed
       startTime: job.startedAt?.getTime() || job.createdAt.getTime(),
-      status: job.status === 'cancelled' ? 'failed' : job.status as any,
+      status: job.status as JobStatus['status'],
       progress: job.status === 'completed' ? 100 : job.status === 'running' ? 50 : 0,
       error: job.errorMessage,
+      cancelReason,
       intervals: this.activeJobStates.get(job.id)?.intervals,
       aggregationStatus: {
         stats: {
@@ -191,15 +206,19 @@ export class AggregatorService {
     existingJobId?: string
   ): Promise<string> {
     // Create a job in the database (or use existing for resume)
+    // When creating a new job, store the encrypted resolved config/secrets
+    // so the job can be resumed after a server restart
     const jobId = existingJobId || await jobService.createJob({
       configId,
       userId,
       jobType: 'continuous',
       globalInterval,
+      resolvedConfig: config,
+      resolvedSecrets: secrets,
     });
     
     // Start the continuous aggregation process in the background
-    this.startContinuousAggregationProcess(jobId, configName, config, settings, secrets, globalInterval).catch(async error => {
+    this.startContinuousAggregationProcess(jobId, configName, config, settings, secrets, globalInterval, userId).catch(async error => {
       console.error(`Error in continuous aggregation process for job ${jobId}:`, error);
       await jobService.failJob(jobId, error.message || 'Unknown error');
       await jobService.addJobLog(jobId, 'error', error.message || 'Unknown error');
@@ -241,7 +260,8 @@ export class AggregatorService {
     config: Config,
     settings: any,
     secrets: any,
-    globalInterval?: number
+    globalInterval?: number,
+    userId?: string
   ): Promise<void> {
     // Check if this is a DB-backed job (UUIDs are 36 chars)
     const isDbJob = jobId.length === 36;
@@ -251,6 +271,7 @@ export class AggregatorService {
       intervals: [],
       aggregator: null as any,
       configName,
+      userId,
     };
     this.activeJobStates.set(jobId, activeState);
     
@@ -319,6 +340,15 @@ export class AggregatorService {
           
           // Track interval ID for cleanup
           const intervalId = setInterval(async () => {
+            // Validate Pro license before doing work (DB-backed jobs only)
+            if (isDbJob && activeState.userId) {
+              const hasLicense = await this.checkUserProLicense(activeState.userId);
+              if (!hasLicense) {
+                await this.stopContinuousJobForExpiredLicense(jobId);
+                return;
+              }
+            }
+            
             await this.updateSourceStatus(configName, sourceConfig.instance.name, jobId);
             const itemsBefore = aggregator.getStatus().stats?.totalItemsFetched || 0;
             
@@ -365,6 +395,15 @@ export class AggregatorService {
           
           // Track interval ID for cleanup
           const intervalId = setInterval(async () => {
+            // Validate Pro license before doing work (DB-backed jobs only)
+            if (isDbJob && activeState.userId) {
+              const hasLicense = await this.checkUserProLicense(activeState.userId);
+              if (!hasLicense) {
+                await this.stopContinuousJobForExpiredLicense(jobId);
+                return;
+              }
+            }
+            
             await generator.instance.generateContent();
             
             // Collect AI usage from generator tick
@@ -701,6 +740,52 @@ export class AggregatorService {
     await jobService.addJobLog(jobId, 'info', 'Continuous job stopped by user');
     
     return true;
+  }
+
+  /**
+   * Stop a continuous job because the user's Pro license has expired.
+   * Uses 'cancelled' status (not 'completed') to distinguish from user-initiated stops,
+   * and emits a WebSocket update so the frontend can notify the user.
+   */
+  async stopContinuousJobForExpiredLicense(jobId: string): Promise<boolean> {
+    const job = await jobService.getJob(jobId);
+    if (!job || job.status !== 'running') {
+      return false;
+    }
+    
+    // Clean up intervals and aggregator
+    this.cleanupJobState(jobId);
+    
+    // Mark job as cancelled (distinct from user-initiated 'completed')
+    await jobService.cancelJob(jobId);
+    await jobService.addJobLog(jobId, 'warn', 'Continuous job stopped — Pro license expired. Renew your subscription to restart.');
+    
+    // Emit a final job status update via WebSocket so the frontend is notified immediately
+    await this.emitJobStatusUpdate(jobId);
+    
+    console.log(`[AggregatorService] Stopped continuous job ${jobId} due to expired Pro license`);
+    return true;
+  }
+
+  /**
+   * Check if a user still has a valid Pro license.
+   * Used by per-tick validation in continuous jobs.
+   */
+  private async checkUserProLicense(userId: string): Promise<boolean> {
+    try {
+      const user = await userService.getUserById(userId);
+      if (!user) return false;
+      if (user.tier === 'admin') return true;
+      if (user.walletAddress) {
+        const license = await licenseService.verifyLicense(user.walletAddress);
+        return license.isActive;
+      }
+      return false;
+    } catch (error) {
+      console.error(`[AggregatorService] Error checking Pro license for user ${userId}:`, error);
+      // On error, don't stop the job — let the next tick or cron handle it
+      return true;
+    }
   }
 
   /**

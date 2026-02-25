@@ -1,5 +1,5 @@
 # =============================================================================
-# AI News Aggregator - Multi-Target Dockerfile
+# Digital Gardener - Multi-Target Dockerfile
 # =============================================================================
 # This Dockerfile supports multiple build targets:
 #   - frontend: React app served via nginx
@@ -7,9 +7,9 @@
 #   - mcp:      Model Context Protocol server
 #
 # Usage:
-#   docker build --target frontend -t ai-news-frontend .
-#   docker build --target backend -t ai-news-backend .
-#   docker build --target mcp -t ai-news-mcp .
+#   docker build --target frontend -t digital-gardener-frontend .
+#   docker build --target backend -t digital-gardener-backend .
+#   docker build --target mcp -t digital-gardener-mcp .
 # =============================================================================
 
 # =============================================================================

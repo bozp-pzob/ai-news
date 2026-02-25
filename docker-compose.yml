@@ -1,5 +1,5 @@
 # =============================================================================
-# AI News Aggregator - Full Stack Docker Compose
+# Digital Gardener - Full Stack Docker Compose
 # =============================================================================
 # Services: frontend, backend, redis, mcp
 # Note: PostgreSQL is external (not included in this stack)
@@ -31,7 +31,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - ainews-network
+      - digital-gardener-network
 
   # ---------------------------------------------------------------------------
   # Backend - Express API server
@@ -78,7 +78,7 @@ services:
       - ./data:/app/data
     restart: unless-stopped
     networks:
-      - ainews-network
+      - digital-gardener-network
 
   # ---------------------------------------------------------------------------
   # Redis - Job queue and caching
@@ -97,7 +97,7 @@ services:
       retries: 5
     restart: unless-stopped
     networks:
-      - ainews-network
+      - digital-gardener-network
 
   # ---------------------------------------------------------------------------
   # MCP - Model Context Protocol server
@@ -120,10 +120,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - ainews-network
+      - digital-gardener-network
 
 networks:
-  ainews-network:
+  digital-gardener-network:
     driver: bridge
 
 volumes:

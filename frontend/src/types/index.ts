@@ -102,10 +102,12 @@ export interface JobStatus {
   jobId: string;
   configName: string;
   startTime: number;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   progress?: number; // 0-100
   error?: string;
   result?: any;
+  /** Reason for cancellation (e.g. 'license_expired') */
+  cancelReason?: string;
   aggregationStatus?: {
     currentSource?: string;
     currentPhase?: 'fetching' | 'enriching' | 'generating' | 'idle' | 'connecting' | 'waiting';

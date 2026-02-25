@@ -164,36 +164,36 @@ export const MediaDownloadConfig: React.FC<MediaDownloadConfigProps> = ({
   };
 
   return (
-    <div className="border border-stone-600 rounded-lg overflow-hidden">
+    <div className="border border-stone-200 rounded-lg overflow-hidden">
       {/* Header with toggle */}
       <div 
         className={`flex items-center justify-between p-3 cursor-pointer transition-colors ${
-          enabled ? 'bg-amber-500/10 border-b border-stone-600' : 'bg-stone-800 hover:bg-stone-750'
+          enabled ? 'bg-emerald-50 border-b border-stone-200' : 'bg-white hover:bg-stone-50'
         }`}
         onClick={() => setEnabled(!enabled)}
       >
         <div className="flex items-center gap-3">
           <div className={`w-10 h-6 rounded-full transition-colors relative ${
-            enabled ? 'bg-amber-500' : 'bg-stone-600'
+            enabled ? 'bg-emerald-500' : 'bg-stone-300'
           }`}>
             <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
               enabled ? 'translate-x-5' : 'translate-x-1'
             }`} />
           </div>
           <div>
-            <div className="font-medium text-white flex items-center gap-2">
-              <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="font-medium text-stone-800 flex items-center gap-2">
+              <svg className="w-5 h-5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
               Download Media
             </div>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-stone-500">
               {enabled ? 'Media files will be downloaded from messages' : 'Click to enable media downloading'}
             </p>
           </div>
         </div>
         {enabled && (
-          <span className="text-xs text-amber-400 bg-amber-500/20 px-2 py-1 rounded">
+          <span className="text-xs text-emerald-700 bg-emerald-100 px-2 py-1 rounded">
             Enabled
           </span>
         )}
@@ -201,19 +201,19 @@ export const MediaDownloadConfig: React.FC<MediaDownloadConfigProps> = ({
 
       {/* Settings panel - only show when enabled */}
       {enabled && (
-        <div className="p-4 bg-stone-800/50 space-y-5">
+        <div className="p-4 bg-stone-50 space-y-5">
           
           {/* Media Types */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-gray-300">
+              <label className="text-sm font-medium text-stone-600">
                 What to download
               </label>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={selectAllCategories}
-                  className="text-xs text-amber-400 hover:text-amber-300"
+                  className="text-xs text-emerald-600 hover:text-emerald-700"
                 >
                   All
                 </button>
@@ -237,28 +237,28 @@ export const MediaDownloadConfig: React.FC<MediaDownloadConfigProps> = ({
                     onClick={() => toggleCategory(category.id)}
                     className={`p-3 rounded-lg border text-left transition-all ${
                       isSelected 
-                        ? 'border-amber-500 bg-amber-500/10 text-white' 
-                        : 'border-stone-600 bg-stone-700/50 text-gray-400 hover:border-stone-500'
+                        ? 'border-emerald-500 bg-emerald-50 text-stone-800' 
+                        : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
-                      <svg className={`w-4 h-4 ${isSelected ? 'text-amber-400' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className={`w-4 h-4 ${isSelected ? 'text-emerald-500' : 'text-stone-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={category.iconPath} />
                       </svg>
                       <span className="font-medium text-sm">{category.label}</span>
                       {isSelected && (
-                        <svg className="w-4 h-4 text-amber-400 ml-auto" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-4 h-4 text-emerald-500 ml-auto" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                         </svg>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500">{category.description}</p>
+                    <p className="text-xs text-stone-400">{category.description}</p>
                   </button>
                 );
               })}
             </div>
             {selectedCategories.length === 0 && (
-              <p className="text-xs text-amber-400 mt-2 flex items-center gap-1">
+              <p className="text-xs text-emerald-600 mt-2 flex items-center gap-1">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
@@ -269,13 +269,13 @@ export const MediaDownloadConfig: React.FC<MediaDownloadConfigProps> = ({
 
           {/* Max File Size */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-stone-600 mb-2">
               Maximum file size
             </label>
             <select
               value={maxFileSize}
               onChange={(e) => setMaxFileSize(Number(e.target.value))}
-              className="w-full py-2 px-3 rounded-md border-gray-600 bg-stone-700 text-gray-200 focus:border-amber-500 focus:ring-amber-500"
+              className="w-full py-2 px-3 rounded-md border-stone-300 bg-white text-stone-800 focus:border-emerald-500 focus:ring-emerald-500"
             >
               {FILE_SIZE_OPTIONS.map(option => (
                 <option key={option.value} value={option.value}>
@@ -283,14 +283,14 @@ export const MediaDownloadConfig: React.FC<MediaDownloadConfigProps> = ({
                 </option>
               ))}
             </select>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-stone-400 mt-1">
               Files larger than this will be skipped
             </p>
           </div>
 
           {/* Organization */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-stone-600 mb-2">
               Organize files
             </label>
             <div className="space-y-2">
@@ -299,8 +299,8 @@ export const MediaDownloadConfig: React.FC<MediaDownloadConfigProps> = ({
                   key={option.value}
                   className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
                     organizeBy === option.value
-                      ? 'border-amber-500 bg-amber-500/10'
-                      : 'border-stone-600 bg-stone-700/50 hover:border-stone-500'
+                      ? 'border-emerald-500 bg-emerald-50'
+                      : 'border-stone-200 bg-white hover:border-stone-300'
                   }`}
                 >
                   <input
@@ -309,11 +309,11 @@ export const MediaDownloadConfig: React.FC<MediaDownloadConfigProps> = ({
                     value={option.value}
                     checked={organizeBy === option.value}
                     onChange={(e) => setOrganizeBy(e.target.value as 'flat' | 'server' | 'channel')}
-                    className="mt-0.5 h-4 w-4 border-gray-600 bg-stone-600 text-amber-600 focus:ring-amber-500"
+                    className="mt-0.5 h-4 w-4 border-stone-300 bg-white text-emerald-600 focus:ring-emerald-500"
                   />
                   <div>
-                    <div className="font-medium text-white text-sm">{option.label}</div>
-                    <p className="text-xs text-gray-500">{option.description}</p>
+                    <div className="font-medium text-stone-800 text-sm">{option.label}</div>
+                    <p className="text-xs text-stone-400">{option.description}</p>
                   </div>
                 </label>
               ))}
@@ -323,7 +323,7 @@ export const MediaDownloadConfig: React.FC<MediaDownloadConfigProps> = ({
           {/* Output Path - only show in non-platform mode */}
           {!platformMode && (
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-stone-600 mb-2">
                 Save location
               </label>
               <input
@@ -331,9 +331,9 @@ export const MediaDownloadConfig: React.FC<MediaDownloadConfigProps> = ({
                 value={outputPath}
                 onChange={(e) => setOutputPath(e.target.value)}
                 placeholder="./media"
-                className="w-full py-2 px-3 rounded-md border-gray-600 bg-stone-700 text-gray-200 focus:border-amber-500 focus:ring-amber-500"
+                className="w-full py-2 px-3 rounded-md border-stone-300 bg-white text-stone-800 focus:border-emerald-500 focus:ring-emerald-500"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-stone-400 mt-1">
                 Folder path where media files will be saved
               </p>
             </div>
@@ -343,7 +343,7 @@ export const MediaDownloadConfig: React.FC<MediaDownloadConfigProps> = ({
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-300"
+            className="flex items-center gap-2 text-sm text-stone-500 hover:text-stone-700"
           >
             <svg 
               className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-90' : ''}`} 
@@ -358,36 +358,36 @@ export const MediaDownloadConfig: React.FC<MediaDownloadConfigProps> = ({
 
           {/* Advanced Settings */}
           {showAdvanced && (
-            <div className="pl-4 border-l-2 border-stone-600 space-y-4">
+            <div className="pl-4 border-l-2 border-stone-200 space-y-4">
               {/* Rate Limit */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-stone-600 mb-2">
                   Download speed
                 </label>
                 <select
                   value={rateLimit}
                   onChange={(e) => setRateLimit(Number(e.target.value))}
-                  className="w-full py-2 px-3 rounded-md border-gray-600 bg-stone-700 text-gray-200 focus:border-amber-500 focus:ring-amber-500"
+                  className="w-full py-2 px-3 rounded-md border-stone-300 bg-white text-stone-800 focus:border-emerald-500 focus:ring-emerald-500"
                 >
                   <option value={50}>Fast (50ms delay)</option>
                   <option value={100}>Normal (100ms delay)</option>
                   <option value={250}>Slow (250ms delay)</option>
                   <option value={500}>Very slow (500ms delay)</option>
                 </select>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-stone-400 mt-1">
                   Slower speeds are gentler on Discord's rate limits
                 </p>
               </div>
 
               {/* Retry Attempts */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-stone-600 mb-2">
                   Retry failed downloads
                 </label>
                 <select
                   value={retryAttempts}
                   onChange={(e) => setRetryAttempts(Number(e.target.value))}
-                  className="w-full py-2 px-3 rounded-md border-gray-600 bg-stone-700 text-gray-200 focus:border-amber-500 focus:ring-amber-500"
+                  className="w-full py-2 px-3 rounded-md border-stone-300 bg-white text-stone-800 focus:border-emerald-500 focus:ring-emerald-500"
                 >
                   <option value={0}>Don't retry</option>
                   <option value={1}>1 retry</option>

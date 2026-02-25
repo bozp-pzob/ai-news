@@ -415,8 +415,8 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
 
       // Combine all threads
       const allThreads = new Map<string, AnyThreadChannel>();
-      activeThreads.threads.forEach((thread, id) => allThreads.set(id, thread));
-      archivedThreads.threads.forEach((thread, id) => allThreads.set(id, thread));
+      activeThreads.threads.forEach((thread: AnyThreadChannel, id: string) => allThreads.set(id, thread));
+      archivedThreads.threads.forEach((thread: AnyThreadChannel, id: string) => allThreads.set(id, thread));
 
       logger.info(`Found ${allThreads.size} threads in forum ${channel.name}`);
 
@@ -494,7 +494,7 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
 
       // Filter to target date and process
       const targetMessages = fetchedMessages.filter(
-        msg => msg.createdTimestamp >= startOfDay.getTime() && msg.createdTimestamp <= endOfDay.getTime()
+        (msg: Message) => msg.createdTimestamp >= startOfDay.getTime() && msg.createdTimestamp <= endOfDay.getTime()
       );
 
       if (targetMessages.size === 0) {
@@ -503,7 +503,7 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
 
       // Fetch user data for message authors
       const missingUsers = new Map<string, User>();
-      targetMessages.forEach(msg => {
+      targetMessages.forEach((msg: Message) => {
         if (!users.has(msg.author.id)) {
           missingUsers.set(msg.author.id, msg.author);
         }
@@ -520,7 +520,7 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
         if (collectedMessageIds.has(msg.id)) continue;
         collectedMessageIds.add(msg.id);
 
-        const reactions = msg.reactions.cache.map(reaction => ({
+        const reactions = msg.reactions.cache.map((reaction: MessageReaction) => ({
           emoji: reaction.emoji.toString(),
           count: reaction.count || 0
         }));
@@ -547,7 +547,7 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
           uid: msg.author.id,
           content: msg.content,
           type: msg.type === MessageType.Reply ? 'Reply' : undefined,
-          mentions: msg.mentions.users.map(u => u.id),
+          mentions: msg.mentions.users.map((u: User) => u.id),
           ref: msg.reference?.messageId,
           edited: msg.editedAt?.toISOString(),
           reactions: reactions.length > 0 ? reactions : undefined,
@@ -763,9 +763,9 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
     for (const channelId of this.channelIds) {
       try {
         logger.channel(`Fetching channel ${channelId}...`);
-        const channel = await retryOperation(() => client.channels.fetch(channelId)) as TextChannel;
-        if (!channel || channel.type !== ChannelType.GuildText) {
-          logger.warning(`Channel ${channelId} is not a text channel or does not exist.`);
+        const channel = await retryOperation(() => client.channels.fetch(channelId));
+        if (!channel) {
+          logger.warning(`Channel ${channelId} does not exist.`);
           continue;
         }
 
@@ -780,9 +780,9 @@ export class DiscordRawDataSource implements ContentSource, MediaDownloadCapable
         // For forums, use historical fetch with current date (fetchItems is for recent messages)
         if (channel.type === ChannelType.GuildForum) {
           const today = new Date();
-          const rawData = await this.fetchForumMessages(channel, today);
+          const rawData = await this.fetchForumMessages(channel as ForumChannel, today);
           if (rawData.messages.length > 0) {
-            const forumChannel = channel;
+            const forumChannel = channel as ForumChannel;
             const timestamp = Date.now();
             const formattedDate = new Date(timestamp).toISOString().replace(/[:.]/g, '-');
             const guildName = forumChannel.guild.name;

@@ -18,20 +18,20 @@ interface TabsProps {
  */
 export function Tabs({ tabs, activeTab, onChange }: TabsProps) {
   return (
-    <div className="flex gap-1 p-1 bg-stone-800 rounded-lg">
+    <div className="flex gap-1 p-1 bg-stone-100 rounded-lg">
       {tabs.map(tab => (
         <button
           key={tab.id}
           onClick={() => onChange(tab.id)}
           className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${
             activeTab === tab.id
-              ? 'bg-stone-700 text-white'
-              : 'text-stone-400 hover:text-white'
+              ? 'bg-white text-emerald-700 shadow-sm'
+              : 'text-stone-500 hover:text-stone-800'
           }`}
         >
           {tab.label}
           {tab.locked && (
-            <svg className="w-3.5 h-3.5 text-stone-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-3.5 h-3.5 text-stone-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
               />

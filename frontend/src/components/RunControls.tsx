@@ -47,7 +47,7 @@ export const RunControls: React.FC<RunControlsProps> = React.memo(({
         {isAggregationRunning ? (
           <button
             onClick={onToggleAggregation}
-            className="h-10 px-4 rounded-md bg-stone-800 border border-red-500/50 text-white hover:bg-stone-700 hover:border-red-500 focus:outline-none flex items-center justify-center transition-colors duration-200 shadow-md"
+            className="h-10 px-4 rounded-md bg-white border border-red-300 text-stone-800 hover:bg-stone-50 hover:border-red-500 focus:outline-none flex items-center justify-center transition-colors duration-200 shadow-md"
             title="Stop aggregation"
           >
             <span className="flex items-center">
@@ -60,17 +60,17 @@ export const RunControls: React.FC<RunControlsProps> = React.memo(({
         ) : (
           <div className="flex items-center gap-2">
             {/* Run control panel with toggle switch */}
-            <div className="flex items-center bg-stone-800/90 border-stone-600/50 rounded-md shadow-md overflow-hidden border">
+            <div className="flex items-center bg-white border-stone-200 rounded-md shadow-md overflow-hidden border">
               {/* Run button */}
               <button
                 onClick={handleRunClick}
                 className={`
                   h-10 px-4 focus:outline-none flex items-center justify-center transition-colors duration-200
                   ${useHistoricalDates 
-                    ? "bg-stone-800 text-purple-300 hover:bg-stone-700 border-l border-purple-500/30" 
+                    ? "bg-white text-purple-600 hover:bg-stone-50 border-l border-purple-200" 
                     : selectedRunMode === "once" 
-                      ? "bg-stone-800 text-amber-300 hover:bg-stone-700" 
-                      : "bg-stone-800 text-green-400 hover:bg-stone-700"}
+                      ? "bg-white text-emerald-600 hover:bg-stone-50" 
+                      : "bg-white text-green-600 hover:bg-stone-50"}
                 `}
                 title={
                   useHistoricalDates 
@@ -113,10 +113,10 @@ export const RunControls: React.FC<RunControlsProps> = React.memo(({
                     }
                     setShowRunOptions(!showRunOptions);
                   }}
-                  className={`h-10 px-3 flex items-center justify-center transition-all duration-200 ${
+                    className={`h-10 px-3 flex items-center justify-center transition-all duration-200 ${
                     showRunOptions 
-                      ? 'text-amber-300 bg-stone-700 shadow-inner' 
-                      : 'text-stone-300 hover:text-amber-300 hover:bg-stone-700/50'
+                      ? 'text-emerald-600 bg-stone-100 shadow-inner' 
+                      : 'text-stone-500 hover:text-emerald-600 hover:bg-stone-50'
                   }`}
                   title={
                     useHistoricalDates
@@ -136,7 +136,7 @@ export const RunControls: React.FC<RunControlsProps> = React.memo(({
                     </svg>
                     {(showRunOptions || useHistoricalDates) && (
                       <span className={`absolute -top-1 -right-1 h-2 w-2 rounded-full ${
-                        useHistoricalDates ? "bg-purple-400" : "bg-amber-400"
+                        useHistoricalDates ? "bg-purple-500" : "bg-emerald-500"
                       }`}></span>
                     )}
                   </div>
@@ -146,17 +146,17 @@ export const RunControls: React.FC<RunControlsProps> = React.memo(({
                 {showRunOptions && ReactDOM.createPortal(
                   <div 
                     id="process-mode-dropdown"
-                    className="fixed bg-stone-800 border border-stone-600 rounded-md shadow-xl z-[9999] transition-all duration-300 ease-in-out overflow-visible"
+                    className="fixed bg-white border border-stone-200 rounded-md shadow-xl z-[9999] transition-all duration-300 ease-in-out overflow-visible"
                     style={{
                       width: '220px',
                       top: settingsButtonPosition?.bottom ? `${settingsButtonPosition.bottom + 4}px` : 'auto',
                       left: settingsButtonPosition?.left ? `${settingsButtonPosition.left - 175}px` : 'auto',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(251, 191, 36, 0.1)',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(16, 185, 129, 0.1)',
                     }}
                   >
                     <div className="p-3">
                       <div className="flex flex-col">
-                        <h3 className="text-xs text-stone-300 mb-2 font-medium">Run Mode</h3>
+                        <h3 className="text-xs text-stone-600 mb-2 font-medium">Run Mode</h3>
                         <div className="flex items-center mb-3 justify-between">
                           <div className="flex items-center gap-2 mr-2">
                             <button
@@ -167,13 +167,13 @@ export const RunControls: React.FC<RunControlsProps> = React.memo(({
                               }}
                               className={`text-xs px-3 py-1 rounded ${
                                 selectedRunMode === "once"
-                                  ? "bg-amber-500/20 text-amber-300 font-medium"
-                                  : "bg-stone-700/50 text-stone-400 hover:bg-stone-700"
+                                  ? "bg-emerald-50 text-emerald-600 font-medium"
+                                  : "bg-stone-100 text-stone-500 hover:bg-stone-200"
                               }`}
                               disabled={useHistoricalDates && selectedRunMode === "once"}
                             >
                               <span className="flex items-center">
-                                <span className={`w-2 h-2 rounded-full mr-1.5 ${selectedRunMode === "once" ? "bg-amber-400" : "bg-stone-600"}`}></span>
+                                <span className={`w-2 h-2 rounded-full mr-1.5 ${selectedRunMode === "once" ? "bg-emerald-500" : "bg-stone-300"}`}></span>
                                 Run Once
                               </span>
                             </button>
@@ -186,66 +186,66 @@ export const RunControls: React.FC<RunControlsProps> = React.memo(({
                               }}
                               className={`text-xs px-3 py-1 rounded ${
                                 selectedRunMode === "continuous"
-                                  ? "bg-green-500/20 text-green-300 font-medium"
-                                  : "bg-stone-700/50 text-stone-400 hover:bg-stone-700"
+                                  ? "bg-green-50 text-green-600 font-medium"
+                                  : "bg-stone-100 text-stone-500 hover:bg-stone-200"
                               } ${useHistoricalDates ? "opacity-50 cursor-not-allowed" : ""}`}
                               disabled={useHistoricalDates}
                               title={useHistoricalDates ? "Historical data mode only works with 'Run Once'" : "Run continuously until stopped"}
                             >
                               <span className="flex items-center">
-                                <span className={`w-2 h-2 rounded-full mr-1.5 ${selectedRunMode === "continuous" ? "bg-green-400" : "bg-stone-600"}`}></span>
+                                <span className={`w-2 h-2 rounded-full mr-1.5 ${selectedRunMode === "continuous" ? "bg-green-500" : "bg-stone-300"}`}></span>
                                 Stream
                               </span>
                             </button>
                           </div>
                         </div>
                         
-                        <div className="h-px bg-stone-700 mb-3 w-full"></div>
+                        <div className="h-px bg-stone-200 mb-3 w-full"></div>
                         
-                        <h3 className="text-xs text-stone-300 mb-2 font-medium">Process Mode</h3>
+                        <h3 className="text-xs text-stone-600 mb-2 font-medium">Process Mode</h3>
                         <div className="flex flex-col space-y-1.5">
                           <button
                             onClick={() => selectPipelineMode('full')}
                             className={`px-2 py-1.5 text-xs rounded text-left transition-colors flex items-center ${
                               !onlyFetch && !onlyGenerate
-                                ? 'bg-amber-500/20 text-amber-300 font-medium'
-                                : 'bg-stone-700/50 text-stone-400 hover:bg-stone-700'
+                                ? 'bg-emerald-50 text-emerald-600 font-medium'
+                                : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
                             }`}
                             title="Run complete pipeline with fetch and generate phases"
                           >
-                            <span className={`w-3 h-3 rounded-full mr-2 ${!onlyFetch && !onlyGenerate ? 'bg-amber-400' : 'bg-stone-600'}`}></span>
+                            <span className={`w-3 h-3 rounded-full mr-2 ${!onlyFetch && !onlyGenerate ? 'bg-emerald-500' : 'bg-stone-300'}`}></span>
                             Complete Pipeline
                           </button>
                           <button
                             onClick={() => selectPipelineMode('fetchOnly')}
                             className={`px-2 py-1.5 text-xs rounded text-left transition-colors flex items-center ${
                               onlyFetch
-                                ? 'bg-blue-500/20 text-blue-400 font-medium'
-                                : 'bg-stone-700/50 text-stone-400 hover:bg-stone-700'
+                                ? 'bg-blue-50 text-blue-600 font-medium'
+                                : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
                             }`}
                             title="Only fetch data from sources - skip generation phase"
                           >
-                            <span className={`w-3 h-3 rounded-full mr-2 ${onlyFetch ? 'bg-blue-400' : 'bg-stone-600'}`}></span>
+                            <span className={`w-3 h-3 rounded-full mr-2 ${onlyFetch ? 'bg-blue-500' : 'bg-stone-300'}`}></span>
                             Fetch Data Only
                           </button>
                           <button
                             onClick={() => selectPipelineMode('generateOnly')}
                             className={`px-2 py-1.5 text-xs rounded text-left transition-colors flex items-center ${
                               onlyGenerate
-                                ? 'bg-purple-500/20 text-purple-400 font-medium'
-                                : 'bg-stone-700/50 text-stone-400 hover:bg-stone-700'
+                                ? 'bg-purple-50 text-purple-600 font-medium'
+                                : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
                             }`}
                             title="Only generate content from existing data - skip fetch phase"
                           >
-                            <span className={`w-3 h-3 rounded-full mr-2 ${onlyGenerate ? 'bg-purple-400' : 'bg-stone-600'}`}></span>
+                            <span className={`w-3 h-3 rounded-full mr-2 ${onlyGenerate ? 'bg-purple-500' : 'bg-stone-300'}`}></span>
                             Generate Content Only
                           </button>
                         </div>
                         
                         {/* Historical date range selector */}
-                        <div className="mt-3 border-t border-stone-600 pt-3">
+                        <div className="mt-3 border-t border-stone-200 pt-3">
                           <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-xs text-stone-300 font-medium">Historical Data</h3>
+                            <h3 className="text-xs text-stone-600 font-medium">Historical Data</h3>
                             <button 
                               onClick={() => {
                                 const newHistoricalState = !useHistoricalDates;
@@ -260,7 +260,7 @@ export const RunControls: React.FC<RunControlsProps> = React.memo(({
                               <span 
                                 className={`
                                   inline-block w-8 h-4 rounded-full transition-colors duration-200 ease-in-out
-                                  ${useHistoricalDates ? "bg-purple-600/60" : "bg-stone-600"}
+                                  ${useHistoricalDates ? "bg-purple-400" : "bg-stone-300"}
                                 `}
                               />
                               <span 
@@ -280,8 +280,8 @@ export const RunControls: React.FC<RunControlsProps> = React.memo(({
                                     onClick={() => setDateRangeMode("single")}
                                     className={`text-xs px-2 py-0.5 rounded ${
                                       dateRangeMode === "single" 
-                                        ? "bg-purple-500/20 text-purple-300 font-medium" 
-                                        : "bg-stone-700 text-stone-400 hover:bg-stone-600"
+                                        ? "bg-purple-50 text-purple-600 font-medium" 
+                                        : "bg-stone-100 text-stone-500 hover:bg-stone-200"
                                     }`}
                                   >
                                     Single Date
@@ -290,8 +290,8 @@ export const RunControls: React.FC<RunControlsProps> = React.memo(({
                                     onClick={() => setDateRangeMode("range")}
                                     className={`text-xs px-2 py-0.5 rounded ${
                                       dateRangeMode === "range" 
-                                        ? "bg-purple-500/20 text-purple-300 font-medium" 
-                                        : "bg-stone-700 text-stone-400 hover:bg-stone-600"
+                                        ? "bg-purple-50 text-purple-600 font-medium" 
+                                        : "bg-stone-100 text-stone-500 hover:bg-stone-200"
                                     }`}
                                   >
                                     Date Range
@@ -306,7 +306,7 @@ export const RunControls: React.FC<RunControlsProps> = React.memo(({
                                     type="date"
                                     value={startDate}
                                     onChange={(e) => setStartDate(e.target.value)}
-                                    className="bg-stone-700 text-stone-200 text-xs p-1 rounded w-full border border-stone-600 focus:border-purple-500 focus:outline-none"
+                                    className="bg-white text-stone-700 text-xs p-1 rounded w-full border border-stone-300 focus:border-purple-500 focus:outline-none"
                                   />
                                 </div>
                                 
@@ -317,7 +317,7 @@ export const RunControls: React.FC<RunControlsProps> = React.memo(({
                                       type="date"
                                       value={endDate}
                                       onChange={(e) => setEndDate(e.target.value)}
-                                      className="bg-stone-700 text-stone-200 text-xs p-1 rounded w-full border border-stone-600 focus:border-purple-500 focus:outline-none"
+                                      className="bg-white text-stone-700 text-xs p-1 rounded w-full border border-stone-300 focus:border-purple-500 focus:outline-none"
                                     />
                                   </div>
                                 )}

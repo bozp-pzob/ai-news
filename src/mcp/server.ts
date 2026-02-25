@@ -14,7 +14,7 @@ import { userService } from '../services/userService';
 import { databaseService } from '../services/databaseService';
 
 /**
- * MCP Server for AI News Context Aggregation Platform
+ * MCP Server for Digital Gardener Content Curation Platform
  * 
  * This server provides tools for AI agents to:
  * - Search across community context
@@ -25,7 +25,7 @@ import { databaseService } from '../services/databaseService';
 
 const server = new Server(
   {
-    name: 'ai-news-context',
+    name: 'digital-gardener-context',
     version: '1.0.0',
   },
   {

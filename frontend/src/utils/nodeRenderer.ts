@@ -15,43 +15,43 @@ import { shouldShowPort } from './nodeHandlers';
 // DESIGN CONSTANTS
 // ============================================================================
 
-// Color palette - refined amber theme
+// Color palette - light garden theme with emerald accents
 const COLORS = {
-  // Backgrounds - differentiated by node type
-  nodeBg: '#0c0c0c',
-  nodeBgAi: '#1c1408',        // Dark amber tint for AI providers
-  nodeBgStorage: '#0c1416',   // Dark cyan tint for storage
-  nodeBgParent: '#0a0908',    // Almost black for parent groups
+  // Backgrounds - soft, natural tones differentiated by node type
+  nodeBg: '#ffffff',
+  nodeBgAi: '#fef7ee',        // Warm cream tint for AI providers
+  nodeBgStorage: '#f0fdfa',   // Soft teal-mint tint for storage
+  nodeBgParent: '#f9fafb',    // Very light gray for parent groups
   
-  // Borders
-  borderDefault: '#44403c',
-  borderSelected: '#f59e0b',
-  borderHover: '#78716c',
-  borderAi: '#92400e',        // Amber border for AI
-  borderStorage: '#155e75',   // Cyan border for storage
+  // Borders - earthy and botanical
+  borderDefault: '#d6d3d1',   // stone-300
+  borderSelected: '#059669',  // emerald-600
+  borderHover: '#a8a29e',     // stone-400
+  borderAi: '#d97706',        // amber-600 (warm, sun-like)
+  borderStorage: '#0d9488',   // teal-600 (water-like)
   
   // Text
-  textPrimary: '#e5e5e5',
-  textSecondary: '#a8a29e',
-  textSelected: '#fbbf24',
+  textPrimary: '#292524',     // stone-800
+  textSecondary: '#78716c',   // stone-500
+  textSelected: '#059669',    // emerald-600
   
-  // Port colors by type
-  portProvider: '#f59e0b',  // Amber
-  portStorage: '#06b6d4',   // Cyan
-  portData: '#a8a29e',      // Stone/gray
+  // Port colors by type - nature-inspired
+  portProvider: '#d97706',  // Amber (sunlight)
+  portStorage: '#0d9488',   // Teal (water)
+  portData: '#78716c',      // Stone (earth)
   
   // Status colors
-  statusRunning: '#f59e0b',
-  statusSuccess: '#22c55e',
-  statusFailed: '#ef4444',
-  statusIdle: '#57534e',
+  statusRunning: '#059669',   // emerald-600
+  statusSuccess: '#16a34a',   // green-600
+  statusFailed: '#dc2626',    // red-600
+  statusIdle: '#a8a29e',      // stone-400
   
-  // Grid
-  gridDot: 'rgba(68, 64, 60, 0.4)',
+  // Grid - subtle leaf-vein pattern
+  gridDot: 'rgba(5, 150, 105, 0.12)',  // emerald dots, very subtle
   
-  // Shadows
-  shadowDefault: 'rgba(0, 0, 0, 0.4)',
-  shadowSelected: 'rgba(245, 158, 11, 0.15)',
+  // Shadows - soft natural light
+  shadowDefault: 'rgba(0, 0, 0, 0.06)',
+  shadowSelected: 'rgba(5, 150, 105, 0.12)',
 };
 
 // Dimensions
@@ -353,7 +353,7 @@ const drawPort = (
   // Inner fill - filled if connected, dark if not
   ctx.beginPath();
   ctx.arc(x, y, PORT_RADIUS - ringWidth, 0, Math.PI * 2);
-  ctx.fillStyle = connected ? color : '#1a1a1a';
+  ctx.fillStyle = connected ? color : '#fafaf9';
   ctx.fill();
   
   // Port label
@@ -502,17 +502,17 @@ const drawStatusPopup = (
   
   ctx.save();
   
-  // Shadow
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-  ctx.shadowBlur = 12;
-  ctx.shadowOffsetX = 2;
-  ctx.shadowOffsetY = 4;
-  
-  // Background
-  ctx.beginPath();
-  ctx.roundRect(popupX, popupY, popupWidth, popupHeight, 6);
-  ctx.fillStyle = '#0c0c0c';
-  ctx.fill();
+   // Shadow
+   ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
+   ctx.shadowBlur = 12;
+   ctx.shadowOffsetX = 0;
+   ctx.shadowOffsetY = 4;
+   
+   // Background
+   ctx.beginPath();
+   ctx.roundRect(popupX, popupY, popupWidth, popupHeight, 6);
+   ctx.fillStyle = '#ffffff';
+   ctx.fill();
   
   ctx.shadowColor = 'transparent';
   

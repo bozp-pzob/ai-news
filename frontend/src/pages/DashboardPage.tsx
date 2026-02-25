@@ -15,58 +15,58 @@ function ConfigCard({ config, onRun }: { config: PlatformConfig; onRun: (id: str
   const navigate = useNavigate();
 
   const statusColors = {
-    idle: 'bg-stone-600',
-    running: 'bg-amber-500 animate-pulse',
+    idle: 'bg-stone-400',
+    running: 'bg-emerald-500 animate-pulse',
     error: 'bg-red-500',
     paused: 'bg-yellow-500',
   };
 
   return (
-    <div className="bg-stone-800 rounded-lg border border-stone-700 p-4 hover:border-stone-600 transition-colors">
+    <div className="bg-white rounded-lg border border-stone-200 p-4 hover:border-stone-300 transition-colors shadow-sm">
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="font-medium text-white truncate">{config.name}</h3>
+            <h3 className="font-medium text-stone-800 truncate">{config.name}</h3>
             <span className={`w-2 h-2 rounded-full ${statusColors[config.status]}`} />
           </div>
-          <p className="text-stone-400 text-sm mt-1 truncate">
+          <p className="text-stone-500 text-sm mt-1 truncate">
             {config.description || `/${config.slug}`}
           </p>
         </div>
         <div className="flex items-center gap-2 ml-4">
           {config.monetizationEnabled && (
-            <span className="px-2 py-0.5 bg-amber-900/50 text-amber-400 text-xs rounded">
+            <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs rounded">
               ${config.pricePerQuery?.toFixed(4)}/query
             </span>
           )}
           <span className={`px-2 py-0.5 text-xs rounded ${
-            config.visibility === 'public' ? 'bg-blue-900/50 text-blue-400' :
-            config.visibility === 'private' ? 'bg-stone-700 text-stone-400' :
-            'bg-purple-900/50 text-purple-400'
+            config.visibility === 'public' ? 'bg-blue-100 text-blue-700' :
+            config.visibility === 'private' ? 'bg-stone-100 text-stone-500' :
+            'bg-purple-100 text-purple-700'
           }`}>
             {config.visibility}
           </span>
         </div>
       </div>
       
-      <div className="flex items-center justify-between mt-4 pt-3 border-t border-stone-700">
-        <div className="flex items-center gap-4 text-sm text-stone-400">
+      <div className="flex items-center justify-between mt-4 pt-3 border-t border-stone-200">
+        <div className="flex items-center gap-4 text-sm text-stone-500">
           <span>{config.totalItems.toLocaleString()} items</span>
           <span>{config.totalQueries.toLocaleString()} queries</span>
           {config.totalRevenue !== undefined && config.totalRevenue > 0 && (
-            <span className="text-amber-400">${config.totalRevenue.toFixed(2)}</span>
+            <span className="text-emerald-600">${config.totalRevenue.toFixed(2)}</span>
           )}
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => navigate(`/configs/${config.id}`)}
-            className="px-3 py-1 text-sm rounded transition-colors bg-stone-700 hover:bg-stone-600 text-white"
+            className="px-3 py-1 text-sm rounded transition-colors bg-stone-100 hover:bg-stone-200 text-stone-700"
           >
             View
           </button>
           <button
             onClick={() => navigate(`/builder/${config.id}`)}
-            className="px-3 py-1 text-sm rounded transition-colors bg-stone-700 hover:bg-stone-600 text-white"
+            className="px-3 py-1 text-sm rounded transition-colors bg-stone-100 hover:bg-stone-200 text-stone-700"
           >
             Edit
           </button>
@@ -78,8 +78,8 @@ function ConfigCard({ config, onRun }: { config: PlatformConfig; onRun: (id: str
             disabled={config.status === 'running'}
             className={`px-3 py-1 text-sm rounded transition-colors ${
               config.status === 'running'
-                ? 'bg-stone-700 text-stone-500 cursor-not-allowed'
-                : 'bg-amber-600 hover:bg-amber-700 text-white'
+                ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
             }`}
           >
             {config.status === 'running' ? 'Running...' : 'Run'}
@@ -109,21 +109,21 @@ function EmptyState({ canCreate, onCreateClick }: { canCreate: boolean; onCreate
           d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" 
         />
       </svg>
-      <h3 className="text-lg font-medium text-white mb-2">No configs yet</h3>
-      <p className="text-stone-400 mb-6 max-w-sm mx-auto">
+      <h3 className="text-lg font-medium text-stone-800 mb-2">No configs yet</h3>
+      <p className="text-stone-500 mb-6 max-w-sm mx-auto">
         Create your first config to start aggregating context from your community.
       </p>
       {canCreate ? (
         <button
           onClick={onCreateClick}
-          className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors"
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
         >
           Create Your First Config
         </button>
       ) : (
-        <div className="text-stone-500 text-sm">
+        <div className="text-stone-400 text-sm">
           <p>You've reached the free tier limit.</p>
-          <a href="/upgrade" className="text-amber-400 hover:underline">
+          <a href="/upgrade" className="text-emerald-600 hover:underline">
             Upgrade to create more configs
           </a>
         </div>
@@ -235,7 +235,7 @@ function DashboardContent() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -246,7 +246,7 @@ function DashboardContent() {
         <p className="text-red-400 mb-4">{error}</p>
         <button
           onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-stone-700 hover:bg-stone-600 text-white rounded-lg"
+          className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg"
         >
           Retry
         </button>
@@ -259,8 +259,8 @@ function DashboardContent() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-          <p className="text-stone-400 mt-1">
+          <h1 className="text-2xl font-bold text-stone-800">Dashboard</h1>
+          <p className="text-stone-500 mt-1">
             Welcome back{user?.email ? `, ${user.email.split('@')[0]}` : ''}
           </p>
         </div>
@@ -311,11 +311,11 @@ function DashboardContent() {
 
       {/* Tier Info Banner */}
       {limits && limits.tier === 'free' && (
-        <div className="bg-gradient-to-r from-amber-900/30 to-stone-900/30 border border-amber-800/50 rounded-lg p-4 mb-8">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-medium text-white">Free Tier</h3>
-              <p className="text-stone-400 text-sm mt-1">
+              <h3 className="font-medium text-stone-800">Free Tier</h3>
+              <p className="text-stone-500 text-sm mt-1">
                 {limits.limits.maxConfigs - limits.usage.configCount} config(s) remaining
                 {' '}&bull;{' '}
                 {limits.limits.maxRunsPerDay - limits.usage.runsToday} run(s) remaining today
@@ -323,7 +323,7 @@ function DashboardContent() {
             </div>
             <a
               href="/upgrade"
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors"
             >
               Upgrade to Pro
             </a>
@@ -333,7 +333,7 @@ function DashboardContent() {
 
       {/* Configs Section */}
       <div>
-        <h2 className="text-lg font-semibold text-white mb-4">Your Configs</h2>
+        <h2 className="text-lg font-semibold text-stone-800 mb-4">Your Configs</h2>
         
         {configs.length === 0 ? (
           <EmptyState 
@@ -361,7 +361,7 @@ function DashboardContent() {
  */
 export default function DashboardPage() {
   return (
-    <div className="min-h-screen bg-stone-950">
+    <div className="min-h-screen bg-stone-50">
       <AppHeader />
 
       {/* Main content with auth guard */}

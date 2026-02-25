@@ -1,6 +1,7 @@
 // src/services/jobService.ts
 
 import { databaseService } from './databaseService';
+import { encryptionService } from './encryptionService';
 
 /**
  * Job type
@@ -56,6 +57,10 @@ export interface CreateJobParams {
   userId: string;
   jobType: JobType;
   globalInterval?: number;
+  /** Fully-resolved config JSON (with all secrets/credentials injected). Will be encrypted at rest. */
+  resolvedConfig?: any;
+  /** Fully-resolved secrets map. Will be encrypted at rest. */
+  resolvedSecrets?: Record<string, string>;
 }
 
 /**
@@ -147,6 +152,38 @@ export async function createJob(params: CreateJobParams): Promise<string> {
   );
   
   const jobId = result.rows[0].id;
+  
+  // Encrypt and store resolved config/secrets for server restart resilience
+  if (params.resolvedConfig || params.resolvedSecrets) {
+    try {
+      const updates: string[] = [];
+      const values: any[] = [];
+      let paramIndex = 1;
+      
+      if (params.resolvedConfig) {
+        const encrypted = encryptionService.encrypt(params.resolvedConfig, jobId);
+        updates.push(`resolved_config_encrypted = $${paramIndex++}`);
+        values.push(Buffer.from(encrypted, 'base64'));
+      }
+      
+      if (params.resolvedSecrets) {
+        const encrypted = encryptionService.encrypt(params.resolvedSecrets, jobId);
+        updates.push(`resolved_secrets_encrypted = $${paramIndex++}`);
+        values.push(Buffer.from(encrypted, 'base64'));
+      }
+      
+      if (updates.length > 0) {
+        values.push(jobId);
+        await databaseService.query(
+          `UPDATE aggregation_jobs SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
+          values
+        );
+      }
+    } catch (error) {
+      // Non-fatal: job can still run, just won't be resumable on restart
+      console.warn(`[JobService] Failed to store encrypted resolved config for job ${jobId}:`, error);
+    }
+  }
   
   // Update config's active_job_id if continuous
   if (params.jobType === 'continuous') {
@@ -471,6 +508,54 @@ export async function getActiveContinuousJob(configId: string): Promise<Aggregat
 }
 
 /**
+ * Get the encrypted resolved config for a job (for resume after restart)
+ * Returns the fully-resolved config JSON or null if not available
+ */
+export async function getJobResolvedConfig(jobId: string): Promise<any | null> {
+  try {
+    const result = await databaseService.query(
+      `SELECT resolved_config_encrypted FROM aggregation_jobs WHERE id = $1`,
+      [jobId]
+    );
+    
+    if (result.rows.length === 0 || !result.rows[0].resolved_config_encrypted) {
+      return null;
+    }
+    
+    const encryptedBuffer = result.rows[0].resolved_config_encrypted;
+    const encryptedBase64 = Buffer.from(encryptedBuffer).toString('base64');
+    return encryptionService.decrypt(encryptedBase64, jobId);
+  } catch (error) {
+    console.error(`[JobService] Failed to decrypt resolved config for job ${jobId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Get the encrypted resolved secrets for a job (for resume after restart)
+ * Returns the secrets map or null if not available
+ */
+export async function getJobResolvedSecrets(jobId: string): Promise<Record<string, string> | null> {
+  try {
+    const result = await databaseService.query(
+      `SELECT resolved_secrets_encrypted FROM aggregation_jobs WHERE id = $1`,
+      [jobId]
+    );
+    
+    if (result.rows.length === 0 || !result.rows[0].resolved_secrets_encrypted) {
+      return null;
+    }
+    
+    const encryptedBuffer = result.rows[0].resolved_secrets_encrypted;
+    const encryptedBase64 = Buffer.from(encryptedBuffer).toString('base64');
+    return encryptionService.decrypt<Record<string, string>>(encryptedBase64, jobId);
+  } catch (error) {
+    console.error(`[JobService] Failed to decrypt resolved secrets for job ${jobId}:`, error);
+    return null;
+  }
+}
+
+/**
  * Check if user can use their free run today
  */
 export async function canUserRunFree(userId: string): Promise<boolean> {
@@ -603,6 +688,8 @@ export const jobService = {
   getRunningJobs,
   getRunningContinuousJobs,
   getActiveContinuousJob,
+  getJobResolvedConfig,
+  getJobResolvedSecrets,
   canUserRunFree,
   markFreeRunUsed,
   getFreeRunStatus,

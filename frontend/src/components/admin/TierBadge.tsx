@@ -6,9 +6,9 @@ import { UserTier } from '../../services/api';
  */
 export function TierBadge({ tier }: { tier: UserTier }) {
   const styles = {
-    free: 'bg-stone-700 text-stone-300',
-    paid: 'bg-amber-900/50 text-amber-400',
-    admin: 'bg-purple-900/50 text-purple-400',
+    free: 'bg-stone-100 text-stone-600',
+    paid: 'bg-emerald-100 text-emerald-700',
+    admin: 'bg-purple-100 text-purple-700',
   };
 
   const labels = {

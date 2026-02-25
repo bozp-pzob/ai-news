@@ -88,12 +88,12 @@ export function UsersTab({ authToken, currentUserId }: UsersTabProps) {
           placeholder="Search by email, wallet, or ID..."
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="flex-1 min-w-[200px] px-4 py-2 bg-stone-800 border border-stone-700 rounded-lg text-white placeholder-stone-500 focus:outline-none focus:border-amber-500"
+          className="flex-1 min-w-[200px] px-4 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 placeholder-stone-400 focus:outline-none focus:border-emerald-500"
         />
         <select
           value={tierFilter}
           onChange={(e) => { setTierFilter(e.target.value as UserTier | ''); setPage(1); }}
-          className="px-4 py-2 bg-stone-800 border border-stone-700 rounded-lg text-white focus:outline-none focus:border-amber-500"
+          className="px-4 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 focus:outline-none focus:border-emerald-500"
         >
           <option value="">All Tiers</option>
           <option value="free">Free</option>
@@ -105,7 +105,7 @@ export function UsersTab({ authToken, currentUserId }: UsersTabProps) {
       {/* Table */}
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : error ? (
         <div className="text-center py-20 text-red-400">{error}</div>
@@ -114,7 +114,7 @@ export function UsersTab({ authToken, currentUserId }: UsersTabProps) {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="text-left text-stone-400 text-sm border-b border-stone-700">
+                <tr className="text-left text-stone-500 text-sm border-b border-stone-200">
                   <th className="pb-3 font-medium">User</th>
                   <th className="pb-3 font-medium">Tier</th>
                   <th className="pb-3 font-medium">Status</th>
@@ -123,12 +123,12 @@ export function UsersTab({ authToken, currentUserId }: UsersTabProps) {
                   <th className="pb-3 font-medium text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-stone-800">
+              <tbody className="divide-y divide-stone-100">
                 {users.map(user => (
-                  <tr key={user.id} className="hover:bg-stone-800/50">
+                  <tr key={user.id} className="hover:bg-stone-50">
                     <td className="py-3">
                       <div>
-                        <p className="text-white font-medium">{user.email || '(no email)'}</p>
+                        <p className="text-stone-800 font-medium">{user.email || '(no email)'}</p>
                         {user.walletAddress && (
                           <p className="text-stone-500 text-xs mt-0.5">
                             {user.walletAddress.slice(0, 8)}...{user.walletAddress.slice(-4)}
@@ -141,11 +141,11 @@ export function UsersTab({ authToken, currentUserId }: UsersTabProps) {
                     </td>
                     <td className="py-3">
                       {user.isBanned ? (
-                        <span className="px-2 py-0.5 text-xs rounded bg-red-900/50 text-red-400">
+                        <span className="px-2 py-0.5 text-xs rounded bg-red-100 text-red-700">
                           Banned
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 text-xs rounded bg-green-900/50 text-green-400">
+                        <span className="px-2 py-0.5 text-xs rounded bg-green-100 text-green-700">
                           Active
                         </span>
                       )}
@@ -161,7 +161,7 @@ export function UsersTab({ authToken, currentUserId }: UsersTabProps) {
                             <select
                               value={user.tier}
                               onChange={(e) => setTierModal({ user, tier: e.target.value as UserTier })}
-                              className="px-2 py-1 bg-stone-700 border border-stone-600 rounded text-sm text-white"
+                              className="px-2 py-1 bg-white border border-stone-300 rounded text-sm text-stone-800"
                             >
                               <option value="free">Free</option>
                               <option value="paid">Pro</option>
@@ -171,8 +171,8 @@ export function UsersTab({ authToken, currentUserId }: UsersTabProps) {
                               onClick={() => setBanModal(user)}
                               className={`px-3 py-1 text-sm rounded ${
                                 user.isBanned
-                                  ? 'bg-green-900/50 text-green-400 hover:bg-green-900/70'
-                                  : 'bg-red-900/50 text-red-400 hover:bg-red-900/70'
+                                   ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                   : 'bg-red-100 text-red-700 hover:bg-red-200'
                               }`}
                             >
                               {user.isBanned ? 'Unban' : 'Ban'}
@@ -191,7 +191,7 @@ export function UsersTab({ authToken, currentUserId }: UsersTabProps) {
                                     alert(err instanceof Error ? err.message : 'Failed to impersonate');
                                   }
                                 }}
-                                className="px-3 py-1 text-sm rounded bg-blue-900/50 text-blue-400 hover:bg-blue-900/70"
+                                className="px-3 py-1 text-sm rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
                                 title="View as this user"
                               >
                                 Impersonate
@@ -220,14 +220,14 @@ export function UsersTab({ authToken, currentUserId }: UsersTabProps) {
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="px-3 py-1 bg-stone-700 hover:bg-stone-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded"
+                  className="px-3 py-1 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 disabled:cursor-not-allowed text-stone-800 rounded"
                 >
                   Previous
                 </button>
                 <button
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="px-3 py-1 bg-stone-700 hover:bg-stone-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded"
+                  className="px-3 py-1 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 disabled:cursor-not-allowed text-stone-800 rounded"
                 >
                   Next
                 </button>
@@ -248,7 +248,7 @@ export function UsersTab({ authToken, currentUserId }: UsersTabProps) {
         onCancel={() => setTierModal(null)}
       >
         {tierModal?.tier === 'admin' && (
-          <div className="bg-purple-900/30 border border-purple-800/50 rounded-lg p-3 text-sm text-purple-300">
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-sm text-purple-700">
             Warning: This will give the user full admin access, including the ability to manage other users.
           </div>
         )}
@@ -275,7 +275,7 @@ export function UsersTab({ authToken, currentUserId }: UsersTabProps) {
               value={banReason}
               onChange={(e) => setBanReason(e.target.value)}
               placeholder="Enter reason for ban..."
-              className="w-full px-3 py-2 bg-stone-800 border border-stone-700 rounded-lg text-white placeholder-stone-500"
+              className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 placeholder-stone-400"
             />
           </div>
         )}

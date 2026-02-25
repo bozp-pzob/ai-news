@@ -111,7 +111,7 @@ export class GitHubAdapter extends BaseAdapter {
    * Get the GitHub App slug for installation URL
    */
   private getAppSlug(): string {
-    return process.env.GITHUB_APP_SLUG || 'ai-news-aggregator';
+    return process.env.GITHUB_APP_SLUG || 'digital-gardener';
   }
 
   /**

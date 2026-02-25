@@ -486,14 +486,14 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     if (isFreeTier && pluginType === 'ai') {
       return (
         <div className="space-y-4">
-          <div className="p-4 bg-stone-700 rounded-lg border border-amber-500/30">
+            <div className="p-4 bg-stone-50 rounded-lg border border-emerald-200">
             <div className="flex items-center gap-2 mb-2">
-              <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              <span className="font-medium text-white">Free Tier AI (GPT-4o-mini)</span>
+              <span className="font-medium text-stone-800">Free Tier AI (GPT-4o-mini)</span>
             </div>
-            <p className="text-stone-400 text-sm">
+            <p className="text-stone-500 text-sm">
               Your pipeline uses GPT-4o-mini, optimized for cost-effectiveness.
               Upgrade to Pro for GPT-4o with higher quality outputs and configurable daily quota.
             </p>
@@ -506,14 +506,14 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
     if (isFreeTier && pluginType === 'storage') {
       return (
         <div className="space-y-4">
-          <div className="p-4 bg-stone-700 rounded-lg border border-amber-500/30">
+            <div className="p-4 bg-stone-50 rounded-lg border border-emerald-200">
             <div className="flex items-center gap-2 mb-2">
-              <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
               </svg>
-              <span className="font-medium text-white">Platform Storage</span>
+              <span className="font-medium text-stone-800">Platform Storage</span>
             </div>
-            <p className="text-stone-400 text-sm">
+            <p className="text-stone-500 text-sm">
               Your data will be stored securely on our platform with PostgreSQL and pgvector for semantic search.
               Upgrade to Pro to use your own external database.
             </p>
@@ -527,7 +527,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                                ('constructorInterface' in plugin ? (plugin as any).constructorInterface : null);
     
     // CSS classes for inputs
-    const inputClasses = "p-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500";
+    const inputClasses = "p-2 w-full rounded-md border-stone-300 bg-white text-stone-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500";
     
     
     // Check if plugin has provider/storage parameters in constructor interface
@@ -556,7 +556,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         {/* For DiscordSource, only show in summarized mode */}
         {hasProviderParameter && (!isDiscordSource || params.mode === 'summarized') && (
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-stone-600 mb-1">
               Provider
               {isProviderRequired && <span className="text-red-500 ml-1">*</span>}
             </label>
@@ -564,7 +564,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               value={params.provider || ''}
               name="provider"
               onChange={(e) => handleParamChange('provider', e.target.value)}
-              className="py-2 px-1 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+              className="py-2 px-1 w-full rounded-md border-stone-300 bg-white text-stone-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
               required={isProviderRequired}
             >
               <option value="">No provider selected</option>
@@ -574,7 +574,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-stone-400">
               Select an AI provider for this plugin
             </p>
           </div>
@@ -584,7 +584,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         {/* For DiscordSource, hide in simple mode (not required) */}
         {hasStorageParameter && (!isDiscordSource || params.mode !== 'simple') && (
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-stone-600 mb-1">
               Storage
               {isStorageRequired && <span className="text-red-500 ml-1">*</span>}
             </label>
@@ -592,7 +592,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               value={params.storage || ''}
               name="storage"
               onChange={(e) => handleParamChange('storage', e.target.value)}
-              className="py-2 px-1 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+              className="py-2 px-1 w-full rounded-md border-stone-300 bg-white text-stone-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
               required={isStorageRequired}
             >
               <option value="">No storage selected</option>
@@ -602,7 +602,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-stone-400">
               Select a storage option for this plugin
             </p>
           </div>
@@ -610,16 +610,16 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         
         {/* Special handling for PostgresStorage in platform mode */}
         {platformMode && pluginSchema?.pluginName === 'PostgresStorage' && (
-          <div className="mb-6 p-4 bg-stone-700 rounded-lg border border-stone-600">
+          <div className="mb-6 p-4 bg-stone-50 rounded-lg border border-stone-200">
             {/* Free tier: Platform storage is always enabled (no choice) */}
             {!isPlatformPro ? (
               <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-green-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-5 h-5 text-green-500 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <div className="flex-1">
-                  <div className="font-medium text-white text-sm">Platform Storage Enabled</div>
-                  <p className="text-gray-400 text-xs mt-1">
+                  <div className="font-medium text-stone-800 text-sm">Platform Storage Enabled</div>
+                  <p className="text-stone-500 text-xs mt-1">
                     Your data is stored securely on our managed PostgreSQL with pgvector.
                     Upgrade to Pro to use your own external database.
                   </p>
@@ -632,11 +632,11 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                   type="checkbox"
                   checked={!!params.usePlatformStorage}
                   onChange={(e) => handleParamChange('usePlatformStorage', e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-stone-600 text-amber-600 focus:ring-amber-500"
+                  className="mt-0.5 h-4 w-4 rounded border-stone-300 bg-white text-emerald-600 focus:ring-emerald-500"
                 />
                 <div className="flex-1">
-                  <div className="font-medium text-white text-sm">Use Platform Storage</div>
-                  <p className="text-gray-400 text-xs mt-1">
+                  <div className="font-medium text-stone-800 text-sm">Use Platform Storage</div>
+                  <p className="text-stone-500 text-xs mt-1">
                     Use our managed PostgreSQL with pgvector. We handle backups, scaling, and maintenance.
                   </p>
                 </div>
@@ -647,16 +647,16 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
 
         {/* Special handling for AI providers in platform mode */}
         {platformMode && (pluginSchema?.pluginName === 'OpenAIProvider' || pluginSchema?.pluginName === 'OpenRouterProvider') && (
-          <div className="mb-6 p-4 bg-stone-700 rounded-lg border border-stone-600">
+          <div className="mb-6 p-4 bg-stone-50 rounded-lg border border-stone-200">
             {/* Free tier: Platform AI is always enabled (no choice) */}
             {!isPlatformPro ? (
               <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-green-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-5 h-5 text-green-500 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <div className="flex-1">
-                  <div className="font-medium text-white text-sm">Platform AI Enabled (GPT-4o-mini)</div>
-                  <p className="text-gray-400 text-xs mt-1">
+                  <div className="font-medium text-stone-800 text-sm">Platform AI Enabled (GPT-4o-mini)</div>
+                  <p className="text-stone-500 text-xs mt-1">
                     Using GPT-4o-mini, optimized for cost-effectiveness.
                     Upgrade to Pro for GPT-4o with higher quality outputs.
                   </p>
@@ -670,18 +670,18 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                     type="checkbox"
                     checked={!!params.usePlatformAI}
                     onChange={(e) => handleParamChange('usePlatformAI', e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-stone-600 text-amber-600 focus:ring-amber-500"
-                  />
-                  <div className="flex-1">
-                    <div className="font-medium text-white text-sm">Use Platform AI (GPT-4o)</div>
-                    <p className="text-gray-400 text-xs mt-1">
-                      Use our managed AI with GPT-4o. Daily usage quota applies. We handle API costs and rate limiting.
-                    </p>
-                  </div>
-                </label>
+                  className="mt-0.5 h-4 w-4 rounded border-stone-300 bg-white text-emerald-600 focus:ring-emerald-500"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-stone-800 text-sm">Use Platform AI (GPT-4o)</div>
+                  <p className="text-stone-500 text-xs mt-1">
+                    Use our managed AI with GPT-4o. Daily usage quota applies. We handle API costs and rate limiting.
+                  </p>
+                </div>
+              </label>
                 {params.usePlatformAI && (
-                  <div className="mt-3 p-2 bg-stone-600 rounded text-xs text-gray-300">
-                    <p className="text-amber-300">
+                  <div className="mt-3 p-2 bg-stone-100 rounded text-xs text-stone-600">
+                    <p className="text-emerald-600">
                       Daily AI calls are tracked. When quota is exhausted, aggregation will continue but skip AI processing (raw data only).
                     </p>
                   </div>
@@ -694,7 +694,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         {/* Mode selector for unified DiscordSource */}
         {pluginSchema?.pluginName === 'DiscordSource' && (
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-stone-600 mb-1">
               Mode
               <span className="text-red-500 ml-1">*</span>
             </label>
@@ -712,13 +712,13 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                   handleParamChange('channelIds', []);
                 }
               }}
-              className="py-2 px-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+              className="py-2 px-2 w-full rounded-md border-stone-300 bg-white text-stone-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
             >
               <option value="detailed">Detailed - Full message data with metadata</option>
               <option value="summarized">AI Summary - AI-generated conversation summaries</option>
               <option value="simple">Simple - Basic messages from announcement channels</option>
             </select>
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-stone-400">
               {params.mode === 'summarized' 
                 ? 'Requires an AI provider to generate summaries'
                 : params.mode === 'simple'
@@ -795,7 +795,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         {/* Mode selector for GitHubSource */}
         {pluginSchema?.pluginName === 'GitHubSource' && (
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-stone-600 mb-1">
               Mode
             </label>
             <select
@@ -803,12 +803,12 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               onChange={(e) => {
                 handleParamChange('mode', e.target.value);
               }}
-              className="py-2 px-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+              className="py-2 px-2 w-full rounded-md border-stone-300 bg-white text-stone-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
             >
               <option value="summarized">Summarized - Single summary per repo with all activity</option>
               <option value="raw">Raw - Individual items for each PR, issue, commit</option>
             </select>
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-stone-400">
               {params.mode === 'raw' 
                 ? 'Outputs individual ContentItems for each PR, issue, commit, review, plus summary'
                 : 'Outputs a single comprehensive summary per repo (default)'}
@@ -818,7 +818,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
 
         {/* AI Summary toggle for GitHubSource - only show in summarized mode */}
         {pluginSchema?.pluginName === 'GitHubSource' && params.mode === 'summarized' && (
-          <div className="mb-4 p-3 bg-stone-700 rounded-lg border border-stone-600">
+          <div className="mb-4 p-3 bg-stone-50 rounded-lg border border-stone-200">
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -833,11 +833,11 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                     handleParamChange('provider', '');
                   }
                 }}
-                className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-stone-600 text-amber-600 focus:ring-amber-500"
+                className="mt-0.5 h-4 w-4 rounded border-stone-300 bg-white text-emerald-600 focus:ring-emerald-500"
               />
               <div className="flex-1">
-                <div className="font-medium text-white text-sm">AI-Powered Summary</div>
-                <p className="text-gray-400 text-xs mt-1">
+                <div className="font-medium text-stone-800 text-sm">AI-Powered Summary</div>
+                <p className="text-stone-500 text-xs mt-1">
                   Use AI to generate more detailed and insightful summaries of GitHub activity.
                 </p>
               </div>
@@ -845,15 +845,15 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
             
             {/* Provider selector - only show when AI summary is enabled */}
             {params.aiSummary?.enabled && (
-              <div className="mt-3 pt-3 border-t border-stone-600">
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+              <div className="mt-3 pt-3 border-t border-stone-200">
+                <label className="block text-sm font-medium text-stone-600 mb-1">
                   AI Provider
                   <span className="text-red-500 ml-1">*</span>
                 </label>
                 <select
                   value={params.provider || ''}
                   onChange={(e) => handleParamChange('provider', e.target.value)}
-                  className="py-2 px-2 w-full rounded-md border-gray-600 bg-stone-600 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                  className="py-2 px-2 w-full rounded-md border-stone-300 bg-white text-stone-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
                   required
                 >
                   <option value="">Select an AI provider</option>
@@ -864,7 +864,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                   ))}
                 </select>
                 {availableProviders.length === 0 && (
-                  <p className="mt-1 text-xs text-amber-400">
+                  <p className="mt-1 text-xs text-emerald-600">
                     No AI providers configured. Add an AI provider to your pipeline first.
                   </p>
                 )}
@@ -943,9 +943,9 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                   type="checkbox"
                   checked={!!params[key]}
                   onChange={(e) => handleParamChange(key, e.target.checked)}
-                  className="p-2 h-4 w-4 rounded border-gray-600 bg-stone-700 text-amber-600 focus:ring-amber-500"
+                  className="p-2 h-4 w-4 rounded border-stone-300 bg-white text-emerald-600 focus:ring-emerald-500"
                 />
-                <label className="ml-2 text-sm text-gray-300">
+                <label className="ml-2 text-sm text-stone-600">
                   {key}
                 </label>
               </div>
@@ -953,7 +953,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
           } else if (param.type === 'number') {
             return (
               <div key={key} className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-stone-600 mb-1">
                   {key}
                   {param.required && <span className="text-red-500 ml-1">*</span>}
                 </label>
@@ -967,7 +967,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                   className={inputClasses}
                   required={param.required}
                 />
-                <p className="mt-1 text-xs text-gray-400">
+                <p className="mt-1 text-xs text-stone-400">
                   {param.description}
                 </p>
               </div>
@@ -975,7 +975,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
           } else if (param.type === 'string[]') {
             return (
               <div key={key} className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-stone-600 mb-1">
                   {key}
                   {param.required && <span className="text-red-500 ml-1">*</span>}
                 </label>
@@ -1008,13 +1008,13 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                   <button
                     type="button"
                     onClick={() => handleAddArrayItem(key)}
-                    className="mt-2 px-3 py-1 text-sm text-amber-400 hover:text-amber-300 border border-amber-400 hover:border-amber-300 rounded-md focus:outline-none"
+                    className="mt-2 px-3 py-1 text-sm text-emerald-600 hover:text-emerald-500 border border-emerald-600 hover:border-emerald-500 rounded-md focus:outline-none"
                     data-array-key={key}
                   >
                     + Add Item
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-gray-400">
+                <p className="mt-1 text-xs text-stone-400">
                   {param.description || "Add items to the list"}
                 </p>
               </div>
@@ -1041,7 +1041,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               // Standard input for non-sensitive string parameters
               return (
                 <div key={key} className="mb-4">
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-stone-600 mb-1">
                     {key}
                     {param.required && <span className="text-red-500 ml-1">*</span>}
                   </label>
@@ -1052,7 +1052,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                     className={inputClasses}
                     required={param.required}
                   />
-                  <p className="mt-1 text-xs text-gray-400">
+                  <p className="mt-1 text-xs text-stone-400">
                     {param.description}
                   </p>
                 </div>
@@ -1063,7 +1063,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         
         {/* If no constructor interface found, show message */}
         {!constructorInterface && (
-          <div className="text-sm text-gray-400 p-2 bg-stone-700 rounded-md">
+          <div className="text-sm text-stone-400 p-2 bg-stone-50 rounded-md">
             No configuration parameters defined for this plugin.
           </div>
         )}
@@ -1072,7 +1072,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
         {(('type' in plugin && (plugin.type === 'source' || plugin.type === 'generator')) || 
            (!('type' in plugin) && (getPluginId()?.startsWith('source') || getPluginId()?.startsWith('generator')))) && (
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-stone-600 mb-1">
               Interval (milliseconds)<span className="text-red-500 ml-1">*</span>
             </label>
             <input
@@ -1084,7 +1084,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               required
               min={60000}
             />
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-stone-400">
               Minimum interval is 1 minute (60000 ms)
             </p>
           </div>
@@ -1096,14 +1096,14 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-stone-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 text-gray-200 flex flex-col max-h-[90vh]">
-        <div className="px-6 py-4 border-b border-gray-700">
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 text-stone-600 flex flex-col max-h-[90vh]">
+        <div className="px-6 py-4 border-b border-stone-200">
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-medium text-gray-100">{customName} Configuration</h3>
+            <h3 className="text-lg font-medium text-stone-800">{customName} Configuration</h3>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-200"
+              className="text-stone-400 hover:text-stone-600"
             >
               <span className="sr-only">Close</span>
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1111,7 +1111,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               </svg>
             </button>
           </div>
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="mt-1 text-sm text-stone-500">
             {'description' in plugin ? plugin.description : 'Configure plugin parameters'}
           </p>
         </div>
@@ -1120,18 +1120,18 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
           <form onSubmit={handleSubmit} className="px-6 py-4">
             {/* Name Field */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-300 mb-1">
+              <label className="block text-sm font-medium text-stone-600 mb-1">
                 Name<span className="text-red-500 ml-1">*</span>
               </label>
               <input
                 type="text"
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}
-                className="p-2 w-full rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                className="p-2 w-full rounded-md border-stone-300 bg-white text-stone-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
                 required
                 placeholder="Enter a name for this plugin"
               />
-              <p className="mt-1 text-xs text-gray-400">
+              <p className="mt-1 text-xs text-stone-400">
                 A descriptive name to identify this plugin in the workflow
               </p>
             </div>
@@ -1140,7 +1140,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
           </form>
         </div>
 
-        <div className="mt-auto px-6 py-4 border-t border-gray-700">
+        <div className="mt-auto px-6 py-4 border-t border-stone-200">
           <div className="flex justify-between">
             {/* Delete button - only show for existing plugins with an ID */}
             {getPluginId() ? (
@@ -1164,7 +1164,7 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
                     }
                   }
                 }}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500"
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-red-500"
               >
                 Delete
               </button>
@@ -1177,14 +1177,14 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-gray-300 bg-stone-700 border border-gray-600 rounded-md hover:bg-stone-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-amber-500"
+                className="px-4 py-2 text-sm font-medium text-stone-600 bg-white border border-stone-300 rounded-md hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-emerald-500"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 onClick={handleSubmit}
-                className="px-4 py-2 text-sm font-medium text-black bg-amber-300 rounded-md hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-amber-500"
+                className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-emerald-500"
               >
                 Update
               </button>

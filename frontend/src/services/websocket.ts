@@ -212,10 +212,15 @@ export class WebSocketService {
       }
     }
     
+    // Cancelled jobs should always disconnect — they won't resume
+    if (jobStatus.status === 'cancelled') {
+      shouldDisconnect = true;
+    }
+    
     // Notify all job status listeners
     this.notifyJobStatusListeners(jobStatus);
     
-    // If job is completed or failed, clean up the connection
+    // If job is completed, failed, or cancelled, clean up the connection
     if (shouldDisconnect) {
       // Use a timeout to ensure the status update is processed by all listeners
       setTimeout(() => {

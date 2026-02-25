@@ -66,12 +66,12 @@ export function ConfigsTab({ authToken }: ConfigsTabProps) {
           placeholder="Search by name, slug, or description..."
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="flex-1 min-w-[200px] px-4 py-2 bg-stone-800 border border-stone-700 rounded-lg text-white placeholder-stone-500 focus:outline-none focus:border-amber-500"
+          className="flex-1 min-w-[200px] px-4 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 placeholder-stone-400 focus:outline-none focus:border-emerald-500"
         />
         <select
           value={visibilityFilter}
           onChange={(e) => { setVisibilityFilter(e.target.value); setPage(1); }}
-          className="px-4 py-2 bg-stone-800 border border-stone-700 rounded-lg text-white focus:outline-none focus:border-amber-500"
+          className="px-4 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 focus:outline-none focus:border-emerald-500"
         >
           <option value="">All Visibility</option>
           <option value="public">Public</option>
@@ -85,7 +85,7 @@ export function ConfigsTab({ authToken }: ConfigsTabProps) {
             setFeaturedFilter(e.target.value === '' ? '' : e.target.value === 'true'); 
             setPage(1); 
           }}
-          className="px-4 py-2 bg-stone-800 border border-stone-700 rounded-lg text-white focus:outline-none focus:border-amber-500"
+          className="px-4 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 focus:outline-none focus:border-emerald-500"
         >
           <option value="">All Configs</option>
           <option value="true">Featured Only</option>
@@ -96,7 +96,7 @@ export function ConfigsTab({ authToken }: ConfigsTabProps) {
       {/* Table */}
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : error ? (
         <div className="text-center py-20 text-red-400">{error}</div>
@@ -105,7 +105,7 @@ export function ConfigsTab({ authToken }: ConfigsTabProps) {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="text-left text-stone-400 text-sm border-b border-stone-700">
+                <tr className="text-left text-stone-500 text-sm border-b border-stone-200">
                   <th className="pb-3 font-medium">Config</th>
                   <th className="pb-3 font-medium">Owner</th>
                   <th className="pb-3 font-medium">Visibility</th>
@@ -114,12 +114,12 @@ export function ConfigsTab({ authToken }: ConfigsTabProps) {
                   <th className="pb-3 font-medium text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-stone-800">
+              <tbody className="divide-y divide-stone-100">
                 {configs.map(config => (
-                  <tr key={config.id} className="hover:bg-stone-800/50">
+                  <tr key={config.id} className="hover:bg-stone-50">
                     <td className="py-3">
                       <div>
-                        <p className="text-white font-medium">{config.name}</p>
+                        <p className="text-stone-800 font-medium">{config.name}</p>
                         <p className="text-stone-500 text-xs mt-0.5">/{config.slug}</p>
                       </div>
                     </td>
@@ -128,10 +128,10 @@ export function ConfigsTab({ authToken }: ConfigsTabProps) {
                     </td>
                     <td className="py-3">
                       <span className={`px-2 py-0.5 text-xs rounded ${
-                        config.visibility === 'public' ? 'bg-green-900/50 text-green-400' :
-                        config.visibility === 'private' ? 'bg-stone-700 text-stone-400' :
-                        config.visibility === 'unlisted' ? 'bg-blue-900/50 text-blue-400' :
-                        'bg-purple-900/50 text-purple-400'
+                        config.visibility === 'public' ? 'bg-green-100 text-green-700' :
+                        config.visibility === 'private' ? 'bg-stone-100 text-stone-500' :
+                        config.visibility === 'unlisted' ? 'bg-blue-100 text-blue-700' :
+                        'bg-purple-100 text-purple-700'
                       }`}>
                         {config.visibility}
                       </span>
@@ -142,8 +142,8 @@ export function ConfigsTab({ authToken }: ConfigsTabProps) {
                         onClick={() => handleToggleFeatured(config)}
                         className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
                           config.isFeatured
-                            ? 'bg-amber-500 text-white'
-                            : 'bg-stone-700 text-stone-400 hover:bg-stone-600'
+                            ? 'bg-emerald-500 text-white'
+                            : 'bg-stone-100 text-stone-400 hover:bg-stone-200'
                         }`}
                       >
                         <svg className="w-4 h-4" fill={config.isFeatured ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor">
@@ -155,7 +155,7 @@ export function ConfigsTab({ authToken }: ConfigsTabProps) {
                       <div className="flex justify-end gap-2">
                         <button
                           onClick={() => navigate(`/configs/${config.id}`)}
-                          className="px-3 py-1 text-sm bg-stone-700 hover:bg-stone-600 text-white rounded"
+                          className="px-3 py-1 text-sm bg-stone-100 hover:bg-stone-200 text-stone-800 rounded"
                         >
                           View
                         </button>
@@ -177,14 +177,14 @@ export function ConfigsTab({ authToken }: ConfigsTabProps) {
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="px-3 py-1 bg-stone-700 hover:bg-stone-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded"
+                  className="px-3 py-1 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 disabled:cursor-not-allowed text-stone-800 rounded"
                 >
                   Previous
                 </button>
                 <button
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="px-3 py-1 bg-stone-700 hover:bg-stone-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded"
+                  className="px-3 py-1 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 disabled:cursor-not-allowed text-stone-800 rounded"
                 >
                   Next
                 </button>

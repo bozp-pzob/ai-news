@@ -28,7 +28,7 @@ const formatDuration = (startTime?: number, isCompleted = false, completedAt?: n
 };
 
 const PhaseIcon: React.FC<{ phase: string; isActive: boolean }> = ({ phase, isActive }) => {
-  const baseClass = `w-4 h-4 ${isActive ? 'text-amber-400' : 'text-stone-500'}`;
+  const baseClass = `w-4 h-4 ${isActive ? 'text-emerald-600' : 'text-stone-400'}`;
   
   switch (phase) {
     case 'connecting':
@@ -103,7 +103,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
   useEffect(() => {
     if (!jobStatus) return;
     
-    const isCompleted = jobStatus.status === 'completed' || jobStatus.status === 'failed';
+    const isCompleted = jobStatus.status === 'completed' || jobStatus.status === 'failed' || jobStatus.status === 'cancelled';
     if (isCompleted && !wasContinuousRef.current) return;
     
     const timerId = setInterval(() => setTick(prev => prev + 1), 1000);
@@ -119,7 +119,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
       return;
     }
     
-    if (jobStatus.status === 'completed' || jobStatus.status === 'failed') {
+    if (jobStatus.status === 'completed' || jobStatus.status === 'failed' || jobStatus.status === 'cancelled') {
       setFixedDuration(formatDuration(jobStatus.startTime, true, jobStatus.result?.completedAt));
     } else {
       setFixedDuration(null);
@@ -129,9 +129,10 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
   if (!jobStatus) return null;
 
   const isContinuous = wasContinuousRef.current;
-  const isCompleted = !isContinuous && (jobStatus.status === 'completed' || jobStatus.status === 'failed');
+  const isCancelled = jobStatus.status === 'cancelled';
+  const isCompleted = isCancelled || (!isContinuous && (jobStatus.status === 'completed' || jobStatus.status === 'failed'));
   const isRunning = jobStatus.status === 'running' || jobStatus.status === 'pending';
-  const isFailed = jobStatus.status === 'failed';
+  const isFailed = jobStatus.status === 'failed' || isCancelled;
   
   const progress = jobStatus.progress ?? 0;
   const duration = fixedDuration || formatDuration(jobStatus.startTime);
@@ -147,19 +148,19 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
 
   // Status colors and styles
   const headerBg = isCompleted 
-    ? (isFailed ? 'bg-red-500/10' : 'bg-green-500/10')
-    : 'bg-amber-500/10';
+    ? (isFailed ? 'bg-red-50' : 'bg-green-50')
+    : 'bg-emerald-50';
   
   const borderColor = isCompleted
-    ? (isFailed ? 'border-red-500/30' : 'border-green-500/30')
-    : 'border-amber-500/30';
+    ? (isFailed ? 'border-red-200' : 'border-green-200')
+    : 'border-emerald-200';
 
   const statusDotColor = isCompleted 
     ? (isFailed ? 'bg-red-400' : 'bg-green-400')
-    : 'bg-amber-400 animate-pulse';
+    : 'bg-emerald-500 animate-pulse';
 
   return (
-    <div className={`bg-stone-900/95 backdrop-blur-sm border ${borderColor} rounded-lg shadow-xl overflow-hidden`}>
+    <div className={`bg-white backdrop-blur-sm border ${borderColor} rounded-lg shadow-xl overflow-hidden`}>
       {/* Header */}
       <div className={`px-4 py-3 ${headerBg} border-b ${borderColor}`}>
         <div className="flex items-center justify-between">
@@ -168,8 +169,8 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
             <div className={`w-2.5 h-2.5 rounded-full ${statusDotColor}`} />
             
             <div>
-              <h3 className="text-sm font-semibold text-stone-100">
-                {isCompleted ? (isFailed ? 'Aggregation Failed' : 'Aggregation Complete') : 'Aggregation Running'}
+              <h3 className="text-sm font-semibold text-stone-800">
+                {isCompleted ? (isCancelled ? 'Subscription Expired' : isFailed ? 'Aggregation Failed' : 'Aggregation Complete') : 'Aggregation Running'}
               </h3>
               <p className="text-xs text-stone-400">{jobStatus.configName}</p>
             </div>
@@ -178,7 +179,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className="p-1.5 text-stone-400 hover:text-stone-200 hover:bg-stone-700/50 rounded transition-colors"
+              className="p-1.5 text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded transition-colors"
               title={isCollapsed ? 'Expand' : 'Collapse'}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform ${isCollapsed ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
@@ -189,7 +190,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
             {onClose && (
               <button
                 onClick={onClose}
-                className="p-1.5 text-stone-400 hover:text-stone-200 hover:bg-stone-700/50 rounded transition-colors"
+                className="p-1.5 text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded transition-colors"
                 title="Close"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -202,15 +203,15 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
       </div>
       
       {/* Progress bar - always visible */}
-      <div className="h-1 bg-stone-800">
+      <div className="h-1 bg-stone-100">
         {isRunning ? (
           isContinuous ? (
-            <div className="h-full bg-amber-500/60 w-full relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-400 to-transparent animate-shimmer" />
+            <div className="h-full bg-emerald-400 w-full relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-300 to-transparent animate-shimmer" />
             </div>
           ) : (
             <div 
-              className="h-full bg-amber-500 transition-all duration-300"
+              className="h-full bg-emerald-500 transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           )
@@ -226,22 +227,22 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
         <>
           {/* Current Activity - prominent display */}
           {isRunning && (currentPhase || currentSource) && (
-            <div className="px-4 py-3 border-b border-stone-700/50 bg-stone-800/30">
+            <div className="px-4 py-3 border-b border-stone-200 bg-stone-50">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-500/10 rounded-lg">
+                <div className="p-2 bg-emerald-50 rounded-lg">
                   <PhaseIcon phase={currentPhase || ''} isActive={true} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-amber-400">{getPhaseLabel(currentPhase)}</p>
+                  <p className="text-sm font-medium text-emerald-600">{getPhaseLabel(currentPhase)}</p>
                   {currentSource && (
-                    <p className="text-xs text-stone-400 truncate">
-                      Source: <span className="text-stone-300">{currentSource}</span>
+                    <p className="text-xs text-stone-500 truncate">
+                      Source: <span className="text-stone-700">{currentSource}</span>
                     </p>
                   )}
                 </div>
                 {!isContinuous && (
                   <div className="text-right">
-                    <p className="text-lg font-semibold text-stone-200">{progress}%</p>
+                    <p className="text-lg font-semibold text-stone-800">{progress}%</p>
                   </div>
                 )}
               </div>
@@ -249,37 +250,37 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
           )}
 
           {/* Stats row */}
-          <div className="px-4 py-3 grid grid-cols-3 gap-4 border-b border-stone-700/50">
+          <div className="px-4 py-3 grid grid-cols-3 gap-4 border-b border-stone-200">
             <div>
-              <p className="text-xs text-stone-500 uppercase tracking-wide">Duration</p>
-              <p className="text-sm font-medium text-stone-200 mt-0.5">{duration}</p>
+              <p className="text-xs text-stone-400 uppercase tracking-wide">Duration</p>
+              <p className="text-sm font-medium text-stone-700 mt-0.5">{duration}</p>
             </div>
             <div>
-              <p className="text-xs text-stone-500 uppercase tracking-wide">Items</p>
-              <p className="text-sm font-medium text-stone-200 mt-0.5">{totalItems}</p>
+              <p className="text-xs text-stone-400 uppercase tracking-wide">Items</p>
+              <p className="text-sm font-medium text-stone-700 mt-0.5">{totalItems}</p>
             </div>
             <div>
-              <p className="text-xs text-stone-500 uppercase tracking-wide">Mode</p>
-              <p className="text-sm font-medium text-stone-200 mt-0.5">{isContinuous ? 'Continuous' : 'Run Once'}</p>
+              <p className="text-xs text-stone-400 uppercase tracking-wide">Mode</p>
+              <p className="text-sm font-medium text-stone-700 mt-0.5">{isContinuous ? 'Continuous' : 'Run Once'}</p>
             </div>
           </div>
 
           {/* AI Usage stats row - only show if there are AI calls */}
           {totalAiCalls > 0 && (
-            <div className="px-4 py-3 grid grid-cols-3 gap-4 border-b border-stone-700/50">
+            <div className="px-4 py-3 grid grid-cols-3 gap-4 border-b border-stone-200">
               <div>
-                <p className="text-xs text-stone-500 uppercase tracking-wide">AI Calls</p>
-                <p className="text-sm font-medium text-stone-200 mt-0.5">{totalAiCalls}</p>
+                <p className="text-xs text-stone-400 uppercase tracking-wide">AI Calls</p>
+                <p className="text-sm font-medium text-stone-700 mt-0.5">{totalAiCalls}</p>
               </div>
               <div>
-                <p className="text-xs text-stone-500 uppercase tracking-wide">Tokens</p>
-                <p className="text-sm font-medium text-stone-200 mt-0.5">
+                <p className="text-xs text-stone-400 uppercase tracking-wide">Tokens</p>
+                <p className="text-sm font-medium text-stone-700 mt-0.5">
                   {totalTokens >= 1000 ? `${(totalTokens / 1000).toFixed(1)}K` : totalTokens}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-stone-500 uppercase tracking-wide">Est. Cost</p>
-                <p className="text-sm font-medium text-stone-200 mt-0.5">
+                <p className="text-xs text-stone-400 uppercase tracking-wide">Est. Cost</p>
+                <p className="text-sm font-medium text-stone-700 mt-0.5">
                   {estimatedCost > 0 ? `$${estimatedCost.toFixed(4)}` : '-'}
                 </p>
               </div>
@@ -288,8 +289,8 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
 
           {/* Sources breakdown */}
           {Object.keys(itemsPerSource).length > 0 && (
-            <div className="px-4 py-3 border-b border-stone-700/50">
-              <p className="text-xs text-stone-500 uppercase tracking-wide mb-2">Sources</p>
+            <div className="px-4 py-3 border-b border-stone-200">
+              <p className="text-xs text-stone-400 uppercase tracking-wide mb-2">Sources</p>
               <div className="space-y-1.5">
                 {Object.entries(itemsPerSource)
                   .sort((a, b) => Number(b[1]) - Number(a[1]))
@@ -299,18 +300,18 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
                       <div 
                         key={source}
                         className={`flex items-center justify-between py-1.5 px-2 rounded ${
-                          isCurrentSource ? 'bg-amber-500/10 border border-amber-500/20' : 'bg-stone-800/50'
+                          isCurrentSource ? 'bg-emerald-50 border border-emerald-200' : 'bg-stone-50'
                         }`}
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           {isCurrentSource && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                           )}
-                          <span className={`text-sm truncate ${isCurrentSource ? 'text-amber-300' : 'text-stone-300'}`}>
+                          <span className={`text-sm truncate ${isCurrentSource ? 'text-emerald-700' : 'text-stone-600'}`}>
                             {source}
                           </span>
                         </div>
-                        <span className={`text-sm font-medium ml-2 ${isCurrentSource ? 'text-amber-400' : 'text-stone-400'}`}>
+                        <span className={`text-sm font-medium ml-2 ${isCurrentSource ? 'text-emerald-600' : 'text-stone-400'}`}>
                           {String(count)}
                         </span>
                       </div>
@@ -322,25 +323,25 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
 
           {/* Errors section */}
           {(jobStatus.error || errors.length > 0) && (
-            <div className="px-4 py-3 bg-red-500/5">
+            <div className="px-4 py-3 bg-red-50">
               <p className="text-xs text-red-400 uppercase tracking-wide mb-2">
                 {errors.length > 0 ? `${errors.length} Error${errors.length > 1 ? 's' : ''}` : 'Error'}
               </p>
               
               {jobStatus.error && (
-                <div className="bg-red-500/10 border border-red-500/20 rounded px-3 py-2 mb-2">
-                  <p className="text-sm text-red-300">{jobStatus.error}</p>
+                <div className="bg-red-50 border border-red-200 rounded px-3 py-2 mb-2">
+                  <p className="text-sm text-red-600">{jobStatus.error}</p>
                 </div>
               )}
               
               {errors.length > 0 && (
                 <div className="space-y-1.5 max-h-32 overflow-y-auto">
                   {errors.map((error, i) => (
-                    <div key={i} className="bg-red-500/10 border border-red-500/20 rounded px-3 py-2">
+                    <div key={i} className="bg-red-50 border border-red-200 rounded px-3 py-2">
                       {error.source && (
                         <p className="text-xs text-red-400 font-medium mb-0.5">{error.source}</p>
                       )}
-                      <p className="text-sm text-red-300">{error.message}</p>
+                      <p className="text-sm text-red-600">{error.message}</p>
                     </div>
                   ))}
                 </div>
@@ -349,7 +350,7 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
           )}
 
           {/* Footer with job ID */}
-          <div className="px-4 py-2 bg-stone-800/30">
+          <div className="px-4 py-2 bg-stone-50">
             <p className="text-[10px] text-stone-500 font-mono">
               Job: {jobStatus.jobId}
             </p>
@@ -361,8 +362,8 @@ export const JobStatusDisplay: React.FC<JobStatusDisplayProps> = ({ jobStatus, r
       {isCollapsed && (
         <div className="px-4 py-2 flex items-center justify-between text-xs">
           <div className="flex items-center gap-3">
-            <span className={`font-medium ${isCompleted ? (isFailed ? 'text-red-400' : 'text-green-400') : 'text-amber-400'}`}>
-              {isCompleted ? (isFailed ? 'Failed' : 'Complete') : getPhaseLabel(currentPhase)}
+            <span className={`font-medium ${isCompleted ? (isFailed ? 'text-red-500' : 'text-green-500') : 'text-emerald-600'}`}>
+              {isCompleted ? (isCancelled ? 'Expired' : isFailed ? 'Failed' : 'Complete') : getPhaseLabel(currentPhase)}
             </span>
             <span className="text-stone-400">{duration}</span>
           </div>

@@ -14,7 +14,7 @@ function UserAvatar({ user }: { user: PlatformUser }) {
   
   // Generate a color based on the user ID
   const colors = [
-    'bg-amber-500',
+    'bg-emerald-500',
     'bg-blue-500',
     'bg-purple-500',
     'bg-pink-500',
@@ -36,9 +36,9 @@ function UserAvatar({ user }: { user: PlatformUser }) {
  */
 function TierBadge({ tier }: { tier: PlatformUser['tier'] }) {
   const config = {
-    free: { label: 'Free', className: 'bg-stone-600 text-stone-200' },
-    paid: { label: 'Pro', className: 'bg-amber-600 text-amber-100' },
-    admin: { label: 'Admin', className: 'bg-purple-600 text-purple-100' },
+    free: { label: 'Free', className: 'bg-stone-200 text-stone-600' },
+    paid: { label: 'Pro', className: 'bg-emerald-100 text-emerald-700' },
+    admin: { label: 'Admin', className: 'bg-purple-100 text-purple-700' },
   };
 
   const { label, className } = config[tier];
@@ -93,7 +93,7 @@ export function UserMenu() {
 
   if (isLoading) {
     return (
-      <div className="w-8 h-8 rounded-full bg-stone-700 animate-pulse" />
+      <div className="w-8 h-8 rounded-full bg-stone-200 animate-pulse" />
     );
   }
 
@@ -109,12 +109,12 @@ export function UserMenu() {
       {/* Trigger button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 p-1 rounded-lg hover:bg-stone-800 transition-colors"
+        className="flex items-center gap-2 p-1 rounded-lg hover:bg-stone-100 transition-colors"
         aria-label="User menu"
         aria-expanded={isOpen}
       >
         <UserAvatar user={user} />
-        <span className="text-sm text-stone-300 hidden sm:block max-w-[150px] truncate">
+        <span className="text-sm text-stone-600 hidden sm:block max-w-[150px] truncate">
           {displayName}
         </span>
         <svg 
@@ -129,20 +129,20 @@ export function UserMenu() {
 
       {/* Dropdown menu */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 bg-stone-800 border border-stone-700 rounded-lg shadow-xl z-50">
+        <div className="absolute right-0 mt-2 w-64 bg-white border border-stone-200 rounded-lg shadow-xl z-50">
           {/* User info section */}
-          <div className="p-4 border-b border-stone-700">
+          <div className="p-4 border-b border-stone-200">
             <div className="flex items-center gap-3">
               <UserAvatar user={user} />
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-white truncate">
+                <div className="font-medium text-stone-800 truncate">
                   {displayName}
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <TierBadge tier={user.tier} />
                   {/* Show subscription expiry for Pro users */}
                   {isActive && timeRemainingText && (
-                    <span className={`text-xs ${(daysRemaining !== null && daysRemaining <= 7) || (hoursRemaining !== null && hoursRemaining < 24) ? 'text-amber-400' : 'text-stone-400'}`}>
+                    <span className={`text-xs ${(daysRemaining !== null && daysRemaining <= 7) || (hoursRemaining !== null && hoursRemaining < 24) ? 'text-emerald-600' : 'text-stone-400'}`}>
                       {hoursRemaining !== null && hoursRemaining < 24 
                         ? `${hoursRemaining}h left` 
                         : daysRemaining !== null 
@@ -168,7 +168,7 @@ export function UserMenu() {
             {/* Dashboard link */}
             <a
               href="/dashboard"
-              className="flex items-center gap-3 px-4 py-2 text-sm text-stone-300 hover:bg-stone-700 hover:text-white transition-colors"
+              className="flex items-center gap-3 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50 hover:text-stone-800 transition-colors"
               onClick={() => setIsOpen(false)}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -180,7 +180,7 @@ export function UserMenu() {
             {/* My Configs link */}
             <a
               href="/configs"
-              className="flex items-center gap-3 px-4 py-2 text-sm text-stone-300 hover:bg-stone-700 hover:text-white transition-colors"
+              className="flex items-center gap-3 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50 hover:text-stone-800 transition-colors"
               onClick={() => setIsOpen(false)}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -194,7 +194,7 @@ export function UserMenu() {
             {isAdmin && (
               <a
                 href="/admin"
-                className="flex items-center gap-3 px-4 py-2 text-sm text-purple-400 hover:bg-stone-700 transition-colors"
+                className="flex items-center gap-3 px-4 py-2 text-sm text-purple-600 hover:bg-stone-50 transition-colors"
                 onClick={() => setIsOpen(false)}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -208,7 +208,7 @@ export function UserMenu() {
             {isFreeUser ? (
               <a
                 href="/upgrade"
-                className="flex items-center gap-3 px-4 py-2 text-sm text-amber-400 hover:bg-stone-700 transition-colors"
+                className="flex items-center gap-3 px-4 py-2 text-sm text-emerald-600 hover:bg-stone-50 transition-colors"
                 onClick={() => setIsOpen(false)}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -219,7 +219,7 @@ export function UserMenu() {
             ) : isActive && daysRemaining !== null && daysRemaining <= 7 ? (
               <a
                 href="/upgrade"
-                className="flex items-center gap-3 px-4 py-2 text-sm text-amber-400 hover:bg-stone-700 transition-colors"
+                className="flex items-center gap-3 px-4 py-2 text-sm text-emerald-600 hover:bg-stone-50 transition-colors"
                 onClick={() => setIsOpen(false)}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -232,7 +232,7 @@ export function UserMenu() {
             {/* Settings link */}
             <a
               href="/settings"
-              className="flex items-center gap-3 px-4 py-2 text-sm text-stone-300 hover:bg-stone-700 hover:text-white transition-colors"
+              className="flex items-center gap-3 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50 hover:text-stone-800 transition-colors"
               onClick={() => setIsOpen(false)}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -243,13 +243,13 @@ export function UserMenu() {
           </div>
 
           {/* Logout section */}
-          <div className="border-t border-stone-700 py-2">
+          <div className="border-t border-stone-200 py-2">
             <button
               onClick={() => {
                 setIsOpen(false);
                 logout();
               }}
-              className="flex items-center gap-3 w-full px-4 py-2 text-sm text-red-400 hover:bg-stone-700 transition-colors"
+              className="flex items-center gap-3 w-full px-4 py-2 text-sm text-red-500 hover:bg-stone-50 transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

@@ -68,7 +68,7 @@ const PlayIcon = () => (
 
 // Simplified Loader icon
 const LoaderIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 animate-spin text-amber-300">
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 animate-spin text-emerald-500">
     <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
   </svg>
 );
@@ -126,10 +126,10 @@ export const Demo: React.FC = () => {
       <div className="container mx-auto px-4">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-white bg-clip-text" style={{ WebkitBackgroundClip: 'text' }}>
+            <h2 className="text-3xl font-bold text-stone-800 bg-clip-text" style={{ WebkitBackgroundClip: 'text' }}>
               How It Works
             </h2>
-            <p className="text-gray-400 mt-2">
+            <p className="text-stone-500 mt-2">
               Three steps from scattered channels to actionable intelligence
             </p>
           </div>
@@ -145,15 +145,15 @@ export const Demo: React.FC = () => {
                   opacity: 0
                 }}
               >
-                <div className="h-full rounded-lg border border-stone-800 bg-stone-900/70 backdrop-blur-sm p-6 hover:border-amber-300/50 transition-all duration-300 group text-center">
-                  <div className="text-amber-300 flex justify-center mb-4">
+                <div className="h-full rounded-lg border border-stone-200 bg-white backdrop-blur-sm p-6 hover:border-emerald-300 transition-all duration-300 group text-center shadow-sm">
+                  <div className="text-emerald-600 flex justify-center mb-4">
                     <step.icon />
                   </div>
-                  <div className="text-xs font-mono text-stone-600 mb-2">{step.number}</div>
-                  <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-amber-300 transition-colors">
+                  <div className="text-xs font-mono text-stone-400 mb-2">{step.number}</div>
+                  <h3 className="text-lg font-semibold text-stone-800 mb-2 group-hover:text-emerald-600 transition-colors">
                     {step.title}
                   </h3>
-                  <p className="text-sm text-stone-400">
+                  <p className="text-sm text-stone-500">
                     {step.description}
                   </p>
                 </div>
@@ -164,15 +164,15 @@ export const Demo: React.FC = () => {
           {/* Interactive Demo */}
           <div className="space-y-8">
             <div className="text-center">
-              <h3 className="text-xl font-semibold text-white mb-2">See it in action</h3>
-              <p className="text-sm text-stone-400 mb-6">Watch the aggregation pipeline process sources in real time</p>
+              <h3 className="text-xl font-semibold text-stone-800 mb-2">See it in action</h3>
+              <p className="text-sm text-stone-500 mb-6">Watch the aggregation pipeline process sources in real time</p>
             </div>
 
             <div className="flex flex-col items-center gap-6">
               <button 
                 onClick={startDemo} 
                 disabled={isAnimating}
-                className="inline-flex items-center justify-center h-11 px-8 py-2 bg-amber-300 hover:bg-amber-400 text-gray-900 font-medium rounded-md transition-colors disabled:opacity-50"
+                className="inline-flex items-center justify-center h-11 px-8 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-md transition-colors disabled:opacity-50"
               >
                 <span className="flex items-center gap-2">
                   <PlayIcon />
@@ -187,14 +187,14 @@ export const Demo: React.FC = () => {
                     className={cn(
                       'flex items-center justify-between p-4 rounded-lg transition-colors duration-300',
                       currentSource === index 
-                        ? 'bg-amber-300/10 border border-amber-300/20' 
-                        : 'bg-stone-600/90'
+                        ? 'bg-emerald-50 border border-emerald-200' 
+                        : 'bg-stone-100'
                     )}
                     style={{ 
                       opacity: currentSource >= index || completedSources.includes(index) ? 1 : 0.5
                     }}
                   >
-                    <span className="text-sm font-medium text-white">{source.name}</span>
+                    <span className="text-sm font-medium text-stone-800">{source.name}</span>
                     <div className="flex items-center gap-2">
                       {currentSource === index && <LoaderIcon />}
                       {completedSources.includes(index) && <CheckIcon />}
@@ -203,9 +203,9 @@ export const Demo: React.FC = () => {
                 ))}
               </div>
 
-              <div className="w-full h-2 bg-stone-600/30 rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-stone-200 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-gradient-to-r from-amber-300 via-yellow-300 to-orange-300"
+                  className="h-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500"
                   style={{ 
                     width: isAnimating 
                       ? `${((completedSources.length) / sources.length) * 100}%` 
@@ -215,7 +215,7 @@ export const Demo: React.FC = () => {
                 />
               </div>
 
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-stone-500">
                 {isAnimating 
                   ? currentSource >= 0 
                     ? `Aggregating data from ${sources[currentSource].name}...` 
@@ -232,9 +232,9 @@ export const Demo: React.FC = () => {
                     animationDelay: "0.2s"
                   }}
                 >
-                  <div className="backdrop-blur-sm bg-stone-900/80 rounded-lg">
+                  <div className="backdrop-blur-sm bg-white rounded-lg border border-stone-200 shadow-sm">
                     <div className="p-6">
-                      <h3 className="text-xl font-semibold mb-6 text-amber-300" style={{ WebkitBackgroundClip: 'text' }}>
+                      <h3 className="text-xl font-semibold mb-6 text-emerald-600" style={{ WebkitBackgroundClip: 'text' }}>
                         {exampleSummary.title}
                       </h3>
                       <div className="space-y-6">
@@ -243,8 +243,8 @@ export const Demo: React.FC = () => {
                             key={index}
                             className="space-y-2"
                           >
-                            <h4 className="font-medium text-amber-300">{highlight.title}</h4>
-                            <p className="text-sm text-gray-400 leading-relaxed">{highlight.content}</p>
+                            <h4 className="font-medium text-emerald-600">{highlight.title}</h4>
+                            <p className="text-sm text-stone-500 leading-relaxed">{highlight.content}</p>
                           </div>
                         ))}
                       </div>

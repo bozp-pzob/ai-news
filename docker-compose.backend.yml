@@ -1,5 +1,5 @@
 # =============================================================================
-# AI News Aggregator - Backend Only Docker Compose
+# Digital Gardener - Backend Only Docker Compose
 # =============================================================================
 # For private/self-hosted deployments that only need the backend API.
 # Services: backend, redis
@@ -61,7 +61,7 @@ services:
       - ./data:/app/data
     restart: unless-stopped
     networks:
-      - ainews-network
+      - digital-gardener-network
 
   # ---------------------------------------------------------------------------
   # Redis - Job queue and caching
@@ -80,10 +80,10 @@ services:
       retries: 5
     restart: unless-stopped
     networks:
-      - ainews-network
+      - digital-gardener-network
 
 networks:
-  ainews-network:
+  digital-gardener-network:
     driver: bridge
 
 volumes:

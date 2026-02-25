@@ -10,14 +10,14 @@ export const ResetDialog: React.FC<ResetDialogProps> = ({
   onConfirm,
 }) => {
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-stone-800 rounded-lg shadow-xl max-w-md w-full text-gray-200">
-        <div className="px-6 py-4 border-b border-gray-700">
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full text-stone-600">
+        <div className="px-6 py-4 border-b border-stone-200">
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-medium text-gray-100">Reset Configuration</h3>
+            <h3 className="text-lg font-medium text-stone-800">Reset Configuration</h3>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-200"
+              className="text-stone-400 hover:text-stone-600"
             >
               <span className="sr-only">Close</span>
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -27,21 +27,21 @@ export const ResetDialog: React.FC<ResetDialogProps> = ({
           </div>
         </div>
         <div className="px-6 py-4">
-          <p className="text-gray-300 mb-4">
+          <p className="text-stone-500 mb-4">
             Are you sure you want to reset the configuration? This will discard all unsaved changes and restore the last saved state.
           </p>
           <div className="mt-6 flex justify-end space-x-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-300 bg-stone-700 border border-gray-600 rounded-md hover:bg-stone-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-amber-500"
+              className="px-4 py-2 text-sm font-medium text-stone-600 bg-white border border-stone-300 rounded-md hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-emerald-500"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={onConfirm}
-              className="px-4 py-2 text-sm font-medium text-gray-100 bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500"
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-red-500"
             >
               Reset
             </button>

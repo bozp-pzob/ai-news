@@ -76,18 +76,18 @@ export function ContentTab({ configId, authToken }: ContentTabProps) {
       {/* Content List */}
       <div className="space-y-4">
         {entries.map((entry) => (
-          <div key={entry.id} className="bg-stone-800 rounded-lg border border-stone-700 overflow-hidden">
+          <div key={entry.id} className="bg-white rounded-lg border border-stone-200 overflow-hidden">
             <div 
               className="p-4 cursor-pointer flex items-center justify-between"
               onClick={() => setExpandedEntry(expandedEntry === entry.id ? null : entry.id)}
             >
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="px-2 py-0.5 bg-amber-900/50 rounded text-xs text-amber-400">
+                  <span className="px-2 py-0.5 bg-emerald-50 rounded text-xs text-emerald-700">
                     {entry.type}
                   </span>
                 </div>
-                <p className="text-white font-medium">
+                <p className="text-stone-800 font-medium">
                   {entry.title || formatDate(entry.date)}
                 </p>
                 <p className="text-stone-500 text-xs mt-1">
@@ -106,17 +106,17 @@ export function ContentTab({ configId, authToken }: ContentTabProps) {
             
             {/* Expanded Content */}
             {expandedEntry === entry.id && (
-              <div className="px-4 pb-4 border-t border-stone-700 pt-4">
+              <div className="px-4 pb-4 border-t border-stone-200 pt-4">
                 {entry.markdown ? (
-                  <div className="prose prose-invert prose-sm max-w-none">
-                    <pre className="whitespace-pre-wrap text-stone-300 text-sm bg-stone-900 p-4 rounded-lg overflow-auto max-h-96">
+                  <div className="prose prose-sm max-w-none">
+                    <pre className="whitespace-pre-wrap text-stone-600 text-sm bg-stone-50 p-4 rounded-lg overflow-auto max-h-96">
                       {entry.markdown}
                     </pre>
                   </div>
                 ) : entry.categories ? (
                   <div>
                     <p className="text-stone-400 text-xs mb-2">Categories</p>
-                    <pre className="text-stone-400 text-xs bg-stone-900 p-4 rounded-lg overflow-auto max-h-96">
+                    <pre className="text-stone-600 text-xs bg-stone-50 p-4 rounded-lg overflow-auto max-h-96">
                       {typeof entry.categories === 'string' 
                         ? entry.categories 
                         : JSON.stringify(entry.categories, null, 2)}
@@ -146,7 +146,7 @@ export function ContentTab({ configId, authToken }: ContentTabProps) {
           <button
             onClick={() => loadContent(pagination.offset - pagination.limit)}
             disabled={pagination.offset === 0}
-            className="px-4 py-2 bg-stone-700 hover:bg-stone-600 disabled:bg-stone-800 disabled:text-stone-600 text-white rounded-lg text-sm transition-colors"
+            className="px-4 py-2 bg-stone-100 hover:bg-stone-200 disabled:bg-stone-50 disabled:text-stone-400 text-stone-800 rounded-lg text-sm transition-colors"
           >
             Previous
           </button>
@@ -156,7 +156,7 @@ export function ContentTab({ configId, authToken }: ContentTabProps) {
           <button
             onClick={() => loadContent(pagination.offset + pagination.limit)}
             disabled={!pagination.hasMore}
-            className="px-4 py-2 bg-stone-700 hover:bg-stone-600 disabled:bg-stone-800 disabled:text-stone-600 text-white rounded-lg text-sm transition-colors"
+            className="px-4 py-2 bg-stone-100 hover:bg-stone-200 disabled:bg-stone-50 disabled:text-stone-400 text-stone-800 rounded-lg text-sm transition-colors"
           >
             Next
           </button>

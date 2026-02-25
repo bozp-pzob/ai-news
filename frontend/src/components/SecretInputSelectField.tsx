@@ -214,7 +214,7 @@ export const SecretInputSelectField: React.FC<SecretInputSelectFieldProps> = (pr
 
   return (
     <div className={`mb-4 ${props.className || ''}`}>
-      <label className="block text-sm font-medium text-gray-300 mb-1" htmlFor={props.id}>
+      <label className="block text-sm font-medium text-stone-600 mb-1" htmlFor={props.id}>
         {props.label}
         {props.required && <span className="text-red-500 ml-1">*</span>}
       </label>
@@ -228,7 +228,7 @@ export const SecretInputSelectField: React.FC<SecretInputSelectFieldProps> = (pr
           onChange={handleInputChange}
           placeholder={props.placeholder || "process.env.SECRET_NAME"}
           autoFocus={props.autoFocus}
-          className={`p-2 w-full pr-14 rounded-md border-gray-600 bg-stone-700 text-gray-200 shadow-sm focus:border-amber-500 focus:ring-amber-500 ${showingSelect ? 'opacity-50 pointer-events-none' : ''}`}
+          className={`p-2 w-full pr-14 rounded-md border-stone-300 bg-white text-stone-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 ${showingSelect ? 'opacity-50 pointer-events-none' : ''}`}
           required={props.required}
         />
         
@@ -259,7 +259,7 @@ export const SecretInputSelectField: React.FC<SecretInputSelectFieldProps> = (pr
               loadSecrets();
             }
           }}
-          className="absolute right-10 top-1/2 transform -translate-y-1/2 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-amber-400 focus:outline-none focus:text-amber-500"
+          className="absolute right-10 top-1/2 transform -translate-y-1/2 w-8 h-8 flex items-center justify-center text-stone-400 hover:text-emerald-600 focus:outline-none focus:text-emerald-500"
           aria-label="Select from existing secrets"
           title="Select from existing secrets"
         >
@@ -273,12 +273,12 @@ export const SecretInputSelectField: React.FC<SecretInputSelectFieldProps> = (pr
       <div className="mt-1 flex justify-between items-center">
         {/* Component description (left side) */}
         {props.description && (
-          <p className="text-xs text-gray-400">{props.description}</p>
+          <p className="text-xs text-stone-400">{props.description}</p>
         )}
         
         {/* Secret link indicator (right side) */}
         {selectedSecretInfo && (
-          <div className="text-xs text-amber-400 flex items-center flex-shrink-0 ml-2">
+          <div className="text-xs text-emerald-600 flex items-center flex-shrink-0 ml-2">
             <svg className="h-3 w-3 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -292,24 +292,24 @@ export const SecretInputSelectField: React.FC<SecretInputSelectFieldProps> = (pr
       
       {/* Secret selection dropdown */}
       {showingSelect && (
-        <div className="mt-1 p-2 bg-stone-800 border border-stone-600 rounded-md shadow-lg max-h-60 overflow-y-auto z-10">
+        <div className="mt-1 p-2 bg-white border border-stone-200 rounded-md shadow-lg max-h-60 overflow-y-auto z-10">
           {availableSecrets.length === 0 ? (
-            <div className="p-2 text-gray-400 text-sm">
+            <div className="p-2 text-stone-500 text-sm">
               <p>No secrets found.</p>
               <button 
                 onClick={openSecretsManager}
-                className="mt-1 text-amber-400 hover:text-amber-300 text-xs underline"
+                className="mt-1 text-emerald-600 hover:text-emerald-700 text-xs underline"
               >
                 Manage Secrets
               </button>
             </div>
           ) : (
             <>
-              <div className="p-2 border-b border-stone-700 flex justify-between items-center">
-                <span className="text-xs font-medium text-gray-300">Select a Secret</span>
+              <div className="p-2 border-b border-stone-200 flex justify-between items-center">
+                <span className="text-xs font-medium text-stone-600">Select a Secret</span>
                 <button 
                   onClick={openSecretsManager}
-                  className="text-amber-400 hover:text-amber-300 text-xs underline"
+                  className="text-emerald-600 hover:text-emerald-700 text-xs underline"
                 >
                   Manage Secrets
                 </button>
@@ -320,12 +320,12 @@ export const SecretInputSelectField: React.FC<SecretInputSelectFieldProps> = (pr
                     <button
                       type="button"
                       onClick={() => handleSelectSecret(secret.id, secret.description)}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-stone-700 rounded focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-stone-50 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     >
-                      <div className="font-medium text-amber-300">
+                      <div className="font-medium text-emerald-600">
                         process.env.{secret.description || 'ENV_VAR'}
                       </div>
-                      <div className="text-xs text-gray-400 truncate">
+                      <div className="text-xs text-stone-400 truncate">
                         ID: {secret.id.substring(0, 8)}...
                       </div>
                     </button>

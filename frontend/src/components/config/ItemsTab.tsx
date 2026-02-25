@@ -78,7 +78,7 @@ export function ItemsTab({ configId, authToken }: ItemsTabProps) {
           <select
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
-            className="px-3 py-2 bg-stone-800 border border-stone-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
+            className="px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:border-emerald-500 focus:outline-none"
           >
             <option value="">All Sources</option>
             {sources.map(source => (
@@ -88,7 +88,7 @@ export function ItemsTab({ configId, authToken }: ItemsTabProps) {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="px-3 py-2 bg-stone-800 border border-stone-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
+            className="px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:border-emerald-500 focus:outline-none"
           >
             <option value="">All Types</option>
             {types.map(type => (
@@ -109,8 +109,8 @@ export function ItemsTab({ configId, authToken }: ItemsTabProps) {
       )}
 
       {/* Items List */}
-      <div className="bg-stone-800 rounded-lg border border-stone-700 overflow-hidden">
-        <div className="divide-y divide-stone-700">
+      <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
+        <div className="divide-y divide-stone-200">
           {items.map((item) => (
             <div key={item.id} className="p-4">
               <div 
@@ -119,14 +119,14 @@ export function ItemsTab({ configId, authToken }: ItemsTabProps) {
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="px-2 py-0.5 bg-stone-700 rounded text-xs text-stone-300">
+                    <span className="px-2 py-0.5 bg-stone-100 rounded text-xs text-stone-600">
                       {item.type}
                     </span>
-                    <span className="px-2 py-0.5 bg-amber-900/50 rounded text-xs text-amber-400">
+                    <span className="px-2 py-0.5 bg-emerald-50 rounded text-xs text-emerald-700">
                       {item.source}
                     </span>
                   </div>
-                  <p className="text-white font-medium truncate">
+                  <p className="text-stone-800 font-medium truncate">
                     {item.title || item.text?.slice(0, 100) || 'No content'}
                   </p>
                   <p className="text-stone-500 text-xs mt-1">
@@ -145,11 +145,11 @@ export function ItemsTab({ configId, authToken }: ItemsTabProps) {
               
               {/* Expanded Content */}
               {expandedItem === item.id && (
-                <div className="mt-4 pt-4 border-t border-stone-700">
+                <div className="mt-4 pt-4 border-t border-stone-200">
                   {item.text && (
                     <div className="mb-3">
                       <p className="text-stone-400 text-xs mb-1">Content</p>
-                      <p className="text-stone-300 text-sm whitespace-pre-wrap">{item.text}</p>
+                      <p className="text-stone-600 text-sm whitespace-pre-wrap">{item.text}</p>
                     </div>
                   )}
                   {item.topics && item.topics.length > 0 && (
@@ -157,7 +157,7 @@ export function ItemsTab({ configId, authToken }: ItemsTabProps) {
                       <p className="text-stone-400 text-xs mb-1">Topics</p>
                       <div className="flex flex-wrap gap-1">
                         {item.topics.map((topic, i) => (
-                          <span key={i} className="px-2 py-0.5 bg-stone-700 rounded-full text-xs text-stone-300">
+                          <span key={i} className="px-2 py-0.5 bg-stone-100 rounded-full text-xs text-stone-600">
                             {topic}
                           </span>
                         ))}
@@ -171,7 +171,7 @@ export function ItemsTab({ configId, authToken }: ItemsTabProps) {
                         href={item.link} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="text-amber-400 hover:text-amber-300 text-sm break-all"
+                        className="text-emerald-600 hover:text-emerald-700 text-sm break-all"
                       >
                         {item.link}
                       </a>
@@ -180,7 +180,7 @@ export function ItemsTab({ configId, authToken }: ItemsTabProps) {
                   {item.metadata && (
                     <div>
                       <p className="text-stone-400 text-xs mb-1">Metadata</p>
-                      <pre className="text-stone-400 text-xs bg-stone-900 p-2 rounded overflow-auto max-h-40">
+                      <pre className="text-stone-600 text-xs bg-stone-50 p-2 rounded overflow-auto max-h-40">
                         {JSON.stringify(item.metadata, null, 2)}
                       </pre>
                     </div>
@@ -207,7 +207,7 @@ export function ItemsTab({ configId, authToken }: ItemsTabProps) {
           <button
             onClick={() => loadItems(pagination.offset - pagination.limit)}
             disabled={pagination.offset === 0}
-            className="px-4 py-2 bg-stone-700 hover:bg-stone-600 disabled:bg-stone-800 disabled:text-stone-600 text-white rounded-lg text-sm transition-colors"
+            className="px-4 py-2 bg-stone-100 hover:bg-stone-200 disabled:bg-stone-50 disabled:text-stone-400 text-stone-800 rounded-lg text-sm transition-colors"
           >
             Previous
           </button>
@@ -217,7 +217,7 @@ export function ItemsTab({ configId, authToken }: ItemsTabProps) {
           <button
             onClick={() => loadItems(pagination.offset + pagination.limit)}
             disabled={!pagination.hasMore}
-            className="px-4 py-2 bg-stone-700 hover:bg-stone-600 disabled:bg-stone-800 disabled:text-stone-600 text-white rounded-lg text-sm transition-colors"
+            className="px-4 py-2 bg-stone-100 hover:bg-stone-200 disabled:bg-stone-50 disabled:text-stone-400 text-stone-800 rounded-lg text-sm transition-colors"
           >
             Next
           </button>

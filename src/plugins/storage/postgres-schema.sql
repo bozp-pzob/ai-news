@@ -285,6 +285,12 @@ CREATE TABLE IF NOT EXISTS aggregation_jobs (
   error_message TEXT,
   logs JSONB DEFAULT '[]',
   
+  -- Encrypted resolved config/secrets for server restart resilience
+  -- Stores the fully-resolved config (with all $SECRET:uuid$ references and platform
+  -- credentials injected) encrypted with AES-256-GCM, keyed by jobId
+  resolved_config_encrypted BYTEA,
+  resolved_secrets_encrypted BYTEA,
+  
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

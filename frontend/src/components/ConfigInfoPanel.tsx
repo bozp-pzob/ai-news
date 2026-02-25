@@ -132,20 +132,20 @@ export function ConfigInfoPanel({
     <>
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-black/50 z-40"
+        className="fixed inset-0 bg-black/30 z-40"
         onClick={onClose}
       />
       
       {/* Panel */}
-      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-stone-900 border-l border-stone-700 z-50 flex flex-col shadow-xl">
+      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white border-l border-stone-200 z-50 flex flex-col shadow-xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-700">
-          <h2 className="text-lg font-semibold text-white">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200">
+          <h2 className="text-lg font-semibold text-stone-800">
             {isEditing ? 'Config Settings' : 'New Config'}
           </h2>
           <button
             onClick={onClose}
-            className="p-1 text-stone-400 hover:text-white transition-colors"
+            className="p-1 text-stone-400 hover:text-stone-800 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -157,7 +157,7 @@ export function ConfigInfoPanel({
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-stone-300 mb-1">
+            <label className="block text-sm font-medium text-stone-600 mb-1">
               Config Name <span className="text-red-400">*</span>
             </label>
             <input
@@ -165,7 +165,7 @@ export function ConfigInfoPanel({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="My Community Context"
-              className="w-full px-3 py-2 bg-stone-800 border border-stone-600 rounded-lg text-white placeholder-stone-500 focus:border-amber-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 placeholder-stone-400 focus:border-emerald-500 focus:outline-none"
             />
             <p className="text-stone-500 text-xs mt-1">
               This will be the display name for your config
@@ -174,7 +174,7 @@ export function ConfigInfoPanel({
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-stone-300 mb-1">
+            <label className="block text-sm font-medium text-stone-600 mb-1">
               Description
             </label>
             <textarea
@@ -182,13 +182,13 @@ export function ConfigInfoPanel({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe what context this config aggregates..."
               rows={3}
-              className="w-full px-3 py-2 bg-stone-800 border border-stone-600 rounded-lg text-white placeholder-stone-500 focus:border-amber-500 focus:outline-none resize-none"
+              className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 placeholder-stone-400 focus:border-emerald-500 focus:outline-none resize-none"
             />
           </div>
 
           {/* Visibility */}
           <div>
-            <label className="block text-sm font-medium text-stone-300 mb-2">
+            <label className="block text-sm font-medium text-stone-600 mb-2">
               Visibility
             </label>
             <div className="space-y-2">
@@ -197,8 +197,8 @@ export function ConfigInfoPanel({
                   key={v}
                   className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                     visibility === v
-                      ? 'border-amber-500 bg-amber-900/20'
-                      : 'border-stone-600 hover:border-stone-500'
+                      ? 'border-emerald-500 bg-emerald-50'
+                      : 'border-stone-200 hover:border-stone-300'
                   } ${v === 'private' && !canBePrivate ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <input
@@ -208,11 +208,11 @@ export function ConfigInfoPanel({
                     checked={visibility === v}
                     onChange={() => canBePrivate || v !== 'private' ? setVisibility(v) : null}
                     disabled={v === 'private' && !canBePrivate}
-                    className="mt-0.5 accent-amber-500"
+                    className="mt-0.5 accent-emerald-500"
                   />
                   <div>
-                    <div className="font-medium text-white capitalize text-sm">{v}</div>
-                    <div className="text-stone-400 text-xs">
+                    <div className="font-medium text-stone-800 capitalize text-sm">{v}</div>
+                    <div className="text-stone-500 text-xs">
                       {v === 'public' && 'Anyone can discover and query this config'}
                       {v === 'unlisted' && 'Only people with the link can access'}
                       {v === 'private' && (canBePrivate ? 'Only you can access this config' : 'Upgrade to Pro for private configs')}
@@ -226,14 +226,14 @@ export function ConfigInfoPanel({
           {/* Local Execution */}
           {isEditing && configId && (
             <div>
-              <label className="block text-sm font-medium text-stone-300 mb-2">
+              <label className="block text-sm font-medium text-stone-600 mb-2">
                 Execution Mode
               </label>
               <label
                 className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                   isLocalExecution
-                    ? 'border-blue-500 bg-blue-900/20'
-                    : 'border-stone-600 hover:border-stone-500'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-stone-200 hover:border-stone-300'
                 }`}
               >
                 <input
@@ -243,8 +243,8 @@ export function ConfigInfoPanel({
                   className="mt-0.5 accent-blue-500"
                 />
                 <div>
-                  <div className="font-medium text-white text-sm">Run on local server</div>
-                  <div className="text-stone-400 text-xs">
+                  <div className="font-medium text-stone-800 text-sm">Run on local server</div>
+                  <div className="text-stone-500 text-xs">
                     Execute this config on your own server via encrypted relay. Secrets and results stay on your infrastructure.
                   </div>
                 </div>
@@ -266,10 +266,10 @@ export function ConfigInfoPanel({
                         setConnectionTestStatus('idle');
                       }}
                       placeholder="http://localhost:3000"
-                      className="w-full px-3 py-2 bg-stone-800 border border-stone-600 rounded-lg text-white text-sm placeholder-stone-500 focus:border-blue-500 focus:outline-none"
+                      className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm placeholder-stone-400 focus:border-blue-500 focus:outline-none"
                     />
                     <p className="text-stone-500 text-xs mt-1">
-                      The URL of your local ai-news server
+                      The URL of your local Digital Gardener server
                     </p>
                   </div>
 
@@ -284,12 +284,12 @@ export function ConfigInfoPanel({
                         value={serverKey}
                         onChange={(e) => setServerKey(e.target.value)}
                         placeholder="Base64-encoded AES-256 key from server logs"
-                        className="w-full px-3 py-2 pr-10 bg-stone-800 border border-stone-600 rounded-lg text-white text-sm placeholder-stone-500 focus:border-blue-500 focus:outline-none font-mono"
+                        className="w-full px-3 py-2 pr-10 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm placeholder-stone-400 focus:border-blue-500 focus:outline-none font-mono"
                       />
                       <button
                         type="button"
                         onClick={() => setShowServerKey(!showServerKey)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-800"
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           {showServerKey ? (
@@ -311,7 +311,7 @@ export function ConfigInfoPanel({
                       type="button"
                       onClick={handleTestConnection}
                       disabled={!serverUrl.trim() || connectionTestStatus === 'testing'}
-                      className="px-3 py-1.5 bg-stone-700 hover:bg-stone-600 disabled:bg-stone-800 disabled:text-stone-500 text-white text-sm rounded-lg transition-colors"
+                      className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 disabled:bg-stone-50 disabled:text-stone-400 text-stone-700 text-sm rounded-lg transition-colors"
                     >
                       {connectionTestStatus === 'testing' ? (
                         <span className="flex items-center gap-2">
@@ -331,7 +331,7 @@ export function ConfigInfoPanel({
                   </div>
 
                   {/* Security note */}
-                  <div className="p-2 bg-blue-900/20 border border-blue-800 rounded text-xs text-blue-300">
+                  <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-600">
                     Your server URL and encryption key are stored only in this browser's localStorage. They are never saved to our database.
                   </div>
                 </div>
@@ -340,9 +340,9 @@ export function ConfigInfoPanel({
           )}
 
           {/* Storage info */}
-          <div className="p-3 bg-stone-800 rounded-lg border border-stone-700">
-            <p className="text-stone-400 text-sm">
-              <span className="text-amber-400 font-medium">Storage:</span> Configure storage by adding a PostgresStorage plugin in the builder. Pro users can use platform-hosted storage.
+          <div className="p-3 bg-stone-50 rounded-lg border border-stone-200">
+            <p className="text-stone-500 text-sm">
+              <span className="text-emerald-600 font-medium">Storage:</span> Configure storage by adding a PostgresStorage plugin in the builder. Pro users can use platform-hosted storage.
             </p>
           </div>
 
@@ -355,17 +355,17 @@ export function ConfigInfoPanel({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-stone-700 flex justify-end gap-3">
+        <div className="px-6 py-4 border-t border-stone-200 flex justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-stone-400 hover:text-white transition-colors"
+            className="px-4 py-2 text-stone-500 hover:text-stone-800 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={isSaving || !name.trim()}
-            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-700 disabled:text-stone-500 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-stone-200 disabled:text-stone-400 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
           >
             {isSaving ? (
               <>

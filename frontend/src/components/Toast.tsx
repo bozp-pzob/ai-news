@@ -26,28 +26,28 @@ export const Toast: React.FC<ToastProps> = ({
   const getTypeStyles = (): string => {
     switch (type) {
       case 'success':
-        return 'border-green-500 bg-green-900 text-green-100';
+        return 'border-green-500 bg-green-50 text-green-800';
       case 'error':
-        return 'border-red-500 bg-red-900 text-red-100';
+        return 'border-red-500 bg-red-50 text-red-800';
       case 'warning':
-        return 'border-yellow-500 bg-yellow-900 text-yellow-100';
+        return 'border-yellow-500 bg-yellow-50 text-yellow-800';
       case 'info':
       default:
-        return 'border-amber-500 bg-amber-900 text-amber-100';
+        return 'border-emerald-500 bg-emerald-50 text-emerald-800';
     }
   };
 
   const getIconColor = (): string => {
     switch (type) {
       case 'success':
-        return 'text-green-300';
+        return 'text-green-600';
       case 'error':
-        return 'text-red-300';
+        return 'text-red-600';
       case 'warning':
-        return 'text-yellow-300';
+        return 'text-yellow-600';
       case 'info':
       default:
-        return 'text-amber-300';
+        return 'text-emerald-600';
     }
   };
 
@@ -80,7 +80,7 @@ export const Toast: React.FC<ToastProps> = ({
       </div>
       <div className="font-medium">{message}</div>
       <button
-        className="ml-auto pl-3 text-gray-300 hover:text-white focus:outline-none"
+        className="ml-auto pl-3 text-stone-400 hover:text-stone-700 focus:outline-none"
         onClick={onClose}
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -19,6 +19,7 @@ import { ContentTab } from '../components/config/ContentTab';
 import { SettingsTab } from '../components/config/SettingsTab';
 import { RunsTab } from '../components/config/RunsTab';
 import { RunActions } from '../components/config/RunActions';
+import { useToast } from '../components/ToastProvider';
 
 /**
  * Config page content — works for both owners and public viewers.
@@ -32,6 +33,7 @@ function ConfigPageContent() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { authToken, isAuthenticated, isPrivyReady, isLoading: isAuthLoading } = useAuth();
+  const { showToast } = useToast();
   
   // Auth is "ready" once Privy has initialized and finished loading user state.
   // We gate the initial data fetch on this to avoid the race condition where
@@ -159,8 +161,18 @@ function ConfigPageContent() {
           setActiveJob(null);
           setConfig(prev => prev ? { 
             ...prev, 
-            status: job.status === 'completed' ? 'idle' : 'error' 
+            status: job.status === 'completed' || job.status === 'cancelled' ? 'idle' : 'error' 
           } : prev);
+          
+          // Notify user if their continuous run was stopped due to license expiration
+          if (job.status === 'cancelled' && jobType === 'continuous') {
+            const hasLicenseLog = job.logs?.some(
+              (log: any) => log.message?.includes('Pro license expired')
+            );
+            if (hasLicenseLog) {
+              showToast('Your continuous run was stopped because your Pro subscription expired. Renew to restart.', 'warning');
+            }
+          }
         } else {
           setActiveJob({ ...job, jobType: jobType });
         }
@@ -190,7 +202,7 @@ function ConfigPageContent() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -201,7 +213,7 @@ function ConfigPageContent() {
         <p className="text-red-400 mb-4">{error || 'Config not found'}</p>
         <button
           onClick={() => navigate(-1)}
-          className="px-4 py-2 bg-stone-700 hover:bg-stone-600 text-white rounded-lg"
+          className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg"
         >
           Go Back
         </button>
@@ -234,30 +246,30 @@ function ConfigPageContent() {
           <div className="flex items-center gap-2 mb-1">
             <button
               onClick={() => navigate(-1)}
-              className="text-stone-400 hover:text-white transition-colors"
+              className="text-stone-400 hover:text-stone-800 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <h1 className="text-2xl font-bold text-white">{config.name}</h1>
+            <h1 className="text-2xl font-bold text-stone-800">{config.name}</h1>
             {/* Public badge for non-owners */}
             {!isOwner && (
-              <span className="px-2 py-0.5 bg-blue-900/50 text-blue-400 text-xs rounded font-medium">
+              <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded font-medium">
                 {config.visibility}
               </span>
             )}
           </div>
           <div className="flex items-center gap-3">
-            <p className="text-stone-400">/{config.slug}</p>
+            <p className="text-stone-500">/{config.slug}</p>
             {config.monetizationEnabled && (
-              <span className="px-2 py-0.5 bg-amber-900/50 text-amber-400 text-xs rounded font-medium">
+              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs rounded font-medium">
                 ${config.pricePerQuery?.toFixed(4)}/query
               </span>
             )}
           </div>
           {!isOwner && config.description && (
-            <p className="text-stone-400 text-sm mt-2 max-w-xl">{config.description}</p>
+            <p className="text-stone-500 text-sm mt-2 max-w-xl">{config.description}</p>
           )}
         </div>
 
@@ -314,7 +326,7 @@ function ConfigPageContent() {
  */
 export default function ConfigPage() {
   return (
-    <div className="min-h-screen bg-stone-950">
+    <div className="min-h-screen bg-stone-50">
       <AppHeader />
       <ConfigPageContent />
     </div>

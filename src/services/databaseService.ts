@@ -138,6 +138,13 @@ async function runMigrations(pool: Pool): Promise<void> {
       ADD COLUMN IF NOT EXISTS total_ai_calls INTEGER DEFAULT 0,
       ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC(10,6) DEFAULT 0
     `);
+
+    // Encrypted resolved config/secrets for server restart resilience (continuous jobs)
+    await client.query(`
+      ALTER TABLE aggregation_jobs
+      ADD COLUMN IF NOT EXISTS resolved_config_encrypted BYTEA,
+      ADD COLUMN IF NOT EXISTS resolved_secrets_encrypted BYTEA
+    `);
     
     console.log('[DatabaseService] Migrations completed successfully');
   } catch (error) {

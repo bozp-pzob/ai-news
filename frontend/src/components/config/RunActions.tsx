@@ -295,16 +295,16 @@ export function RunActions({
   if (hasContinuousJob) {
     return (
       <div className="flex items-center gap-2">
-        <div className="flex items-center gap-2 px-3 py-2 bg-purple-900/30 border border-purple-700 rounded-lg">
+        <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg">
           <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
-          <span className="text-purple-300 text-sm">
+          <span className="text-purple-700 text-sm">
             Continuous run active
           </span>
         </div>
         <button
           onClick={handleStopContinuous}
           disabled={isStopping}
-          className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-stone-700 text-white rounded-lg font-medium transition-colors"
+          className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-stone-200 text-white rounded-lg font-medium transition-colors"
         >
           {isStopping ? 'Stopping...' : 'Stop'}
         </button>
@@ -315,9 +315,9 @@ export function RunActions({
   // Show running state
   if (isRunning && !hasContinuousJob) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 bg-amber-900/30 border border-amber-700 rounded-lg">
-        <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-        <span className="text-amber-300 text-sm">Running...</span>
+      <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+        <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        <span className="text-emerald-700 text-sm">Running...</span>
       </div>
     );
   }
@@ -335,7 +335,7 @@ export function RunActions({
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
               !isAnyOperationInProgress
                 ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                : 'bg-stone-700 text-stone-400 cursor-not-allowed'
+                : 'bg-stone-200 text-stone-400 cursor-not-allowed'
             }`}
             title="Run on your local server"
           >
@@ -374,7 +374,7 @@ export function RunActions({
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
               canUseFreeRun && !isAnyOperationInProgress
                 ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-stone-700 text-stone-400 cursor-not-allowed'
+                : 'bg-stone-200 text-stone-400 cursor-not-allowed'
             }`}
             title={canUseFreeRun ? 'Run once for free (1 per day)' : freeRunStatus?.resetAt ? formatTimeUntilFreeRun(freeRunStatus.resetAt) : 'Free run not available'}
           >
@@ -398,7 +398,7 @@ export function RunActions({
         <button
           onClick={handlePaidRun}
           disabled={isAnyOperationInProgress}
-          className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-700 text-white rounded-lg font-medium transition-colors"
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-stone-200 text-white rounded-lg font-medium transition-colors"
           title="Run once ($0.10 or included with Pro)"
         >
           {isRunningPaid ? (
@@ -408,7 +408,7 @@ export function RunActions({
             </span>
           ) : (
             <>
-              Run <span className="text-amber-200 text-sm ml-1">$0.10</span>
+              Run <span className="text-emerald-200 text-sm ml-1">$0.10</span>
             </>
           )}
         </button>
@@ -428,20 +428,20 @@ export function RunActions({
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
               isPro && !isAnyOperationInProgress
                 ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                : 'bg-stone-700 text-stone-400 hover:bg-stone-600'
+                : 'bg-stone-200 text-stone-400 hover:bg-stone-100'
             }`}
             title={isPro ? 'Start continuous aggregation' : 'Pro subscription required'}
           >
             Continuous
-            {!isPro && <span className="ml-1 text-xs text-amber-400">PRO</span>}
+            {!isPro && <span className="ml-1 text-xs text-emerald-600">PRO</span>}
           </button>
           
           {/* Upgrade hint tooltip */}
           {showUpgradeHint && !isPro && (
-            <div className="absolute top-full left-0 mt-2 px-3 py-2 bg-stone-800 border border-stone-700 rounded-lg shadow-lg z-10 whitespace-nowrap">
-              <p className="text-sm text-stone-300">
+            <div className="absolute top-full left-0 mt-2 px-3 py-2 bg-white border border-stone-200 rounded-lg shadow-lg z-10 whitespace-nowrap">
+              <p className="text-sm text-stone-600">
                 Continuous runs require{' '}
-                <a href="/upgrade" className="text-amber-400 hover:text-amber-300">
+                <a href="/upgrade" className="text-emerald-600 hover:text-emerald-700">
                   Pro subscription
                 </a>
               </p>
@@ -450,10 +450,10 @@ export function RunActions({
 
           {/* Interval Picker Dropdown */}
           {showIntervalPicker && isPro && (
-            <div className="absolute top-full right-0 mt-2 w-64 bg-stone-800 border border-stone-700 rounded-lg shadow-lg z-10">
-              <div className="p-3 border-b border-stone-700">
-                <p className="text-sm font-medium text-white">Select Interval</p>
-                <p className="text-xs text-stone-400">How often to fetch new data</p>
+            <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-stone-200 rounded-lg shadow-lg z-10">
+              <div className="p-3 border-b border-stone-200">
+                <p className="text-sm font-medium text-stone-800">Select Interval</p>
+                <p className="text-xs text-stone-500">How often to fetch new data</p>
               </div>
               <div className="p-2">
                 {INTERVAL_OPTIONS.map((option) => (
@@ -463,24 +463,24 @@ export function RunActions({
                     className={`w-full px-3 py-2 text-left text-sm rounded-md transition-colors ${
                       selectedInterval === option.value
                         ? 'bg-purple-600 text-white'
-                        : 'text-stone-300 hover:bg-stone-700'
+                        : 'text-stone-600 hover:bg-stone-100'
                     }`}
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
-              <div className="p-3 border-t border-stone-700 flex gap-2">
+              <div className="p-3 border-t border-stone-200 flex gap-2">
                 <button
                   onClick={() => setShowIntervalPicker(false)}
-                  className="flex-1 px-3 py-2 bg-stone-700 hover:bg-stone-600 text-white rounded-md text-sm transition-colors"
+                  className="flex-1 px-3 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-md text-sm transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleStartContinuous}
                   disabled={isStarting}
-                  className="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-stone-700 text-white rounded-md text-sm font-medium transition-colors"
+                  className="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-stone-200 text-white rounded-md text-sm font-medium transition-colors"
                 >
                   {isStarting ? 'Starting...' : 'Start'}
                 </button>
@@ -497,10 +497,10 @@ export function RunActions({
 
       {/* Payment Required Message */}
       {paymentRequired && (
-        <div className="mt-2 p-3 bg-amber-900/20 border border-amber-700 rounded-lg">
-          <p className="text-sm text-amber-300">
+        <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+          <p className="text-sm text-emerald-700">
             Payment required.{' '}
-            <a href="/upgrade" className="text-amber-400 hover:text-amber-300 underline">
+            <a href="/upgrade" className="text-emerald-600 hover:text-emerald-700 underline">
               Upgrade to Pro
             </a>
             {' '}for unlimited runs or pay $0.10 per run.
