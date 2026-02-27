@@ -54,21 +54,18 @@ let xvfbProcess: ChildProcess | null = null;
 let xvfbDisplay: string | null = null;
 
 /**
- * Ensure a display is available for running a real (non-headless) browser.
+ * Ensure a display is available for running Chrome on Linux.
  * 
  * On macOS/Windows: no-op (native display or built-in compositing).
  * On Linux with DISPLAY already set: no-op (user has display or Xvfb configured).
- * On headless Linux (no DISPLAY): auto-starts Xvfb on :99.
+ * On Linux without DISPLAY: auto-starts Xvfb on :99.
  * 
- * When BROWSER_HEADLESS=true (default), this is a no-op — headless Chrome
- * doesn't need a display server. Only needed when BROWSER_HEADLESS=false.
+ * Note: Some Chrome/Patchright builds on Linux need DISPLAY even in headless
+ * mode. We always try to ensure a display on Linux, but only hard-fail if
+ * we're in headed mode (BROWSER_HEADLESS=false). In headless mode, if Xvfb
+ * is unavailable, we warn and let Chrome try without it.
  */
 async function ensureDisplay(): Promise<void> {
-  // Headless mode doesn't need a display
-  if (process.env.BROWSER_HEADLESS !== 'false') {
-    return;
-  }
-
   // Already have a display
   if (process.env.DISPLAY) {
     return;
@@ -86,20 +83,35 @@ async function ensureDisplay(): Promise<void> {
     return;
   }
 
+  const isHeaded = process.env.BROWSER_HEADLESS === 'false';
+
   // Linux with no display -- try to start Xvfb
   console.log('[PatchrightHelper] No DISPLAY detected on Linux. Attempting to start Xvfb...');
 
   // Check if Xvfb is installed
+  let xvfbInstalled = false;
   try {
     execSync('which Xvfb', { stdio: 'pipe' });
+    xvfbInstalled = true;
   } catch {
-    console.error(
-      '[PatchrightHelper] Xvfb is not installed. Browser automation requires a display server.\n' +
-      '  Install with: sudo apt-get install -y xvfb\n' +
-      '  Or set DISPLAY env var to an existing X server.'
+    if (isHeaded) {
+      // Headed mode absolutely requires a display
+      console.error(
+        '[PatchrightHelper] Xvfb is not installed. Headed browser mode requires a display server.\n' +
+        '  Install with: sudo apt-get install -y xvfb\n' +
+        '  Or set DISPLAY env var to an existing X server.'
+      );
+      throw new Error('Xvfb not installed and no DISPLAY available. Cannot launch headed browser.');
+    }
+    // Headless mode — warn but don't throw, Chrome may work without DISPLAY
+    console.warn(
+      '[PatchrightHelper] Xvfb is not installed. Headless Chrome may still work, but if it fails:\n' +
+      '  Install with: sudo apt-get install -y xvfb'
     );
-    throw new Error('Xvfb not installed and no DISPLAY available. Cannot launch browser.');
+    return;
   }
+
+  if (!xvfbInstalled) return;
 
   // Check if Xvfb is already running on :99
   try {
@@ -146,8 +158,12 @@ async function ensureDisplay(): Promise<void> {
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
   } catch (err: any) {
-    console.error(`[PatchrightHelper] Failed to start Xvfb: ${err.message}`);
-    throw new Error('Failed to start Xvfb. Cannot launch browser without a display.');
+    if (isHeaded) {
+      console.error(`[PatchrightHelper] Failed to start Xvfb: ${err.message}`);
+      throw new Error('Failed to start Xvfb. Cannot launch headed browser without a display.');
+    }
+    // Headless mode — warn but continue
+    console.warn(`[PatchrightHelper] Failed to start Xvfb: ${err.message}. Continuing without display — headless Chrome may still work.`);
   }
 }
 

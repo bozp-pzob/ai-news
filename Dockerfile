@@ -80,6 +80,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxdamage1 \
     libxrandr2 \
     xdg-utils \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 # Install production dependencies only
