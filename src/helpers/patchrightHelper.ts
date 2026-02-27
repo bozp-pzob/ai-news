@@ -8,8 +8,8 @@
  * - Auto-fallback: tries node-fetch first, falls back to patchright on failure
  * - Per-source persistent browser contexts (separate cookies/storage/profile)
  * - Patchright best-practice config: persistent context, system Chrome, no custom UA
- * - Headless/headed toggle via BROWSER_HEADLESS env var (default: true)
- * - Xvfb auto-start when BROWSER_HEADLESS=false on Linux servers
+ * - Headless by default (Chrome "new headless" — best for Docker/VMs)
+ * - Xvfb auto-start when BROWSER_HEADLESS=false on Linux (desktop dev only)
  * - SSRF protection (blocks private IP ranges)
  * - Retry with exponential backoff
  * - Cookie consent auto-dismissal
@@ -250,9 +250,14 @@ const DEFAULT_FETCH_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7
  * 
  * - Uses `launchPersistentContext()` (not `launch()` + `newContext()`)
  * - Uses system Chrome via `channel: 'chrome'` (not bundled Chromium)
- * - Headless by default (set BROWSER_HEADLESS=false for headed + Xvfb)
+ * - Headless by default — uses Chrome's "new headless" mode (--headless=new)
+ *   which shares the same rendering pipeline as headed Chrome, producing
+ *   identical Canvas/WebGL fingerprints. This is BETTER for bot detection
+ *   bypass than Xvfb + headed mode, because Xvfb's software renderer
+ *   produces anomalous fingerprints that Kasada and similar systems detect.
  * - Uses `viewport: null` (natural window size, not detectable)
  * - No custom User-Agent (browser's real UA, not detectable)
+ * - Set BROWSER_HEADLESS=false only if you have a real display (desktop dev)
  * 
  * This configuration defeats Kasada, Cloudflare Turnstile, and most other
  * advanced bot detection systems that fingerprint the browser environment.
@@ -297,8 +302,12 @@ export class BrowserManager {
     // depends on launching Chrome as close to a normal user session as possible.
     //
     // Headless mode: controlled by BROWSER_HEADLESS env var.
-    //   "true" (default) — new Chrome headless mode, no Xvfb needed
-    //   "false" — real headed mode, requires display (Xvfb auto-started on Linux)
+    //   Default (true): Chrome "new headless" (--headless=new) — uses the same
+    //     rendering pipeline as headed Chrome. Canvas/WebGL fingerprints are
+    //     identical to a real browser. No Xvfb needed. RECOMMENDED for Docker/VMs.
+    //   "false": Real headed mode — requires a display (Xvfb auto-started on Linux).
+    //     WARNING: Xvfb's software renderer produces anomalous Canvas/WebGL
+    //     fingerprints that Kasada detects. Only use with a real display (desktop).
     const headless = process.env.BROWSER_HEADLESS !== 'false';
     const context = await chromium.launchPersistentContext(profileDir, {
       channel: 'chrome',           // Use system Chrome (not bundled Chromium)
@@ -308,7 +317,8 @@ export class BrowserManager {
       // No extra args -- any --no-* or --disable-* flags are detectable fingerprints
     });
 
-    console.log(`[BrowserManager] Persistent context launched for "${sourceId}" (profile: ${profileDir}, headless: ${headless})`);
+    const modeLabel = headless ? 'new headless' : 'headed (Xvfb/display)';
+    console.log(`[BrowserManager] Persistent context launched for "${sourceId}" (profile: ${profileDir}, mode: ${modeLabel})`);
     BrowserManager.contexts.set(sourceId, context);
     return context;
   }
