@@ -17,84 +17,9 @@ import vm from 'vm';
 import * as cheerio from 'cheerio';
 import type { AiProvider } from '../types';
 import {
-  createParserGenerationPrompt,
-  createParserRetryPrompt,
   createParserFromExamplePrompt,
   SUMMARIZE_OPTIONS,
 } from './promptHelper';
-
-// ============================================
-// PARSER CODE GENERATION (via LLM)
-// ============================================
-
-/**
- * Ask an LLM to generate a reusable JavaScript parser function for a page.
- *
- * The LLM sees the page as markdown plus HTML structure hints and produces
- * a function body that uses cheerio's `$` to extract structured data.
- *
- * @param html - The raw HTML of the page
- * @param markdown - The page converted to markdown (for LLM readability)
- * @param provider - AI provider to generate the parser
- * @param objectTypeString - Optional TS interface for the desired output schema
- * @param structuredDataHint - Optional JSON-LD / OG data already extracted for free
- * @returns The generated JavaScript function body string
- */
-export async function generateParserCode(
-  html: string,
-  markdown: string,
-  provider: AiProvider,
-  objectTypeString?: string,
-  structuredDataHint?: Record<string, any>,
-): Promise<string> {
-  const structureHints = extractHtmlStructureHints(html);
-  const prompt = createParserGenerationPrompt(
-    markdown,
-    structureHints,
-    objectTypeString,
-    structuredDataHint,
-  );
-
-  const response = await provider.summarize(prompt, SUMMARIZE_OPTIONS.parserGeneration);
-
-  if (!response) {
-    throw new Error('LLM returned empty response for parser generation');
-  }
-
-  return cleanParserResponse(response);
-}
-
-/**
- * Ask an LLM to fix a parser that failed validation.
- *
- * Provides the previous code, what fields were missing, and asks for a
- * corrected version.
- */
-export async function regenerateParserCode(
-  html: string,
-  markdown: string,
-  provider: AiProvider,
-  previousCode: string,
-  missingFields: string[],
-  objectTypeString?: string,
-): Promise<string> {
-  const structureHints = extractHtmlStructureHints(html);
-  const prompt = createParserRetryPrompt(
-    markdown,
-    structureHints,
-    previousCode,
-    missingFields,
-    objectTypeString,
-  );
-
-  const response = await provider.summarize(prompt, SUMMARIZE_OPTIONS.parserGeneration);
-
-  if (!response) {
-    throw new Error('LLM returned empty response for parser regeneration');
-  }
-
-  return cleanParserResponse(response);
-}
 
 // ============================================
 // GOLD-STANDARD PARSER GENERATION
@@ -455,80 +380,6 @@ export function extractDomain(url: string): string {
 // ============================================
 // INTERNAL HELPERS
 // ============================================
-
-/**
- * Extract structural hints from HTML to help the LLM write better CSS selectors.
- *
- * Identifies: main content containers, repeated item patterns, key class/ID names.
- * Returns a compact summary suitable for including in the LLM prompt.
- */
-function extractHtmlStructureHints(html: string): string {
-  const $ = cheerio.load(html);
-  const hints: string[] = [];
-
-  // Identify main content containers
-  const mainSelectors = ['main', 'article', '[role="main"]', '#content', '.content', '#main', '.main'];
-  for (const sel of mainSelectors) {
-    const el = $(sel);
-    if (el.length > 0) {
-      hints.push(`Found <${el.first().prop('tagName')?.toLowerCase()}> with selector "${sel}"`);
-    }
-  }
-
-  // Collect unique class names from key content elements (first 50)
-  const classSet = new Set<string>();
-  $('div, section, article, ul, ol, table, form').slice(0, 100).each((_, el) => {
-    const cls = $(el).attr('class');
-    if (cls) {
-      cls.split(/\s+/).filter(c => c.length > 2 && c.length < 40).forEach(c => classSet.add(c));
-    }
-  });
-
-  if (classSet.size > 0) {
-    const topClasses = [...classSet].slice(0, 30).join(', ');
-    hints.push(`Key CSS classes: ${topClasses}`);
-  }
-
-  // Collect unique ID attributes
-  const ids: string[] = [];
-  $('[id]').slice(0, 50).each((_, el) => {
-    const id = $(el).attr('id');
-    if (id && id.length > 2 && id.length < 40) ids.push(id);
-  });
-
-  if (ids.length > 0) {
-    hints.push(`Key IDs: ${ids.slice(0, 20).join(', ')}`);
-  }
-
-  // Detect repeated structures (e.g., list items, cards)
-  $('ul, ol, div, section').slice(0, 30).each((_, el) => {
-    const children = $(el).children();
-    if (children.length >= 3) {
-      const firstTag = children.first().prop('tagName');
-      const allSameTag = children.toArray().every(c => $(c).prop('tagName') === firstTag);
-      if (allSameTag && firstTag) {
-        const parentSel = $(el).prop('tagName')?.toLowerCase();
-        const parentClass = $(el).attr('class')?.split(/\s+/)[0];
-        const desc = parentClass ? `${parentSel}.${parentClass}` : parentSel;
-        hints.push(`Repeated pattern: ${children.length}x <${firstTag.toLowerCase()}> inside <${desc}>`);
-      }
-    }
-  });
-
-  // Detect data tables
-  const tables = $('table');
-  if (tables.length > 0) {
-    tables.slice(0, 3).each((_, table) => {
-      const headerCells = $(table).find('th');
-      if (headerCells.length > 0) {
-        const headers = headerCells.map((_, th) => $(th).text().trim()).get().slice(0, 10);
-        hints.push(`Table headers: [${headers.join(', ')}]`);
-      }
-    });
-  }
-
-  return hints.join('\n');
-}
 
 /**
  * Clean the LLM response to extract just the function body.

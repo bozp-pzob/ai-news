@@ -54,12 +54,40 @@ RUN cd frontend && CI=false \
 # =============================================================================
 # Target: backend
 # Production backend API server
+# Uses node:20-slim (Debian) instead of Alpine because Patchright/Chromium
+# requires glibc and system libraries not available on Alpine.
 # =============================================================================
-FROM base AS backend
+FROM node:20-slim AS backend
+WORKDIR /app
+
+# Install Chromium system dependencies required by Patchright
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install production dependencies only
 COPY package*.json ./
 RUN npm ci --omit=dev
+
+# Install Patchright Chrome browser
+RUN npx patchright install chrome
 
 # Copy built backend from builder stage
 COPY --from=builder /app/dist ./dist
