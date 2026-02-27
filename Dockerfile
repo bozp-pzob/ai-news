@@ -61,10 +61,16 @@ FROM node:20-slim AS backend
 WORKDIR /app
 
 # Install Chromium system dependencies required by Patchright
+# NOTE: Comprehensive font and system library installation is critical for
+# bot detection bypass. Kasada and similar systems fingerprint:
+#   - Available fonts (font enumeration)
+#   - Canvas/WebGL rendering output (GPU/software renderer differences)
+#   - Locale, timezone, and other system properties
+# A minimal Docker environment with few fonts is trivially detectable.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     ca-certificates \
-    fonts-liberation \
+    # --- Chrome core dependencies ---
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
@@ -81,7 +87,42 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrandr2 \
     xdg-utils \
     xvfb \
+    # --- Fonts: critical for font fingerprinting bypass ---
+    # Without realistic fonts, Kasada detects the server environment instantly.
+    fonts-liberation \
+    fonts-noto-core \
+    fonts-noto-color-emoji \
+    fonts-freefont-ttf \
+    fonts-dejavu-core \
+    fonts-dejavu-extra \
+    fonts-crosextra-carlito \
+    fonts-crosextra-caladea \
+    fontconfig \
+    # --- Locale/timezone support ---
+    locales \
+    tzdata \
+    # --- dbus session bus (some Chrome features need it) ---
+    dbus \
     && rm -rf /var/lib/apt/lists/*
+
+# Set up locale (Kasada checks Accept-Language / navigator.language consistency)
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
+
+# Set timezone (Kasada checks Date().getTimezoneOffset() consistency)
+ENV TZ=America/New_York
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Build font cache so Chrome can enumerate fonts properly
+RUN fc-cache -fv
+
+# Create non-root user for Chrome (Chrome has sandbox issues when running as
+# root, requiring --no-sandbox which is a detectable automation fingerprint.
+# Running as a regular user avoids this entirely.)
+RUN groupadd -r appuser && useradd -r -g appuser -G audio,video -d /home/appuser -s /sbin/nologin appuser \
+    && mkdir -p /home/appuser && chown -R appuser:appuser /home/appuser
 
 # Install production dependencies only
 COPY package*.json ./
@@ -93,8 +134,22 @@ RUN npx patchright install chrome
 # Copy built backend from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Create data directory for runtime files
-RUN mkdir -p /app/data
+# Create data directory for runtime files and ensure non-root user can write.
+# Also grant access to node_modules (for patchright browser binary) and dist/.
+RUN mkdir -p /app/data /app/.browser-data \
+    && chown -R appuser:appuser /app/data /app/.browser-data /app/dist \
+    && chmod -R o+rx /app/node_modules
+
+# Ensure patchright's browser cache is accessible by appuser.
+# Patchright stores browsers in ~/.cache/ms-playwright/ or node_modules path.
+RUN if [ -d /root/.cache/ms-playwright ]; then \
+      mkdir -p /home/appuser/.cache && \
+      cp -r /root/.cache/ms-playwright /home/appuser/.cache/ && \
+      chown -R appuser:appuser /home/appuser/.cache; \
+    fi
+
+# Switch to non-root user
+USER appuser
 
 # Set production environment
 ENV NODE_ENV=production

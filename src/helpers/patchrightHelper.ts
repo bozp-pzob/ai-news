@@ -406,6 +406,24 @@ function isBotProtected(html: string): boolean {
   return BOT_PROTECTION_PATTERNS.some(pattern => lower.includes(pattern.toLowerCase()));
 }
 
+/** Patterns indicating a HARD BLOCK (not a solvable challenge).
+ * These pages will never resolve — no amount of waiting will help.
+ * Detected separately so we can fail fast instead of waiting 30-45s. */
+const HARD_BLOCK_PATTERNS = [
+  'your request could not be processed',            // Kasada hard block
+  'unblockrequest@',                                // Kasada contact email on block page
+  'access denied',                                  // Generic hard block (in <title>)
+];
+
+/**
+ * Check if an HTML response is a HARD BLOCK (permanent rejection, not solvable).
+ * If true, we should not wait for challenge resolution — it will never resolve.
+ */
+function isHardBlock(html: string): boolean {
+  const lower = html.toLowerCase();
+  return HARD_BLOCK_PATTERNS.some(pattern => lower.includes(pattern));
+}
+
 /**
  * Delay helper with jitter for exponential backoff.
  */
@@ -452,6 +470,13 @@ async function waitForChallengeResolution(page: any, maxWaitMs?: number): Promis
     return false; // No challenge detected
   }
 
+  // Check for hard blocks first — these are permanent rejections that will never resolve.
+  // No point waiting 30-45s for something that can't be solved.
+  if (isHardBlock(initialHtml)) {
+    console.log('[FetchHTML] Hard block detected (permanent rejection, not a solvable challenge). Skipping wait.');
+    return false;
+  }
+
   console.log(`[FetchHTML] Bot protection challenge detected, waiting up to ${Math.round(timeout / 1000)}s for resolution...`);
   const startTime = Date.now();
   const initialUrl = page.url();
@@ -482,6 +507,18 @@ async function waitForChallengeResolution(page: any, maxWaitMs?: number): Promis
   return false;
 }
 
+// ============================================
+// DOMAIN BLOCK TRACKER
+// ============================================
+
+/**
+ * Tracks domains where bot protection could not be bypassed.
+ * Prevents wasting 30-45s per URL on subsequent requests to the same domain
+ * when the warmup already proved the site is hard-blocked.
+ * Cleared when the BrowserManager context for that source is closed.
+ */
+const blockedDomains = new Set<string>();
+
 /**
  * Perform a warmup visit to a site's homepage to establish bot-protection
  * cookies (Kasada KP_UIDz, etc.) before fetching the actual target URL.
@@ -493,16 +530,25 @@ async function waitForChallengeResolution(page: any, maxWaitMs?: number): Promis
  * The warmup:
  * 1. Loads the site homepage
  * 2. Waits for initial scripts to run (3s)
- * 3. If a bot protection challenge is detected, waits for it to resolve
- *    (up to BROWSER_WARMUP_TIMEOUT, default 45s — generous because this
- *    is the critical first visit that establishes cookies for everything)
- * 4. Logs the cookie names obtained (for debugging Kasada KP_UIDz, etc.)
+ * 3. Checks for hard blocks (permanent rejection) — fails immediately
+ * 4. If a solvable challenge is detected, waits for it to resolve
+ *    (up to BROWSER_WARMUP_TIMEOUT, default 45s)
+ * 5. Logs the cookie names obtained (for debugging Kasada KP_UIDz, etc.)
+ * 
+ * If the warmup is hard-blocked, the domain is added to a block list so
+ * subsequent URLs on the same domain fail immediately instead of waiting.
  * 
  * Only warms up if the context has no cookies for the target domain.
  */
 async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
   const parsed = new URL(targetUrl);
   const origin = parsed.origin;
+  const hostname = parsed.hostname;
+
+  // If this domain is already known to be hard-blocked, skip immediately
+  if (blockedDomains.has(hostname)) {
+    throw new Error(`[FetchHTML] ${hostname} is hard-blocked by bot protection (detected during warmup). Skipping.`);
+  }
 
   // Check if we already have cookies for this domain (from a previous session
   // or earlier warmup). Persistent contexts preserve cookies across launches.
@@ -511,7 +557,7 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
     return; // Already warmed up
   }
 
-  console.log(`[FetchHTML] No cookies for ${parsed.hostname}, performing warmup visit to homepage...`);
+  console.log(`[FetchHTML] No cookies for ${hostname}, performing warmup visit to homepage...`);
   const page = await context.newPage();
   try {
     await page.goto(origin, {
@@ -525,6 +571,15 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
     // Check if the homepage itself is a bot protection challenge page
     const html = await page.content();
     if (isBotProtected(html)) {
+      // Check for hard block first — permanent rejections that will never resolve
+      if (isHardBlock(html)) {
+        console.error(`[FetchHTML] ${hostname} returned a HARD BLOCK (permanent rejection by bot protection). ` +
+          `This site cannot be accessed with the current browser configuration. ` +
+          `Skipping all subsequent URLs for this domain.`);
+        blockedDomains.add(hostname);
+        return; // Don't throw here — let the caller see the block via blockedDomains
+      }
+
       console.log(`[FetchHTML] Homepage is a bot protection challenge, waiting for resolution...`);
       // Use a generous timeout for warmup — this is the critical first visit
       // that establishes cookies for all subsequent requests.
@@ -532,8 +587,9 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
       const warmupTimeout = parseInt(process.env.BROWSER_WARMUP_TIMEOUT || '45000', 10);
       const resolved = await waitForChallengeResolution(page, warmupTimeout);
       if (!resolved) {
-        console.warn(`[FetchHTML] Warmup challenge did not resolve for ${parsed.hostname}. ` +
+        console.warn(`[FetchHTML] Warmup challenge did not resolve for ${hostname}. ` +
           `Subsequent requests will likely be blocked.`);
+        blockedDomains.add(hostname);
       }
     }
 
@@ -542,7 +598,7 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
     const cookies = await context.cookies(origin);
     const cookieNames = cookies.map((c: any) => c.name).join(', ');
     const hasKasada = cookies.some((c: any) => c.name.startsWith('KP_'));
-    console.log(`[FetchHTML] Warmup complete: ${cookies.length} cookies for ${parsed.hostname} [${cookieNames}]` +
+    console.log(`[FetchHTML] Warmup complete: ${cookies.length} cookies for ${hostname} [${cookieNames}]` +
       (hasKasada ? ' (Kasada cookies found)' : ''));
   } catch (err: any) {
     console.warn(`[FetchHTML] Warmup visit failed for ${origin}: ${err.message}`);
@@ -572,10 +628,22 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
  */
 async function fetchWithBrowser(url: string, options: FetchHTMLOptions = {}): Promise<string> {
   const sourceId = options.sourceId || 'default';
+
+  // Check if this domain is known to be hard-blocked before even launching context
+  const hostname = new URL(url).hostname;
+  if (blockedDomains.has(hostname)) {
+    throw new Error(`${hostname} is hard-blocked by bot protection. Browser fetch skipped.`);
+  }
+
   const context = await BrowserManager.getContext(sourceId);
 
   // Warmup: visit homepage to establish bot-protection cookies if needed
   await warmupIfNeeded(context, url);
+
+  // Re-check after warmup — warmup may have discovered a hard block
+  if (blockedDomains.has(hostname)) {
+    throw new Error(`${hostname} is hard-blocked by bot protection (detected during warmup). Browser fetch skipped.`);
+  }
 
   const page = await context.newPage();
   try {
