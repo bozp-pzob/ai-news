@@ -385,6 +385,7 @@ const BOT_PROTECTION_PATTERNS = [
   'Please verify you are a human',                 // Generic
   'window.KPSDK',                                  // Kasada
   'Your request could not be processed',           // Kasada block page
+  'animation:reveal 1s forwards',                  // Kasada challenge page (CSS reveal animation)
 ];
 
 /**
@@ -428,20 +429,25 @@ async function dismissCookieConsent(page: any): Promise<void> {
  * intermediate challenge page, then redirect or replace the DOM once solved.
  * This function polls the page content to detect when the challenge resolves.
  * 
+ * Default timeout is 30s, overridable via BROWSER_CHALLENGE_TIMEOUT env var
+ * or the maxWaitMs parameter. Kasada's Proof-of-Work can take 15-30s on VMs.
+ * 
  * @returns true if challenge was detected and resolved, false if no challenge found
  */
-async function waitForChallengeResolution(page: any, maxWaitMs: number = 15000): Promise<boolean> {
+async function waitForChallengeResolution(page: any, maxWaitMs?: number): Promise<boolean> {
+  const timeout = maxWaitMs ?? parseInt(process.env.BROWSER_CHALLENGE_TIMEOUT || '30000', 10);
   const initialHtml = await page.content();
   
   if (!isBotProtected(initialHtml)) {
     return false; // No challenge detected
   }
 
-  console.log('[FetchHTML] Bot protection challenge detected, waiting for resolution...');
+  console.log(`[FetchHTML] Bot protection challenge detected, waiting up to ${Math.round(timeout / 1000)}s for resolution...`);
   const startTime = Date.now();
-  const pollInterval = 1000;
+  const initialUrl = page.url();
+  const pollInterval = 2000;
 
-  while (Date.now() - startTime < maxWaitMs) {
+  while (Date.now() - startTime < timeout) {
     await page.waitForTimeout(pollInterval);
     
     const currentHtml = await page.content();
@@ -455,14 +461,14 @@ async function waitForChallengeResolution(page: any, maxWaitMs: number = 15000):
 
     // Also check if the URL changed (redirect after challenge)
     const currentUrl = page.url();
-    if (currentUrl !== page.url()) {
-      console.log(`[FetchHTML] Page redirected during challenge resolution`);
-      await page.waitForTimeout(2000); // Wait for new page to settle
+    if (currentUrl !== initialUrl) {
+      console.log(`[FetchHTML] Page redirected during challenge resolution: ${initialUrl} -> ${currentUrl}`);
+      await page.waitForTimeout(3000); // Wait for new page to settle
       return true;
     }
   }
 
-  console.log(`[FetchHTML] Challenge did not resolve within ${maxWaitMs}ms`);
+  console.log(`[FetchHTML] Challenge did not resolve within ${Math.round(timeout / 1000)}s`);
   return false;
 }
 
@@ -473,6 +479,14 @@ async function waitForChallengeResolution(page: any, maxWaitMs: number = 15000):
  * Sites like realtor.com require Kasada cookies to be established via a
  * normal homepage visit before allowing access to API/RSS endpoints.
  * Subsequent requests with the same persistent context reuse these cookies.
+ * 
+ * The warmup:
+ * 1. Loads the site homepage
+ * 2. Waits for initial scripts to run (3s)
+ * 3. If a bot protection challenge is detected, waits for it to resolve
+ *    (up to BROWSER_WARMUP_TIMEOUT, default 45s — generous because this
+ *    is the critical first visit that establishes cookies for everything)
+ * 4. Logs the cookie names obtained (for debugging Kasada KP_UIDz, etc.)
  * 
  * Only warms up if the context has no cookies for the target domain.
  */
@@ -494,11 +508,32 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
       waitUntil: 'networkidle',
       timeout: 30000,
     });
-    // Wait for Kasada/bot-protection scripts to run and set cookies
-    await page.waitForTimeout(5000);
 
+    // Wait briefly for initial scripts to load
+    await page.waitForTimeout(3000);
+
+    // Check if the homepage itself is a bot protection challenge page
+    const html = await page.content();
+    if (isBotProtected(html)) {
+      console.log(`[FetchHTML] Homepage is a bot protection challenge, waiting for resolution...`);
+      // Use a generous timeout for warmup — this is the critical first visit
+      // that establishes cookies for all subsequent requests.
+      // Kasada's Proof-of-Work can take 15-30s+ on VMs with limited CPU.
+      const warmupTimeout = parseInt(process.env.BROWSER_WARMUP_TIMEOUT || '45000', 10);
+      const resolved = await waitForChallengeResolution(page, warmupTimeout);
+      if (!resolved) {
+        console.warn(`[FetchHTML] Warmup challenge did not resolve for ${parsed.hostname}. ` +
+          `Subsequent requests will likely be blocked.`);
+      }
+    }
+
+    // Log cookie details for debugging — cookie names (not values) help
+    // diagnose whether bot protection cookies (e.g. KP_UIDz) were obtained
     const cookies = await context.cookies(origin);
-    console.log(`[FetchHTML] Warmup complete: ${cookies.length} cookies established for ${parsed.hostname}`);
+    const cookieNames = cookies.map((c: any) => c.name).join(', ');
+    const hasKasada = cookies.some((c: any) => c.name.startsWith('KP_'));
+    console.log(`[FetchHTML] Warmup complete: ${cookies.length} cookies for ${parsed.hostname} [${cookieNames}]` +
+      (hasKasada ? ' (Kasada cookies found)' : ''));
   } catch (err: any) {
     console.warn(`[FetchHTML] Warmup visit failed for ${origin}: ${err.message}`);
     // Continue anyway -- the target URL might still work
@@ -522,7 +557,8 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
  *    response body directly, bypassing the download behavior.
  * 
  * 3. **Challenge waiting**: If a challenge page is detected, polls until it
- *    resolves (up to 15s) before returning content.
+ *    resolves (up to 30s by default, configurable via BROWSER_CHALLENGE_TIMEOUT)
+ *    before returning content.
  */
 async function fetchWithBrowser(url: string, options: FetchHTMLOptions = {}): Promise<string> {
   const sourceId = options.sourceId || 'default';
