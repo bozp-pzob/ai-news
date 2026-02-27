@@ -1,6 +1,6 @@
 // src/plugins/ai/OpenAIProvider.ts
 
-import { AiProvider, ImageGenerationConfig, ImageGenerationOptions, CDNConfig, AiUsageStats, SummarizeOptions } from "../../types";
+import { AiProvider, ImageGenerationConfig, ImageGenerationOptions, CDNConfig, AiUsageStats, SummarizeOptions, BudgetExhaustedError } from "../../types";
 import { createTopicsPrompt } from "../../helpers/promptHelper";
 import OpenAI from "openai";
 import { logger } from "../../helpers/cliHelper";
@@ -51,6 +51,9 @@ export class OpenAIProvider implements AiProvider {
     totalCalls: 0,
     estimatedCostUsd: 0,
   };
+  
+  // Token budget enforcement
+  private _tokenBudget: number | null = null;
 
   static constructorInterface = {
     parameters: [
@@ -164,6 +167,7 @@ export class OpenAIProvider implements AiProvider {
 
   /**
    * Record token usage from an API completion response.
+   * Throws BudgetExhaustedError if token budget is exceeded.
    */
   private recordUsage(usage: OpenAI.CompletionUsage | undefined): void {
     if (!usage) return;
@@ -176,6 +180,11 @@ export class OpenAIProvider implements AiProvider {
       this._usage.estimatedCostUsd +=
         (usage.prompt_tokens || 0) * this._modelMetadata.promptPricePerToken +
         (usage.completion_tokens || 0) * this._modelMetadata.completionPricePerToken;
+    }
+    
+    // Check token budget after recording usage
+    if (this._tokenBudget !== null && this._usage.totalTokens > this._tokenBudget) {
+      throw new BudgetExhaustedError(this._usage, this._tokenBudget);
     }
   }
 
@@ -198,6 +207,22 @@ export class OpenAIProvider implements AiProvider {
       totalCalls: 0,
       estimatedCostUsd: 0,
     };
+  }
+
+  /** Set a token budget. Throws BudgetExhaustedError if exceeded during any AI call. */
+  public setTokenBudget(budget: number): void {
+    this._tokenBudget = budget;
+  }
+
+  /** Clear the token budget (no limit). */
+  public clearTokenBudget(): void {
+    this._tokenBudget = null;
+  }
+
+  /** Get remaining tokens in the budget, or null if no budget is set. */
+  public getRemainingBudget(): number | null {
+    if (this._tokenBudget === null) return null;
+    return Math.max(0, this._tokenBudget - this._usage.totalTokens);
   }
 
   /**

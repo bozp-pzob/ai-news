@@ -96,6 +96,300 @@ Your output must:
 - Start directly with the markdown content — no preamble, explanations, or code block wrappers`;
 
 // ============================================
+// HTML ANALYSIS PROMPT
+// ============================================
+
+/**
+ * System prompt for HTML/web page structured data extraction.
+ * Used by HTMLParser for AI-guided content extraction from web pages.
+ */
+export const SYSTEM_PROMPT_HTML_ANALYZER = `You are a structured data extractor that analyzes web page content and returns structured JSON.
+
+Your responsibilities:
+- Extract all relevant data points from the provided page content
+- Map extracted data to the requested TypeScript interface when provided
+- Store any important data that doesn't fit the interface under a "misc" field
+- Use only information present in the content — do not fabricate data
+- Preserve URLs, dates, numbers, and other factual data exactly as found
+
+Always respond with valid JSON matching the requested schema.`;
+
+/**
+ * Creates a prompt for analyzing web page content and extracting structured data.
+ * 
+ * Uses XML tags for clear data/instruction separation, consistent with the
+ * rest of the prompt system.
+ * 
+ * Recommended options: { systemPrompt: SYSTEM_PROMPT_HTML_ANALYZER, temperature: 0.3, jsonMode: true }
+ * 
+ * @param markdown - The page content converted to markdown
+ * @param objectTypeString - Optional TypeScript interface for the desired output structure
+ * @param excludeTopics - Optional topics to exclude from extraction
+ * @returns A formatted user prompt string
+ */
+export function createHtmlAnalysisPrompt(
+  markdown: string,
+  objectTypeString?: string,
+  excludeTopics?: string,
+): string {
+  let prompt = `Analyze this web page content and extract all relevant structured data.
+
+<page_content>
+${markdown}
+</page_content>`;
+
+  if (objectTypeString) {
+    prompt += `
+
+Map the extracted data to this TypeScript interface:
+
+<output_schema>
+${objectTypeString}
+</output_schema>
+
+If there are important data points that don't fit the structured interface, include them under a "misc" field.`;
+  } else {
+    prompt += `
+
+Extract the data as a JSON object with these fields:
+- "title": The page title or main heading
+- "description": A concise summary of the page content (2-3 sentences)
+- "text": The main body text content
+- "author": Author name if available
+- "date": Publication or last modified date if available (ISO 8601 format)
+- "tags": Array of relevant topic tags
+- "misc": Any other noteworthy structured data found on the page`;
+  }
+
+  if (excludeTopics) {
+    prompt += `
+
+Exclude these topics from the extraction: ${excludeTopics}`;
+  }
+
+  prompt += `
+
+Return the analysis as a valid JSON object.`;
+
+  return prompt;
+}
+
+// ============================================
+// PARSER GENERATION PROMPTS
+// ============================================
+
+/**
+ * System prompt for LLM-based parser code generation.
+ * Instructs the LLM to produce a reusable JavaScript function body
+ * that uses cheerio's $ to extract structured data from HTML.
+ */
+export const SYSTEM_PROMPT_PARSER_GENERATOR = `You are a code generator that creates reusable JavaScript parser functions for extracting structured data from HTML pages.
+
+Your output is a JavaScript function BODY (not a full function declaration) that will be executed as:
+  (function($) { <your code> })($)
+where $ is a cheerio-loaded document (jQuery-like API).
+
+CRITICAL RULES — your code MUST follow this exact pattern:
+
+1. Start by declaring: var result = {};
+2. Wrap EVERY field extraction in its own try-catch:
+   try { result.title = $('h1').first().text().trim(); } catch(e) { result.title = null; }
+   try { result.price = $('[data-testid="price"]').text().trim(); } catch(e) { result.price = null; }
+3. End with: return result;
+
+DEFENSIVE CODING — these cause crashes, NEVER do them:
+- NEVER call .split(), .match(), .replace() etc. on a value without checking it first:
+  BAD:  result.zip = $('span').text().split(',')[1].trim()
+  GOOD: try { var addr = $('span').text() || ''; var parts = addr.split(','); result.zip = parts[1] ? parts[1].trim() : null; } catch(e) { result.zip = null; }
+- NEVER chain .text().trim() on a selector that might match nothing — always use .first() or check .length
+- NEVER assume array indices exist — always check: parts[1] ? parts[1].trim() : null
+
+CHEERIO TIPS:
+- Use: $('selector'), .find(), .text(), .attr(), .map(), .each(), .first(), .last(), .eq(), .children(), .parent(), .closest(), .filter()
+- Be SPECIFIC — use class names, IDs, data attributes, and element hierarchy you observe
+- Parse dates into ISO 8601 format when possible
+- Clean whitespace: .text().trim().replace(/\\s+/g, ' ')
+
+FORBIDDEN:
+- Do NOT use require(), fetch(), import, process, fs, or any I/O
+- Do NOT use async/await or Promises
+- Do NOT output explanations, comments, or markdown — ONLY JavaScript code
+
+Always respond with ONLY the JavaScript function body code.`;
+
+/**
+ * Creates a prompt asking the LLM to generate a cheerio-based parser function.
+ *
+ * @param markdown - Page content as markdown (for LLM readability)
+ * @param structureHints - HTML structural hints (CSS classes, IDs, repeated patterns)
+ * @param objectTypeString - Optional TypeScript interface for desired output schema
+ * @param structuredDataHint - Optional already-extracted structured data (JSON-LD, OG tags)
+ * @returns Prompt string
+ */
+export function createParserGenerationPrompt(
+  markdown: string,
+  structureHints: string,
+  objectTypeString?: string,
+  structuredDataHint?: Record<string, any>,
+): string {
+  let prompt = `Generate a JavaScript function body that extracts structured data from this web page using cheerio ($).
+
+<page_content>
+${markdown.substring(0, 8000)}
+</page_content>
+
+<html_structure>
+${structureHints}
+</html_structure>`;
+
+  if (structuredDataHint && Object.keys(structuredDataHint).length > 0) {
+    prompt += `
+
+<already_extracted_data>
+${JSON.stringify(structuredDataHint, null, 2).substring(0, 2000)}
+</already_extracted_data>
+
+The above data was already extracted for free from JSON-LD and meta tags. Your parser should extract ADDITIONAL data beyond what is available in meta tags, using the actual page HTML structure.`;
+  }
+
+  if (objectTypeString) {
+    prompt += `
+
+Map the extracted data to this TypeScript interface:
+
+<output_schema>
+${objectTypeString}
+</output_schema>
+
+Include a "misc" field for important data that does not fit the interface.`;
+  } else {
+    prompt += `
+
+Extract a JSON object with these fields:
+- "title": The page title or main heading
+- "description": A concise summary (2-3 sentences)
+- "text": The main body text content
+- "author": Author name if available
+- "date": Publication date in ISO 8601 format if available
+- "tags": Array of relevant topic tags
+- "misc": Any other noteworthy structured data`;
+  }
+
+  prompt += `
+
+Remember: Return ONLY the JavaScript function body code. The function receives $ (cheerio) and must return the data object. No markdown fences, no function declaration wrapper.`;
+
+  return prompt;
+}
+
+/**
+ * Creates a retry prompt when a generated parser failed validation.
+ * Includes the previous code and what fields were missing.
+ */
+export function createParserRetryPrompt(
+  markdown: string,
+  structureHints: string,
+  previousCode: string,
+  missingFields: string[],
+  objectTypeString?: string,
+): string {
+  let prompt = `The previous parser function failed to extract some required fields. Fix it.
+
+<page_content>
+${markdown.substring(0, 6000)}
+</page_content>
+
+<html_structure>
+${structureHints}
+</html_structure>
+
+<previous_parser_code>
+${previousCode}
+</previous_parser_code>
+
+<missing_fields>
+${missingFields.join(', ')}
+</missing_fields>
+
+The above fields were missing or empty in the parser output. Examine the page content and HTML structure carefully to find where these fields can be extracted from.`;
+
+  if (objectTypeString) {
+    prompt += `
+
+Target schema:
+
+<output_schema>
+${objectTypeString}
+</output_schema>`;
+  }
+
+  prompt += `
+
+Return ONLY the corrected JavaScript function body code. No markdown fences, no function declaration wrapper.`;
+
+  return prompt;
+}
+
+// ============================================
+// PARSER FROM EXAMPLE PROMPT (gold-standard)
+// ============================================
+
+/**
+ * Creates a prompt that gives the LLM both the HTML data sources and the expected
+ * JSON output, asking it to write a cheerio parser that reproduces that output.
+ *
+ * This is "programming by example" — the LLM sees the concrete input-output pair
+ * and writes the transformation code.
+ *
+ * @param embeddedDataSummary - Summary of data in script tags (from extractEmbeddedData)
+ * @param goldStandard - The correctly extracted JSON from direct LLM extraction
+ * @param objectTypeString - Optional TypeScript interface for context
+ * @returns Prompt string
+ */
+export function createParserFromExamplePrompt(
+  embeddedDataSummary: string,
+  goldStandard: Record<string, any>,
+  objectTypeString?: string,
+): string {
+  const goldJson = JSON.stringify(goldStandard, null, 2).substring(0, 6000);
+
+  let prompt = `Write a JavaScript function body using cheerio ($) that extracts data from an HTML page.
+
+Below is the CORRECT JSON output that was extracted from this page. Your parser must reproduce this output as closely as possible.
+
+<expected_output>
+${goldJson}
+</expected_output>
+
+Below are the DATA SOURCES available in the HTML. Look for data in these script tags FIRST — they contain structured data that is more reliable than scraping visible DOM text.
+
+<embedded_data_sources>
+${embeddedDataSummary}
+</embedded_data_sources>`;
+
+  if (objectTypeString) {
+    prompt += `
+
+For context, here is the TypeScript interface the output should conform to:
+
+<output_schema>
+${objectTypeString}
+</output_schema>`;
+  }
+
+  prompt += `
+
+STRATEGY — follow this priority order:
+1. FIRST check <script id="__NEXT_DATA__"> or similar hydration data — parse the JSON and extract fields directly. This is the most reliable source.
+2. THEN check <script type="application/ld+json"> for structured data.
+3. ONLY use DOM selectors (text, attributes) for fields not available in script data.
+
+IMPORTANT: The function body receives $ (cheerio-loaded document). Follow the defensive coding pattern from the system prompt. Return ONLY JavaScript code, no explanations.`;
+
+  return prompt;
+}
+
+// ============================================
 // TOPIC EXTRACTION PROMPT (centralized)
 // ============================================
 
@@ -578,5 +872,18 @@ export const SUMMARIZE_OPTIONS = {
   githubSummary: {
     systemPrompt: SYSTEM_PROMPT_GITHUB_SUMMARIZER,
     temperature: 0.4,
+  } as SummarizeOptions,
+
+  /** For HTML/web page structured data extraction */
+  htmlAnalysis: {
+    systemPrompt: SYSTEM_PROMPT_HTML_ANALYZER,
+    temperature: 0.3,
+    jsonMode: true,
+  } as SummarizeOptions,
+
+  /** For generating reusable HTML parser code */
+  parserGeneration: {
+    systemPrompt: SYSTEM_PROMPT_PARSER_GENERATOR,
+    temperature: 0.2,
   } as SummarizeOptions,
 } as const;

@@ -11,6 +11,7 @@ import { ConnectionChannelPicker } from './ConnectionChannelPicker';
 import { GitHubRepoPicker } from './GitHubRepoPicker';
 import { PlatformType, ExternalConnection } from '../services/api';
 import { MediaDownloadConfig } from './MediaDownloadConfig';
+import { RSSFeedConfig } from './RSSFeedConfig';
 
 // Re-export for backwards compatibility with existing code
 const isSensitiveParameter = isSensitiveParam;
@@ -279,6 +280,11 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
             // For required fields, use a placeholder to indicate it's required
             updatedParams[param.name] = param.required ? '' : '';
           }
+        }
+        
+        // Special handling for RSSSource feeds - initialize as array
+        if (pluginSchema?.pluginName === 'RSSSource' && param.name === 'feeds' && !Array.isArray(updatedParams.feeds)) {
+          updatedParams.feeds = [];
         }
         
         // Special handling for DiscordSource mode - set default to 'detailed'
@@ -873,6 +879,14 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
           </div>
         )}
 
+        {/* RSS Feed Config - for RSSSource */}
+        {pluginSchema?.pluginName === 'RSSSource' && (
+          <RSSFeedConfig
+            feeds={params.feeds || []}
+            onChange={(feeds) => handleParamChange('feeds', feeds)}
+          />
+        )}
+
         {/* Render constructor interface parameters */}
         {constructorInterface && (constructorInterface.parameters as Array<{
           name: string;
@@ -915,6 +929,11 @@ export const PluginParamDialog: React.FC<PluginParamDialogProps> = ({
             if (githubHandledFields.includes(key)) {
               return null;
             }
+          }
+          
+          // Skip RSSSource feeds field - handled with custom RSSFeedConfig UI above
+          if (pluginSchema?.pluginName === 'RSSSource' && key === 'feeds') {
+            return null;
           }
           
           // In platform mode, hide connection params when using platform storage

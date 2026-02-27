@@ -1,6 +1,6 @@
 // src/plugins/storage/StoragePlugin.ts
 
-import { ContentItem, SummaryItem } from "../../types";
+import { ContentItem, SiteParser, SummaryItem } from "../../types";
 
 /**
  * StoragePlugin interface defines the contract for storage implementations.
@@ -73,4 +73,32 @@ export interface StoragePlugin {
    * @returns The database connection, or null if not initialized
    */
   getDb(): any;
+
+  // ============================================
+  // SITE PARSER METHODS (for cached HTML parsers)
+  // ============================================
+
+  /**
+   * Finds a cached site parser matching a domain, path pattern, and optional output schema.
+   * @param domain - The domain to match (e.g. "example.com")
+   * @param pathPattern - The path pattern to match (e.g. "/blog/*")
+   * @param objectTypeString - Optional TypeScript interface string the parser was generated for
+   * @returns The matching SiteParser, or null if not found
+   */
+  getSiteParser(domain: string, pathPattern: string, objectTypeString?: string): Promise<SiteParser | null>;
+
+  /**
+   * Saves or updates a site parser. Upserts on (domain, pathPattern, objectTypeString).
+   * @param parser - The SiteParser to save
+   */
+  saveSiteParser(parser: SiteParser): Promise<void>;
+
+  /**
+   * Records a success or failure for a site parser.
+   * On success: resets consecutiveFailures to 0 and updates lastSuccessAt.
+   * On failure: increments consecutiveFailures and updates lastFailureAt.
+   * @param id - The parser ID
+   * @param success - Whether the parse was successful
+   */
+  updateSiteParserStatus(id: number, success: boolean): Promise<void>;
 }

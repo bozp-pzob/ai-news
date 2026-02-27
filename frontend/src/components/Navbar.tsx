@@ -53,8 +53,8 @@ const Navbar: React.FC = () => {
         <div className="flex justify-between h-16">
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
-              <Link to="/" className={`text-xl font-bold ${logoClass}`}>
-                Digital Gardener
+              <Link to="/" className="flex items-center">
+                <img src="/logo.svg" alt="Digital Gardener" className="h-8 w-8" />
               </Link>
             </div>
           </div>

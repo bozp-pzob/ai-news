@@ -2,7 +2,7 @@
 
 import { Pool, PoolClient, QueryResult } from 'pg';
 import { StoragePlugin } from './StoragePlugin';
-import { ContentItem, SummaryItem } from '../../types';
+import { ContentItem, SiteParser, SummaryItem } from '../../types';
 import { logger } from '../../helpers/cliHelper';
 
 /**
@@ -169,10 +169,99 @@ export class PostgresStorage implements StoragePlugin {
       }
 
       client.release();
+
+      // Run content table migrations (safe for both platform and external DBs)
+      await this.runContentMigrations();
+
       logger.debug(`[PostgresStorage:${operation}] Connection pool initialized successfully`);
     } catch (error) {
       logger.error(`[PostgresStorage:${operation}] Failed to initialize: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
+    }
+  }
+
+  /**
+   * Runs idempotent migrations to add missing columns to content tables.
+   * Safe to run multiple times. Handles both platform and external databases.
+   */
+  private async runContentMigrations(): Promise<void> {
+    const client = await this.getClient();
+    try {
+      // Check if summaries table exists before trying to migrate it
+      const tableExists = await client.query(`
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'summaries'
+      `);
+
+      if (tableExists.rows.length === 0) {
+        client.release();
+        return; // No summaries table yet — will be created by schema or CONTENT_TABLES_SQL
+      }
+
+      // Add new generator columns to summaries table
+      await client.query(`
+        ALTER TABLE summaries
+        ADD COLUMN IF NOT EXISTS content_hash TEXT,
+        ADD COLUMN IF NOT EXISTS start_date BIGINT,
+        ADD COLUMN IF NOT EXISTS end_date BIGINT,
+        ADD COLUMN IF NOT EXISTS granularity TEXT DEFAULT 'daily',
+        ADD COLUMN IF NOT EXISTS metadata JSONB,
+        ADD COLUMN IF NOT EXISTS tokens_used INTEGER,
+        ADD COLUMN IF NOT EXISTS estimated_cost_usd REAL
+      `);
+
+      // Migrate unique constraint: old (config_id, type, date) → new with granularity
+      // Drop old 3-column constraint if it exists
+      await client.query(`
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM pg_constraint c
+            JOIN pg_namespace n ON n.oid = c.connamespace
+            WHERE c.conrelid = 'summaries'::regclass
+              AND c.contype = 'u'
+              AND n.nspname = 'public'
+              AND NOT EXISTS (
+                SELECT 1 FROM pg_attribute a
+                WHERE a.attrelid = c.conrelid
+                  AND a.attnum = ANY(c.conkey)
+                  AND a.attname = 'granularity'
+              )
+              AND array_length(c.conkey, 1) = 3
+          )
+          THEN
+            EXECUTE (
+              SELECT 'ALTER TABLE summaries DROP CONSTRAINT ' || quote_ident(c.conname)
+              FROM pg_constraint c
+              JOIN pg_namespace n ON n.oid = c.connamespace
+              WHERE c.conrelid = 'summaries'::regclass
+                AND c.contype = 'u'
+                AND n.nspname = 'public'
+                AND NOT EXISTS (
+                  SELECT 1 FROM pg_attribute a
+                  WHERE a.attrelid = c.conrelid
+                    AND a.attnum = ANY(c.conkey)
+                    AND a.attname = 'granularity'
+                )
+                AND array_length(c.conkey, 1) = 3
+              LIMIT 1
+            );
+          END IF;
+        END $$
+      `);
+
+      // Create the new unique index with granularity (idempotent)
+      await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_summaries_config_type_date_granularity
+        ON summaries (config_id, type, date, COALESCE(granularity, 'daily'))
+      `);
+
+      logger.debug('[PostgresStorage] Content table migrations completed');
+    } catch (error) {
+      // Non-fatal — log and continue
+      logger.warning(`[PostgresStorage] Content migration warning (non-fatal): ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      client.release();
     }
   }
 
@@ -398,20 +487,30 @@ export class PostgresStorage implements StoragePlugin {
     }
 
     const categoriesJson = item.categories || null;
+    const granularity = item.granularity || 'daily';
+    const metadataJson = item.metadata ? JSON.stringify(item.metadata) : null;
     const embeddingStr = (item as any).embedding
       ? `[${(item as any).embedding.join(',')}]`
       : null;
 
-    // Use upsert (INSERT ... ON CONFLICT)
+    // Use upsert (INSERT ... ON CONFLICT) — unique on (config_id, type, date, granularity)
     await this.query(`
-      INSERT INTO summaries (config_id, type, title, categories, markdown, date, embedding)
-      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7::vector)
-      ON CONFLICT (config_id, type, date)
+      INSERT INTO summaries (config_id, type, title, categories, markdown, date, embedding, content_hash,
+                             start_date, end_date, granularity, metadata, tokens_used, estimated_cost_usd)
+      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7::vector, $8, $9, $10, $11, $12::jsonb, $13, $14)
+      ON CONFLICT (config_id, type, date, COALESCE(granularity, 'daily'))
       DO UPDATE SET
         title = EXCLUDED.title,
         categories = EXCLUDED.categories,
         markdown = EXCLUDED.markdown,
-        embedding = COALESCE(EXCLUDED.embedding, summaries.embedding)
+        embedding = COALESCE(EXCLUDED.embedding, summaries.embedding),
+        content_hash = EXCLUDED.content_hash,
+        start_date = EXCLUDED.start_date,
+        end_date = EXCLUDED.end_date,
+        granularity = EXCLUDED.granularity,
+        metadata = EXCLUDED.metadata,
+        tokens_used = EXCLUDED.tokens_used,
+        estimated_cost_usd = EXCLUDED.estimated_cost_usd
     `, [
       this.configId,
       item.type,
@@ -419,10 +518,17 @@ export class PostgresStorage implements StoragePlugin {
       categoriesJson,
       item.markdown || null,
       item.date,
-      embeddingStr
+      embeddingStr,
+      item.contentHash || null,
+      item.startDate || null,
+      item.endDate || null,
+      granularity,
+      metadataJson,
+      item.tokensUsed || null,
+      item.estimatedCostUsd || null,
     ]);
 
-    logger.debug(`[PostgresStorage:${operation}] Saved summary type=${item.type}, date=${item.date}`);
+    logger.debug(`[PostgresStorage:${operation}] Saved summary type=${item.type}, granularity=${granularity}, date=${item.date}`);
   }
 
   /**
@@ -459,7 +565,14 @@ export class PostgresStorage implements StoragePlugin {
       title: row.title || undefined,
       categories: row.categories || undefined,
       markdown: row.markdown || undefined,
-      date: row.date
+      date: row.date,
+      contentHash: row.content_hash || undefined,
+      startDate: row.start_date || undefined,
+      endDate: row.end_date || undefined,
+      granularity: row.granularity || undefined,
+      metadata: row.metadata || undefined,
+      tokensUsed: row.tokens_used || undefined,
+      estimatedCostUsd: row.estimated_cost_usd || undefined,
     }));
   }
 
@@ -745,6 +858,117 @@ export class PostgresStorage implements StoragePlugin {
       'UPDATE summaries SET embedding = $1::vector WHERE id = $2',
       [embeddingStr, summaryId]
     );
+  }
+
+  // ============================================
+  // SITE PARSER METHODS
+  // ============================================
+
+  /**
+   * Finds a cached site parser matching domain, path pattern, and optional output schema.
+   * Parsers are shared across configs (no config_id filter) since they are site-specific.
+   */
+  public async getSiteParser(
+    domain: string,
+    pathPattern: string,
+    objectTypeString?: string,
+  ): Promise<SiteParser | null> {
+    const result = await this.query(
+      `SELECT * FROM site_parsers WHERE domain = $1 AND path_pattern = $2 AND COALESCE(object_type_string, '') = $3`,
+      [domain, pathPattern, objectTypeString || ''],
+    );
+
+    if (result.rows.length === 0) return null;
+
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      domain: row.domain,
+      pathPattern: row.path_pattern,
+      parserCode: row.parser_code,
+      objectTypeString: row.object_type_string || undefined,
+      version: row.version,
+      consecutiveFailures: row.consecutive_failures,
+      lastSuccessAt: row.last_success_at ? parseInt(row.last_success_at) : undefined,
+      lastFailureAt: row.last_failure_at ? parseInt(row.last_failure_at) : undefined,
+      createdAt: parseInt(row.created_at),
+      updatedAt: parseInt(row.updated_at),
+      sampleUrl: row.sample_url || undefined,
+      metadata: row.metadata || undefined,
+    };
+  }
+
+  /**
+   * Saves or updates a site parser. Upserts on (domain, pathPattern, objectTypeString).
+   * Parsers are shared across configs (no config_id scoping).
+   */
+  public async saveSiteParser(parser: SiteParser): Promise<void> {
+    const now = Math.floor(Date.now() / 1000);
+
+    // Use two-step upsert: check existence then INSERT or UPDATE.
+    // PostgreSQL ON CONFLICT doesn't support expression-based index columns directly.
+    const existing = await this.query(
+      `SELECT id FROM site_parsers WHERE domain = $1 AND path_pattern = $2 AND COALESCE(object_type_string, '') = $3`,
+      [parser.domain, parser.pathPattern, parser.objectTypeString || ''],
+    );
+
+    if (existing.rows.length > 0) {
+      await this.query(
+        `UPDATE site_parsers SET
+           parser_code = $1,
+           version = site_parsers.version + 1,
+           consecutive_failures = 0,
+           updated_at = $2,
+           sample_url = COALESCE($3, site_parsers.sample_url),
+           metadata = COALESCE($4::jsonb, site_parsers.metadata)
+         WHERE id = $5`,
+        [
+          parser.parserCode,
+          now,
+          parser.sampleUrl || null,
+          parser.metadata ? JSON.stringify(parser.metadata) : null,
+          existing.rows[0].id,
+        ],
+      );
+    } else {
+      await this.query(
+        `INSERT INTO site_parsers (domain, path_pattern, parser_code, object_type_string, version, consecutive_failures, last_success_at, last_failure_at, created_at, updated_at, sample_url, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)`,
+        [
+          parser.domain,
+          parser.pathPattern,
+          parser.parserCode,
+          parser.objectTypeString || null,
+          parser.version || 1,
+          parser.consecutiveFailures || 0,
+          parser.lastSuccessAt || null,
+          parser.lastFailureAt || null,
+          parser.createdAt || now,
+          now,
+          parser.sampleUrl || null,
+          parser.metadata ? JSON.stringify(parser.metadata) : null,
+        ],
+      );
+    }
+  }
+
+  /**
+   * Records a success or failure for a site parser.
+   */
+  public async updateSiteParserStatus(id: number, success: boolean): Promise<void> {
+    const now = Math.floor(Date.now() / 1000);
+
+    if (success) {
+      await this.query(
+        `UPDATE site_parsers SET consecutive_failures = 0, last_success_at = $1, updated_at = $1 WHERE id = $2`,
+        [now, id],
+      );
+    } else {
+      await this.query(
+        `UPDATE site_parsers SET consecutive_failures = consecutive_failures + 1, last_failure_at = $1, updated_at = $1 WHERE id = $2`,
+        [now, id],
+      );
+    }
   }
 
   /**

@@ -9,6 +9,7 @@ import connectionsRouter from './connections';
 import templatesRouter from './templates';
 import relayRouter from './relay';
 import localRouter from './local';
+import webhooksRouter from './webhooks';
 
 const router = Router();
 
@@ -50,5 +51,8 @@ router.use('/relay', relayRouter);
 
 // Local server endpoints (receives and executes encrypted configs)
 router.use('/local', localRouter);
+
+// Webhook ingestion endpoints (receives external payloads for WebhookSource)
+router.use('/webhooks', webhooksRouter);
 
 export default router;

@@ -14,6 +14,8 @@ import {
   loadStorage,
   validateConfiguration
 } from "./helpers/configHelper";
+import { runGeneratorsForDate } from "./helpers/generatorHelper";
+import { GeneratorPlugin, GeneratorInstanceConfig, ExporterPlugin } from "./types";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -161,15 +163,58 @@ dotenv.config();
     
     /**
      * Set up summary generation if not in fetch-only mode
-     * Each generator runs at its configured interval
+     * Uses the shared runGeneratorsForDate helper which handles
+     * dependency ordering, storage saves, and file writes.
      */
     if (!onlyFetch) {
-      for (const generator of generatorConfigs) {
-        await generator.instance.generateContent();
+      // Separate GeneratorPlugin instances from legacy/exporter instances
+      const generatorInstances: GeneratorInstanceConfig[] = [];
 
-        setInterval(() => {
-          generator.instance.generateContent();
-        }, generator.interval);
+      for (const config of generatorConfigs) {
+        if (typeof config.instance.generate === 'function') {
+          generatorInstances.push({
+            instance: config.instance as GeneratorPlugin,
+            interval: config.interval,
+            dependsOn: (config as any).dependsOn,
+          });
+        } else if (typeof config.instance.export === 'function') {
+          // ExporterPlugin — run once on yesterday's date
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const dateStr = yesterday.toISOString().slice(0, 10);
+          await (config.instance as ExporterPlugin).export(dateStr);
+        } else {
+          console.warn(`[index] Plugin "${config.instance.name}" does not implement GeneratorPlugin or ExporterPlugin, skipping.`);
+        }
+      }
+
+      if (generatorInstances.length > 0) {
+        const primaryStorage = storageConfigs[0]?.instance;
+
+        // Helper to run generators for yesterday's date
+        const runDaily = async () => {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const dateStr = yesterday.toISOString().slice(0, 10);
+
+          const result = await runGeneratorsForDate(dateStr, {
+            generators: generatorInstances,
+            storage: primaryStorage,
+            outputPath,
+          });
+
+          if (result.anyFailed) {
+            console.error(`[index] Some generators failed: ${result.errors.join(', ')}`);
+          }
+        };
+
+        // Initial run
+        await runDaily();
+
+        // Schedule recurring runs — use the shortest generator interval, or 1 hour default
+        const intervals = generatorInstances.map(g => g.interval).filter((i): i is number => !!i);
+        const interval = intervals.length > 0 ? Math.min(...intervals) : 3600000;
+        setInterval(runDaily, interval);
       }
     }
     else {

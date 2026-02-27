@@ -23,6 +23,10 @@ CREATE TABLE IF NOT EXISTS users (
   -- AI usage tracking (for platform AI with daily limits)
   ai_calls_today INTEGER DEFAULT 0,
   ai_calls_today_reset_at DATE DEFAULT CURRENT_DATE,
+  -- Token budget tracking (for generation guardrails)
+  tokens_used_today INTEGER DEFAULT 0,
+  tokens_used_today_reset_at DATE DEFAULT CURRENT_DATE,
+  estimated_cost_today_cents INTEGER DEFAULT 0,  -- Cost in 1/100 cent precision
   -- Free run tracking (1 free run per day globally)
   free_run_used_at DATE,
   -- Admin: ban tracking
@@ -219,10 +223,17 @@ CREATE TABLE IF NOT EXISTS summaries (
   categories JSONB,
   markdown TEXT,
   date BIGINT,  -- Epoch seconds
+  content_hash TEXT,  -- SHA-256 hash of source content used to generate this summary
+  start_date BIGINT,  -- Epoch seconds — for range summaries, the start of the range
+  end_date BIGINT,  -- Epoch seconds — for range summaries, the end of the range
+  granularity TEXT DEFAULT 'daily',  -- daily, weekly, monthly, custom
+  metadata JSONB,  -- Flexible metadata (highlights, trends, contributors, etc.)
+  tokens_used INTEGER,  -- Actual tokens consumed to generate this summary
+  estimated_cost_usd REAL,  -- Estimated generation cost in USD
   embedding vector(1536),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   
-  UNIQUE(config_id, type, date)
+  UNIQUE(config_id, type, date, COALESCE(granularity, 'daily'))
 );
 
 -- Cursors (for incremental fetching)
@@ -453,6 +464,24 @@ DROP TRIGGER IF EXISTS users_reset_ai_calls ON users;
 CREATE TRIGGER users_reset_ai_calls
   BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION reset_daily_ai_calls();
+
+-- Reset daily token usage counter function (for generation budget tracking)
+CREATE OR REPLACE FUNCTION reset_daily_token_usage()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.tokens_used_today_reset_at < CURRENT_DATE THEN
+    NEW.tokens_used_today = 0;
+    NEW.estimated_cost_today_cents = 0;
+    NEW.tokens_used_today_reset_at = CURRENT_DATE;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS users_reset_token_usage ON users;
+CREATE TRIGGER users_reset_token_usage
+  BEFORE UPDATE ON users
+  FOR EACH ROW EXECUTE FUNCTION reset_daily_token_usage();
 
 -- Update config stats after item insert
 CREATE OR REPLACE FUNCTION update_config_item_count()

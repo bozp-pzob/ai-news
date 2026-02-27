@@ -86,6 +86,9 @@
     "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
+  "optionalDependencies": {
+    "patchright": "^1.57.0"
+  },
   "devDependencies": {
     "@types/body-parser": "^1.19.5",
     "@types/cors": "^2.8.17",

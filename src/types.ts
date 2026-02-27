@@ -26,12 +26,24 @@ export interface ContentItem {
  */
 export interface SummaryItem {
   id?: number;          // Will be assigned by storage if not provided
-  type: string;          // e.g. "tweet", "newsArticle", "discordMessage", "githubIssue"
-  title?: string;        // optional – for articles, maybe a tweet "title" is same as text
+  type: string;          // e.g. "dailySummary", "discordChannelSummary", "weeklySummary"
+  title?: string;        // optional title for the summary
   categories?: string;   // main content (JSON string for structured summaries)
   markdown?: string;     // Optional Markdown version of the summary
   date?: number;         // When it was created/published (epoch seconds)
+  contentHash?: string;  // SHA-256 hash of source content used to generate this summary
+  startDate?: number;    // Epoch seconds — for range summaries, the start of the range
+  endDate?: number;      // Epoch seconds — for range summaries, the end of the range
+  granularity?: SummaryGranularity; // What time period this summary covers
+  metadata?: Record<string, any>;   // Flexible metadata (highlights, trends, contributors, etc.)
+  tokensUsed?: number;   // Actual tokens consumed to generate this summary
+  estimatedCostUsd?: number; // Estimated cost of generation in USD
 }
+
+/**
+ * Time granularity for generated summaries.
+ */
+export type SummaryGranularity = 'daily' | 'weekly' | 'monthly' | 'custom';
 
 /**
  * Represents the detailed status of an aggregation process
@@ -110,6 +122,209 @@ export interface EnricherPlugin {
   enrich(articles: ContentItem[]): ContentItem[] | Promise<ContentItem[]>;
 }
 
+// ============================================
+// GENERATOR PLUGIN TYPES
+// ============================================
+
+/**
+ * Interface that any generator plugin must implement.
+ * 
+ * Generators are read + transform: they read content from storage, process it
+ * (typically via AI), and return results. They do NOT write to storage or filesystem —
+ * the caller handles all persistence.
+ */
+export interface GeneratorPlugin {
+  /** Unique name for this generator instance */
+  name: string;
+  /** The summaryType this generator produces (used for DB lookups and chaining) */
+  readonly outputType: string;
+  /** Whether this generator can accept upstream generator output as input */
+  readonly supportsChaining?: boolean;
+
+  /**
+   * Generate summaries for a single date.
+   * Reads from this.storage, calls AI provider, returns results.
+   * Does NOT save to storage or write files — caller handles persistence.
+   */
+  generate(dateStr: string, context?: GeneratorContext): Promise<GeneratorResult>;
+
+  /**
+   * Generate summaries for an arbitrary date range.
+   * Only implemented by generators that support multi-day summarization.
+   */
+  generateForRange?(
+    startDate: string,
+    endDate: string,
+    options?: RangeGeneratorOptions
+  ): Promise<GeneratorResult>;
+}
+
+/**
+ * Context passed to a generator by the caller.
+ * Enables chaining (upstream results), budget enforcement, and force-regeneration.
+ */
+export interface GeneratorContext {
+  /** SummaryItems from upstream generators in the chain (dependsOn) */
+  upstreamSummaries?: SummaryItem[];
+  /** Force regeneration even if content hash is unchanged */
+  force?: boolean;
+  /** Maximum tokens this generation may consume (enforced by AI provider) */
+  tokenBudget?: number;
+}
+
+/**
+ * Result returned by a generator after processing.
+ * Contains everything needed for the caller to persist and track the generation.
+ */
+export interface GeneratorResult {
+  /** Whether the generation completed successfully */
+  success: boolean;
+  /** Generated summaries — caller saves these to storage */
+  summaryItems: SummaryItem[];
+  /** Suggested file outputs — caller writes these to disk if file output is enabled */
+  fileOutputs?: FileOutput[];
+  /** True if generation was skipped (e.g., content hash unchanged) */
+  skipped?: boolean;
+  /** Error message if generation failed */
+  error?: string;
+  /** Statistics about the generation run */
+  stats?: GeneratorStats;
+}
+
+/**
+ * Statistics collected during a generation run.
+ */
+export interface GeneratorStats {
+  /** Number of content items processed */
+  itemsProcessed: number;
+  /** Total tokens consumed across all AI calls */
+  tokensUsed: number;
+  /** Estimated cost in USD */
+  estimatedCostUsd: number;
+  /** Wall-clock duration in milliseconds */
+  durationMs: number;
+}
+
+/**
+ * A file output suggested by a generator.
+ * The caller decides whether and where to write it.
+ */
+export interface FileOutput {
+  /** Relative path from the output directory (e.g., "json/2026-01-15.json") */
+  relativePath: string;
+  /** File content as a string */
+  content: string;
+  /** File format */
+  format: 'json' | 'md';
+}
+
+/**
+ * Options for range-based generation (multi-day summaries).
+ */
+export interface RangeGeneratorOptions {
+  /**
+   * How to source the input data:
+   * - 'daily_summaries': Re-summarize existing daily SummaryItems (cheap, fast)
+   * - 'raw_content': Process all raw ContentItems across the range (expensive, thorough)
+   * - 'hybrid': Daily summaries as base + raw items for key topics (balanced)
+   */
+  dataStrategy: 'daily_summaries' | 'raw_content' | 'hybrid';
+  /** For hybrid mode: max raw content items to pull for deep-dive topics */
+  hybridRawItemLimit?: number;
+  /** Force regeneration even if content hash is unchanged */
+  force?: boolean;
+  /** Human-readable label for the summary (e.g., "Week 3 January 2026") */
+  label?: string;
+  /** Maximum tokens this generation may consume */
+  tokenBudget?: number;
+}
+
+// ============================================
+// EXPORTER PLUGIN TYPES
+// ============================================
+
+/**
+ * Interface for exporter plugins.
+ * 
+ * Exporters write raw data to the filesystem without AI processing.
+ * Unlike generators, they handle their own file I/O and don't produce SummaryItems.
+ */
+export interface ExporterPlugin {
+  /** Unique name for this exporter instance */
+  name: string;
+
+  /**
+   * Export data for a single date.
+   * Reads from storage, writes to filesystem.
+   */
+  export(dateStr: string): Promise<ExporterResult>;
+
+  /**
+   * Export data for a date range.
+   */
+  exportRange?(startDate: string, endDate: string): Promise<ExporterResult>;
+}
+
+/**
+ * Result returned by an exporter after processing.
+ */
+export interface ExporterResult {
+  /** Whether the export completed successfully */
+  success: boolean;
+  /** Number of files written to disk */
+  filesWritten: number;
+  /** Error message if export failed */
+  error?: string;
+}
+
+// ============================================
+// GENERATOR CONFIGURATION TYPES
+// ============================================
+
+/**
+ * Configuration item for generators (extends ConfigItem with dependsOn).
+ */
+export interface GeneratorConfigItem extends ConfigItem {
+  /**
+   * Name of another generator that must run before this one.
+   * Enables generator chaining — this generator can access the upstream
+   * generator's output via GeneratorContext.upstreamSummaries.
+   */
+  dependsOn?: string;
+}
+
+/**
+ * Runtime config for a generator instance.
+ */
+export interface GeneratorInstanceConfig {
+  instance: GeneratorPlugin;
+  interval?: number;
+  dependsOn?: string;
+}
+
+/**
+ * Runtime config for an exporter instance.
+ */
+export interface ExporterInstanceConfig {
+  instance: ExporterPlugin;
+  interval?: number;
+}
+
+/**
+ * Error thrown when a generation exceeds its token budget.
+ * The AI provider throws this mid-generation so generators can
+ * catch it and return partial results.
+ */
+export class BudgetExhaustedError extends Error {
+  constructor(
+    public readonly usage: AiUsageStats,
+    public readonly budget: number,
+  ) {
+    super(`Token budget exceeded: ${usage.totalTokens} tokens used, budget was ${budget}`);
+    this.name = 'BudgetExhaustedError';
+  }
+}
+
 /**
  * Configuration for AI-based enrichers.
  * Defines settings for AI-powered content enrichment.
@@ -184,6 +399,12 @@ export interface AiProvider {
   getUsageStats(): AiUsageStats;
   /** Reset cumulative usage stats to zero */
   resetUsageStats(): void;
+  /** Set a token budget for this provider. Throws BudgetExhaustedError if exceeded mid-call. */
+  setTokenBudget?(budget: number): void;
+  /** Clear the token budget (no limit). */
+  clearTokenBudget?(): void;
+  /** Get remaining tokens in the budget, or null if no budget is set. */
+  getRemainingBudget?(): number | null;
 }
 
 /**
@@ -199,8 +420,9 @@ export interface ConfigItem {
 }
 
 /**
- * Configuration for component instances at runtime.
- * Used to manage component instances and their execution schedules.
+ * Generic configuration for component instances at runtime.
+ * Used for sources, enrichers, and other non-generator plugins.
+ * For generators and exporters, use GeneratorInstanceConfig and ExporterInstanceConfig.
  */
 export interface InstanceConfig {
   instance: any;
@@ -947,6 +1169,45 @@ export interface GuildConnectionResponse {
   isActive: boolean;
   addedAt: string;
   channelCount?: number;
+}
+
+// ============================================
+// SITE PARSER TYPES (for cached HTML parsers)
+// ============================================
+
+/**
+ * Represents a cached site parser generated by an LLM.
+ * Parsers are JavaScript function bodies that run in a sandboxed vm context
+ * with a cheerio-loaded document ($) to extract structured data from HTML.
+ * 
+ * Keyed by domain + path pattern + optional objectTypeString.
+ */
+export interface SiteParser {
+  id?: number;
+  /** Domain the parser targets, e.g. "example.com" */
+  domain: string;
+  /** Glob-style path pattern, e.g. "/blog/*" or "/*" */
+  pathPattern: string;
+  /** JavaScript function body string. Executed as: new Function('$', parserCode) */
+  parserCode: string;
+  /** TypeScript interface the parser was generated for (nullable — same site may need different parsers for different schemas) */
+  objectTypeString?: string;
+  /** Incremented each time the parser is regenerated */
+  version: number;
+  /** Number of consecutive validation failures since last success */
+  consecutiveFailures: number;
+  /** Epoch seconds of last successful parse */
+  lastSuccessAt?: number;
+  /** Epoch seconds of last validation failure */
+  lastFailureAt?: number;
+  /** Epoch seconds when first created */
+  createdAt: number;
+  /** Epoch seconds when last modified */
+  updatedAt: number;
+  /** The URL used to generate this parser (for debugging) */
+  sampleUrl?: string;
+  /** Extra info: field names, generation model, etc. */
+  metadata?: Record<string, any>;
 }
 
 // ============================================

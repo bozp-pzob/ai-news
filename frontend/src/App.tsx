@@ -551,7 +551,9 @@ function App({
     <div className="fixed inset-0 flex flex-col bg-stone-50 text-stone-800 overflow-hidden">
       {/* Full-width Toolbar */}
       <div className="h-12 bg-white border-b border-stone-200 shadow-sm flex items-center px-4 flex-shrink-0">
-        <h1 className="text-xl font-semibold">Digital Gardener</h1>
+        <a href="/">
+          <img src="/logo.svg" alt="Digital Gardener" className="h-7 w-7" />
+        </a>
       </div>
       
       <div className="flex flex-1 overflow-hidden">

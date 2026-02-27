@@ -48,9 +48,16 @@ CREATE TABLE IF NOT EXISTS summaries (
   categories JSONB,
   markdown TEXT,
   date BIGINT,
+  content_hash TEXT,
+  start_date BIGINT,
+  end_date BIGINT,
+  granularity TEXT DEFAULT 'daily',
+  metadata JSONB,
+  tokens_used INTEGER,
+  estimated_cost_usd REAL,
   embedding vector(1536),
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(config_id, type, date)
+  UNIQUE(config_id, type, date, COALESCE(granularity, 'daily'))
 );
 
 -- Cursors table
@@ -144,6 +151,151 @@ async function runMigrations(pool: Pool): Promise<void> {
       ALTER TABLE aggregation_jobs
       ADD COLUMN IF NOT EXISTS resolved_config_encrypted BYTEA,
       ADD COLUMN IF NOT EXISTS resolved_secrets_encrypted BYTEA
+    `);
+
+    // Webhook buffer tables for WebhookSource
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS webhook_buffer (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        webhook_id TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        content_type TEXT,
+        headers JSONB,
+        source_ip TEXT,
+        received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        processed BOOLEAN DEFAULT FALSE,
+        processed_at TIMESTAMPTZ
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_webhook_buffer_pending 
+      ON webhook_buffer(webhook_id, processed) WHERE processed = FALSE
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_webhook_buffer_received 
+      ON webhook_buffer(webhook_id, received_at DESC)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS webhook_configs (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        webhook_id TEXT NOT NULL UNIQUE,
+        webhook_secret TEXT NOT NULL,
+        config_id UUID,
+        source_name TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_webhook_configs_webhook_id 
+      ON webhook_configs(webhook_id)
+    `);
+
+    // Generator system: Add new columns to summaries table
+    await client.query(`
+      ALTER TABLE summaries
+      ADD COLUMN IF NOT EXISTS content_hash TEXT,
+      ADD COLUMN IF NOT EXISTS start_date BIGINT,
+      ADD COLUMN IF NOT EXISTS end_date BIGINT,
+      ADD COLUMN IF NOT EXISTS granularity TEXT DEFAULT 'daily',
+      ADD COLUMN IF NOT EXISTS metadata JSONB,
+      ADD COLUMN IF NOT EXISTS tokens_used INTEGER,
+      ADD COLUMN IF NOT EXISTS estimated_cost_usd REAL
+    `);
+
+    // Update summaries unique constraint: old was (config_id, type, date),
+    // new is (config_id, type, date, COALESCE(granularity, 'daily'))
+    // Drop the old constraint if it exists, then create the new one
+    await client.query(`
+      DO $$
+      BEGIN
+        -- Check if the old constraint exists (without granularity)
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint c
+          JOIN pg_namespace n ON n.oid = c.connamespace
+          WHERE c.conrelid = 'summaries'::regclass
+            AND c.contype = 'u'
+            AND n.nspname = 'public'
+            AND NOT EXISTS (
+              -- The new unique index includes COALESCE(granularity, 'daily'),
+              -- so it's an expression index, not a simple constraint.
+              -- If it's a simple 3-column unique constraint, it's the old one.
+              SELECT 1 FROM pg_attribute a
+              WHERE a.attrelid = c.conrelid
+                AND a.attnum = ANY(c.conkey)
+                AND a.attname = 'granularity'
+            )
+            AND array_length(c.conkey, 1) = 3
+        )
+        THEN
+          -- Find and drop the old constraint by name
+          EXECUTE (
+            SELECT 'ALTER TABLE summaries DROP CONSTRAINT ' || quote_ident(c.conname)
+            FROM pg_constraint c
+            JOIN pg_namespace n ON n.oid = c.connamespace
+            WHERE c.conrelid = 'summaries'::regclass
+              AND c.contype = 'u'
+              AND n.nspname = 'public'
+              AND NOT EXISTS (
+                SELECT 1 FROM pg_attribute a
+                WHERE a.attrelid = c.conrelid
+                  AND a.attnum = ANY(c.conkey)
+                  AND a.attname = 'granularity'
+              )
+              AND array_length(c.conkey, 1) = 3
+            LIMIT 1
+          );
+        END IF;
+      END $$
+    `);
+
+    // Create the new unique index with granularity (idempotent)
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_summaries_config_type_date_granularity
+      ON summaries (config_id, type, date, COALESCE(granularity, 'daily'))
+    `);
+
+    // Token budget tracking columns on users table
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS tokens_used_today INTEGER DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS tokens_used_today_reset_at DATE DEFAULT CURRENT_DATE,
+      ADD COLUMN IF NOT EXISTS estimated_cost_today_cents INTEGER DEFAULT 0
+    `);
+
+    // Free run tracking column on users table
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS free_run_used_at DATE
+    `);
+
+    // Site parsers table for cached LLM-generated HTML parsers (shared across configs)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS site_parsers (
+        id SERIAL PRIMARY KEY,
+        domain TEXT NOT NULL,
+        path_pattern TEXT NOT NULL,
+        parser_code TEXT NOT NULL,
+        object_type_string TEXT,
+        version INTEGER DEFAULT 1,
+        consecutive_failures INTEGER DEFAULT 0,
+        last_success_at BIGINT,
+        last_failure_at BIGINT,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        sample_url TEXT,
+        metadata JSONB
+      )
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_site_parsers_unique
+      ON site_parsers(domain, path_pattern, COALESCE(object_type_string, ''))
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_site_parsers_domain ON site_parsers(domain)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_site_parsers_lookup ON site_parsers(domain, path_pattern)
     `);
     
     console.log('[DatabaseService] Migrations completed successfully');

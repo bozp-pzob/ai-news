@@ -8,7 +8,7 @@
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
-import { ConfigItem, InstanceConfig } from "../types";
+import { ConfigItem, InstanceConfig, GeneratorConfigItem } from "../types";
 import { logger } from "./cliHelper"; // Import logger
 
 dotenv.config();
@@ -26,27 +26,40 @@ dotenv.config();
  */
 export const loadDirectoryModules = async (directory : string): Promise<Record<string, any>> => {
   const classes: Record<string, any> = {};
-  const dir = path.join(__dirname, "../", "plugins", directory);
-  
-  // Check if directory exists before reading
-  if (!fs.existsSync(dir)) {
-    logger.warning(`Plugin directory not found: ${dir}. Skipping module loading for this directory.`);
-    return classes;
-  }
 
   // Check if we're running in compiled JavaScript or TypeScript environment
   const isCompiledJS = __filename.endsWith('.js');
   const extension = isCompiledJS ? '.js' : '.ts';
-  const files = fs.readdirSync(dir).filter(file => file.endsWith(extension));
-  
-  for (const file of files) {
-    const modulePath = path.join(dir, file);
-    try {
-        const moduleExports = await import(modulePath);
-        const className = file.replace(extension, "");
-        classes[className] = moduleExports.default || moduleExports[className];
-    } catch (importError: any) {
-         logger.error(`Failed to import module ${modulePath}: ${importError.message}`);
+
+  // Directories to scan: the primary directory plus any supplementary directories.
+  // When loading "generators", also include "exporters/" so that exporter classes
+  // (like RawDataExporter) can still be referenced by type name in configs.
+  const dirs = [path.join(__dirname, "../", "plugins", directory)];
+  if (directory === "generators") {
+    dirs.push(path.join(__dirname, "../", "plugins", "exporters"));
+  }
+
+  for (const dir of dirs) {
+    // Check if directory exists before reading
+    if (!fs.existsSync(dir)) {
+      // Only warn for the primary directory, not supplementary ones
+      if (dir === dirs[0]) {
+        logger.warning(`Plugin directory not found: ${dir}. Skipping module loading for this directory.`);
+      }
+      continue;
+    }
+
+    const files = fs.readdirSync(dir).filter(file => file.endsWith(extension));
+    
+    for (const file of files) {
+      const modulePath = path.join(dir, file);
+      try {
+          const moduleExports = await import(modulePath);
+          const className = file.replace(extension, "");
+          classes[className] = moduleExports.default || moduleExports[className];
+      } catch (importError: any) {
+           logger.error(`Failed to import module ${modulePath}: ${importError.message}`);
+      }
     }
   }
   
@@ -66,6 +79,9 @@ export const loadItems = async (items: ConfigItem[], mapping: Record<string, any
   if (!items) return []; // Handle case where config section is missing
   return items.map((item) => {
     const { type, name, params, interval, mediaDownload } = item;
+    // Support dependsOn for generator configs (GeneratorConfigItem extends ConfigItem)
+    const dependsOn = (item as GeneratorConfigItem).dependsOn;
+
     const ClassRef = mapping[type];
     if (!ClassRef) {
       // Log warning instead of throwing error immediately, allows validation later
@@ -96,7 +112,11 @@ export const loadItems = async (items: ConfigItem[], mapping: Record<string, any
             instance.name = name; 
         }
         
-        return interval !== undefined ? { instance, interval } : { instance };
+        // Build the result config, preserving dependsOn for generator chaining
+        const result: any = { instance };
+        if (interval !== undefined) result.interval = interval;
+        if (dependsOn) result.dependsOn = dependsOn;
+        return result as InstanceConfig;
     } catch (instantiationError: any) {
          logger.error(`[Config Load] Error instantiating ${category} '${name}' (Type: ${type}): ${instantiationError.message}`);
          // Propagate error or return null/skip?
@@ -218,12 +238,21 @@ export const validateConfiguration = (configs: {
   });
 
   // Validate Generators
-  configs.generators.forEach(({ instance }) => {
+  const validGeneratorNames = new Set(configs.generators.map(c => c.instance.name));
+  configs.generators.forEach((config) => {
+    const { instance } = config;
     checkParamDependency(instance, 'provider', 'provider', validAiNames);
     checkParamDependency(instance, 'storage', 'storage', validStorageNames);
     checkParamDependency(instance, 'source', 'source', validSourceNames);
-    // If we add enricher injection back:
-    // checkParamDependency(instance, 'enricher', 'enricher', validEnricherNames);
+
+    // Validate dependsOn references another generator that exists
+    const dependsOn = (config as any).dependsOn;
+    if (dependsOn && typeof dependsOn === 'string') {
+      if (!validGeneratorNames.has(dependsOn)) {
+        logger.warning(`[Config Validation] Generator '${instance.name}' dependsOn '${dependsOn}', but no generator with that name was found.`);
+        validationIssues++;
+      }
+    }
   });
 
   // Validate Sources 

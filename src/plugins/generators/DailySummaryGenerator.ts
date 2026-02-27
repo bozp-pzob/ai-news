@@ -1,11 +1,23 @@
 /**
- * @fileoverview Implementation of a daily summary generator for content aggregation
- * Handles generation of daily summaries from various content sources using AI-powered summarization
+ * @fileoverview Daily summary generator that reads content from storage, groups it by topic,
+ * and uses AI to produce structured JSON and markdown summaries.
+ * 
+ * Implements GeneratorPlugin: reads from storage, calls AI, returns results.
+ * Does NOT write to storage or filesystem — the caller handles all persistence.
  */
 
 import { OpenAIProvider } from "../ai/OpenAIProvider";
 import { SQLiteStorage } from "../storage/SQLiteStorage";
-import { ContentItem, SummaryItem } from "../../types";
+import {
+  ContentItem,
+  SummaryItem,
+  GeneratorPlugin,
+  GeneratorResult,
+  GeneratorContext,
+  GeneratorStats,
+  FileOutput,
+  BudgetExhaustedError,
+} from "../../types";
 import {
   createJSONPromptForTopics,
   createMarkdownPromptForJSON,
@@ -13,68 +25,57 @@ import {
   SUMMARIZE_OPTIONS,
 } from "../../helpers/promptHelper";
 import { createMediaLookup, findManifestPath, MediaLookup } from "../../helpers/mediaHelper";
+import { computeContentHash } from "../../helpers/fileHelper";
 import { retryOperation } from "../../helpers/generalHelper";
-import fs from "fs";
-import path from "path";
-
-const hour = 60 * 60 * 1000;
 
 /**
  * Configuration interface for DailySummaryGenerator
- * @interface DailySummaryGeneratorConfig
- * @property {OpenAIProvider} provider - OpenAI provider instance for text generation
- * @property {SQLiteStorage} storage - SQLite storage instance for data persistence
- * @property {string} summaryType - Type of summary to generate
- * @property {string} source - Source identifier for the summaries
- * @property {string} [outputPath] - Optional path for output files
  */
 interface DailySummaryGeneratorConfig {
   provider: OpenAIProvider;
   storage: SQLiteStorage;
   summaryType: string;
   source?: string;
-  outputPath?: string;
   maxGroupsToSummarize?: number;
   groupBySourceType?: boolean;
   /** Path to media manifest for CDN URL enrichment */
   mediaManifestPath?: string;
   /** Topics to exclude from summaries (default: ['open source']) */
   blockedTopics?: string[];
-  skipFileOutput?: boolean;
+  /** UTC hour (0-23) after which daily summary generation is allowed (default: 20 / 8 PM) */
   generateAfterHour?: number;
+  /** Output path — used only for media manifest auto-discovery */
+  outputPath?: string;
 }
 
 /**
- * DailySummaryGenerator class that generates daily summaries of content
- * Uses AI to summarize content items and organizes them by topics
+ * DailySummaryGenerator produces daily summaries of content grouped by topic.
+ * 
+ * Implements GeneratorPlugin:
+ * - Reads ContentItems from storage for the target date
+ * - Groups content by topic (or source type)
+ * - Sends each group through AI summarization
+ * - Produces hierarchical markdown report
+ * - Returns GeneratorResult with SummaryItem and FileOutputs — caller saves them
  */
-export class DailySummaryGenerator {
-  /** OpenAI provider for text generation */
+export class DailySummaryGenerator implements GeneratorPlugin {
+  public readonly name: string;
+  public readonly outputType: string;
+  public readonly supportsChaining = true;
+
+  /** UTC hour (0-23) after which daily summary generation is allowed. Exposed for entry points to check. */
+  public readonly generateAfterHour: number;
+
   private provider: OpenAIProvider;
-  /** SQLite storage for data persistence */
   private storage: SQLiteStorage;
-  /** Type of summary being generated */
   private summaryType: string;
-  /** Source identifier for the summaries (optional) */
   private source: string | undefined;
-  /** List of topics to exclude from summaries */
   private blockedTopics: string[];
-  /** Path for output files */
-  private outputPath: string;
-  /** Max number of groups to summarize */
   private maxGroupsToSummarize: number;
-  /** Force Content grouping to be by Source types */
   private groupBySourceType: boolean;
-  /** Path to media manifest for CDN URL enrichment */
   private mediaManifestPath: string | undefined;
-  /** Media lookup instance (lazy loaded) */
   private mediaLookup: MediaLookup | null = null;
-  /** Skip writing JSON/MD files (for platform storage mode) */
-  private skipFileOutput: boolean;
-  /** UTC hour (0-23) after which daily summary generation is allowed (default: 20 / 8 PM) */
-  private generateAfterHour: number;
-  /** Whether this generator is running in continuous mode (set by aggregator service) */
-  public isContinuousMode: boolean = false;
+  private outputPath: string;
 
   static constructorInterface = {
     parameters: [
@@ -88,31 +89,25 @@ export class DailySummaryGenerator {
         name: 'storage',
         type: 'StoragePlugin',
         required: true,
-        description: 'Storage Plugin to store the generated Daily Summary.'
+        description: 'Storage Plugin to read content items from.'
       },
       {
         name: 'summaryType',
         type: 'string',
         required: true,
-        description: 'Type for summary to store in the database.'
+        description: 'Type for summary stored in the database (e.g., "dailySummary", "elizaosDailySummary").'
       },
       {
         name: 'source',
         type: 'string',
         required: false,
-        description: 'Specific source to generate the summary off.'
-      },
-      {
-        name: 'outputPath',
-        type: 'string',
-        required: false,
-        description: 'Location to store summary for md and json generation'
+        description: 'Specific content type to generate the summary from. If omitted, uses all types.'
       },
       {
         name: 'maxGroupsToSummarize',
         type: 'string',
         required: false,
-        description: 'Max number of groups to generate summaries off ( Default 10 ).'
+        description: 'Max number of topic groups to generate summaries for (default 10).'
       },
       {
         name: 'groupBySourceType',
@@ -133,12 +128,6 @@ export class DailySummaryGenerator {
         description: 'Topics to exclude from summaries (default: ["open source"]).'
       },
       {
-        name: 'skipFileOutput',
-        type: 'boolean',
-        required: false,
-        description: 'Skip writing JSON/MD files to disk (for platform storage mode).'
-      },
-      {
         name: 'generateAfterHour',
         type: 'number',
         required: false,
@@ -146,36 +135,229 @@ export class DailySummaryGenerator {
       }
     ]
   };
-  
-  /**
-   * Creates a new DailySummaryGenerator instance
-   * @param {DailySummaryGeneratorConfig} config - Configuration object for the generator
-   */
+
   constructor(config: DailySummaryGeneratorConfig) {
+    this.name = (config as any).name || 'DailySummaryGenerator';
     this.provider = config.provider;
     this.storage = config.storage;
     this.summaryType = config.summaryType;
+    this.outputType = config.summaryType;
     this.source = config.source;
     this.outputPath = config.outputPath || './';
     this.maxGroupsToSummarize = config.maxGroupsToSummarize || 10;
     this.groupBySourceType = config.groupBySourceType || false;
     this.mediaManifestPath = config.mediaManifestPath;
     this.blockedTopics = config.blockedTopics || ['open source'];
-    this.skipFileOutput = config.skipFileOutput || false;
-    this.generateAfterHour = typeof config.generateAfterHour === 'string' 
-      ? parseInt(config.generateAfterHour, 10) 
+    this.generateAfterHour = typeof config.generateAfterHour === 'string'
+      ? parseInt(config.generateAfterHour, 10)
       : (config.generateAfterHour ?? 20);
   }
 
+  // ============================================
+  // GeneratorPlugin interface
+  // ============================================
+
   /**
-   * Get or initialize the MediaLookup instance
+   * Generate a daily summary for a specific date.
+   * 
+   * Reads content items from storage, groups by topic, AI-summarizes each group,
+   * produces a hierarchical markdown report, and returns the result.
+   * Does NOT save to storage or write files — caller handles persistence.
+   * 
+   * @param dateStr - ISO date string (YYYY-MM-DD)
+   * @param context - Optional context for chaining, budget, and force-regeneration
+   * @returns GeneratorResult with summaryItems and fileOutputs
+   */
+  public async generate(dateStr: string, context?: GeneratorContext): Promise<GeneratorResult> {
+    const startTime = Date.now();
+
+    try {
+      const currentTime = Math.floor(new Date(dateStr).getTime() / 1000);
+      const targetTime = currentTime + (60 * 60 * 24);
+
+      // Fetch items based on whether a specific source type was configured
+      let contentItems: ContentItem[];
+      if (this.source) {
+        console.log(`[DailySummaryGenerator] Fetching content for type: ${this.source}`);
+        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime, this.source);
+      } else {
+        console.log(`[DailySummaryGenerator] Fetching all content types for summary generation.`);
+        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime);
+      }
+
+      if (contentItems.length === 0) {
+        console.warn(`[DailySummaryGenerator] No content found for date ${dateStr}.`);
+        return {
+          success: true,
+          summaryItems: [],
+          skipped: true,
+          stats: this.buildStats(0, startTime),
+        };
+      }
+
+      // Content hash check — skip if source data hasn't changed (unless forced)
+      const contentHash = computeContentHash(contentItems);
+      if (!context?.force) {
+        const existingSummaries = await this.storage.getSummaryBetweenEpoch(currentTime, currentTime);
+        const existingSummary = existingSummaries.find(s => s.type === this.summaryType);
+        if (existingSummary?.contentHash && existingSummary.contentHash === contentHash) {
+          console.log(`[DailySummaryGenerator] Source data unchanged for ${dateStr} (hash: ${contentHash.slice(0, 12)}...), skipping.`);
+          return {
+            success: true,
+            summaryItems: [],
+            skipped: true,
+            stats: this.buildStats(contentItems.length, startTime),
+          };
+        }
+      }
+
+      // Reset provider usage stats so we can track this generation's token usage
+      this.provider.resetUsageStats();
+
+      // Set token budget on the provider if provided
+      if (context?.tokenBudget && this.provider.setTokenBudget) {
+        this.provider.setTokenBudget(context.tokenBudget);
+      }
+
+      // Load media lookup for CDN URL enrichment
+      const mediaLookup = await this.getMediaLookup();
+      const mediaOptions: PromptMediaOptions | undefined = mediaLookup
+        ? { mediaLookup, dateStr, maxImagesPerSource: 5, maxVideosPerSource: 3 }
+        : undefined;
+
+      if (mediaOptions) {
+        const mediaForDate = mediaLookup!.getMediaForDate(dateStr);
+        console.log(`[DailySummaryGenerator] Found ${mediaForDate.length} media items for ${dateStr}`);
+      }
+
+      // Group and summarize
+      const groupedContent = this.groupObjects(contentItems);
+      const allSummaries: any[] = [];
+      let groupsToSummarize = 0;
+
+      for (const grouped of groupedContent) {
+        try {
+          if (!grouped) continue;
+          const { topic, objects } = grouped;
+          if (!topic || !objects || objects.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) continue;
+
+          const summaryJSON = await this.summarizeTopicGroup(topic, objects, dateStr);
+          if (summaryJSON) {
+            allSummaries.push(summaryJSON);
+            groupsToSummarize++;
+          }
+        } catch (e) {
+          if (e instanceof BudgetExhaustedError) {
+            console.warn(`[DailySummaryGenerator] Budget exhausted during topic summarization, returning partial results.`);
+            break;
+          }
+          console.error(`[DailySummaryGenerator] Error summarizing topic group:`, e);
+        }
+      }
+
+      // Generate hierarchical markdown report
+      let markdownString: string;
+      try {
+        const markdownReport = await this.hierarchicalSummarize(allSummaries, dateStr);
+        markdownString = markdownReport.replace(/```markdown\n|```/g, "");
+      } catch (e) {
+        if (e instanceof BudgetExhaustedError) {
+          console.warn(`[DailySummaryGenerator] Budget exhausted during markdown generation, using partial summary.`);
+          markdownString = `# Daily Report - ${dateStr}\n\n*Summary truncated due to budget limits.*`;
+        } else {
+          throw e;
+        }
+      }
+
+      // Build SummaryItem
+      const usageStats = this.provider.getUsageStats();
+      const summaryItem: SummaryItem = {
+        type: this.summaryType,
+        title: `Daily Report - ${dateStr}`,
+        categories: JSON.stringify(allSummaries, null, 2),
+        markdown: markdownString,
+        date: currentTime,
+        contentHash,
+        granularity: 'daily',
+        tokensUsed: usageStats.totalTokens,
+        estimatedCostUsd: usageStats.estimatedCostUsd,
+      };
+
+      // Build FileOutputs
+      const fileOutputs: FileOutput[] = [
+        {
+          relativePath: `json/${dateStr}.json`,
+          content: JSON.stringify({
+            type: this.summaryType,
+            title: `Daily Report - ${dateStr}`,
+            categories: allSummaries,
+            date: currentTime,
+          }, null, 2),
+          format: 'json',
+        },
+        {
+          relativePath: `md/${dateStr}.md`,
+          content: markdownString,
+          format: 'md',
+        },
+      ];
+
+      // Clear token budget
+      if (this.provider.clearTokenBudget) {
+        this.provider.clearTokenBudget();
+      }
+
+      console.log(`[DailySummaryGenerator] Daily report for ${dateStr} generated (${usageStats.totalTokens} tokens, $${usageStats.estimatedCostUsd.toFixed(4)}).`);
+
+      return {
+        success: true,
+        summaryItems: [summaryItem],
+        fileOutputs,
+        stats: this.buildStats(contentItems.length, startTime),
+      };
+    } catch (error) {
+      // Clear token budget on error
+      if (this.provider.clearTokenBudget) {
+        this.provider.clearTokenBudget();
+      }
+
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[DailySummaryGenerator] Error generating daily summary for ${dateStr}:`, errorMsg);
+
+      return {
+        success: false,
+        summaryItems: [],
+        error: errorMsg,
+        stats: this.buildStats(0, startTime),
+      };
+    }
+  }
+
+  // ============================================
+  // Internal helpers
+  // ============================================
+
+  /**
+   * Build GeneratorStats from current provider usage and timing.
+   */
+  private buildStats(itemsProcessed: number, startTime: number): GeneratorStats {
+    const usageStats = this.provider.getUsageStats();
+    return {
+      itemsProcessed,
+      tokensUsed: usageStats.totalTokens,
+      estimatedCostUsd: usageStats.estimatedCostUsd,
+      durationMs: Date.now() - startTime,
+    };
+  }
+
+  /**
+   * Get or initialize the MediaLookup instance.
    */
   private async getMediaLookup(): Promise<MediaLookup | null> {
     if (this.mediaLookup) {
       return this.mediaLookup;
     }
 
-    // Try configured path first, then auto-discover
     let manifestPath = this.mediaManifestPath;
     if (!manifestPath && this.source) {
       manifestPath = findManifestPath(this.source, this.outputPath) || undefined;
@@ -186,9 +368,7 @@ export class DailySummaryGenerator {
       this.mediaLookup = await createMediaLookup(manifestPath);
       if (this.mediaLookup) {
         const stats = this.mediaLookup.getStats();
-        console.log(
-          `[DailySummaryGenerator] Media loaded: ${stats.totalImages} images, ${stats.totalVideos} videos`
-        );
+        console.log(`[DailySummaryGenerator] Media loaded: ${stats.totalImages} images, ${stats.totalVideos} videos`);
       }
     }
 
@@ -196,40 +376,31 @@ export class DailySummaryGenerator {
   }
 
   /**
-   * Performs hierarchical summarization to handle large datasets within token limits
-   * Recursively summarizes chunks until all content fits in one final summary
-   * @param summaries - Array of summary objects to process
-   * @param dateStr - Date string for context
-   * @param chunkSize - Number of summaries to process per chunk (default: 8)
-   * @returns Final markdown summary
+   * Performs hierarchical summarization to handle large datasets within token limits.
+   * Recursively summarizes chunks until all content fits in one final summary.
    */
   private async hierarchicalSummarize(summaries: any[], dateStr: string, chunkSize: number = 8): Promise<string> {
     if (!summaries || summaries.length === 0) {
       return `# Daily Report - ${dateStr}\n\nNo content to summarize.`;
     }
 
-    // Base case: if we have few enough summaries, summarize directly
     if (summaries.length <= chunkSize) {
-      console.log(`[INFO] Direct summarization of ${summaries.length} summaries`);
+      console.log(`[DailySummaryGenerator] Direct summarization of ${summaries.length} summaries`);
       const mdPrompt = createMarkdownPromptForJSON(summaries, dateStr);
       return await retryOperation(() => this.provider.summarize(mdPrompt, SUMMARIZE_OPTIONS.markdownConversion));
     }
 
-    // Recursive case: break into chunks and summarize each chunk
-    console.log(`[INFO] Hierarchical summarization: ${summaries.length} summaries in chunks of ${chunkSize}`);
+    console.log(`[DailySummaryGenerator] Hierarchical summarization: ${summaries.length} summaries in chunks of ${chunkSize}`);
     const chunks: any[][] = [];
     for (let i = 0; i < summaries.length; i += chunkSize) {
       chunks.push(summaries.slice(i, i + chunkSize));
     }
 
-    // Summarize each chunk in parallel
     const chunkSummaries = await Promise.all(
       chunks.map(async (chunk, index) => {
-        console.log(`[INFO] Processing chunk ${index + 1}/${chunks.length} (${chunk.length} items)`);
+        console.log(`[DailySummaryGenerator] Processing chunk ${index + 1}/${chunks.length} (${chunk.length} items)`);
         const chunkPrompt = createMarkdownPromptForJSON(chunk, `${dateStr} - Part ${index + 1}`);
         const chunkResult = await retryOperation(() => this.provider.summarize(chunkPrompt, SUMMARIZE_OPTIONS.markdownConversion));
-        
-        // Return as a structured object for next level
         return {
           topic: `Summary Part ${index + 1}`,
           content: [{
@@ -242,14 +413,12 @@ export class DailySummaryGenerator {
       })
     );
 
-    // Recursively summarize the chunk results
-    console.log(`[INFO] Combining ${chunkSummaries.length} chunk summaries`);
+    console.log(`[DailySummaryGenerator] Combining ${chunkSummaries.length} chunk summaries`);
     return await this.hierarchicalSummarize(chunkSummaries, dateStr, chunkSize);
   }
 
   /**
-   * Rough token estimate (~4 chars per token, typical for English text).
-   * Used to avoid sending prompts that exceed model context limits.
+   * Rough token estimate (~4 chars per token).
    */
   private estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
@@ -257,23 +426,14 @@ export class DailySummaryGenerator {
 
   /**
    * Summarizes a topic group, automatically chunking if the content exceeds token limits.
-   * For small groups, sends a single prompt. For large groups, splits into chunks,
-   * summarizes each chunk, then merges the results.
-   * @param topic - Topic name
-   * @param objects - Content items in this topic group
-   * @param dateStr - Date string for context
-   * @returns Parsed summary JSON with topic set, or null on failure
    */
   private async summarizeTopicGroup(topic: string, objects: any[], dateStr: string): Promise<any | null> {
-    // Use provider's actual context length if available, with 20% buffer for the response.
-    // Falls back to 100K if the provider doesn't report context length.
     const providerContext = this.provider.getContextLength?.() || 0;
     const MAX_TOKENS = providerContext > 0 ? Math.floor(providerContext * 0.8) : 100000;
 
     const fullPrompt = createJSONPromptForTopics(topic, objects, dateStr);
     const estimatedTokens = this.estimateTokens(fullPrompt);
 
-    // If within token limit, summarize directly
     if (estimatedTokens <= MAX_TOKENS) {
       const summaryText = await retryOperation(() => this.provider.summarize(fullPrompt, SUMMARIZE_OPTIONS.topicSummary));
       const summaryJSONString = summaryText.replace(/```json\n|```/g, "");
@@ -282,10 +442,8 @@ export class DailySummaryGenerator {
       return summaryJSON;
     }
 
-    // Content exceeds token limit — split objects into chunks and summarize each
-    console.log(`[INFO] Topic "${topic}" has ~${estimatedTokens} tokens (${objects.length} items), chunking to fit context limit`);
+    console.log(`[DailySummaryGenerator] Topic "${topic}" has ~${estimatedTokens} tokens (${objects.length} items), chunking`);
 
-    // Determine chunk size based on how much we're over the limit
     const ratio = Math.ceil(estimatedTokens / MAX_TOKENS);
     const chunkSize = Math.max(1, Math.ceil(objects.length / ratio));
     const chunks: any[][] = [];
@@ -293,27 +451,24 @@ export class DailySummaryGenerator {
       chunks.push(objects.slice(i, i + chunkSize));
     }
 
-    console.log(`[INFO] Split into ${chunks.length} chunks of ~${chunkSize} items each`);
+    console.log(`[DailySummaryGenerator] Split into ${chunks.length} chunks of ~${chunkSize} items each`);
 
-    // Summarize each chunk
     const chunkSummaries: string[] = [];
     for (let i = 0; i < chunks.length; i++) {
       const chunkPrompt = createJSONPromptForTopics(topic, chunks[i], dateStr);
       const chunkTokens = this.estimateTokens(chunkPrompt);
-      console.log(`[INFO] Summarizing chunk ${i + 1}/${chunks.length} (~${chunkTokens} tokens, ${chunks[i].length} items)`);
+      console.log(`[DailySummaryGenerator] Summarizing chunk ${i + 1}/${chunks.length} (~${chunkTokens} tokens, ${chunks[i].length} items)`);
 
       const summaryText = await retryOperation(() => this.provider.summarize(chunkPrompt, SUMMARIZE_OPTIONS.topicSummary));
       const cleanText = summaryText.replace(/```json\n|```/g, "");
       chunkSummaries.push(cleanText);
     }
 
-    // Merge chunk summaries with a final summarization pass
     const partsXml = chunkSummaries.map((s, i) => `  <part index="${i + 1}">\n${s}\n  </part>`).join('\n');
     const mergePrompt = `Merge the following partial summaries of the topic "${topic}" for ${dateStr} into a single cohesive summary.\n\n<partial_summaries>\n${partsXml}\n</partial_summaries>\n\nRespond with a valid JSON object containing:\n- "title": The title of the topic.\n- "content": A list of messages with keys "text", "sources", "images", and "videos".`;
 
-    // If merge prompt is also too large, just concatenate the content arrays
     if (this.estimateTokens(mergePrompt) > MAX_TOKENS) {
-      console.log(`[INFO] Merge prompt also too large, concatenating chunk results directly`);
+      console.log(`[DailySummaryGenerator] Merge prompt also too large, concatenating chunk results directly`);
       const mergedContent: any[] = [];
       for (const chunkText of chunkSummaries) {
         try {
@@ -336,269 +491,7 @@ export class DailySummaryGenerator {
   }
 
   /**
-   * Generates and stores a daily summary for a specific date
-   * @param {string} dateStr - ISO date string to generate summary for
-   * @returns {Promise<void>}
-   */
-  public async generateAndStoreSummary(dateStr: string): Promise<void> {
-    try {
-      const currentTime = Math.floor(new Date(dateStr).getTime() / 1000);
-      const targetTime = currentTime + (60 * 60 * 24);
-
-      // Fetch items based on whether a specific source type was configured
-      let contentItems: ContentItem[];
-      if (this.source) {
-        console.log(`Fetching content for type: ${this.source}`);
-        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime, this.source);
-      } else {
-        console.log(`Fetching all content types for summary generation.`);
-        contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime); // Fetch all types
-      }
-
-      if (contentItems.length === 0) {
-        console.warn(`No content found for date ${dateStr} to generate summary.`);
-        return;
-      }
-
-      // Load media lookup for CDN URL enrichment
-      const mediaLookup = await this.getMediaLookup();
-      const mediaOptions: PromptMediaOptions | undefined = mediaLookup
-        ? { mediaLookup, dateStr, maxImagesPerSource: 5, maxVideosPerSource: 3 }
-        : undefined;
-
-      if (mediaOptions) {
-        const mediaForDate = mediaLookup!.getMediaForDate(dateStr);
-        console.log(`[DailySummaryGenerator] Found ${mediaForDate.length} media items for ${dateStr}`);
-      }
-
-      const groupedContent = this.groupObjects(contentItems);
-
-      const allSummaries: any[] = [];
-      let groupsToSummarize = 0;
-
-      for (const grouped of groupedContent) {
-        try {
-          if (!grouped) continue;
-          const { topic, objects } = grouped;
-
-          if (!topic || !objects || objects.length <= 0 || groupsToSummarize >= this.maxGroupsToSummarize) continue;
-
-          const summaryJSON = await this.summarizeTopicGroup(topic, objects, dateStr);
-          if (summaryJSON) {
-            allSummaries.push(summaryJSON);
-            groupsToSummarize++;
-          }
-        }
-        catch (e) {
-          console.log(e);
-        }
-      }
-
-      const markdownReport = await this.hierarchicalSummarize(allSummaries, dateStr);
-      const markdownString = markdownReport.replace(/```markdown\n|```/g, "");
-
-      const summaryItem: SummaryItem = {
-        type: this.summaryType,
-        title: `Daily Report - ${dateStr}`,
-        categories: JSON.stringify(allSummaries, null, 2),
-        markdown: markdownString,
-        date: currentTime,
-      };
-
-      await this.storage.saveSummaryItem(summaryItem);
-      
-      // Only write files if not in platform-only mode
-      if (!this.skipFileOutput) {
-        await this.writeSummaryToFile(dateStr, currentTime, allSummaries);
-        await this.writeMDToFile(dateStr, markdownString);
-      }
-
-      console.log(`Daily report for ${dateStr} generated and stored successfully.`);
-    } catch (error) {
-      console.error(`Error generating daily summary for ${dateStr}:`, error);
-    }
-  }
-
-  /**
-   * Checks if a file's content matches the database record and updates if needed
-   * @param {string} dateStr - ISO date string to check
-   * @param {SummaryItem} summary - Summary item from database
-   * @returns {Promise<void>}
-   */
-  public async checkIfFileMatchesDB(dateStr: string, summary: SummaryItem) {
-    // Skip file validation in platform-only mode
-    if (this.skipFileOutput) {
-      console.log('Skipping file validation (platform storage mode)');
-      return;
-    }
-    
-    try {
-      let jsonParsed = await this.readSummaryFromFile(dateStr);
-
-      let summaryParsed = {
-        type: summary.type,
-        title: summary.title,
-        categories: typeof summary.categories === 'string' 
-          ? JSON.parse(summary.categories || "[]") 
-          : (summary.categories || []),
-        date: summary.date
-      };
-
-      if (!this.deepEqual(jsonParsed, summaryParsed)) {
-        console.log("JSON file didn't match database, resaving summary to file.");
-        await this.writeSummaryToFile(dateStr, summary.date || new Date().getTime(), summaryParsed.categories);
-      }
-    }
-    catch (error) {
-      console.error(`Error checkIfFileMatchesDB:`, error);
-    }
-  }
-
-  /**
-   * Generates content for the current day if not already generated
-   * @returns {Promise<void>}
-   */
-  public async generateContent() {
-    try {
-      const today = new Date();
-      const currentHourUTC = today.getUTCHours();
-
-      // In continuous mode, only generate daily summary after the configured hour (default 20:00 UTC / 8 PM)
-      // This ensures most of the day's data has been collected before summarizing.
-      // In one-time (runOnce) mode, always generate immediately.
-      if (this.isContinuousMode && this.generateAfterHour > 0 && currentHourUTC < this.generateAfterHour) {
-        console.log(`Skipping daily summary generation - current hour (${currentHourUTC} UTC) is before threshold (${this.generateAfterHour} UTC). Will generate after ${this.generateAfterHour}:00 UTC.`);
-        return;
-      }
-
-      let summary: SummaryItem[] = await this.storage.getSummaryBetweenEpoch(Math.floor((today.getTime() - (hour * 24)) / 1000), Math.floor(today.getTime() / 1000));
-      
-      // Check if existing summary is empty/broken (e.g. from a failed run)
-      const hasEmptySummary = summary && summary.length > 0 && (
-        !summary[0].categories || 
-        summary[0].categories === '[]' || 
-        summary[0].categories === 'null' ||
-        (summary[0].markdown && summary[0].markdown.includes('No content to summarize'))
-      );
-
-      if (!summary || summary.length <= 0 || hasEmptySummary) {
-        // Generate summary for today's data
-        const dateStr = today.toISOString().slice(0, 10);
-        
-        if (hasEmptySummary) {
-          console.log(`Existing summary for ${dateStr} is empty/broken, regenerating...`);
-        } else {
-          console.log(`Summarizing data for daily report: ${dateStr}`);
-        }
-      
-        await this.generateAndStoreSummary(dateStr);
-        
-        console.log(`Daily report is complete`);
-      }
-      else {
-        console.log('Summary already generated for today, validating file is correct');
-        const dateStr = today.toISOString().slice(0, 10);
-
-        await this.checkIfFileMatchesDB(dateStr, summary[0]);
-      }
-    } catch (error) {
-      console.error(`Error creating daily report:`, error);
-    }
-  }
-
-  /**
-   * Deep equality comparison of two objects
-   * @private
-   * @param {any} obj1 - First object to compare
-   * @param {any} obj2 - Second object to compare
-   * @returns {boolean} True if objects are deeply equal
-   */
-  private deepEqual(obj1: any, obj2: any) {
-    return JSON.stringify(obj1) === JSON.stringify(obj2);
-  }
-
-  /**
-   * Reads a summary from a JSON file
-   * @private
-   * @param {string} dateStr - ISO date string for the summary
-   * @returns {Promise<any>} Parsed summary data
-   */
-  private async readSummaryFromFile(dateStr: string) {
-    try {
-      const jsonDir = path.join(this.outputPath, 'json');
-      this.ensureDirectoryExists(jsonDir);
-      
-      const filePath = path.join(jsonDir, `${dateStr}.json`);
-      const data = fs.readFileSync(filePath, 'utf8');
-
-      return JSON.parse(data);
-    }
-    catch (error) {
-      console.error(`Error reading the file ${dateStr}:`, error);
-    }
-  }
-
-  /**
-   * Writes a summary to a JSON file
-   * @private
-   * @param {string} dateStr - ISO date string for the summary
-   * @param {number} currentTime - Current timestamp
-   * @param {any[]} allSummaries - Array of summaries to write
-   * @returns {Promise<void>}
-   */
-  private async writeSummaryToFile(dateStr: string, currentTime: number, allSummaries: any[]) {
-    try {
-      const jsonDir = path.join(this.outputPath, 'json');
-      this.ensureDirectoryExists(jsonDir);
-      
-      const filePath = path.join(jsonDir, `${dateStr}.json`);
-      fs.writeFileSync(filePath, JSON.stringify({
-        type: this.summaryType,
-        title: `Daily Report - ${dateStr}`,
-        categories: allSummaries,
-        date: currentTime,
-      }, null, 2));
-    }
-    catch (error) {
-      console.error(`Error saving daily summary to json file ${dateStr}:`, error);
-    }
-  }
-
-  /**
-   * Writes a summary to a Markdown file
-   * @private
-   * @param {string} dateStr - ISO date string for the summary
-   * @param {string} content - Markdown content to write
-   * @returns {Promise<void>}
-   */
-  private async writeMDToFile(dateStr: string, content: string) {
-    try {
-      const mdDir = path.join(this.outputPath, 'md');
-      this.ensureDirectoryExists(mdDir);
-      
-      const filePath = path.join(mdDir, `${dateStr}.md`);
-      fs.writeFileSync(filePath, content);
-    } catch (error) {
-      console.error(`Error saving daily summary to markdown file ${dateStr}:`, error);
-    }
-  }
-
-  /**
-   * Ensures a directory exists, creating it if necessary
-   * @private
-   * @param {string} dirPath - Path to the directory
-   */
-  private ensureDirectoryExists(dirPath: string) {
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-    }
-  }
-
-  /**
-   * Groups content items, handling special cases for GitHub and crypto content
-   * @private
-   * @param {any[]} objects - Array of content items to group
-   * @returns {any[]} Array of grouped content
+   * Groups content items by topic, handling special cases for GitHub and crypto content.
    */
   private groupObjects(objects: any[]): any[] {
     const topicMap = new Map();
@@ -616,17 +509,16 @@ export class DailySummaryGenerator {
         } else if (obj.type === 'githubStatsSummary') {
           github_topic = 'github_summary';
         } else if (obj.type === 'githubTopContributors') {
-          return; // Deprecated - skip this item
+          return;
         } else if (obj.type === 'githubCompletedItem') {
           github_topic = 'completed_items';
         } else {
           github_topic = 'github_other';
         }
-        
+
         if (!obj.topics) {
           obj.topics = [];
         }
-        
         if (!obj.topics.includes(github_topic)) {
           obj.topics.push(github_topic);
         }
@@ -638,11 +530,10 @@ export class DailySummaryGenerator {
       }
       // Handle crypto analytics content
       else if (obj.cid.indexOf('analytics') >= 0) {
-        let token_topic = 'crypto market';
+        const token_topic = 'crypto market';
         if (!obj.topics) {
           obj.topics = [];
         }
-
         if (!topicMap.has(token_topic)) {
           topicMap.set(token_topic, []);
         }
@@ -652,7 +543,7 @@ export class DailySummaryGenerator {
       else {
         if (obj.topics && obj.topics.length > 0 && !this.groupBySourceType) {
           obj.topics.forEach((topic: any) => {
-            let shortCase = topic.toLowerCase();
+            const shortCase = topic.toLowerCase();
             if (!this.blockedTopics.includes(shortCase)) {
               if (!topicMap.has(shortCase)) {
                 topicMap.set(shortCase, []);
@@ -660,9 +551,8 @@ export class DailySummaryGenerator {
               topicMap.get(shortCase).push(obj);
             }
           });
-        }
-        else {
-          let shortCase = obj.type.toLowerCase();
+        } else {
+          const shortCase = obj.type.toLowerCase();
           if (!this.blockedTopics.includes(shortCase)) {
             if (!topicMap.has(shortCase)) {
               topicMap.set(shortCase, []);
@@ -683,7 +573,7 @@ export class DailySummaryGenerator {
       allTopics: []
     };
 
-    let groupedTopics: any[] = [];
+    const groupedTopics: any[] = [];
 
     sortedTopics.forEach(([topic, associatedObjects]) => {
       const mergedTopics = new Set();
@@ -691,20 +581,17 @@ export class DailySummaryGenerator {
       associatedObjects.forEach((obj: any) => {
         if (obj.topics) {
           obj.topics.forEach((t: any) => {
-            let lower = t.toLowerCase();
-
+            const lower = t.toLowerCase();
             if (alreadyAdded[lower]) {
               topicAlreadyAdded = true;
-            }
-            else {
+            } else {
               mergedTopics.add(lower);
             }
           });
         }
       });
-      
-      // Handle GitHub topics separately
-      if (topic === 'pull_request' || topic === 'issue' || topic === 'commit' || 
+
+      if (topic === 'pull_request' || topic === 'issue' || topic === 'commit' ||
           topic === 'github_summary' || topic === 'contributors' || topic === 'completed_items') {
         if (!topicAlreadyAdded) {
           alreadyAdded[topic] = true;
@@ -715,16 +602,14 @@ export class DailySummaryGenerator {
           });
         }
       }
-      // Group small topics into miscellaneous
       else if (associatedObjects && associatedObjects.length <= 1) {
-        let objectIds = associatedObjects.map((object: any) => object.id);
-        let alreadyAddedToMisc = miscTopics["objects"].find((object: any) => objectIds.indexOf(object.id) >= 0);
+        const objectIds = associatedObjects.map((object: any) => object.id);
+        const alreadyAddedToMisc = miscTopics["objects"].find((object: any) => objectIds.indexOf(object.id) >= 0);
         if (!alreadyAddedToMisc) {
           miscTopics["objects"] = miscTopics["objects"].concat(associatedObjects);
           miscTopics["allTopics"] = miscTopics["allTopics"].concat(Array.from(mergedTopics));
         }
-      } 
-      // Add other topics normally
+      }
       else if (!topicAlreadyAdded) {
         alreadyAdded[topic] = true;
         groupedTopics.push({
@@ -734,9 +619,8 @@ export class DailySummaryGenerator {
         });
       }
     });
-    
-    groupedTopics.push(miscTopics);
 
+    groupedTopics.push(miscTopics);
     return groupedTopics;
   }
 }

@@ -15,8 +15,8 @@ import {
   loadDirectoryModules,
   loadItems,
   loadProviders,
-} from "@helpers/configHelper";
-import { logger } from "@helpers/cliHelper";
+} from "../../helpers/configHelper";
+import { logger } from "../../helpers/cliHelper";
 
 interface ContentMessage {
   text: string;

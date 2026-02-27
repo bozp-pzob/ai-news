@@ -180,6 +180,19 @@ export const generateUrlHash = (url: string): string => {
 }
 
 /**
+ * Computes a deterministic SHA-256 hash of an array of ContentItems.
+ * Used by generators to detect whether source data has changed since the last summary.
+ * Items are sorted by cid for deterministic ordering, and only cid + text are included.
+ * @param items - Array of content items to hash
+ * @returns SHA-256 hash as hex string
+ */
+export const computeContentHash = (items: ContentItem[]): string => {
+  const sorted = [...items].sort((a, b) => a.cid.localeCompare(b.cid));
+  const canonical = sorted.map(item => ({ cid: item.cid, text: item.text }));
+  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+/**
  * Extracts filename from a URL
  * @param url - URL to extract filename from
  * @returns Extracted filename with fallback to 'unknown.jpg'

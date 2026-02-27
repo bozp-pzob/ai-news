@@ -1,10 +1,10 @@
 import { ContentAggregator } from "../aggregator/ContentAggregator";
 import { loadDirectoryModules, loadItems, loadProviders, loadStorage } from "../helpers/configHelper";
 import { Config } from "./configService";
-import { AggregationStatus, AiProvider, AiUsageStats, JobStatus } from "../types";
+import { AggregationStatus, AiProvider, AiUsageStats, JobStatus, GeneratorPlugin, GeneratorInstanceConfig, ExporterPlugin, ExporterInstanceConfig } from "../types";
 import EventEmitter from "events";
 import { HistoricalAggregator } from "../aggregator/HistoricalAggregator";
-import { callbackDateRangeLogic } from "../helpers/dateHelper";
+import { runGeneratorsForDate, runGeneratorsForRange, runExportersForDate, runExportersForRange } from "../helpers/generatorHelper";
 import { jobService, AggregationJob, JobType } from "./jobService";
 import { userService } from "./userService";
 import { licenseService } from "./licenseService";
@@ -380,50 +380,71 @@ export class AggregatorService {
       }
 
       if (!settings?.onlyFetch) {
-        for (const generator of generatorConfigs) {
-          // Mark generators as running in continuous mode so they can defer
-          // summary generation until end of day instead of generating immediately
-          if (generator.instance.isContinuousMode !== undefined) {
-            generator.instance.isContinuousMode = true;
+        // Separate generators from exporters
+        const { generators: genInstances, exporters: expInstances } = this.separatePlugins(generatorConfigs);
+        const primaryStorage = storageConfigs[0]?.instance;
+
+        // Helper to run generators for yesterday's date
+        const runGeneratorsOnce = async () => {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const dateStr = yesterday.toISOString().slice(0, 10);
+
+          if (genInstances.length > 0 && primaryStorage) {
+            const result = await runGeneratorsForDate(dateStr, {
+              generators: genInstances,
+              storage: primaryStorage,
+            });
+            return result;
           }
-          
-          await generator.instance.generateContent();
-          await this.emitStatusUpdate(configName, jobId);
-          
-          // Use global interval if provided, otherwise use per-generator interval
-          const interval = globalInterval || generator.interval;
-          
-          // Track interval ID for cleanup
-          const intervalId = setInterval(async () => {
-            // Validate Pro license before doing work (DB-backed jobs only)
-            if (isDbJob && activeState.userId) {
-              const hasLicense = await this.checkUserProLicense(activeState.userId);
-              if (!hasLicense) {
-                await this.stopContinuousJobForExpiredLicense(jobId);
-                return;
-              }
-            }
-            
-            await generator.instance.generateContent();
-            
-            // Collect AI usage from generator tick
-            const genUsage = this.collectAndResetAiUsage(aiConfigs);
-            if (isDbJob && genUsage.totalCalls > 0) {
-              await jobService.recordContinuousTick(jobId, {
-                itemsFetched: 0,
-                itemsProcessed: 0,
-                promptTokens: genUsage.totalPromptTokens,
-                completionTokens: genUsage.totalCompletionTokens,
-                aiCalls: genUsage.totalCalls,
-                estimatedCostUsd: genUsage.estimatedCostUsd,
-              });
-            }
-            
-            await this.emitStatusUpdate(configName, jobId);
-          }, interval);
-          
-          activeState.intervals.push(intervalId);
+          return null;
+        };
+
+        // Initial generation run
+        await runGeneratorsOnce();
+        await this.emitStatusUpdate(configName, jobId);
+
+        // Run exporters once
+        if (expInstances.length > 0) {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const dateStr = yesterday.toISOString().slice(0, 10);
+          await runExportersForDate(dateStr, { exporters: expInstances });
         }
+
+        // Schedule recurring generator runs
+        const genIntervals = genInstances.map(g => g.interval).filter((i): i is number => !!i);
+        const interval = globalInterval || (genIntervals.length > 0 ? Math.min(...genIntervals) : 3600000);
+
+        const intervalId = setInterval(async () => {
+          // Validate Pro license before doing work (DB-backed jobs only)
+          if (isDbJob && activeState.userId) {
+            const hasLicense = await this.checkUserProLicense(activeState.userId);
+            if (!hasLicense) {
+              await this.stopContinuousJobForExpiredLicense(jobId);
+              return;
+            }
+          }
+
+          const result = await runGeneratorsOnce();
+
+          // Collect AI usage from generator tick
+          const genUsage = this.collectAndResetAiUsage(aiConfigs);
+          if (isDbJob && genUsage.totalCalls > 0) {
+            await jobService.recordContinuousTick(jobId, {
+              itemsFetched: 0,
+              itemsProcessed: 0,
+              promptTokens: genUsage.totalPromptTokens,
+              completionTokens: genUsage.totalCompletionTokens,
+              aiCalls: genUsage.totalCalls,
+              estimatedCostUsd: genUsage.estimatedCostUsd,
+            });
+          }
+
+          await this.emitStatusUpdate(configName, jobId);
+        }, interval);
+
+        activeState.intervals.push(intervalId);
       }
       
       if (isDbJob) {
@@ -600,19 +621,39 @@ export class AggregatorService {
         
         // Generate content if not in fetch-only mode
         if (!settings?.onlyFetch) {
-          if (mode === 'range') {
-            for (const generator of generatorConfigs) {
-              await generator.instance.storage.init();
-              await callbackDateRangeLogic(dateFilter, (dateStr: string) => 
-                generator.instance.generateAndStoreSummary(dateStr)
-              );
-              await this.emitStatusUpdate(configName, jobId);
+          // Ensure storage is initialized
+          for (const gen of generatorConfigs) {
+            if (gen.instance.storage?.init) {
+              await gen.instance.storage.init();
             }
-          } else {
-            for (const generator of generatorConfigs) {
-              await generator.instance.storage.init();
-              await generator.instance.generateAndStoreSummary(startDate);
-              await this.emitStatusUpdate(configName, jobId);
+          }
+
+          const { generators: histGenInstances, exporters: histExpInstances } = this.separatePlugins(generatorConfigs);
+          const histPrimaryStorage = storageConfigs[0]?.instance;
+
+          if (histGenInstances.length > 0 && histPrimaryStorage) {
+            if (mode === 'range') {
+              const result = await runGeneratorsForRange(startDate, endDate, {
+                generators: histGenInstances,
+                storage: histPrimaryStorage,
+              });
+              console.log(`[AggregatorService] Historical range generation complete: ${result.summaryItems.length} summaries, ${result.totalTokensUsed} tokens`);
+            } else {
+              const result = await runGeneratorsForDate(startDate, {
+                generators: histGenInstances,
+                storage: histPrimaryStorage,
+              });
+              console.log(`[AggregatorService] Historical generation complete: ${result.summaryItems.length} summaries, ${result.totalTokensUsed} tokens`);
+            }
+            await this.emitStatusUpdate(configName, jobId);
+          }
+
+          // Run exporters
+          if (histExpInstances.length > 0) {
+            if (mode === 'range') {
+              await runExportersForRange(startDate, endDate, { exporters: histExpInstances });
+            } else {
+              await runExportersForDate(startDate, { exporters: histExpInstances });
             }
           }
         }
@@ -671,9 +712,29 @@ export class AggregatorService {
         if (isDbJob) {
           await jobService.addJobLog(jobId, 'info', 'Generating summaries...');
         }
-        
-        for (const generator of generatorConfigs) {
-          await generator.instance.generateContent();
+
+        const { generators: otGenInstances, exporters: otExpInstances } = this.separatePlugins(generatorConfigs);
+        const otPrimaryStorage = storageConfigs[0]?.instance;
+
+        if (otGenInstances.length > 0 && otPrimaryStorage) {
+          // Generate for yesterday's date (standard one-time behavior)
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const dateStr = yesterday.toISOString().slice(0, 10);
+
+          const result = await runGeneratorsForDate(dateStr, {
+            generators: otGenInstances,
+            storage: otPrimaryStorage,
+          });
+          await this.emitStatusUpdate(configName, jobId);
+        }
+
+        // Run exporters
+        if (otExpInstances.length > 0) {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const dateStr = yesterday.toISOString().slice(0, 10);
+          await runExportersForDate(dateStr, { exporters: otExpInstances });
           await this.emitStatusUpdate(configName, jobId);
         }
       }
@@ -786,6 +847,34 @@ export class AggregatorService {
       // On error, don't stop the job — let the next tick or cron handle it
       return true;
     }
+  }
+
+  /**
+   * Separate loaded plugin configs into GeneratorPlugin and ExporterPlugin instances.
+   * Plugins that implement neither are logged as warnings and skipped.
+   */
+  private separatePlugins(configs: any[]): { generators: GeneratorInstanceConfig[]; exporters: ExporterInstanceConfig[] } {
+    const generators: GeneratorInstanceConfig[] = [];
+    const exporters: ExporterInstanceConfig[] = [];
+
+    for (const config of configs) {
+      if (typeof config.instance.generate === 'function') {
+        generators.push({
+          instance: config.instance as GeneratorPlugin,
+          interval: config.interval,
+          dependsOn: config.dependsOn,
+        });
+      } else if (typeof config.instance.export === 'function') {
+        exporters.push({
+          instance: config.instance as ExporterPlugin,
+          interval: config.interval,
+        });
+      } else {
+        console.warn(`[AggregatorService] Plugin "${config.instance.name}" does not implement GeneratorPlugin or ExporterPlugin, skipping.`);
+      }
+    }
+
+    return { generators, exporters };
   }
 
   /**

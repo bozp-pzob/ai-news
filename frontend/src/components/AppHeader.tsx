@@ -41,8 +41,8 @@ export function AppHeader({ adminBadge, maxWidth = 'max-w-6xl', limits, children
         <div className={`${maxWidth} mx-auto px-4 py-4 flex items-center justify-between`}>
           {/* Left: Logo */}
           <div className="flex items-center gap-3">
-            <a href="/" className="text-xl font-bold text-emerald-700">
-              Digital Gardener
+            <a href="/" className="flex items-center">
+              <img src="/logo.svg" alt="Digital Gardener" className="h-8 w-8" />
             </a>
             {adminBadge && (
               <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded font-medium">

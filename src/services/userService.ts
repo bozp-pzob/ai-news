@@ -97,6 +97,10 @@ const FREE_TIER_LIMITS = {
 const PRO_TIER_LIMITS = {
   dailyAiCalls: parseInt(process.env.PRO_TIER_DAILY_AI_CALLS || '1000'),
   aiModel: process.env.PRO_TIER_AI_MODEL || 'gpt-4o',
+  // Token budget for generation guardrails
+  dailyTokenBudget: parseInt(process.env.PRO_TIER_DAILY_TOKEN_BUDGET || '500000'),
+  dailyCostBudgetCents: parseInt(process.env.PRO_TIER_DAILY_COST_BUDGET_CENTS || '100'), // $1.00/day
+  maxRangeGenerationDays: parseInt(process.env.PRO_TIER_MAX_RANGE_DAYS || '30'),
 };
 
 /**
@@ -803,6 +807,127 @@ export async function incrementAiUsage(userId: string, calls: number = 1): Promi
   );
 }
 
+// ============================================
+// TOKEN BUDGET TRACKING (for generation guardrails)
+// ============================================
+
+/**
+ * Check if user can run a generation (has remaining token budget).
+ * Returns remaining budget information for pre-flight cost estimation.
+ */
+export async function canGenerate(
+  user: AuthUser
+): Promise<{ allowed: boolean; reason?: string; remainingTokens: number; remainingCostCents: number; resetAt: Date }> {
+  // Admin always allowed with unlimited budget
+  if (user.tier === 'admin') {
+    return { allowed: true, remainingTokens: Infinity, remainingCostCents: Infinity, resetAt: getNextMidnightUTC() };
+  }
+  
+  // Free tier cannot generate (they consume existing summaries only)
+  if (user.tier === 'free') {
+    return {
+      allowed: false,
+      reason: 'Generation requires a Pro subscription.',
+      remainingTokens: 0,
+      remainingCostCents: 0,
+      resetAt: getNextMidnightUTC(),
+    };
+  }
+  
+  // Pro tier: check daily token budget
+  const usage = await getUserTokenUsage(user.id);
+  const remainingTokens = usage.tokenBudget - usage.tokensToday;
+  const remainingCostCents = usage.costBudgetCents - usage.costTodayCents;
+  
+  if (remainingTokens <= 0 || remainingCostCents <= 0) {
+    return {
+      allowed: false,
+      reason: `Daily generation budget exhausted (${usage.tokensToday.toLocaleString()} / ${usage.tokenBudget.toLocaleString()} tokens). Resets at midnight UTC.`,
+      remainingTokens: Math.max(0, remainingTokens),
+      remainingCostCents: Math.max(0, remainingCostCents),
+      resetAt: getNextMidnightUTC(),
+    };
+  }
+  
+  return { allowed: true, remainingTokens, remainingCostCents, resetAt: getNextMidnightUTC() };
+}
+
+/**
+ * Get user's token usage stats for the current day.
+ * Auto-resets if the last reset date is before today (same pattern as AI call tracking).
+ */
+export async function getUserTokenUsage(userId: string): Promise<{
+  tokensToday: number;
+  costTodayCents: number;
+  tokenBudget: number;
+  costBudgetCents: number;
+  resetAt: Date;
+}> {
+  const todayUTC = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  const result = await databaseService.query(
+    `UPDATE users 
+     SET tokens_used_today = CASE 
+       WHEN tokens_used_today_reset_at < $1 THEN 0 
+       ELSE tokens_used_today 
+     END,
+     estimated_cost_today_cents = CASE
+       WHEN tokens_used_today_reset_at < $1 THEN 0
+       ELSE estimated_cost_today_cents
+     END,
+     tokens_used_today_reset_at = CASE
+       WHEN tokens_used_today_reset_at < $1 THEN $1
+       ELSE tokens_used_today_reset_at
+     END
+     WHERE id = $2
+     RETURNING tokens_used_today, estimated_cost_today_cents`,
+    [todayUTC, userId]
+  );
+  
+  return {
+    tokensToday: result.rows[0]?.tokens_used_today || 0,
+    costTodayCents: result.rows[0]?.estimated_cost_today_cents || 0,
+    tokenBudget: PRO_TIER_LIMITS.dailyTokenBudget,
+    costBudgetCents: PRO_TIER_LIMITS.dailyCostBudgetCents,
+    resetAt: getNextMidnightUTC(),
+  };
+}
+
+/**
+ * Increment user's token usage after a generation completes.
+ * @param userId - User ID
+ * @param tokens - Number of tokens consumed
+ * @param costCents - Estimated cost in 1/100 cent units
+ */
+export async function incrementTokenUsage(userId: string, tokens: number, costCents: number = 0): Promise<void> {
+  const todayUTC = new Date().toISOString().split('T')[0];
+  
+  await databaseService.query(
+    `UPDATE users 
+     SET tokens_used_today = CASE 
+       WHEN tokens_used_today_reset_at < $1 THEN $2
+       ELSE tokens_used_today + $2
+     END,
+     estimated_cost_today_cents = CASE
+       WHEN tokens_used_today_reset_at < $1 THEN $3
+       ELSE estimated_cost_today_cents + $3
+     END,
+     tokens_used_today_reset_at = CASE
+       WHEN tokens_used_today_reset_at < $1 THEN $1
+       ELSE tokens_used_today_reset_at
+     END
+     WHERE id = $4`,
+    [todayUTC, tokens, costCents, userId]
+  );
+}
+
+/**
+ * Get the maximum number of days allowed for range generation.
+ */
+export function getMaxRangeGenerationDays(): number {
+  return PRO_TIER_LIMITS.maxRangeGenerationDays;
+}
+
 /**
  * Get tier limits for display purposes
  */
@@ -810,6 +935,9 @@ export function getTierLimits(tier: string): {
   maxConfigs?: number;
   maxRunsPerDay?: number;
   dailyAiCalls?: number;
+  dailyTokenBudget?: number;
+  dailyCostBudgetCents?: number;
+  maxRangeGenerationDays?: number;
   aiModel: string;
 } {
   if (tier === 'free') {
@@ -823,6 +951,9 @@ export function getTierLimits(tier: string): {
   if (tier === 'paid') {
     return {
       dailyAiCalls: PRO_TIER_LIMITS.dailyAiCalls,
+      dailyTokenBudget: PRO_TIER_LIMITS.dailyTokenBudget,
+      dailyCostBudgetCents: PRO_TIER_LIMITS.dailyCostBudgetCents,
+      maxRangeGenerationDays: PRO_TIER_LIMITS.maxRangeGenerationDays,
       aiModel: PRO_TIER_LIMITS.aiModel,
     };
   }
@@ -854,4 +985,9 @@ export const userService = {
   getUserAiUsage,
   incrementAiUsage,
   getTierLimits,
+  // Token budget tracking (generation guardrails)
+  canGenerate,
+  getUserTokenUsage,
+  incrementTokenUsage,
+  getMaxRangeGenerationDays,
 };

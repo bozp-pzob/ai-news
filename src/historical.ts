@@ -22,6 +22,8 @@ import {
   validateConfiguration
 } from "./helpers/configHelper";
 import { addOneDay, parseDate, formatDate, callbackDateRangeLogic } from "./helpers/dateHelper";
+import { runGeneratorsForDate, runGeneratorsForRange, runExportersForDate, runExportersForRange } from "./helpers/generatorHelper";
+import { GeneratorPlugin, GeneratorInstanceConfig, ExporterPlugin, ExporterInstanceConfig } from "./types";
 
 dotenv.config();
 
@@ -362,18 +364,74 @@ Options:
      * Generate summaries if not in fetch-only mode
      * For date ranges, generate summaries for each date in the range
      * For specific dates, generate a summary for that date
+     *
+     * Generators that implement GeneratorPlugin use the shared runGeneratorsForDate helper.
+     * Exporters (like RawDataExporter) are run separately via runExportersForDate.
      */
     if (!onlyFetch) {
-      if (filter.filterType || (filter.after && filter.before)) {
-        for (const generator of generatorConfigs) {
-          await generator.instance.storage.init();
-          await callbackDateRangeLogic(filter, (dateStr:string) => generator.instance.generateAndStoreSummary(dateStr));
+      // Ensure storage is initialized for all generators
+      for (const gen of generatorConfigs) {
+        if (gen.instance.storage?.init) {
+          await gen.instance.storage.init();
         }
-      } else {
-        logger.info(`Creating summary for date ${dateStr}`);
-        for (const generator of generatorConfigs) {
-          await generator.instance.storage.init();
-          await generator.instance.generateAndStoreSummary(dateStr);
+      }
+
+      // Separate generators (GeneratorPlugin) from exporters (ExporterPlugin)
+      const generatorInstances: GeneratorInstanceConfig[] = [];
+      const exporterInstances: ExporterInstanceConfig[] = [];
+
+      for (const config of generatorConfigs) {
+        if (typeof config.instance.generate === 'function') {
+          // Implements GeneratorPlugin
+          generatorInstances.push({
+            instance: config.instance as GeneratorPlugin,
+            interval: config.interval,
+            dependsOn: (config as any).dependsOn,
+          });
+        } else if (typeof config.instance.export === 'function') {
+          // Implements ExporterPlugin
+          exporterInstances.push({
+            instance: config.instance as ExporterPlugin,
+            interval: config.interval,
+          });
+        } else {
+          logger.warning(`[historical] Plugin "${config.instance.name}" does not implement GeneratorPlugin or ExporterPlugin, skipping.`);
+        }
+      }
+
+      // Get the first available storage for saving summaries
+      const primaryStorage = storageConfigs[0]?.instance;
+
+      if (generatorInstances.length > 0 && primaryStorage) {
+        if (filter.filterType || (filter.after && filter.before)) {
+          // Date range: iterate each date in range
+          const startDate = filter.after || filter.date;
+          const endDate = filter.before || filter.date;
+          const result = await runGeneratorsForRange(startDate, endDate, {
+            generators: generatorInstances,
+            storage: primaryStorage,
+            outputPath,
+          });
+          logger.info(`[historical] Range generation complete: ${result.summaryItems.length} summaries, ${result.totalTokensUsed} tokens, $${result.totalEstimatedCostUsd.toFixed(4)}`);
+        } else {
+          logger.info(`Creating summary for date ${dateStr}`);
+          const result = await runGeneratorsForDate(dateStr, {
+            generators: generatorInstances,
+            storage: primaryStorage,
+            outputPath,
+          });
+          logger.info(`[historical] Generation complete: ${result.summaryItems.length} summaries, ${result.totalTokensUsed} tokens, $${result.totalEstimatedCostUsd.toFixed(4)}`);
+        }
+      }
+
+      // Run exporters
+      if (exporterInstances.length > 0) {
+        if (filter.filterType || (filter.after && filter.before)) {
+          const startDate = filter.after || filter.date;
+          const endDate = filter.before || filter.date;
+          await runExportersForRange(startDate, endDate, { exporters: exporterInstances });
+        } else {
+          await runExportersForDate(dateStr, { exporters: exporterInstances });
         }
       }
 

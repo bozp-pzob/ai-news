@@ -3,7 +3,7 @@
 import { StoragePlugin } from "./StoragePlugin"; // a small interface if you like
 import { open, Database } from "sqlite";
 import sqlite3 from "sqlite3";
-import { ContentItem, SummaryItem, StorageConfig } from "../../types";
+import { ContentItem, SiteParser, SummaryItem, StorageConfig } from "../../types";
 import { logger } from "../../helpers/cliHelper";
 
 /**
@@ -70,15 +70,60 @@ export class SQLiteStorage implements StoragePlugin {
         title TEXT,
         categories TEXT,
         markdown TEXT,
-        date INTEGER
+        date INTEGER,
+        content_hash TEXT,
+        start_date INTEGER,
+        end_date INTEGER,
+        granularity TEXT DEFAULT 'daily',
+        metadata TEXT,
+        tokens_used INTEGER,
+        estimated_cost_usd REAL
       );
     `);
+
+    // Migrations: add columns to existing databases
+    const summaryMigrations = [
+      'ALTER TABLE summary ADD COLUMN content_hash TEXT',
+      'ALTER TABLE summary ADD COLUMN start_date INTEGER',
+      'ALTER TABLE summary ADD COLUMN end_date INTEGER',
+      "ALTER TABLE summary ADD COLUMN granularity TEXT DEFAULT 'daily'",
+      'ALTER TABLE summary ADD COLUMN metadata TEXT',
+      'ALTER TABLE summary ADD COLUMN tokens_used INTEGER',
+      'ALTER TABLE summary ADD COLUMN estimated_cost_usd REAL',
+    ];
+    for (const migration of summaryMigrations) {
+      try {
+        await this.db.exec(migration);
+      } catch {
+        // Column already exists, ignore
+      }
+    }
 
     await this.db.exec(`
       CREATE TABLE IF NOT EXISTS cursor (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         cid TEXT NOT NULL UNIQUE,
         message_id TEXT NOT NULL
+      );
+    `);
+
+    // Site parsers table for cached LLM-generated HTML parsers
+    await this.db.exec(`
+      CREATE TABLE IF NOT EXISTS site_parsers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain TEXT NOT NULL,
+        path_pattern TEXT NOT NULL,
+        parser_code TEXT NOT NULL,
+        object_type_string TEXT,
+        version INTEGER DEFAULT 1,
+        consecutive_failures INTEGER DEFAULT 0,
+        last_success_at INTEGER,
+        last_failure_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        sample_url TEXT,
+        metadata TEXT,
+        UNIQUE(domain, path_pattern, COALESCE(object_type_string, ''))
       );
     `);
   }
@@ -247,11 +292,14 @@ export class SQLiteStorage implements StoragePlugin {
       throw new Error("Summary item must have a date");
     }
 
+    const granularity = item.granularity || 'daily';
+    const metadataStr = item.metadata ? JSON.stringify(item.metadata) : null;
+
     try {
-      // Check if a summary already exists for this type and date
+      // Check if a summary already exists for this type, date, and granularity
       const existing = await this.db.get(
-        `SELECT id FROM summary WHERE type = ? AND date = ?`,
-        [item.type, item.date]
+        `SELECT id FROM summary WHERE type = ? AND date = ? AND COALESCE(granularity, 'daily') = ?`,
+        [item.type, item.date, granularity]
       );
 
       // Use epoch seconds * 1000 for correct Date object creation
@@ -262,24 +310,35 @@ export class SQLiteStorage implements StoragePlugin {
         await this.db.run(
           `
           UPDATE summary 
-          SET title = ?, categories = ?, markdown = ?
-          WHERE type = ? AND date = ?
+          SET title = ?, categories = ?, markdown = ?, content_hash = ?,
+              start_date = ?, end_date = ?, granularity = ?, metadata = ?,
+              tokens_used = ?, estimated_cost_usd = ?
+          WHERE type = ? AND date = ? AND COALESCE(granularity, 'daily') = ?
           `,
           [
             item.title || null,
             item.categories || null,
             item.markdown || null,
+            item.contentHash || null,
+            item.startDate || null,
+            item.endDate || null,
+            granularity,
+            metadataStr,
+            item.tokensUsed || null,
+            item.estimatedCostUsd || null,
             item.type,
-            item.date
+            item.date,
+            granularity,
           ]
         );
-        console.log(`Updated existing summary for ${item.type} on date ${dateStr}`);
+        console.log(`Updated existing summary for ${item.type} (${granularity}) on date ${dateStr}`);
       } else {
         // Insert new summary
         await this.db.run(
           `
-          INSERT INTO summary (type, title, categories, markdown, date)
-          VALUES (?, ?, ?, ?, ?)
+          INSERT INTO summary (type, title, categories, markdown, date, content_hash,
+                               start_date, end_date, granularity, metadata, tokens_used, estimated_cost_usd)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
           [
             item.type,
@@ -287,9 +346,16 @@ export class SQLiteStorage implements StoragePlugin {
             item.categories || null,
             item.markdown || null,
             item.date,
+            item.contentHash || null,
+            item.startDate || null,
+            item.endDate || null,
+            granularity,
+            metadataStr,
+            item.tokensUsed || null,
+            item.estimatedCostUsd || null,
           ]
         );
-        console.log(`Saved new summary for ${item.type} on date ${dateStr}`);
+        console.log(`Saved new summary for ${item.type} (${granularity}) on date ${dateStr}`);
       }
     } catch (error) {
       // Use epoch seconds * 1000 for correct Date object creation in error message
@@ -426,7 +492,15 @@ export class SQLiteStorage implements StoragePlugin {
         type: row.type,
         title: row.title || undefined,
         categories: row.categories || undefined,
+        markdown: row.markdown || undefined,
         date: row.date,
+        contentHash: row.content_hash || undefined,
+        startDate: row.start_date || undefined,
+        endDate: row.end_date || undefined,
+        granularity: row.granularity || undefined,
+        metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+        tokensUsed: row.tokens_used || undefined,
+        estimatedCostUsd: row.estimated_cost_usd || undefined,
       }));
     } catch (error) {
       console.error("Error fetching summary between epochs:", error);
@@ -459,6 +533,101 @@ export class SQLiteStorage implements StoragePlugin {
       VALUES (?, ?)
       ON CONFLICT(cid) DO UPDATE SET message_id = excluded.message_id;
     `, [cid, messageId]);
+  }
+
+  // ============================================
+  // SITE PARSER METHODS
+  // ============================================
+
+  /**
+   * Finds a cached site parser matching domain, path pattern, and optional output schema.
+   */
+  public async getSiteParser(
+    domain: string,
+    pathPattern: string,
+    objectTypeString?: string,
+  ): Promise<SiteParser | null> {
+    if (!this.db) throw new Error("Database not initialized. Call init() first.");
+
+    const row = await this.db.get(
+      `SELECT * FROM site_parsers WHERE domain = ? AND path_pattern = ? AND COALESCE(object_type_string, '') = ?`,
+      [domain, pathPattern, objectTypeString || ''],
+    );
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      domain: row.domain,
+      pathPattern: row.path_pattern,
+      parserCode: row.parser_code,
+      objectTypeString: row.object_type_string || undefined,
+      version: row.version,
+      consecutiveFailures: row.consecutive_failures,
+      lastSuccessAt: row.last_success_at || undefined,
+      lastFailureAt: row.last_failure_at || undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      sampleUrl: row.sample_url || undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    };
+  }
+
+  /**
+   * Saves or updates a site parser. Upserts on (domain, pathPattern, objectTypeString).
+   */
+  public async saveSiteParser(parser: SiteParser): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized. Call init() first.");
+
+    const now = Math.floor(Date.now() / 1000);
+
+    await this.db.run(
+      `INSERT INTO site_parsers (domain, path_pattern, parser_code, object_type_string, version, consecutive_failures, last_success_at, last_failure_at, created_at, updated_at, sample_url, metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(domain, path_pattern, COALESCE(object_type_string, ''))
+       DO UPDATE SET
+         parser_code = excluded.parser_code,
+         version = site_parsers.version + 1,
+         consecutive_failures = 0,
+         updated_at = excluded.updated_at,
+         sample_url = COALESCE(excluded.sample_url, site_parsers.sample_url),
+         metadata = COALESCE(excluded.metadata, site_parsers.metadata)`,
+      [
+        parser.domain,
+        parser.pathPattern,
+        parser.parserCode,
+        parser.objectTypeString || null,
+        parser.version || 1,
+        parser.consecutiveFailures || 0,
+        parser.lastSuccessAt || null,
+        parser.lastFailureAt || null,
+        parser.createdAt || now,
+        now,
+        parser.sampleUrl || null,
+        parser.metadata ? JSON.stringify(parser.metadata) : null,
+      ],
+    );
+  }
+
+  /**
+   * Records a success or failure for a site parser.
+   */
+  public async updateSiteParserStatus(id: number, success: boolean): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized. Call init() first.");
+
+    const now = Math.floor(Date.now() / 1000);
+
+    if (success) {
+      await this.db.run(
+        `UPDATE site_parsers SET consecutive_failures = 0, last_success_at = ?, updated_at = ? WHERE id = ?`,
+        [now, now, id],
+      );
+    } else {
+      await this.db.run(
+        `UPDATE site_parsers SET consecutive_failures = consecutive_failures + 1, last_failure_at = ?, updated_at = ? WHERE id = ?`,
+        [now, now, id],
+      );
+    }
   }
 
   /**

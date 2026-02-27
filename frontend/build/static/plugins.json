@@ -1,6 +1,161 @@
 {
   "source": [
     {
+      "name": "WebhookSource",
+      "pluginName": "WebhookSource",
+      "type": "source",
+      "description": "Receives data via webhook HTTP endpoint with buffered storage",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "webhookId",
+            "type": "string",
+            "required": true,
+            "description": "Unique webhook endpoint ID (auto-generated UUID)"
+          },
+          {
+            "name": "webhookSecret",
+            "type": "string",
+            "required": true,
+            "description": "Secret token for webhook authentication",
+            "secret": true
+          },
+          {
+            "name": "payloadType",
+            "type": "string",
+            "required": false,
+            "description": "Expected payload format: json, html, or text (default: json)"
+          },
+          {
+            "name": "payloadMapping",
+            "type": "string",
+            "required": false,
+            "description": "JSON mapping: {\"title\":\"$.headline\",\"text\":\"$.body\",\"link\":\"$.url\"}"
+          },
+          {
+            "name": "provider",
+            "type": "object",
+            "required": false,
+            "description": "AI provider for structured extraction from HTML/text payloads"
+          },
+          {
+            "name": "bufferTTLDays",
+            "type": "number",
+            "required": false,
+            "description": "Days to keep processed webhook data (default: 30)"
+          },
+          {
+            "name": "storage",
+            "type": "object",
+            "required": true,
+            "description": "Storage plugin for buffer table access"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WebScraperSource",
+      "pluginName": "WebScraperSource",
+      "type": "source",
+      "description": "Fetches and extracts content from web pages with optional crawling",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "urls",
+            "type": "string[]",
+            "required": true,
+            "description": "Seed URLs to scrape"
+          },
+          {
+            "name": "headless",
+            "type": "boolean",
+            "required": false,
+            "description": "Run browser in headless mode (default: true)"
+          },
+          {
+            "name": "userAgent",
+            "type": "string",
+            "required": false,
+            "description": "Custom User-Agent string"
+          },
+          {
+            "name": "provider",
+            "type": "object",
+            "required": false,
+            "description": "AI provider for structured content extraction"
+          },
+          {
+            "name": "objectTypeString",
+            "type": "string",
+            "required": false,
+            "description": "TypeScript interface for AI to map extracted data to"
+          },
+          {
+            "name": "excludeTopics",
+            "type": "string",
+            "required": false,
+            "description": "Topics to exclude from extraction"
+          },
+          {
+            "name": "crawlEnabled",
+            "type": "boolean",
+            "required": false,
+            "description": "Enable link-following from seed pages (default: false)"
+          },
+          {
+            "name": "crawlLinkSelector",
+            "type": "string",
+            "required": false,
+            "description": "CSS selector for links to follow (default: \"a\")"
+          },
+          {
+            "name": "crawlMaxPages",
+            "type": "number",
+            "required": false,
+            "description": "Max pages to scrape (default: 10)"
+          },
+          {
+            "name": "crawlMaxDepth",
+            "type": "number",
+            "required": false,
+            "description": "Max link-following depth from seed pages (default: 1)"
+          },
+          {
+            "name": "crawlSameDomain",
+            "type": "boolean",
+            "required": false,
+            "description": "Only follow same-domain links (default: true)"
+          },
+          {
+            "name": "crawlAllowedPaths",
+            "type": "string[]",
+            "required": false,
+            "description": "Glob patterns for allowed URL paths (e.g., [\"/blog/*\"])"
+          },
+          {
+            "name": "crawlExcludePaths",
+            "type": "string[]",
+            "required": false,
+            "description": "Glob patterns for excluded URL paths (e.g., [\"/login\", \"/admin/*\"])"
+          },
+          {
+            "name": "crawlDelayMs",
+            "type": "number",
+            "required": false,
+            "description": "Delay between requests in milliseconds (default: 1000)"
+          },
+          {
+            "name": "crawlRespectRobotsTxt",
+            "type": "boolean",
+            "required": false,
+            "description": "Respect robots.txt crawl rules (default: true)"
+          }
+        ]
+      }
+    },
+    {
       "name": "TelegramSource",
       "pluginName": "TelegramSource",
       "type": "source",
@@ -63,6 +218,58 @@
             "type": "string[]",
             "required": true,
             "description": "Array of Solana token addresses to track"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RSSSource",
+      "pluginName": "RSSSource",
+      "type": "source",
+      "description": "Fetches and processes RSS/Atom feeds with optional AI content extraction",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "feeds",
+            "type": "array",
+            "required": true,
+            "description": "Array of feed configs: [{url, cookieUrl?, excludeTopics?, objectTypeString?, type?}]"
+          },
+          {
+            "name": "provider",
+            "type": "object",
+            "required": false,
+            "description": "AI provider for structured content extraction from feed item pages"
+          },
+          {
+            "name": "headless",
+            "type": "boolean",
+            "required": false,
+            "description": "Run browser in headless mode for cookie capture (default: true)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GitHubSummaryDataSource",
+      "pluginName": "GitHubSummaryDataSource",
+      "type": "source",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "summaryUrl",
+            "type": "string",
+            "required": true,
+            "description": "URL for AI-generated summary JSON (latest)"
+          },
+          {
+            "name": "historicalSummaryUrl",
+            "type": "string",
+            "required": true,
+            "description": "URL template for historical summaries (with date placeholders)"
           }
         ]
       }
@@ -571,6 +778,31 @@
   ],
   "enricher": [
     {
+      "name": "SummaryEnricher",
+      "pluginName": "SummaryEnricher",
+      "type": "enricher",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": null
+    },
+    {
+      "name": "MemeEnricher",
+      "pluginName": "MemeEnricher",
+      "type": "enricher",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "provider",
+            "type": "AiProvider",
+            "required": true,
+            "description": "AI provider for summarization"
+          }
+        ]
+      }
+    },
+    {
       "name": "EmbeddingEnricher",
       "pluginName": "EmbeddingEnricher",
       "type": "enricher",
@@ -578,6 +810,12 @@
       "configSchema": {},
       "constructorInterface": {
         "parameters": [
+          {
+            "name": "provider",
+            "type": "AiProvider",
+            "required": true,
+            "description": "AI provider to use for generating embeddings"
+          },
           {
             "name": "minLength",
             "type": "number",
@@ -589,12 +827,6 @@
             "type": "number",
             "required": false,
             "description": "Maximum items per batch (default: 50)"
-          },
-          {
-            "name": "model",
-            "type": "string",
-            "required": false,
-            "description": "OpenAI embedding model (default: text-embedding-3-small)"
           },
           {
             "name": "skipExisting",
@@ -653,18 +885,6 @@
             "type": "AiProvider",
             "required": true,
             "description": "AI provider to use for image generation"
-          },
-          {
-            "name": "maxTokens",
-            "type": "number",
-            "required": false,
-            "description": "Maximum number of tokens to use for image generation"
-          },
-          {
-            "name": "thresholdLength",
-            "type": "number",
-            "required": false,
-            "description": "Minimum text length required for image generation (default: 300)"
           }
         ]
       }
@@ -792,6 +1012,18 @@
             "description": "Group by source type from storage, instead of topics generated from enriching."
           },
           {
+            "name": "mediaManifestPath",
+            "type": "string",
+            "required": false,
+            "description": "Path to media manifest JSON for CDN URL enrichment in summaries."
+          },
+          {
+            "name": "blockedTopics",
+            "type": "string[]",
+            "required": false,
+            "description": "Topics to exclude from summaries (default: [\"open source\"])."
+          },
+          {
             "name": "skipFileOutput",
             "type": "boolean",
             "required": false,
@@ -895,6 +1127,22 @@
           }
         ]
       }
+    },
+    {
+      "name": "DiscordUserRegistry",
+      "pluginName": "DiscordUserRegistry",
+      "type": "storage",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": null
+    },
+    {
+      "name": "DiscordChannelRegistry",
+      "pluginName": "DiscordChannelRegistry",
+      "type": "storage",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": null
     }
   ]
 }

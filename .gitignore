@@ -5,5 +5,7 @@ data/discord-raw.sqlite
 dist/
 frontend/build/
 frontend/public/
+# Browser profile data (patchright persistent contexts)
+.browser-data/
 # Lock files - this project uses npm, not yarn
 yarn.lock

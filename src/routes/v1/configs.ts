@@ -1859,4 +1859,279 @@ router.get('/:id/runs/:runId', requireAuth, requireConfigOwner, async (req: Auth
   }
 });
 
+// ============================================
+// ON-DEMAND RANGE GENERATION
+// ============================================
+
+/**
+ * Pricing for on-demand range generation.
+ * Range generation costs extra even for Pro users — this is the x402 per-use price.
+ * Pro users get daily generation free within their token budget;
+ * range generation (weekly/monthly) is an add-on.
+ */
+const RANGE_GENERATION_PAYMENT = {
+  /** Base price in cents for range generation */
+  basePriceCents: parseInt(process.env.RANGE_GENERATION_BASE_PRICE_CENTS || '25', 10),
+  /** Additional price per day in cents */
+  perDayCents: parseInt(process.env.RANGE_GENERATION_PER_DAY_CENTS || '5', 10),
+  description: 'On-demand range summary generation',
+};
+
+/**
+ * POST /:id/generate
+ *
+ * On-demand range summary generation.
+ * Generates a multi-day summary (weekly, monthly, custom range) using
+ * the RangeSummaryGenerator with configurable data strategies.
+ *
+ * Pricing: x402 payment required per request.
+ * - Pro users: daily generation included in their budget; range generation costs extra.
+ * - Admin users: free.
+ *
+ * Request body:
+ *   startDate: string (YYYY-MM-DD) — required
+ *   endDate: string (YYYY-MM-DD) — required
+ *   dataStrategy: 'daily_summaries' | 'raw_content' | 'hybrid' (default: 'daily_summaries')
+ *   label?: string — human-readable label
+ *   force?: boolean — regenerate even if content hash unchanged
+ *
+ * Response:
+ *   200: { summary: SummaryItem, stats: GeneratorStats }
+ *   402: payment required details
+ *   403: budget exceeded or free tier
+ *   404: config not found
+ */
+router.post('/:id/generate', requireAuth, requireConfigOwner, async (req: AuthenticatedRequest, res: Response) => {
+  const configId = req.params.id;
+
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Parse and validate request body
+    const {
+      startDate,
+      endDate,
+      dataStrategy = 'daily_summaries',
+      label,
+      force = false,
+    } = req.body || {};
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        message: 'startDate and endDate are required (YYYY-MM-DD format).',
+      });
+    }
+
+    // Validate date format
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({
+        error: 'Invalid date format',
+        message: 'startDate and endDate must be valid dates in YYYY-MM-DD format.',
+      });
+    }
+    if (start > end) {
+      return res.status(400).json({
+        error: 'Invalid date range',
+        message: 'startDate must be before or equal to endDate.',
+      });
+    }
+
+    // Validate data strategy
+    const validStrategies = ['daily_summaries', 'raw_content', 'hybrid'];
+    if (!validStrategies.includes(dataStrategy)) {
+      return res.status(400).json({
+        error: 'Invalid data strategy',
+        message: `dataStrategy must be one of: ${validStrategies.join(', ')}`,
+      });
+    }
+
+    // Calculate day count and enforce max range
+    const dayCount = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    const maxDays = userService.getMaxRangeGenerationDays();
+    if (dayCount > maxDays) {
+      return res.status(400).json({
+        error: 'Range too large',
+        message: `Maximum range is ${maxDays} days. Requested ${dayCount} days.`,
+      });
+    }
+
+    // Admin bypass — no payment needed
+    const isAdmin = req.user.tier === 'admin';
+
+    if (!isAdmin) {
+      // Check generation budget
+      const budgetCheck = await userService.canGenerate(req.user);
+      if (!budgetCheck.allowed) {
+        return res.status(403).json({
+          error: 'Generation not allowed',
+          message: budgetCheck.reason,
+          resetAt: budgetCheck.resetAt,
+        });
+      }
+
+      // Check for x402 payment
+      // Range generation costs extra even for Pro users
+      const totalPriceCents = RANGE_GENERATION_PAYMENT.basePriceCents +
+        (RANGE_GENERATION_PAYMENT.perDayCents * dayCount);
+      const priceUsd = (totalPriceCents / 100).toFixed(2);
+
+      const hasPaymentProof = !!req.headers['x-payment-proof'] || !!req.headers['x-payment'];
+
+      if (!hasPaymentProof) {
+        // Return 402 Payment Required
+        const platformWallet = process.env.PLATFORM_WALLET_ADDRESS || '';
+        const facilitatorUrl = process.env.POP402_FACILITATOR_URL || 'https://facilitator.pop402.com';
+        const network = process.env.POP402_NETWORK || 'solana';
+
+        return res.status(402).json({
+          error: 'Payment Required',
+          code: 'PAYMENT_REQUIRED',
+          message: `Range generation for ${dayCount} days requires payment.`,
+          payment: {
+            amount: totalPriceCents,
+            amountDisplay: `$${priceUsd}`,
+            currency: 'USDC',
+            network,
+            recipient: platformWallet,
+            facilitatorUrl,
+            description: `${RANGE_GENERATION_PAYMENT.description} (${startDate} to ${endDate}, ${dayCount} days, strategy: ${dataStrategy})`,
+            breakdown: {
+              basePriceCents: RANGE_GENERATION_PAYMENT.basePriceCents,
+              perDayCents: RANGE_GENERATION_PAYMENT.perDayCents,
+              dayCount,
+              totalCents: totalPriceCents,
+            },
+          },
+        });
+      }
+
+      // Payment proof present — in production, verify with facilitator.
+      // For now, trust that payment-bearing requests are valid (same pattern as /:id/run).
+    }
+
+    // Get config from database
+    const config = await userService.getConfigById(configId);
+    if (!config) {
+      return res.status(404).json({ error: 'Config not found' });
+    }
+
+    // Get storage for this config
+    const storage = await databaseService.getStorageForConfig({
+      id: configId,
+      storage_type: config.storageType as 'platform' | 'external',
+      external_db_url: config.externalDbUrl,
+    });
+
+    // Determine the daily summary type from the config's generators
+    // Look for the first generator that produces daily summaries
+    const configJson = (config.configJson || {}) as any;
+    const generators = configJson.generators || [];
+    const dailyGenerator = generators.find((g: any) =>
+      g.type === 'DailySummaryGenerator' || g.type === 'DiscordSummaryGenerator'
+    );
+    const dailySummaryType = dailyGenerator?.params?.summaryType || 'dailySummary';
+
+    // For now, use a lightweight approach: create RangeSummaryGenerator inline
+    // without needing the full config loading pipeline.
+    // The RangeSummaryGenerator just needs storage to read daily summaries.
+    // We use the summary data already in the database.
+
+    // Import dynamically to avoid circular dependencies
+    const { RangeSummaryGenerator } = await import('../../plugins/generators/RangeSummaryGenerator');
+
+    // Get AI provider config from the config
+    const aiConfig = configJson.ai?.[0];
+    let provider: any;
+
+    if (aiConfig) {
+      // Load the AI provider dynamically
+      const providerType = aiConfig.type || 'OpenAIProvider';
+      const { OpenAIProvider } = await import('../../plugins/ai/OpenAIProvider');
+
+      // Resolve params (e.g., API keys from env)
+      const { resolveParam } = await import('../../helpers/configHelper');
+      const resolvedParams: Record<string, any> = {};
+      for (const [key, value] of Object.entries(aiConfig.params || {})) {
+        resolvedParams[key] = typeof value === 'string' ? resolveParam(value) : value;
+      }
+
+      provider = new OpenAIProvider({ name: aiConfig.name, ...resolvedParams });
+    } else {
+      return res.status(400).json({
+        error: 'No AI provider configured',
+        message: 'This config has no AI provider. Range generation requires an AI provider.',
+      });
+    }
+
+    // Create the RangeSummaryGenerator
+    const rangeGenerator = new RangeSummaryGenerator({
+      provider,
+      storage: storage as any,
+      dailySummaryType,
+      summaryType: `${dailySummaryType}Range`,
+    });
+
+    // Run the generation
+    const rangeLabel = label || `${startDate} to ${endDate}`;
+    const result = await rangeGenerator.generateForRange(startDate, endDate, {
+      dataStrategy,
+      force,
+      label: rangeLabel,
+      tokenBudget: isAdmin ? undefined : (await userService.canGenerate(req.user)).remainingTokens,
+    });
+
+    // Record token usage for non-admin users
+    if (!isAdmin && result.stats?.tokensUsed) {
+      const costCents = Math.round((result.stats.estimatedCostUsd || 0) * 100);
+      await userService.incrementTokenUsage(req.user.id, result.stats.tokensUsed, costCents);
+    }
+
+    // Save the generated summary to storage
+    if (result.success && result.summaryItems.length > 0) {
+      for (const summaryItem of result.summaryItems) {
+        await storage.saveSummaryItem(summaryItem);
+      }
+    }
+
+    if (!result.success) {
+      return res.status(500).json({
+        error: 'Generation failed',
+        message: result.error,
+        stats: result.stats,
+      });
+    }
+
+    if (result.skipped) {
+      return res.status(200).json({
+        message: 'Generation skipped — content unchanged since last generation.',
+        skipped: true,
+        stats: result.stats,
+      });
+    }
+
+    // Return the generated summary
+    return res.status(200).json({
+      summary: result.summaryItems[0],
+      stats: result.stats,
+      fileOutputs: result.fileOutputs?.map(f => ({
+        relativePath: f.relativePath,
+        format: f.format,
+        // Don't include full content in the response — it's in the summary
+      })),
+    });
+
+  } catch (error: any) {
+    console.error('[API] Error in range generation:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message || 'An unexpected error occurred during generation.',
+    });
+  }
+});
+
 export default router;
