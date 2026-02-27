@@ -8,8 +8,8 @@
  * - Auto-fallback: tries node-fetch first, falls back to patchright on failure
  * - Per-source persistent browser contexts (separate cookies/storage/profile)
  * - Patchright best-practice config: persistent context, system Chrome, no custom UA
- * - Headless by default (Chrome "new headless" — best for Docker/VMs)
- * - Xvfb auto-start when BROWSER_HEADLESS=false on Linux (desktop dev only)
+ * - Headed by default (Patchright best practice for stealth — Xvfb auto-started on Linux)
+ * - Set BROWSER_HEADLESS=true to use Chrome "new headless" (adds detectable flags)
  * - SSRF protection (blocks private IP ranges)
  * - Retry with exponential backoff
  * - Cookie consent auto-dismissal
@@ -250,14 +250,12 @@ const DEFAULT_FETCH_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7
  * 
  * - Uses `launchPersistentContext()` (not `launch()` + `newContext()`)
  * - Uses system Chrome via `channel: 'chrome'` (not bundled Chromium)
- * - Headless by default — uses Chrome's "new headless" mode (--headless=new)
- *   which shares the same rendering pipeline as headed Chrome, producing
- *   identical Canvas/WebGL fingerprints. This is BETTER for bot detection
- *   bypass than Xvfb + headed mode, because Xvfb's software renderer
- *   produces anomalous fingerprints that Kasada and similar systems detect.
+ * - Headed by default (BROWSER_HEADLESS=false) — matches Patchright's recommended
+ *   config for maximum stealth. On Linux without a display, Xvfb is auto-started.
  * - Uses `viewport: null` (natural window size, not detectable)
+ * - Uses `chromiumSandbox: true` — avoids the detectable --no-sandbox flag
  * - No custom User-Agent (browser's real UA, not detectable)
- * - Set BROWSER_HEADLESS=false only if you have a real display (desktop dev)
+ * - Set BROWSER_HEADLESS=true only if headed mode is not feasible
  * 
  * This configuration defeats Kasada, Cloudflare Turnstile, and most other
  * advanced bot detection systems that fingerprint the browser environment.
@@ -296,28 +294,35 @@ export class BrowserManager {
     // Launch persistent context with patchright best-practice settings.
     // This creates a dedicated browser process with its own profile.
     //
-    // IMPORTANT: Do NOT add extra Chrome args (--no-sandbox, --disable-gpu, etc.)
+    // IMPORTANT: Do NOT add extra Chrome args (--disable-gpu, --disable-extensions, etc.)
     // These are well-known automation fingerprints that Kasada and other advanced
     // bot detection systems specifically look for. Patchright's effectiveness
     // depends on launching Chrome as close to a normal user session as possible.
     //
+    // Sandbox: Enabled explicitly via chromiumSandbox: true. Patchright defaults to
+    //   --no-sandbox (for root/Docker compat), but that flag is a known Kasada detection
+    //   vector. Since we run as a non-root user (appuser) in Docker, Chrome's real
+    //   sandbox works. On macOS, sandbox is already the default behavior.
+    //
     // Headless mode: controlled by BROWSER_HEADLESS env var.
-    //   Default (true): Chrome "new headless" (--headless=new) — uses the same
-    //     rendering pipeline as headed Chrome. Canvas/WebGL fingerprints are
-    //     identical to a real browser. No Xvfb needed. RECOMMENDED for Docker/VMs.
-    //   "false": Real headed mode — requires a display (Xvfb auto-started on Linux).
-    //     WARNING: Xvfb's software renderer produces anomalous Canvas/WebGL
-    //     fingerprints that Kasada detects. Only use with a real display (desktop).
-    const headless = process.env.BROWSER_HEADLESS !== 'false';
+    //   Default (false): Real headed mode — this matches Patchright's recommended
+    //     config (channel: "chrome", headless: false, viewport: null) which is
+    //     proven to bypass Kasada, Cloudflare, and other bot detection systems.
+    //     On Linux without a display, Xvfb is auto-started to provide a virtual display.
+    //   "true": Chrome "new headless" (--headless=new) — adds detectable flags like
+    //     --headless, --hide-scrollbars, --mute-audio. Use only if headed mode
+    //     is not feasible (e.g., no Xvfb available).
+    const headless = process.env.BROWSER_HEADLESS === 'true';
     const context = await chromium.launchPersistentContext(profileDir, {
       channel: 'chrome',           // Use system Chrome (not bundled Chromium)
-      headless,                    // Headless by default; set BROWSER_HEADLESS=false for headed
+      headless,                    // Headed by default (stealth); set BROWSER_HEADLESS=true for headless
       viewport: null,              // Natural window size (not detectable)
+      chromiumSandbox: true,       // Use Chrome's real sandbox (avoids --no-sandbox fingerprint)
       // No userAgent -- use browser's real UA (custom UA is detectable)
       // No extra args -- any --no-* or --disable-* flags are detectable fingerprints
     });
 
-    const modeLabel = headless ? 'new headless' : 'headed (Xvfb/display)';
+    const modeLabel = headless ? 'headless (--headless=new)' : 'headed (Xvfb/display)';
     console.log(`[BrowserManager] Persistent context launched for "${sourceId}" (profile: ${profileDir}, mode: ${modeLabel})`);
     BrowserManager.contexts.set(sourceId, context);
     return context;
@@ -406,24 +411,6 @@ function isBotProtected(html: string): boolean {
   return BOT_PROTECTION_PATTERNS.some(pattern => lower.includes(pattern.toLowerCase()));
 }
 
-/** Patterns indicating a HARD BLOCK (not a solvable challenge).
- * These pages will never resolve — no amount of waiting will help.
- * Detected separately so we can fail fast instead of waiting 30-45s. */
-const HARD_BLOCK_PATTERNS = [
-  'your request could not be processed',            // Kasada hard block
-  'unblockrequest@',                                // Kasada contact email on block page
-  'access denied',                                  // Generic hard block (in <title>)
-];
-
-/**
- * Check if an HTML response is a HARD BLOCK (permanent rejection, not solvable).
- * If true, we should not wait for challenge resolution — it will never resolve.
- */
-function isHardBlock(html: string): boolean {
-  const lower = html.toLowerCase();
-  return HARD_BLOCK_PATTERNS.some(pattern => lower.includes(pattern));
-}
-
 /**
  * Delay helper with jitter for exponential backoff.
  */
@@ -470,13 +457,6 @@ async function waitForChallengeResolution(page: any, maxWaitMs?: number): Promis
     return false; // No challenge detected
   }
 
-  // Check for hard blocks first — these are permanent rejections that will never resolve.
-  // No point waiting 30-45s for something that can't be solved.
-  if (isHardBlock(initialHtml)) {
-    console.log('[FetchHTML] Hard block detected (permanent rejection, not a solvable challenge). Skipping wait.');
-    return false;
-  }
-
   console.log(`[FetchHTML] Bot protection challenge detected, waiting up to ${Math.round(timeout / 1000)}s for resolution...`);
   const startTime = Date.now();
   const initialUrl = page.url();
@@ -507,18 +487,6 @@ async function waitForChallengeResolution(page: any, maxWaitMs?: number): Promis
   return false;
 }
 
-// ============================================
-// DOMAIN BLOCK TRACKER
-// ============================================
-
-/**
- * Tracks domains where bot protection could not be bypassed.
- * Prevents wasting 30-45s per URL on subsequent requests to the same domain
- * when the warmup already proved the site is hard-blocked.
- * Cleared when the BrowserManager context for that source is closed.
- */
-const blockedDomains = new Set<string>();
-
 /**
  * Perform a warmup visit to a site's homepage to establish bot-protection
  * cookies (Kasada KP_UIDz, etc.) before fetching the actual target URL.
@@ -530,13 +498,9 @@ const blockedDomains = new Set<string>();
  * The warmup:
  * 1. Loads the site homepage
  * 2. Waits for initial scripts to run (3s)
- * 3. Checks for hard blocks (permanent rejection) — fails immediately
- * 4. If a solvable challenge is detected, waits for it to resolve
+ * 3. If a bot protection challenge is detected, waits for it to resolve
  *    (up to BROWSER_WARMUP_TIMEOUT, default 45s)
- * 5. Logs the cookie names obtained (for debugging Kasada KP_UIDz, etc.)
- * 
- * If the warmup is hard-blocked, the domain is added to a block list so
- * subsequent URLs on the same domain fail immediately instead of waiting.
+ * 4. Logs the cookie names obtained (for debugging Kasada KP_UIDz, etc.)
  * 
  * Only warms up if the context has no cookies for the target domain.
  */
@@ -544,11 +508,6 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
   const parsed = new URL(targetUrl);
   const origin = parsed.origin;
   const hostname = parsed.hostname;
-
-  // If this domain is already known to be hard-blocked, skip immediately
-  if (blockedDomains.has(hostname)) {
-    throw new Error(`[FetchHTML] ${hostname} is hard-blocked by bot protection (detected during warmup). Skipping.`);
-  }
 
   // Check if we already have cookies for this domain (from a previous session
   // or earlier warmup). Persistent contexts preserve cookies across launches.
@@ -571,15 +530,6 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
     // Check if the homepage itself is a bot protection challenge page
     const html = await page.content();
     if (isBotProtected(html)) {
-      // Check for hard block first — permanent rejections that will never resolve
-      if (isHardBlock(html)) {
-        console.error(`[FetchHTML] ${hostname} returned a HARD BLOCK (permanent rejection by bot protection). ` +
-          `This site cannot be accessed with the current browser configuration. ` +
-          `Skipping all subsequent URLs for this domain.`);
-        blockedDomains.add(hostname);
-        return; // Don't throw here — let the caller see the block via blockedDomains
-      }
-
       console.log(`[FetchHTML] Homepage is a bot protection challenge, waiting for resolution...`);
       // Use a generous timeout for warmup — this is the critical first visit
       // that establishes cookies for all subsequent requests.
@@ -588,8 +538,7 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
       const resolved = await waitForChallengeResolution(page, warmupTimeout);
       if (!resolved) {
         console.warn(`[FetchHTML] Warmup challenge did not resolve for ${hostname}. ` +
-          `Subsequent requests will likely be blocked.`);
-        blockedDomains.add(hostname);
+          `Subsequent requests may be blocked.`);
       }
     }
 
@@ -628,22 +577,10 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
  */
 async function fetchWithBrowser(url: string, options: FetchHTMLOptions = {}): Promise<string> {
   const sourceId = options.sourceId || 'default';
-
-  // Check if this domain is known to be hard-blocked before even launching context
-  const hostname = new URL(url).hostname;
-  if (blockedDomains.has(hostname)) {
-    throw new Error(`${hostname} is hard-blocked by bot protection. Browser fetch skipped.`);
-  }
-
   const context = await BrowserManager.getContext(sourceId);
 
   // Warmup: visit homepage to establish bot-protection cookies if needed
   await warmupIfNeeded(context, url);
-
-  // Re-check after warmup — warmup may have discovered a hard block
-  if (blockedDomains.has(hostname)) {
-    throw new Error(`${hostname} is hard-blocked by bot protection (detected during warmup). Browser fetch skipped.`);
-  }
 
   const page = await context.newPage();
   try {

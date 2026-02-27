@@ -42,6 +42,11 @@ services:
       target: backend
     ports:
       - "33333:3000"
+    # Chrome sandbox requires relaxed seccomp profile or SYS_ADMIN capability.
+    # Without this, Chrome with chromiumSandbox: true will fail to launch.
+    # This is the standard recommendation from Playwright/Puppeteer for Docker.
+    security_opt:
+      - seccomp=unconfined
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -62,6 +67,10 @@ services:
       - DISCORD_APP_ID=${DISCORD_APP_ID:-}
       - CODEX_API_KEY=${CODEX_API_KEY:-}
       - BIRDEYE_API_KEY=${BIRDEYE_API_KEY:-}
+      # Browser automation (Patchright)
+      # Headed mode (default) uses Xvfb on Linux for best bot detection bypass.
+      # Set to "true" only if headed mode causes issues.
+      - BROWSER_HEADLESS=${BROWSER_HEADLESS:-false}
       # Payments (optional)
       - POP402_FACILITATOR_URL=https://facilitator.pop402.com
       - PLATFORM_WALLET_ADDRESS=${PLATFORM_WALLET_ADDRESS:-}
@@ -76,6 +85,7 @@ services:
     volumes:
       - ./config:/app/config:ro
       - ./data:/app/data
+      - browser_data:/app/.browser-data
     restart: unless-stopped
     networks:
       - digital-gardener-network
@@ -128,3 +138,4 @@ networks:
 
 volumes:
   redis_data:
+  browser_data:
