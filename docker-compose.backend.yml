@@ -5,7 +5,6 @@
 # Services: backend, redis
 #
 # Note: PostgreSQL is external (provide DATABASE_URL in environment)
-# Note: MCP service can be added if needed - copy from docker-compose.yml
 #
 # Usage:
 #   docker compose -f docker-compose.backend.yml up -d

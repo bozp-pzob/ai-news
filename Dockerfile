@@ -4,12 +4,10 @@
 # This Dockerfile supports multiple build targets:
 #   - frontend: React app served via nginx
 #   - backend:  Express API server
-#   - mcp:      Model Context Protocol server
 #
 # Usage:
 #   docker build --target frontend -t digital-gardener-frontend .
 #   docker build --target backend -t digital-gardener-backend .
-#   docker build --target mcp -t digital-gardener-mcp .
 # =============================================================================
 
 # =============================================================================
@@ -187,22 +185,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Start nginx in foreground
 CMD ["nginx", "-g", "daemon off;"]
 
-# =============================================================================
-# Target: mcp
-# Model Context Protocol server for AI integrations
-# =============================================================================
-FROM base AS mcp
-
-# Install production dependencies only
-COPY package*.json ./
-RUN npm ci --omit=dev
-
-# Copy built MCP server from builder stage
-COPY --from=builder /app/dist ./dist
-
-# Set production environment
-ENV NODE_ENV=production
-
-# MCP server uses stdio transport by default
-# It reads from stdin and writes to stdout for MCP protocol communication
-CMD ["node", "dist/mcp/server.js"]

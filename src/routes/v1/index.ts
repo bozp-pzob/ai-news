@@ -10,6 +10,7 @@ import templatesRouter from './templates';
 import relayRouter from './relay';
 import localRouter from './local';
 import webhooksRouter from './webhooks';
+import discoveryRouter from './discovery';
 import { apiUsageMiddleware } from '../../middleware/apiUsageMiddleware';
 
 const router = Router();
@@ -58,5 +59,8 @@ router.use('/local', localRouter);
 
 // Webhook ingestion endpoints (receives external payloads for WebhookSource)
 router.use('/webhooks', webhooksRouter);
+
+// Agent discovery (OpenAPI spec)
+router.use(discoveryRouter);
 
 export default router;

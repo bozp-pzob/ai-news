@@ -278,6 +278,19 @@ app.post('/job/:jobId/stop', (req, res) => {
   }
 });
 
+// Agent discovery routes (served before the SPA catch-all)
+import { AI_PLUGIN_MANIFEST, ROBOTS_TXT } from './routes/v1/discovery';
+
+app.get('/.well-known/ai-plugin.json', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.json(AI_PLUGIN_MANIFEST);
+});
+
+app.get('/robots.txt', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.type('text/plain').send(ROBOTS_TXT);
+});
+
 // Serve the React app for any other routes (catch-all)
 app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/build/index.html'));

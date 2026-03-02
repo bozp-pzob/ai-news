@@ -7,11 +7,39 @@
     <meta name="theme-color" content="#059669" />
     <meta
       name="description"
-      content="Digital Gardener - Cultivate and curate content from multiple sources with AI"
+      content="Digital Gardener - Community intelligence from Discord, GitHub, and Telegram. AI summaries, structured data, trending topics, and semantic search across 100+ communities."
     />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo.svg" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
     <title>Digital Gardener</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebAPI",
+        "name": "Digital Gardener",
+        "description": "Community intelligence platform providing structured data and AI-generated summaries from Discord, GitHub, and Telegram for 100+ communities. Pay-per-query with USDC on Solana via x402 protocol.",
+        "url": "https://digitalgardener.com",
+        "documentation": "https://digitalgardener.com/api/v1/openapi.json",
+        "provider": {
+          "@type": "Organization",
+          "name": "Digital Gardener"
+        },
+        "termsOfService": "https://digitalgardener.com/terms",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "description": "Free tier: community discovery, trending topics, and statistics. Paid tier: AI summaries, full context, and semantic search (USDC on Solana)."
+        },
+        "potentialAction": [
+          {
+            "@type": "SearchAction",
+            "target": "https://digitalgardener.com/api/v1/search?q={query}",
+            "query-input": "required name=query"
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
