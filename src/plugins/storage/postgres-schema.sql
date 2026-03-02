@@ -103,7 +103,6 @@ CREATE TABLE IF NOT EXISTS config_shares (
   config_id UUID NOT NULL REFERENCES configs(id) ON DELETE CASCADE,
   shared_with_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   shared_with_wallet TEXT,  -- Can share with wallet address directly
-  permissions TEXT[] DEFAULT ARRAY['read'],  -- 'read', 'query'
   created_at TIMESTAMPTZ DEFAULT NOW(),
   
   CHECK (shared_with_user_id IS NOT NULL OR shared_with_wallet IS NOT NULL)
@@ -161,7 +160,7 @@ CREATE TABLE IF NOT EXISTS discord_oauth_states (
 -- API usage tracking
 CREATE TABLE IF NOT EXISTS api_usage (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  config_id UUID NOT NULL REFERENCES configs(id) ON DELETE CASCADE,
+  config_id UUID REFERENCES configs(id) ON DELETE CASCADE,  -- NULL for requests not tied to a specific config
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,  -- NULL for anonymous/paid requests
   wallet_address TEXT,  -- For x402 payments
   endpoint TEXT NOT NULL,

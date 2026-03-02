@@ -140,6 +140,7 @@ export interface ConfigStats {
   totalItems: number;
   totalQueries: number;
   totalRevenue: number;
+  totalCost: number;
   dateRange: { from: string; to: string } | null;
   lastUpdated: string | null;
   sources: Array<{
@@ -1237,6 +1238,7 @@ export interface AdminConfig {
   totalItems: number;
   totalQueries: number;
   totalRevenue: number;
+  totalCost: number;
   isFeatured: boolean;
   featuredAt?: string;
   createdAt: string;
@@ -1276,6 +1278,7 @@ export interface UsageDataPoint {
   date: string;
   runs: number;
   apiRequests: number;
+  aiCalls: number;
 }
 
 export interface PaginatedResponse<T> {

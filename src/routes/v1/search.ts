@@ -7,6 +7,7 @@ import {
   AuthenticatedRequest 
 } from '../../middleware/authMiddleware';
 import { requirePayment } from '../../middleware/x402Middleware';
+import { searchRateLimiter } from '../../middleware/rateLimitMiddleware';
 import { contextService } from '../../services/contextService';
 import { databaseService } from '../../services/databaseService';
 import { trackConfigQuery } from './configs';
@@ -79,7 +80,7 @@ async function checkConfigAccess(
  * - afterDate: string (optional) - ISO date string
  * - beforeDate: string (optional) - ISO date string
  */
-router.post('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', searchRateLimiter, optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { 
       configId, 
@@ -190,7 +191,7 @@ router.post('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) 
  * - after: string (optional) - ISO date
  * - before: string (optional) - ISO date
  */
-router.get('/:configId', optionalAuth, 
+router.get('/:configId', searchRateLimiter, optionalAuth, 
   // Map :configId to :id for requireConfigAccess middleware
   (req, _res, next) => { req.params.id = req.params.configId; next(); },
   requireConfigAccess, requirePayment,
@@ -247,7 +248,7 @@ router.get('/:configId', optionalAuth,
  * - limit: number (optional) - Max results per config (default 10)
  * - threshold: number (optional)
  */
-router.post('/multi', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/multi', searchRateLimiter, optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { 
       configIds, 

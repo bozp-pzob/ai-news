@@ -48,6 +48,7 @@ export interface AdminConfig {
   totalItems: number;
   totalQueries: number;
   totalRevenue: number;
+  totalCost: number;
   isFeatured: boolean;
   featuredAt?: Date;
   createdAt: Date;
@@ -179,6 +180,7 @@ function rowToAdminConfig(row: any): AdminConfig {
     totalItems: row.total_items || 0,
     totalQueries: row.total_queries || 0,
     totalRevenue: row.total_revenue ? parseFloat(row.total_revenue) : 0,
+    totalCost: row.total_cost ? parseFloat(row.total_cost) : 0,
     isFeatured: row.is_featured || false,
     featuredAt: row.featured_at ? new Date(row.featured_at) : undefined,
     createdAt: new Date(row.created_at),
@@ -525,13 +527,19 @@ export async function getAllConfigs(
   );
   const total = parseInt(countResult.rows[0].count);
 
-  // Get configs with owner info
+  // Get configs with owner info and total cost from aggregation jobs
   const configsQuery = `
     SELECT c.*, 
            u.email as owner_email,
-           u.wallet_address as owner_wallet_address
+           u.wallet_address as owner_wallet_address,
+           COALESCE(job_costs.total_cost, 0) as total_cost
     FROM configs c
     LEFT JOIN users u ON c.user_id = u.id
+    LEFT JOIN (
+      SELECT config_id, SUM(estimated_cost_usd) as total_cost
+      FROM aggregation_jobs
+      GROUP BY config_id
+    ) job_costs ON job_costs.config_id = c.id
     ${whereClause}
     ORDER BY ${sortColumn} ${order}
     LIMIT $${paramIndex++} OFFSET $${paramIndex}
@@ -566,11 +574,12 @@ export async function setConfigFeatured(
     throw new Error('Config not found');
   }
 
-  // Get full config with owner info
+  // Get full config with owner info and total cost
   const fullResult = await databaseService.query(
     `SELECT c.*, 
             u.email as owner_email,
-            u.wallet_address as owner_wallet_address
+            u.wallet_address as owner_wallet_address,
+            COALESCE((SELECT SUM(estimated_cost_usd) FROM aggregation_jobs WHERE config_id = c.id), 0) as total_cost
      FROM configs c
      LEFT JOIN users u ON c.user_id = u.id
      WHERE c.id = $1`,
@@ -589,7 +598,8 @@ export async function getFeaturedConfigs(
   const result = await databaseService.query(
     `SELECT c.*, 
             u.email as owner_email,
-            u.wallet_address as owner_wallet_address
+            u.wallet_address as owner_wallet_address,
+            COALESCE((SELECT SUM(estimated_cost_usd) FROM aggregation_jobs WHERE config_id = c.id), 0) as total_cost
      FROM configs c
      LEFT JOIN users u ON c.user_id = u.id
      WHERE c.is_featured = TRUE 
@@ -638,12 +648,12 @@ export async function getSystemStats(range: TimeRange = 'all'): Promise<SystemSt
   `);
   const configStats = configStatsResult.rows[0];
 
-  // Usage stats
+  // Usage stats — use aggregation_jobs for reliable AI call tracking
   const usageTimeCondition = getTimeRangeCondition('created_at', range);
   const usageStatsResult = await databaseService.query(`
     SELECT 
       (SELECT COUNT(*) FROM aggregation_jobs WHERE ${usageTimeCondition}) as total_runs,
-      (SELECT COALESCE(SUM(ai_calls_today), 0) FROM users) as total_ai_calls,
+      (SELECT COALESCE(SUM(total_ai_calls), 0) FROM aggregation_jobs WHERE ${usageTimeCondition}) as total_ai_calls,
       (SELECT COUNT(*) FROM api_usage WHERE ${usageTimeCondition}) as total_api_requests
   `);
   const usageStats = usageStatsResult.rows[0];
@@ -696,7 +706,7 @@ export async function getSystemStats(range: TimeRange = 'all'): Promise<SystemSt
  */
 export async function getUsageOverTime(
   range: TimeRange = '30d'
-): Promise<{ date: string; runs: number; apiRequests: number }[]> {
+): Promise<{ date: string; runs: number; apiRequests: number; aiCalls: number }[]> {
   let interval: string;
   let days: number;
 
@@ -741,7 +751,12 @@ export async function getUsageOverTime(
         SELECT COUNT(*) 
         FROM api_usage 
         WHERE DATE(created_at) = ds.date
-      ), 0) as api_requests
+      ), 0) as api_requests,
+      COALESCE((
+        SELECT SUM(total_ai_calls) 
+        FROM aggregation_jobs 
+        WHERE DATE(created_at) = ds.date
+      ), 0) as ai_calls
     FROM date_series ds
     ORDER BY ds.date
   `);
@@ -750,6 +765,7 @@ export async function getUsageOverTime(
     date: row.date,
     runs: parseInt(row.runs) || 0,
     apiRequests: parseInt(row.api_requests) || 0,
+    aiCalls: parseInt(row.ai_calls) || 0,
   }));
 }
 

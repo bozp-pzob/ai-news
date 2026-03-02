@@ -298,6 +298,11 @@ async function runMigrations(pool: Pool): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_site_parsers_lookup ON site_parsers(domain, path_pattern)
     `);
     
+    // Make api_usage.config_id nullable — many API requests don't relate to a specific config
+    await client.query(`
+      ALTER TABLE api_usage ALTER COLUMN config_id DROP NOT NULL
+    `);
+
     console.log('[DatabaseService] Migrations completed successfully');
   } catch (error) {
     console.error('[DatabaseService] Migration error (non-fatal):', error);

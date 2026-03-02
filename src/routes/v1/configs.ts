@@ -16,6 +16,8 @@ import { adminService } from '../../services/adminService';
 import { jobService } from '../../services/jobService';
 import { licenseService, RUN_PAYMENT } from '../../services/licenseService';
 import { requirePayment } from '../../middleware/x402Middleware';
+import { dataRateLimiter, runRateLimiter } from '../../middleware/rateLimitMiddleware';
+import { verifyPop402Payment, buildPaymentRequiredResponse } from '../../helpers/pop402Helper';
 
 // ============================================
 // ACCESS GRANTS — 24-hour purchasable data access
@@ -547,7 +549,7 @@ router.delete('/:id', requireAuth, requireConfigOwner, async (req: Authenticated
  * GET /api/v1/configs/:id/context
  * Get context for a config (for LLM consumption)
  */
-router.get('/:id/context', optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/context', dataRateLimiter, optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
     const { date, format = 'json' } = req.query;
@@ -576,7 +578,7 @@ router.get('/:id/context', optionalAuth, requireConfigAccess, requirePayment, as
  * GET /api/v1/configs/:id/summary
  * Get summary for a config on a specific date
  */
-router.get('/:id/summary', optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/summary', dataRateLimiter, optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
     const { date, type } = req.query;
@@ -599,7 +601,7 @@ router.get('/:id/summary', optionalAuth, requireConfigAccess, requirePayment, as
  * GET /api/v1/configs/:id/topics
  * Get topics with frequency counts
  */
-router.get('/:id/topics', optionalAuth, requireConfigAccess, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/topics', dataRateLimiter, optionalAuth, requireConfigAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
     const { limit = '50', afterDate, beforeDate } = req.query;
@@ -622,7 +624,7 @@ router.get('/:id/topics', optionalAuth, requireConfigAccess, async (req: Authent
  * GET /api/v1/configs/:id/stats
  * Get statistics for a config
  */
-router.get('/:id/stats', optionalAuth, requireConfigAccess, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/stats', dataRateLimiter, optionalAuth, requireConfigAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
     const accessType = (req as any).accessType;
@@ -661,7 +663,7 @@ router.get('/:id/stats', optionalAuth, requireConfigAccess, async (req: Authenti
  * 1. Request comes in with X-PAYMENT header (pop402 handled at app level)
  * 2. Or user has a valid pro license (checked here)
  */
-router.post('/:id/run', requireAuth, requireConfigOwner, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:id/run', runRateLimiter, requireAuth, requireConfigOwner, async (req: AuthenticatedRequest, res: Response) => {
   const configId = req.params.id;
   
   try {
@@ -678,46 +680,38 @@ router.post('/:id/run', requireAuth, requireConfigOwner, async (req: Authenticat
       hasProLicense = license.isActive;
     }
 
-    // If no pro license, check if request has pop402 payment
-    // The pop402 middleware at app level handles payment verification
-    // If we reach here without pro and without payment, the middleware would have
-    // returned 402. But since we're using dynamic routes, we need to check manually.
-    const hasPaymentHeader = !!req.headers['x-payment'];
-    
-    if (!hasProLicense && !hasPaymentHeader) {
-      // Return 402 Payment Required with run payment details
-      const platformWallet = process.env.PLATFORM_WALLET_ADDRESS || '';
-      const facilitatorUrl = process.env.POP402_FACILITATOR_URL || 'https://facilitator.pop402.com';
-      const network = process.env.POP402_NETWORK || 'solana';
+    // If no pro license, require pop402 payment (verified via facilitator)
+    if (!hasProLicense) {
+      const paymentHeader = req.headers['x-payment'] as string;
       
-      return res.status(402).json({
-        error: 'Payment Required',
-        code: 'PAYMENT_REQUIRED',
-        message: 'This is a paid run. Pay per run or upgrade to Pro for unlimited runs.',
-        payment: {
-          amount: RUN_PAYMENT.price,
-          amountDisplay: `$${RUN_PAYMENT.priceDisplay}`,
-          currency: 'USDC',
-          network,
-          recipient: platformWallet,
-          facilitatorUrl,
+      if (!paymentHeader) {
+        // Return pop402-compatible 402 Payment Required
+        return res.status(402).json(buildPaymentRequiredResponse({
+          price: `$${RUN_PAYMENT.priceDisplay}`,
           description: RUN_PAYMENT.description,
-        },
-        alternative: {
-          message: 'Or upgrade to Pro for unlimited runs',
-          upgradeUrl: '/upgrade',
-        }
-      });
+          resource: req.originalUrl,
+        }));
+      }
+
+      // Verify payment with pop402 facilitator
+      const verification = await verifyPop402Payment(
+        paymentHeader,
+        process.env.PLATFORM_WALLET_ADDRESS || '',
+        `$${RUN_PAYMENT.priceDisplay}`,
+        req.originalUrl,
+      );
+      if (!verification.valid) {
+        return res.status(402).json({
+          error: 'Payment verification failed',
+          code: 'PAYMENT_INVALID',
+          message: verification.error || 'Payment could not be verified',
+        });
+      }
     }
 
-    // If we have a payment header but no pro license, the payment was already verified
-    // by the pop402 middleware. If not, we need to verify manually for dynamic routes.
-    // For now, we trust that payment-bearing requests are valid since pop402 middleware
-    // runs at app level. In a production setup, you'd want to verify the payment here too.
-
-    // Legacy check - keeping for backwards compatibility during transition
+    // Check free-tier daily run limits (pro/admin bypass via canRunAggregation)
     const canRun = await userService.canRunAggregation(req.user, configId);
-    if (!canRun.allowed && !hasProLicense && !hasPaymentHeader) {
+    if (!canRun.allowed) {
       return res.status(403).json({ 
         error: 'Run limit reached',
         message: canRun.reason 
@@ -1003,7 +997,7 @@ router.post('/:id/validate-db', requireAuth, requireConfigOwner, async (req: Aut
  * GET /api/v1/configs/:id/items
  * Get content items for a config
  */
-router.get('/:id/items', optionalAuth, requireConfigAccess, checkDataAccess, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/items', dataRateLimiter, optionalAuth, requireConfigAccess, checkDataAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
     const config = (req as any).config;
@@ -1103,7 +1097,7 @@ router.get('/:id/items', optionalAuth, requireConfigAccess, checkDataAccess, asy
  * GET /api/v1/configs/:id/content
  * Get generated content (summaries) for a config
  */
-router.get('/:id/content', optionalAuth, requireConfigAccess, checkDataAccess, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/content', dataRateLimiter, optionalAuth, requireConfigAccess, checkDataAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
     const preview = isPreviewMode(req);
@@ -1178,7 +1172,7 @@ router.get('/:id/content', optionalAuth, requireConfigAccess, checkDataAccess, a
  * GET /api/v1/configs/:id/content/:contentId
  * Get a specific content entry (summary) with full content
  */
-router.get('/:id/content/:contentId', optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/content/:contentId', dataRateLimiter, optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
     const contentId = req.params.contentId;
@@ -1434,7 +1428,7 @@ router.post('/:id/access/purchase', optionalAuth, requireConfigAccess, async (re
  * POST /api/v1/configs/:id/run/free
  * Trigger a free one-time aggregation (1 per day per user)
  */
-router.post('/:id/run/free', requireAuth, requireConfigOwner, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:id/run/free', runRateLimiter, requireAuth, requireConfigOwner, async (req: AuthenticatedRequest, res: Response) => {
   const configId = req.params.id;
   
   try {
@@ -1589,7 +1583,7 @@ router.post('/:id/run/free', requireAuth, requireConfigOwner, async (req: Authen
  * This route requires an active pro license via pop402.
  * Continuous jobs run indefinitely until stopped.
  */
-router.post('/:id/run/continuous', requireAuth, requireConfigOwner, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:id/run/continuous', runRateLimiter, requireAuth, requireConfigOwner, async (req: AuthenticatedRequest, res: Response) => {
   const configId = req.params.id;
   
   try {
@@ -1901,7 +1895,7 @@ const RANGE_GENERATION_PAYMENT = {
  *   403: budget exceeded or free tier
  *   404: config not found
  */
-router.post('/:id/generate', requireAuth, requireConfigOwner, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:id/generate', runRateLimiter, requireAuth, requireConfigOwner, async (req: AuthenticatedRequest, res: Response) => {
   const configId = req.params.id;
 
   try {
@@ -1974,44 +1968,37 @@ router.post('/:id/generate', requireAuth, requireConfigOwner, async (req: Authen
         });
       }
 
-      // Check for x402 payment
-      // Range generation costs extra even for Pro users
+      // Check for x402 payment — range generation costs extra even for Pro users
       const totalPriceCents = RANGE_GENERATION_PAYMENT.basePriceCents +
         (RANGE_GENERATION_PAYMENT.perDayCents * dayCount);
       const priceUsd = (totalPriceCents / 100).toFixed(2);
+      const description = `${RANGE_GENERATION_PAYMENT.description} (${startDate} to ${endDate}, ${dayCount} days, strategy: ${dataStrategy})`;
 
-      const hasPaymentProof = !!req.headers['x-payment-proof'] || !!req.headers['x-payment'];
+      const paymentHeader = req.headers['x-payment'] as string;
 
-      if (!hasPaymentProof) {
-        // Return 402 Payment Required
-        const platformWallet = process.env.PLATFORM_WALLET_ADDRESS || '';
-        const facilitatorUrl = process.env.POP402_FACILITATOR_URL || 'https://facilitator.pop402.com';
-        const network = process.env.POP402_NETWORK || 'solana';
-
-        return res.status(402).json({
-          error: 'Payment Required',
-          code: 'PAYMENT_REQUIRED',
-          message: `Range generation for ${dayCount} days requires payment.`,
-          payment: {
-            amount: totalPriceCents,
-            amountDisplay: `$${priceUsd}`,
-            currency: 'USDC',
-            network,
-            recipient: platformWallet,
-            facilitatorUrl,
-            description: `${RANGE_GENERATION_PAYMENT.description} (${startDate} to ${endDate}, ${dayCount} days, strategy: ${dataStrategy})`,
-            breakdown: {
-              basePriceCents: RANGE_GENERATION_PAYMENT.basePriceCents,
-              perDayCents: RANGE_GENERATION_PAYMENT.perDayCents,
-              dayCount,
-              totalCents: totalPriceCents,
-            },
-          },
-        });
+      if (!paymentHeader) {
+        // Return pop402-compatible 402 Payment Required with dynamic price
+        return res.status(402).json(buildPaymentRequiredResponse({
+          price: `$${priceUsd}`,
+          description,
+          resource: req.originalUrl,
+        }));
       }
 
-      // Payment proof present — in production, verify with facilitator.
-      // For now, trust that payment-bearing requests are valid (same pattern as /:id/run).
+      // Verify payment with pop402 facilitator
+      const verification = await verifyPop402Payment(
+        paymentHeader,
+        process.env.PLATFORM_WALLET_ADDRESS || '',
+        `$${priceUsd}`,
+        req.originalUrl,
+      );
+      if (!verification.valid) {
+        return res.status(402).json({
+          error: 'Payment verification failed',
+          code: 'PAYMENT_INVALID',
+          message: verification.error || 'Payment could not be verified',
+        });
+      }
     }
 
     // Get config from database

@@ -148,7 +148,7 @@ async function recordPayment(
     INSERT INTO payments (
       config_id, user_id, payer_wallet, amount, platform_fee, owner_amount,
       tx_signature, memo, status
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'verified')
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed')
   `, [configId, userId, walletAddress, amount, platformFee, ownerAmount, signature, memo]);
 
   // Update config stats

@@ -10,6 +10,7 @@ import templatesRouter from './templates';
 import relayRouter from './relay';
 import localRouter from './local';
 import webhooksRouter from './webhooks';
+import { apiUsageMiddleware } from '../../middleware/apiUsageMiddleware';
 
 const router = Router();
 
@@ -18,6 +19,9 @@ const router = Router();
  * 
  * All routes are prefixed with /api/v1
  */
+
+// Track API usage (before route handlers, after auth middleware populates req.user)
+router.use(apiUsageMiddleware);
 
 // Health check
 router.get('/health', (req, res) => {

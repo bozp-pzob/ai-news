@@ -101,8 +101,9 @@ export function OverviewTab({ authToken }: OverviewTabProps) {
             }
           />
           <StatCard 
-            title="AI Calls Today" 
+            title="AI Calls" 
             value={stats.usage.totalAiCalls.toLocaleString()} 
+            subtitle={timeRange === 'all' ? 'all time' : `in ${timeRange}`}
             color="muted"
             icon={
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

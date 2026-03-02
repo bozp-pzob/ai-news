@@ -110,6 +110,7 @@ export function ConfigsTab({ authToken }: ConfigsTabProps) {
                   <th className="pb-3 font-medium">Owner</th>
                   <th className="pb-3 font-medium">Visibility</th>
                   <th className="pb-3 font-medium">Items</th>
+                  <th className="pb-3 font-medium">Cost</th>
                   <th className="pb-3 font-medium">Featured</th>
                   <th className="pb-3 font-medium text-right">Actions</th>
                 </tr>
@@ -137,6 +138,9 @@ export function ConfigsTab({ authToken }: ConfigsTabProps) {
                       </span>
                     </td>
                     <td className="py-3 text-stone-400">{config.totalItems.toLocaleString()}</td>
+                    <td className="py-3 text-stone-400 font-mono text-sm">
+                      {config.totalCost > 0 ? `$${config.totalCost.toFixed(4)}` : '-'}
+                    </td>
                     <td className="py-3">
                       <button
                         onClick={() => handleToggleFeatured(config)}

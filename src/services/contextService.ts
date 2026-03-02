@@ -345,21 +345,30 @@ export async function getConfigStats(configId: string): Promise<{
   totalItems: number;
   totalQueries: number;
   totalRevenue: number;
+  totalCost: number;
   dateRange: { from: string; to: string } | null;
   lastUpdated: string | null;
 }> {
-  // Get config info from database
-  const configResult = await databaseService.query(
-    `SELECT total_items, total_queries, total_revenue, last_run_at
-     FROM configs WHERE id = $1`,
-    [configId]
-  );
+  // Get config info from database (including aggregated cost from jobs)
+  const [configResult, costResult] = await Promise.all([
+    databaseService.query(
+      `SELECT total_items, total_queries, total_revenue, last_run_at
+       FROM configs WHERE id = $1`,
+      [configId]
+    ),
+    databaseService.query(
+      `SELECT COALESCE(SUM(estimated_cost_usd), 0) as total_cost
+       FROM aggregation_jobs WHERE config_id = $1`,
+      [configId]
+    ),
+  ]);
 
   if (configResult.rows.length === 0) {
     throw new Error('Config not found');
   }
 
   const config = configResult.rows[0];
+  const totalCost = parseFloat(costResult.rows[0].total_cost) || 0;
 
   // Get date range from storage
   const storage = await databaseService.getStorageForConfig({
@@ -373,6 +382,7 @@ export async function getConfigStats(configId: string): Promise<{
     totalItems: config.total_items,
     totalQueries: config.total_queries,
     totalRevenue: parseFloat(config.total_revenue) || 0,
+    totalCost,
     dateRange: dateRange ? {
       from: epochToDate(dateRange.minDate),
       to: epochToDate(dateRange.maxDate)

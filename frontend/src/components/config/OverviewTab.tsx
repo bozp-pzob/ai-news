@@ -13,7 +13,7 @@ export function OverviewTab({ config, stats }: OverviewTabProps) {
   return (
     <div className="space-y-6">
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <div className="bg-white rounded-lg p-4 border border-stone-200">
           <p className="text-stone-500 text-sm">Total Items</p>
           <p className="text-2xl font-bold text-stone-800 mt-1">
@@ -24,6 +24,14 @@ export function OverviewTab({ config, stats }: OverviewTabProps) {
           <p className="text-stone-500 text-sm">Total Queries</p>
           <p className="text-2xl font-bold text-stone-800 mt-1">
             {config.totalQueries.toLocaleString()}
+          </p>
+        </div>
+        <div className="bg-white rounded-lg p-4 border border-stone-200">
+          <p className="text-stone-500 text-sm">Total Cost</p>
+          <p className="text-2xl font-bold text-stone-800 mt-1">
+            {stats?.totalCost != null && stats.totalCost > 0
+              ? `$${stats.totalCost.toFixed(4)}`
+              : '$0.00'}
           </p>
         </div>
         <div className="bg-white rounded-lg p-4 border border-stone-200">
