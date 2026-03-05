@@ -14,7 +14,7 @@
 # Stage: base
 # Common Node.js base image
 # =============================================================================
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 WORKDIR /app
 
 # =============================================================================
@@ -24,8 +24,8 @@ WORKDIR /app
 FROM base AS builder
 
 # Build arguments for frontend (baked in at build time)
-ARG REACT_APP_API_URL=
-ARG REACT_APP_PRIVY_APP_ID=
+ARG VITE_API_URL=
+ARG VITE_PRIVY_APP_ID=
 
 # Copy package files for dependency installation
 COPY package*.json ./
@@ -41,21 +41,20 @@ COPY . .
 # Build backend (TypeScript -> dist/)
 RUN npm run build
 
-# Build frontend (React -> frontend/build/)
-# Pass REACT_APP_* variables to the build process
-# CI=false prevents treating warnings as errors
-RUN cd frontend && CI=false \
-    REACT_APP_API_URL=$REACT_APP_API_URL \
-    REACT_APP_PRIVY_APP_ID=$REACT_APP_PRIVY_APP_ID \
+# Build frontend (Vite -> frontend/build/)
+# Pass VITE_* variables to the build process (Vite only exposes VITE_-prefixed vars to the bundle)
+RUN cd frontend && \
+    VITE_API_URL=$VITE_API_URL \
+    VITE_PRIVY_APP_ID=$VITE_PRIVY_APP_ID \
     npm run build
 
 # =============================================================================
 # Target: backend
 # Production backend API server
-# Uses node:20-slim (Debian) instead of Alpine because Patchright/Chromium
+# Uses node:24-slim (Debian) instead of Alpine because Patchright/Chromium
 # requires glibc and system libraries not available on Alpine.
 # =============================================================================
-FROM node:20-slim AS backend
+FROM node:24-slim AS backend
 WORKDIR /app
 
 # Install Chromium system dependencies required by Patchright

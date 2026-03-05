@@ -9,7 +9,7 @@
 #   docker compose up -d --build  # Rebuild images
 #
 # With custom backend URL for Cloudflare tunnel:
-#   REACT_APP_API_URL=https://api.yourdomain.com docker compose up -d --build
+#   VITE_API_URL=https://api.yourdomain.com docker compose up -d --build
 # =============================================================================
 
 services:
@@ -22,8 +22,8 @@ services:
       target: frontend
       args:
         # Empty = same-origin requests (nginx proxies /api to backend)
-        - REACT_APP_API_URL=${REACT_APP_API_URL:-}
-        - REACT_APP_PRIVY_APP_ID=${REACT_APP_PRIVY_APP_ID}
+        - VITE_API_URL=${VITE_API_URL:-}
+        - VITE_PRIVY_APP_ID=${VITE_PRIVY_APP_ID}
     ports:
       - "33334:80"
     depends_on:
