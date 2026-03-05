@@ -159,12 +159,12 @@ const OPENAPI_SPEC = {
         },
       },
     },
-    '/configs/{id}/context': {
+    '/configs/{id}/items/context': {
       get: {
-        operationId: 'getContext',
-        summary: 'Get LLM-optimized community context',
+        operationId: 'getItemsContext',
+        summary: 'Get LLM-optimized plain-text context',
         description:
-          'Get aggregated community context for a specific date. The "text" format is optimized for LLM context windows. Requires x402 payment for monetized communities.',
+          'Get aggregated community context for a specific date as plain text optimized for LLM context windows. Requires x402 payment for monetized communities.',
         tags: ['Data'],
         parameters: [
           {
@@ -175,12 +175,6 @@ const OPENAPI_SPEC = {
             description: 'Config UUID or slug',
           },
           {
-            name: 'format',
-            in: 'query',
-            schema: { type: 'string', enum: ['json', 'text'], default: 'json' },
-            description: 'Output format. "text" is optimized for LLM context windows.',
-          },
-          {
             name: 'date',
             in: 'query',
             schema: { type: 'string', format: 'date' },
@@ -189,20 +183,14 @@ const OPENAPI_SPEC = {
           {
             name: 'maxLength',
             in: 'query',
-            schema: { type: 'integer' },
-            description: 'Maximum output length in characters (for text format)',
+            schema: { type: 'integer', default: 8000 },
+            description: 'Maximum output length in characters',
           },
         ],
         responses: {
           '200': {
-            description: 'Community context data',
+            description: 'LLM-optimized plain text context',
             content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  description: 'Structured context with summary, highlights, and statistics',
-                },
-              },
               'text/plain': {
                 schema: { type: 'string', description: 'LLM-optimized plain text context' },
               },
@@ -213,12 +201,12 @@ const OPENAPI_SPEC = {
         },
       },
     },
-    '/configs/{id}/summary': {
+    '/configs/{id}/summary/json': {
       get: {
-        operationId: 'getSummary',
-        summary: 'Get AI-generated summary',
+        operationId: 'getSummaryJson',
+        summary: 'Get AI-generated summary (JSON)',
         description:
-          'Get the AI-generated daily summary for a community including highlights, key discussions, and notable events. Requires x402 payment for monetized communities.',
+          'Get the AI-generated daily summary for a community as a structured JSON object including markdown, categories, and metadata. Requires x402 payment for monetized communities.',
         tags: ['Data'],
         parameters: [
           {
@@ -234,10 +222,16 @@ const OPENAPI_SPEC = {
             schema: { type: 'string', format: 'date' },
             description: 'Date to get summary for (YYYY-MM-DD). Defaults to today.',
           },
+          {
+            name: 'type',
+            in: 'query',
+            schema: { type: 'string' },
+            description: 'Summary type filter (e.g. "dailySummary")',
+          },
         ],
         responses: {
           '200': {
-            description: 'AI-generated community summary',
+            description: 'AI-generated community summary (JSON)',
             content: {
               'application/json': {
                 schema: {
@@ -246,8 +240,51 @@ const OPENAPI_SPEC = {
                     markdown: { type: 'string', description: 'Summary in markdown format' },
                     date: { type: 'string', format: 'date' },
                     type: { type: 'string' },
+                    categories: { type: 'array', items: { type: 'object' } },
                   },
                 },
+              },
+            },
+          },
+          '402': { $ref: '#/components/responses/PaymentRequired' },
+          '404': { description: 'Config or summary not found' },
+        },
+      },
+    },
+    '/configs/{id}/summary/md': {
+      get: {
+        operationId: 'getSummaryMd',
+        summary: 'Get AI-generated summary (Markdown)',
+        description:
+          'Get the AI-generated daily summary for a community as raw Markdown text. Ideal for rendering or piping into other tools. Requires x402 payment for monetized communities.',
+        tags: ['Data'],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Config UUID or slug',
+          },
+          {
+            name: 'date',
+            in: 'query',
+            schema: { type: 'string', format: 'date' },
+            description: 'Date to get summary for (YYYY-MM-DD). Defaults to today.',
+          },
+          {
+            name: 'type',
+            in: 'query',
+            schema: { type: 'string' },
+            description: 'Summary type filter (e.g. "dailySummary")',
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'AI-generated community summary as Markdown',
+            content: {
+              'text/markdown': {
+                schema: { type: 'string', description: 'Raw Markdown summary text' },
               },
             },
           },
@@ -345,12 +382,12 @@ const OPENAPI_SPEC = {
         },
       },
     },
-    '/configs/{id}/items': {
+    '/configs/{id}/items/json': {
       get: {
-        operationId: 'getItems',
-        summary: 'Get raw content items',
+        operationId: 'getItemsJson',
+        summary: 'Get raw content items (JSON)',
         description:
-          'Get individual content items (messages, PRs, issues, commits) from a community. Returns truncated preview for monetized communities without payment. Agents can send an X-Payment-Proof header (x402 protocol) for per-request full access.',
+          'Get individual content items (messages, PRs, issues, commits) from a community as structured JSON. Returns a truncated preview for monetized communities without payment. Send X-Payment-Proof header (x402 protocol) for full per-request access.',
         tags: ['Data'],
         parameters: [
           {
@@ -375,7 +412,7 @@ const OPENAPI_SPEC = {
           {
             name: 'limit',
             in: 'query',
-            schema: { type: 'integer', default: 20 },
+            schema: { type: 'integer', default: 50 },
           },
           {
             name: 'offset',
@@ -385,20 +422,78 @@ const OPENAPI_SPEC = {
         ],
         responses: {
           '200': {
-            description: 'Content items (may be truncated without payment)',
+            description: 'Content items in JSON format (may be truncated preview without payment)',
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
                   properties: {
                     items: { type: 'array', items: { type: 'object' } },
-                    total: { type: 'integer' },
+                    pagination: {
+                      type: 'object',
+                      properties: {
+                        total: { type: 'integer' },
+                        limit: { type: 'integer' },
+                        offset: { type: 'integer' },
+                        hasMore: { type: 'boolean' },
+                      },
+                    },
                     preview: {
                       type: 'boolean',
                       description: 'True if data is truncated (payment required for full access)',
                     },
                   },
                 },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/configs/{id}/items/md': {
+      get: {
+        operationId: 'getItemsMd',
+        summary: 'Get raw content items (Markdown)',
+        description:
+          'Get individual content items as a single Markdown document. Each item is rendered as a ## section with source, date, type, body text, and optional link. Sections are separated by horizontal rules. Ideal for LLM ingestion or human reading.',
+        tags: ['Data'],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Config UUID or slug',
+          },
+          {
+            name: 'source',
+            in: 'query',
+            schema: { type: 'string' },
+            description: 'Filter by source name',
+          },
+          {
+            name: 'type',
+            in: 'query',
+            schema: { type: 'string' },
+            description: 'Filter by content type',
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', default: 50 },
+          },
+          {
+            name: 'offset',
+            in: 'query',
+            schema: { type: 'integer', default: 0 },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Content items as a Markdown document',
+            content: {
+              'text/markdown': {
+                schema: { type: 'string', description: 'Items rendered as Markdown sections' },
               },
             },
           },
@@ -660,7 +755,7 @@ const AI_PLUGIN_MANIFEST = {
   description_for_human:
     'Community intelligence from Discord, GitHub, and Telegram. Get AI summaries, raw data, trending topics, and semantic search across 100+ communities.',
   description_for_model:
-    'Access structured community intelligence data from Discord, GitHub, and Telegram. Use this to: (1) List available communities via GET /api/v1/configs, (2) Get free trending topics via GET /api/v1/configs/{id}/topics, (3) Get free statistics via GET /api/v1/configs/{id}/stats, (4) Get LLM-optimized context via GET /api/v1/configs/{id}/context?format=text (may require x402 USDC payment), (5) Get AI summaries via GET /api/v1/configs/{id}/summary (may require x402 USDC payment), (6) Semantic search via POST /api/v1/search (may require x402 USDC payment). Paid endpoints return HTTP 402 with Solana USDC payment instructions. Send payment proof via X-Payment-Proof header.',
+    'Access structured community intelligence data from Discord, GitHub, and Telegram. Use this to: (1) List available communities via GET /api/v1/configs, (2) Get free trending topics via GET /api/v1/configs/{id}/topics, (3) Get free statistics via GET /api/v1/configs/{id}/stats, (4) Get raw items as JSON via GET /api/v1/configs/{id}/items/json, as Markdown via /items/md, or as LLM-optimized plain text via /items/context (may require x402 USDC payment), (5) Get AI-generated summaries as JSON via GET /api/v1/configs/{id}/summary/json or as Markdown via /summary/md (may require x402 USDC payment), (6) Get generated content list as JSON via GET /api/v1/configs/{id}/content/json or as Markdown via /content/md, and a single content entry via /content/{contentId}/json or /content/{contentId}/md (may require x402 USDC payment), (7) Semantic search via POST /api/v1/search (may require x402 USDC payment). Paid endpoints return HTTP 402 with Solana USDC payment instructions. Send payment proof via X-Payment-Proof header.',
   api: {
     type: 'openapi',
     url: 'https://digitalgardener.com/api/v1/openapi.json',

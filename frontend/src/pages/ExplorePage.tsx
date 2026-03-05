@@ -54,12 +54,6 @@ function FeaturedCard({ config }: { config: PlatformConfig }) {
       onClick={() => navigate(`/configs/${config.id}`)}
       className="flex-shrink-0 w-72 bg-gradient-to-br from-emerald-50 to-white rounded-xl border border-emerald-200 p-5 hover:border-emerald-300 transition-all hover:shadow-lg hover:shadow-black/5 text-left group"
     >
-      <div className="flex items-center gap-2 mb-3">
-        <svg className="w-4 h-4 text-emerald-600" fill="currentColor" viewBox="0 0 24 24">
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-        </svg>
-        <span className="text-emerald-600 text-xs font-semibold uppercase tracking-wider">Featured</span>
-      </div>
       <h3 className="font-semibold text-stone-800 truncate group-hover:text-emerald-600 transition-colors">
         {config.name}
       </h3>
@@ -402,12 +396,6 @@ function ExploreContent() {
       {/* Featured Section */}
       {!featuredLoading && featuredConfigs.length > 0 && !debouncedSearch && (
         <div className="mb-10">
-          <div className="flex items-center gap-2 mb-4">
-            <svg className="w-5 h-5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-            </svg>
-            <h2 className="text-lg font-semibold text-stone-800">Featured</h2>
-          </div>
           <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin scrollbar-thumb-stone-300">
             {featuredLoading
               ? Array.from({ length: 3 }).map((_, i) => <FeaturedCardSkeleton key={i} />)

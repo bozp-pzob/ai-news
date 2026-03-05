@@ -131,10 +131,13 @@ RUN npx patchright install chrome
 # Copy built backend from builder stage
 COPY --from=builder /app/dist ./dist
 
+# Copy built frontend so Express can serve static assets (logo, favicon, SPA)
+COPY --from=builder /app/frontend/build ./frontend/build
+
 # Create data directory for runtime files and ensure non-root user can write.
 # Also grant access to node_modules (for patchright browser binary) and dist/.
 RUN mkdir -p /app/data /app/.browser-data \
-    && chown -R appuser:appuser /app/data /app/.browser-data /app/dist \
+    && chown -R appuser:appuser /app/data /app/.browser-data /app/dist /app/frontend/build \
     && chmod -R o+rx /app/node_modules
 
 # Ensure patchright's browser cache is accessible by appuser.

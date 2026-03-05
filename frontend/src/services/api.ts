@@ -496,7 +496,7 @@ export const configApi = {
     const query = params.toString();
 
     return apiRequest<ContextResponse>(
-      `/api/v1/configs/${id}/context${query ? `?${query}` : ''}`,
+      `/api/v1/configs/${id}/items/context${query ? `?${query}` : ''}`,
       {},
       authToken
     );
@@ -516,7 +516,7 @@ export const configApi = {
     const query = params.toString();
 
     return apiRequest<{ markdown?: string; categories?: any }>(
-      `/api/v1/configs/${id}/summary${query ? `?${query}` : ''}`,
+      `/api/v1/configs/${id}/summary/json${query ? `?${query}` : ''}`,
       {},
       authToken
     );
@@ -604,7 +604,7 @@ export const configApi = {
       items: ContentItem[];
       pagination: { total: number; limit: number; offset: number; hasMore: boolean };
     }>(
-      `/api/v1/configs/${id}/items${query ? `?${query}` : ''}`,
+      `/api/v1/configs/${id}/items/json${query ? `?${query}` : ''}`,
       {},
       authToken || undefined
     );
@@ -631,7 +631,7 @@ export const configApi = {
       content: SummaryItem[];
       pagination: { total: number; limit: number; offset: number; hasMore: boolean };
     }>(
-      `/api/v1/configs/${id}/content${query ? `?${query}` : ''}`,
+      `/api/v1/configs/${id}/content/json${query ? `?${query}` : ''}`,
       {},
       authToken || undefined
     );
@@ -646,7 +646,7 @@ export const configApi = {
     contentId: string
   ): Promise<SummaryItem> {
     return apiRequest<SummaryItem>(
-      `/api/v1/configs/${configId}/content/${contentId}`,
+      `/api/v1/configs/${configId}/content/${contentId}/json`,
       {},
       authToken || undefined
     );

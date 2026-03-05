@@ -246,12 +246,33 @@ export function PreviewPaywall({
                 </li>
                 <li>
                   <code className="text-stone-600 bg-stone-100 px-1 rounded">
-                    GET /api/v1/configs/{configId}/items
+                    GET /api/v1/configs/{configId}/items/json
+                  </code>
+                  {' '}or{' '}
+                  <code className="text-stone-600 bg-stone-100 px-1 rounded">
+                    /items/md
+                  </code>
+                  {' '}or{' '}
+                  <code className="text-stone-600 bg-stone-100 px-1 rounded">
+                    /items/context
                   </code>
                 </li>
                 <li>
                   <code className="text-stone-600 bg-stone-100 px-1 rounded">
-                    GET /api/v1/configs/{configId}/content
+                    GET /api/v1/configs/{configId}/content/json
+                  </code>
+                  {' '}or{' '}
+                  <code className="text-stone-600 bg-stone-100 px-1 rounded">
+                    /content/md
+                  </code>
+                </li>
+                <li>
+                  <code className="text-stone-600 bg-stone-100 px-1 rounded">
+                    GET /api/v1/configs/{configId}/summary/json
+                  </code>
+                  {' '}or{' '}
+                  <code className="text-stone-600 bg-stone-100 px-1 rounded">
+                    /summary/md
                   </code>
                 </li>
               </ul>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchGitHubStats } from '../utils/github';
+import { ProfileDropdown } from './ProfileDropdown';
 
 const REPO_OWNER = 'bozp-pzob';
 const REPO_NAME = 'digital-gardener';
@@ -104,12 +105,24 @@ const Navbar: React.FC = () => {
                 >
                   Builder
                 </Link>
-                <button 
-                  onClick={handleLaunchAppClick}
-                  className="bg-emerald-600 text-white hover:bg-emerald-700 transition-colors px-3 py-1.5 rounded-md text-sm font-medium"
-                >
-                  Login
-                </button>
+                {isAuthenticated ? (
+                  <>
+                    <Link
+                      to="/dashboard"
+                      className="bg-emerald-600 text-white hover:bg-emerald-700 transition-colors px-3 py-1.5 rounded-md text-sm font-medium"
+                    >
+                      Dashboard
+                    </Link>
+                    <ProfileDropdown />
+                  </>
+                ) : (
+                  <button
+                    onClick={handleLaunchAppClick}
+                    className="bg-emerald-600 text-white hover:bg-emerald-700 transition-colors px-3 py-1.5 rounded-md text-sm font-medium"
+                  >
+                    Login
+                  </button>
+                )}
               </>
             )}
           </div>

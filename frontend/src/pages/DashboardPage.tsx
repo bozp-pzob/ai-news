@@ -22,7 +22,10 @@ function ConfigCard({ config, onRun }: { config: PlatformConfig; onRun: (id: str
   };
 
   return (
-    <div className="bg-white rounded-lg border border-stone-200 p-4 hover:border-stone-300 transition-colors shadow-sm">
+    <div
+      onClick={() => navigate(`/configs/${config.id}`)}
+      className="bg-white rounded-lg border border-stone-200 p-4 hover:border-stone-300 transition-colors shadow-sm cursor-pointer"
+    >
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -59,13 +62,10 @@ function ConfigCard({ config, onRun }: { config: PlatformConfig; onRun: (id: str
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => navigate(`/configs/${config.id}`)}
-            className="px-3 py-1 text-sm rounded transition-colors bg-stone-100 hover:bg-stone-200 text-stone-700"
-          >
-            View
-          </button>
-          <button
-            onClick={() => navigate(`/builder/${config.id}`)}
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/builder/${config.id}`);
+            }}
             className="px-3 py-1 text-sm rounded transition-colors bg-stone-100 hover:bg-stone-200 text-stone-700"
           >
             Edit

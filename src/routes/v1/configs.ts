@@ -561,39 +561,14 @@ router.delete('/:id', requireAuth, requireConfigOwner, async (req: Authenticated
 });
 
 /**
- * GET /api/v1/configs/:id/context
- * Get context for a config (for LLM consumption)
+ * GET /api/v1/configs/:id/summary/json
+ * Get AI-generated summary for a config on a specific date (JSON format)
+ *
+ * Query params:
+ * - date: string (optional) - ISO date string, defaults to today
+ * - type: string (optional) - summary type filter
  */
-router.get('/:id/context', dataRateLimiter, optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const configId = req.params.id;
-    const { date, format = 'json' } = req.query;
-
-    if (format === 'text') {
-      // Return LLM-optimized text format
-      const maxLength = parseInt(req.query.maxLength as string) || 8000;
-      const text = await contextService.formatContextForLLM(configId, date as string, maxLength);
-      
-      trackConfigQuery(configId);
-      res.type('text/plain').send(text);
-    } else {
-      // Return JSON format
-      const context = await contextService.getContext(configId, date as string);
-      
-      trackConfigQuery(configId);
-      res.json(context);
-    }
-  } catch (error: any) {
-    logger.error('API: Error getting context', error);
-    res.status(500).json({ error: 'Failed to get context' });
-  }
-});
-
-/**
- * GET /api/v1/configs/:id/summary
- * Get summary for a config on a specific date
- */
-router.get('/:id/summary', dataRateLimiter, optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/summary/json', dataRateLimiter, optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
     const { date, type } = req.query;
@@ -606,6 +581,33 @@ router.get('/:id/summary', dataRateLimiter, optionalAuth, requireConfigAccess, r
 
     trackConfigQuery(configId);
     res.json(summary);
+  } catch (error: any) {
+    logger.error('API: Error getting summary', error);
+    res.status(500).json({ error: 'Failed to get summary' });
+  }
+});
+
+/**
+ * GET /api/v1/configs/:id/summary/md
+ * Get AI-generated summary for a config on a specific date (Markdown format)
+ *
+ * Query params:
+ * - date: string (optional) - ISO date string, defaults to today
+ * - type: string (optional) - summary type filter
+ */
+router.get('/:id/summary/md', dataRateLimiter, optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const configId = req.params.id;
+    const { date, type } = req.query;
+
+    const summary = await contextService.getSummary(configId, date as string, type as string);
+
+    if (!summary) {
+      return res.status(404).json({ error: 'No summary found for the specified date' });
+    }
+
+    trackConfigQuery(configId);
+    res.type('text/markdown').send(summary.markdown || '');
   } catch (error: any) {
     logger.error('API: Error getting summary', error);
     res.status(500).json({ error: 'Failed to get summary' });
@@ -1022,18 +1024,90 @@ router.post('/:id/validate-db', requireAuth, requireConfigOwner, async (req: Aut
   }
 });
 
+// ============================================
+// ITEMS — raw source data with format sub-routes
+// ============================================
+
 /**
- * GET /api/v1/configs/:id/items
- * Get content items for a config
+ * Render a list of raw content items as a Markdown document.
+ * Each item becomes a ## section with a metadata line, body text, and optional link,
+ * separated by horizontal rules.
  */
-router.get('/:id/items', dataRateLimiter, optionalAuth, requireConfigAccess, checkDataAccess, async (req: AuthenticatedRequest, res: Response) => {
+function renderItemsAsMarkdown(items: any[]): string {
+  if (items.length === 0) return '# No items found\n';
+
+  const sections = items.map(item => {
+    const heading = item.title || `[${item.type || 'item'}]`;
+    const metaParts = [
+      item.source ? `**Source:** ${item.source}` : null,
+      item.date ? `**Date:** ${String(item.date).slice(0, 10)}` : null,
+      item.type ? `**Type:** ${item.type}` : null,
+    ].filter(Boolean);
+
+    const lines: string[] = [`## ${heading}`];
+    if (metaParts.length > 0) lines.push('', metaParts.join(' | '));
+    if (item.text) lines.push('', item.text);
+    if (item.link) lines.push('', `[View source](${item.link})`);
+    return lines.join('\n');
+  });
+
+  return sections.join('\n\n---\n\n') + '\n';
+}
+
+/**
+ * Shared DB fetch logic for items with filters and pagination.
+ * Returns { items, total } — callers decide how to format the response.
+ */
+async function fetchItems(
+  configId: string,
+  opts: { limit: number; offset: number; source?: string; type?: string }
+): Promise<{ items: any[]; total: number }> {
+  const { limit, offset, source, type } = opts;
+
+  let query = `
+    SELECT id, config_id, cid, type, source, title, text, link, topics, date, metadata, created_at
+    FROM items
+    WHERE config_id = $1
+  `;
+  const params: any[] = [configId];
+  let paramIndex = 2;
+
+  if (source) { query += ` AND source = $${paramIndex++}`; params.push(source); }
+  if (type)   { query += ` AND type = $${paramIndex++}`;   params.push(type); }
+
+  query += ` ORDER BY date DESC, created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+  params.push(limit, offset);
+
+  const result = await databaseService.query(query, params);
+
+  let countQuery = `SELECT COUNT(*) FROM items WHERE config_id = $1`;
+  const countParams: any[] = [configId];
+  let countParamIndex = 2;
+
+  if (source) { countQuery += ` AND source = $${countParamIndex++}`; countParams.push(source); }
+  if (type)   { countQuery += ` AND type = $${countParamIndex++}`;   countParams.push(type); }
+
+  const countResult = await databaseService.query(countQuery, countParams);
+  return { items: result.rows, total: parseInt(countResult.rows[0].count) };
+}
+
+/**
+ * GET /api/v1/configs/:id/items/json
+ * Get raw content items in JSON format
+ *
+ * Query params:
+ * - limit: number (optional, default 50)
+ * - offset: number (optional, default 0)
+ * - source: string (optional) - filter by source name
+ * - type: string (optional) - filter by content type
+ */
+router.get('/:id/items/json', dataRateLimiter, optionalAuth, requireConfigAccess, checkDataAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
     const config = (req as any).config;
     const accessType = (req as any).accessType;
     const isOwner = accessType === 'owner' || accessType === 'admin';
 
-    // Enforce hide_items for non-owners
     if (!isOwner && config?.hide_items) {
       return res.status(403).json({
         error: 'Items are not publicly available for this config',
@@ -1042,78 +1116,40 @@ router.get('/:id/items', dataRateLimiter, optionalAuth, requireConfigAccess, che
     }
 
     const preview = isPreviewMode(req);
-    
-    // In preview mode: ignore pagination params, return limited items
     const limit = preview ? PREVIEW_ITEM_LIMIT : (parseInt(req.query.limit as string) || 50);
     const offset = preview ? 0 : (parseInt(req.query.offset as string) || 0);
-    const source = req.query.source as string;
-    const type = req.query.type as string;
 
-    let query = `
-      SELECT id, config_id, cid, type, source, title, text, link, topics, date, metadata, created_at
-      FROM items 
-      WHERE config_id = $1
-    `;
-    const params: any[] = [configId];
-    let paramIndex = 2;
+    const { items: rawItems, total } = await fetchItems(configId, {
+      limit,
+      offset,
+      source: req.query.source as string,
+      type: req.query.type as string,
+    });
 
-    if (source) {
-      query += ` AND source = $${paramIndex++}`;
-      params.push(source);
-    }
-
-    if (type) {
-      query += ` AND type = $${paramIndex++}`;
-      params.push(type);
-    }
-
-    query += ` ORDER BY date DESC, created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
-    params.push(limit, offset);
-
-    const result = await databaseService.query(query, params);
-
-    // Get total count
-    let countQuery = `SELECT COUNT(*) FROM items WHERE config_id = $1`;
-    const countParams: any[] = [configId];
-    let countParamIndex = 2;
-
-    if (source) {
-      countQuery += ` AND source = $${countParamIndex++}`;
-      countParams.push(source);
-    }
-
-    if (type) {
-      countQuery += ` AND type = $${countParamIndex++}`;
-      countParams.push(type);
-    }
-
-    const countResult = await databaseService.query(countQuery, countParams);
-    const total = parseInt(countResult.rows[0].count);
-
-    // In preview mode: truncate text, strip metadata, add payment info
-    let items = result.rows;
+    let items = rawItems;
     if (preview) {
       items = items.map((item: any) => ({
         ...item,
         text: item.text && item.text.length > PREVIEW_TEXT_LIMIT
           ? item.text.slice(0, PREVIEW_TEXT_LIMIT) + '...'
           : item.text,
-        metadata: undefined, // Don't leak full metadata in preview
+        metadata: undefined,
       }));
     }
 
+    trackConfigQuery(configId);
     res.json({
       items,
       pagination: {
         total,
         limit,
         offset,
-        hasMore: preview ? false : (offset + result.rows.length < total),
+        hasMore: preview ? false : (offset + rawItems.length < total),
       },
       ...(preview ? {
         preview: true,
         previewLimit: PREVIEW_ITEM_LIMIT,
-        payment: getPreviewPaymentInfo((req as any).config),
+        payment: getPreviewPaymentInfo(config),
       } : {}),
     });
   } catch (error: any) {
@@ -1123,50 +1159,150 @@ router.get('/:id/items', dataRateLimiter, optionalAuth, requireConfigAccess, che
 });
 
 /**
- * GET /api/v1/configs/:id/content
- * Get generated content (summaries) for a config
+ * GET /api/v1/configs/:id/items/md
+ * Get raw content items as a Markdown document
+ *
+ * Each item is rendered as a ## section with metadata, body text, and an optional link.
+ * Sections are separated by horizontal rules (---).
+ *
+ * Query params:
+ * - limit: number (optional, default 50)
+ * - offset: number (optional, default 0)
+ * - source: string (optional) - filter by source name
+ * - type: string (optional) - filter by content type
  */
-router.get('/:id/content', dataRateLimiter, optionalAuth, requireConfigAccess, checkDataAccess, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/items/md', dataRateLimiter, optionalAuth, requireConfigAccess, checkDataAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
+    const config = (req as any).config;
+    const accessType = (req as any).accessType;
+    const isOwner = accessType === 'owner' || accessType === 'admin';
+
+    if (!isOwner && config?.hide_items) {
+      return res.status(403).json({
+        error: 'Items are not publicly available for this config',
+        code: 'ITEMS_HIDDEN',
+      });
+    }
+
     const preview = isPreviewMode(req);
-    
+    const limit = preview ? PREVIEW_ITEM_LIMIT : (parseInt(req.query.limit as string) || 50);
+    const offset = preview ? 0 : (parseInt(req.query.offset as string) || 0);
+
+    const { items } = await fetchItems(configId, {
+      limit,
+      offset,
+      source: req.query.source as string,
+      type: req.query.type as string,
+    });
+
+    let renderItems = items;
+    if (preview) {
+      renderItems = items.map((item: any) => ({
+        ...item,
+        text: item.text && item.text.length > PREVIEW_TEXT_LIMIT
+          ? item.text.slice(0, PREVIEW_TEXT_LIMIT) + '...'
+          : item.text,
+      }));
+    }
+
+    trackConfigQuery(configId);
+    res.type('text/markdown').send(renderItemsAsMarkdown(renderItems));
+  } catch (error: any) {
+    logger.error('API: Error getting items as markdown', error);
+    res.status(500).json({ error: 'Failed to get items' });
+  }
+});
+
+/**
+ * GET /api/v1/configs/:id/items/context
+ * Get LLM-optimized context built from raw items (plain text, suitable for LLM prompts)
+ *
+ * Query params:
+ * - date: string (optional) - ISO date string, defaults to today
+ * - maxLength: number (optional, default 8000) - max output characters
+ */
+router.get('/:id/items/context', dataRateLimiter, optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const configId = req.params.id;
+    const { date, maxLength } = req.query;
+
+    const text = await contextService.formatContextForLLM(
+      configId,
+      date as string,
+      parseInt(maxLength as string) || 8000
+    );
+
+    trackConfigQuery(configId);
+    res.type('text/plain').send(text);
+  } catch (error: any) {
+    logger.error('API: Error getting items context', error);
+    res.status(500).json({ error: 'Failed to get context' });
+  }
+});
+
+// ============================================
+// CONTENT — AI-generated summaries with format sub-routes
+// ============================================
+
+/**
+ * Shared DB fetch logic for summaries with filters and pagination.
+ * Returns { summaries, total } — callers decide how to format the response.
+ */
+async function fetchSummaries(
+  configId: string,
+  opts: { limit: number; offset: number; type?: string }
+): Promise<{ summaries: any[]; total: number }> {
+  const { limit, offset, type } = opts;
+
+  let query = `
+    SELECT id, config_id, type, title, categories, markdown, date, created_at
+    FROM summaries
+    WHERE config_id = $1
+  `;
+  const params: any[] = [configId];
+  let paramIndex = 2;
+
+  if (type) { query += ` AND type = $${paramIndex++}`; params.push(type); }
+
+  query += ` ORDER BY date DESC, created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+  params.push(limit, offset);
+
+  const result = await databaseService.query(query, params);
+
+  let countQuery = `SELECT COUNT(*) FROM summaries WHERE config_id = $1`;
+  const countParams: any[] = [configId];
+  if (type) { countQuery += ` AND type = $2`; countParams.push(type); }
+
+  const countResult = await databaseService.query(countQuery, countParams);
+  return { summaries: result.rows, total: parseInt(countResult.rows[0].count) };
+}
+
+/**
+ * GET /api/v1/configs/:id/content/json
+ * Get generated content (summaries) in JSON format
+ *
+ * Query params:
+ * - limit: number (optional, default 20)
+ * - offset: number (optional, default 0)
+ * - type: string (optional) - filter by summary type
+ */
+router.get('/:id/content/json', dataRateLimiter, optionalAuth, requireConfigAccess, checkDataAccess, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const configId = req.params.id;
+    const config = (req as any).config;
+    const preview = isPreviewMode(req);
+
     const limit = preview ? PREVIEW_ITEM_LIMIT : (parseInt(req.query.limit as string) || 20);
     const offset = preview ? 0 : (parseInt(req.query.offset as string) || 0);
-    const type = req.query.type as string;
 
-    let query = `
-      SELECT id, config_id, type, title, categories, markdown, date, created_at
-      FROM summaries 
-      WHERE config_id = $1
-    `;
-    const params: any[] = [configId];
-    let paramIndex = 2;
+    const { summaries: rawSummaries, total } = await fetchSummaries(configId, {
+      limit,
+      offset,
+      type: req.query.type as string,
+    });
 
-    if (type) {
-      query += ` AND type = $${paramIndex++}`;
-      params.push(type);
-    }
-
-    query += ` ORDER BY date DESC, created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
-    params.push(limit, offset);
-
-    const result = await databaseService.query(query, params);
-
-    // Get total count
-    let countQuery = `SELECT COUNT(*) FROM summaries WHERE config_id = $1`;
-    const countParams: any[] = [configId];
-
-    if (type) {
-      countQuery += ` AND type = $2`;
-      countParams.push(type);
-    }
-
-    const countResult = await databaseService.query(countQuery, countParams);
-    const total = parseInt(countResult.rows[0].count);
-
-    // In preview mode: truncate markdown, strip categories
-    let content = result.rows;
+    let content = rawSummaries;
     if (preview) {
       content = content.map((s: any) => ({
         ...s,
@@ -1177,18 +1313,19 @@ router.get('/:id/content', dataRateLimiter, optionalAuth, requireConfigAccess, c
       }));
     }
 
+    trackConfigQuery(configId);
     res.json({
       content,
       pagination: {
         total,
         limit,
         offset,
-        hasMore: preview ? false : (offset + result.rows.length < total),
+        hasMore: preview ? false : (offset + rawSummaries.length < total),
       },
       ...(preview ? {
         preview: true,
         previewLimit: PREVIEW_ITEM_LIMIT,
-        payment: getPreviewPaymentInfo((req as any).config),
+        payment: getPreviewPaymentInfo(config),
       } : {}),
     });
   } catch (error: any) {
@@ -1198,10 +1335,59 @@ router.get('/:id/content', dataRateLimiter, optionalAuth, requireConfigAccess, c
 });
 
 /**
- * GET /api/v1/configs/:id/content/:contentId
- * Get a specific content entry (summary) with full content
+ * GET /api/v1/configs/:id/content/md
+ * Get generated content (summaries) as concatenated Markdown
+ *
+ * Returns all matching summaries' markdown fields joined by horizontal rules (---).
+ * Ideal for piping into LLMs or rendering in Markdown viewers.
+ *
+ * Query params:
+ * - limit: number (optional, default 20)
+ * - offset: number (optional, default 0)
+ * - type: string (optional) - filter by summary type
  */
-router.get('/:id/content/:contentId', dataRateLimiter, optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/content/md', dataRateLimiter, optionalAuth, requireConfigAccess, checkDataAccess, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const configId = req.params.id;
+    const preview = isPreviewMode(req);
+
+    const limit = preview ? PREVIEW_ITEM_LIMIT : (parseInt(req.query.limit as string) || 20);
+    const offset = preview ? 0 : (parseInt(req.query.offset as string) || 0);
+
+    const { summaries } = await fetchSummaries(configId, {
+      limit,
+      offset,
+      type: req.query.type as string,
+    });
+
+    let renderSummaries = summaries;
+    if (preview) {
+      renderSummaries = summaries.map((s: any) => ({
+        ...s,
+        markdown: s.markdown && s.markdown.length > PREVIEW_MARKDOWN_LIMIT
+          ? s.markdown.slice(0, PREVIEW_MARKDOWN_LIMIT) + '\n\n*[Preview truncated — pay to access full content]*'
+          : s.markdown,
+      }));
+    }
+
+    const combined = renderSummaries
+      .map((s: any) => s.markdown || '')
+      .filter(Boolean)
+      .join('\n\n---\n\n');
+
+    trackConfigQuery(configId);
+    res.type('text/markdown').send(combined || '# No content found\n');
+  } catch (error: any) {
+    logger.error('API: Error getting content as markdown', error);
+    res.status(500).json({ error: 'Failed to get content' });
+  }
+});
+
+/**
+ * GET /api/v1/configs/:id/content/:contentId/json
+ * Get a specific content entry (summary) by ID in JSON format
+ */
+router.get('/:id/content/:contentId/json', dataRateLimiter, optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
     const contentId = req.params.contentId;
@@ -1215,9 +1401,36 @@ router.get('/:id/content/:contentId', dataRateLimiter, optionalAuth, requireConf
       return res.status(404).json({ error: 'Content not found' });
     }
 
+    trackConfigQuery(configId);
     res.json(result.rows[0]);
   } catch (error: any) {
     logger.error('API: Error getting content', error);
+    res.status(500).json({ error: 'Failed to get content' });
+  }
+});
+
+/**
+ * GET /api/v1/configs/:id/content/:contentId/md
+ * Get a specific content entry (summary) by ID as raw Markdown
+ */
+router.get('/:id/content/:contentId/md', dataRateLimiter, optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const configId = req.params.id;
+    const contentId = req.params.contentId;
+
+    const result = await databaseService.query(
+      `SELECT markdown FROM summaries WHERE config_id = $1 AND id = $2`,
+      [configId, contentId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Content not found' });
+    }
+
+    trackConfigQuery(configId);
+    res.type('text/markdown').send(result.rows[0].markdown || '');
+  } catch (error: any) {
+    logger.error('API: Error getting content as markdown', error);
     res.status(500).json({ error: 'Failed to get content' });
   }
 });

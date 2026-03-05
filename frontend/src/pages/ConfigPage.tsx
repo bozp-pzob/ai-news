@@ -275,17 +275,25 @@ function ConfigPageContent() {
           )}
         </div>
 
-        {/* Run Actions — owner only */}
+        {/* Owner actions — Edit (builder) + Run Actions */}
         {isOwner && (
-          <RunActions
-            configId={config.id}
-            configStatus={config.status}
-            configJson={config.configJson}
-            isLocalExecution={config.isLocalExecution}
-            activeJob={activeJob}
-            onRunStarted={handleRunStarted}
-            onRunStopped={handleRunStopped}
-          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate(`/builder/${config.id}`)}
+              className="px-3 py-1.5 text-sm rounded transition-colors bg-stone-100 hover:bg-stone-200 text-stone-700"
+            >
+              Edit
+            </button>
+            <RunActions
+              configId={config.id}
+              configStatus={config.status}
+              configJson={config.configJson}
+              isLocalExecution={config.isLocalExecution}
+              activeJob={activeJob}
+              onRunStarted={handleRunStarted}
+              onRunStopped={handleRunStopped}
+            />
+          </div>
         )}
       </div>
 
