@@ -57,14 +57,13 @@ const Navbar: React.FC = () => {
               <Link to="/" className="flex items-center">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" className="h-8 w-8" aria-label="Digital Gardener" role="img">
                   <g transform="translate(32,32)">
-                    <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#15a072" transform="rotate(0)" />
-                    <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#0d9268" transform="rotate(72)" />
-                    <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#15a072" transform="rotate(144)" />
-                    <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#0d9268" transform="rotate(216)" />
-                    <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#15a072" transform="rotate(288)" />
-                    <circle r="8" fill="#064e3b" />
-                    <circle r="5" fill="#34d399" />
-                    <circle r="2.5" fill="#ecfdf5" />
+                    <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#CF70FF" transform="rotate(0)" />
+                    <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#DD98FF" transform="rotate(60)" />
+                    <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#CF70FF" transform="rotate(120)" />
+                    <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#DD98FF" transform="rotate(180)" />
+                    <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#CF70FF" transform="rotate(240)" />
+                    <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#DD98FF" transform="rotate(300)" />
+                    <circle r="6" fill="#D36135" />
                   </g>
                 </svg>
               </Link>
