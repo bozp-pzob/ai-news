@@ -27,6 +27,7 @@ import {
 import { createMediaLookup, findManifestPath, MediaLookup } from "../../helpers/mediaHelper";
 import { computeContentHash } from "../../helpers/fileHelper";
 import { retryOperation } from "../../helpers/generalHelper";
+import { logger } from '../../helpers/cliHelper';
 
 /**
  * Configuration interface for DailySummaryGenerator
@@ -178,15 +179,15 @@ export class DailySummaryGenerator implements GeneratorPlugin {
       // Fetch items based on whether a specific source type was configured
       let contentItems: ContentItem[];
       if (this.source) {
-        console.log(`[DailySummaryGenerator] Fetching content for type: ${this.source}`);
+        logger.info(`DailySummaryGenerator: Fetching content for type: ${this.source}`);
         contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime, this.source);
       } else {
-        console.log(`[DailySummaryGenerator] Fetching all content types for summary generation.`);
+        logger.info(`DailySummaryGenerator: Fetching all content types for summary generation.`);
         contentItems = await this.storage.getContentItemsBetweenEpoch(currentTime, targetTime);
       }
 
       if (contentItems.length === 0) {
-        console.warn(`[DailySummaryGenerator] No content found for date ${dateStr}.`);
+        logger.warn(`DailySummaryGenerator: No content found for date ${dateStr}.`);
         return {
           success: true,
           summaryItems: [],
@@ -201,7 +202,7 @@ export class DailySummaryGenerator implements GeneratorPlugin {
         const existingSummaries = await this.storage.getSummaryBetweenEpoch(currentTime, currentTime);
         const existingSummary = existingSummaries.find(s => s.type === this.summaryType);
         if (existingSummary?.contentHash && existingSummary.contentHash === contentHash) {
-          console.log(`[DailySummaryGenerator] Source data unchanged for ${dateStr} (hash: ${contentHash.slice(0, 12)}...), skipping.`);
+          logger.info(`DailySummaryGenerator: Source data unchanged for ${dateStr} (hash: ${contentHash.slice(0, 12)}...), skipping.`);
           return {
             success: true,
             summaryItems: [],
@@ -227,7 +228,7 @@ export class DailySummaryGenerator implements GeneratorPlugin {
 
       if (mediaOptions) {
         const mediaForDate = mediaLookup!.getMediaForDate(dateStr);
-        console.log(`[DailySummaryGenerator] Found ${mediaForDate.length} media items for ${dateStr}`);
+        logger.info(`DailySummaryGenerator: Found ${mediaForDate.length} media items for ${dateStr}`);
       }
 
       // Group and summarize
@@ -248,10 +249,10 @@ export class DailySummaryGenerator implements GeneratorPlugin {
           }
         } catch (e) {
           if (e instanceof BudgetExhaustedError) {
-            console.warn(`[DailySummaryGenerator] Budget exhausted during topic summarization, returning partial results.`);
+            logger.warn(`DailySummaryGenerator: Budget exhausted during topic summarization, returning partial results.`);
             break;
           }
-          console.error(`[DailySummaryGenerator] Error summarizing topic group:`, e);
+          logger.error(`DailySummaryGenerator: Error summarizing topic group`, e);
         }
       }
 
@@ -262,7 +263,7 @@ export class DailySummaryGenerator implements GeneratorPlugin {
         markdownString = markdownReport.replace(/```markdown\n|```/g, "");
       } catch (e) {
         if (e instanceof BudgetExhaustedError) {
-          console.warn(`[DailySummaryGenerator] Budget exhausted during markdown generation, using partial summary.`);
+          logger.warn(`DailySummaryGenerator: Budget exhausted during markdown generation, using partial summary.`);
           markdownString = `# Daily Report - ${dateStr}\n\n*Summary truncated due to budget limits.*`;
         } else {
           throw e;
@@ -307,7 +308,7 @@ export class DailySummaryGenerator implements GeneratorPlugin {
         this.provider.clearTokenBudget();
       }
 
-      console.log(`[DailySummaryGenerator] Daily report for ${dateStr} generated (${usageStats.totalTokens} tokens, $${usageStats.estimatedCostUsd.toFixed(4)}).`);
+      logger.info(`DailySummaryGenerator: Daily report for ${dateStr} generated (${usageStats.totalTokens} tokens, $${usageStats.estimatedCostUsd.toFixed(4)}).`);
 
       return {
         success: true,
@@ -322,7 +323,7 @@ export class DailySummaryGenerator implements GeneratorPlugin {
       }
 
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[DailySummaryGenerator] Error generating daily summary for ${dateStr}:`, errorMsg);
+      logger.error(`DailySummaryGenerator: Error generating daily summary for ${dateStr}: ${errorMsg}`);
 
       return {
         success: false,
@@ -364,11 +365,11 @@ export class DailySummaryGenerator implements GeneratorPlugin {
     }
 
     if (manifestPath) {
-      console.log(`[DailySummaryGenerator] Loading media manifest from: ${manifestPath}`);
+      logger.info(`DailySummaryGenerator: Loading media manifest from: ${manifestPath}`);
       this.mediaLookup = await createMediaLookup(manifestPath);
       if (this.mediaLookup) {
         const stats = this.mediaLookup.getStats();
-        console.log(`[DailySummaryGenerator] Media loaded: ${stats.totalImages} images, ${stats.totalVideos} videos`);
+        logger.info(`DailySummaryGenerator: Media loaded: ${stats.totalImages} images, ${stats.totalVideos} videos`);
       }
     }
 
@@ -385,12 +386,12 @@ export class DailySummaryGenerator implements GeneratorPlugin {
     }
 
     if (summaries.length <= chunkSize) {
-      console.log(`[DailySummaryGenerator] Direct summarization of ${summaries.length} summaries`);
+      logger.info(`DailySummaryGenerator: Direct summarization of ${summaries.length} summaries`);
       const mdPrompt = createMarkdownPromptForJSON(summaries, dateStr);
       return await retryOperation(() => this.provider.summarize(mdPrompt, SUMMARIZE_OPTIONS.markdownConversion));
     }
 
-    console.log(`[DailySummaryGenerator] Hierarchical summarization: ${summaries.length} summaries in chunks of ${chunkSize}`);
+    logger.info(`DailySummaryGenerator: Hierarchical summarization: ${summaries.length} summaries in chunks of ${chunkSize}`);
     const chunks: any[][] = [];
     for (let i = 0; i < summaries.length; i += chunkSize) {
       chunks.push(summaries.slice(i, i + chunkSize));
@@ -398,7 +399,7 @@ export class DailySummaryGenerator implements GeneratorPlugin {
 
     const chunkSummaries = await Promise.all(
       chunks.map(async (chunk, index) => {
-        console.log(`[DailySummaryGenerator] Processing chunk ${index + 1}/${chunks.length} (${chunk.length} items)`);
+        logger.info(`DailySummaryGenerator: Processing chunk ${index + 1}/${chunks.length} (${chunk.length} items)`);
         const chunkPrompt = createMarkdownPromptForJSON(chunk, `${dateStr} - Part ${index + 1}`);
         const chunkResult = await retryOperation(() => this.provider.summarize(chunkPrompt, SUMMARIZE_OPTIONS.markdownConversion));
         return {
@@ -413,7 +414,7 @@ export class DailySummaryGenerator implements GeneratorPlugin {
       })
     );
 
-    console.log(`[DailySummaryGenerator] Combining ${chunkSummaries.length} chunk summaries`);
+    logger.info(`DailySummaryGenerator: Combining ${chunkSummaries.length} chunk summaries`);
     return await this.hierarchicalSummarize(chunkSummaries, dateStr, chunkSize);
   }
 
@@ -442,7 +443,7 @@ export class DailySummaryGenerator implements GeneratorPlugin {
       return summaryJSON;
     }
 
-    console.log(`[DailySummaryGenerator] Topic "${topic}" has ~${estimatedTokens} tokens (${objects.length} items), chunking`);
+    logger.info(`DailySummaryGenerator: Topic "${topic}" has ~${estimatedTokens} tokens (${objects.length} items), chunking`);
 
     const ratio = Math.ceil(estimatedTokens / MAX_TOKENS);
     const chunkSize = Math.max(1, Math.ceil(objects.length / ratio));
@@ -451,13 +452,13 @@ export class DailySummaryGenerator implements GeneratorPlugin {
       chunks.push(objects.slice(i, i + chunkSize));
     }
 
-    console.log(`[DailySummaryGenerator] Split into ${chunks.length} chunks of ~${chunkSize} items each`);
+    logger.info(`DailySummaryGenerator: Split into ${chunks.length} chunks of ~${chunkSize} items each`);
 
     const chunkSummaries: string[] = [];
     for (let i = 0; i < chunks.length; i++) {
       const chunkPrompt = createJSONPromptForTopics(topic, chunks[i], dateStr);
       const chunkTokens = this.estimateTokens(chunkPrompt);
-      console.log(`[DailySummaryGenerator] Summarizing chunk ${i + 1}/${chunks.length} (~${chunkTokens} tokens, ${chunks[i].length} items)`);
+      logger.info(`DailySummaryGenerator: Summarizing chunk ${i + 1}/${chunks.length} (~${chunkTokens} tokens, ${chunks[i].length} items)`);
 
       const summaryText = await retryOperation(() => this.provider.summarize(chunkPrompt, SUMMARIZE_OPTIONS.topicSummary));
       const cleanText = summaryText.replace(/```json\n|```/g, "");
@@ -468,7 +469,7 @@ export class DailySummaryGenerator implements GeneratorPlugin {
     const mergePrompt = `Merge the following partial summaries of the topic "${topic}" for ${dateStr} into a single cohesive summary.\n\n<partial_summaries>\n${partsXml}\n</partial_summaries>\n\nRespond with a valid JSON object containing:\n- "title": The title of the topic.\n- "content": A list of messages with keys "text", "sources", "images", and "videos".`;
 
     if (this.estimateTokens(mergePrompt) > MAX_TOKENS) {
-      console.log(`[DailySummaryGenerator] Merge prompt also too large, concatenating chunk results directly`);
+      logger.info(`DailySummaryGenerator: Merge prompt also too large, concatenating chunk results directly`);
       const mergedContent: any[] = [];
       for (const chunkText of chunkSummaries) {
         try {

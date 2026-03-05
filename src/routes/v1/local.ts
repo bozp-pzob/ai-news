@@ -16,6 +16,7 @@ import { decryptPayload, EncryptedPayload } from '../../helpers/localEncryption'
 import { getLocalServerKey } from '../../api';
 import { AggregatorService } from '../../services/aggregatorService';
 import { Config } from '../../services/configService';
+import { logger } from '../../helpers/cliHelper';
 
 const router = Router();
 const aggregatorService = AggregatorService.getInstance();
@@ -109,7 +110,7 @@ router.post('/execute', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     // Never log config contents or decrypted data in errors
-    console.error('[Local Execute] Error:', error.message);
+    logger.error('Local Execute: Error', error.message);
     res.status(500).json({
       error: 'Execution failed',
       message: error.message || 'Failed to execute aggregation',

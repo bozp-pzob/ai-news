@@ -2,23 +2,10 @@
 // @ts-nocheck - BullMQ types will be available after npm install
 
 import { Worker, Job } from 'bullmq';
-import { QUEUES, RetentionRetryJobData } from '../services/queueService';
+import { QUEUES, RetentionRetryJobData, getRedisConnection } from '../services/queueService';
 import { databaseService } from '../services/databaseService';
 import { userService } from '../services/userService';
-
-/**
- * Redis connection options
- */
-function getRedisConnection() {
-  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-  const url = new URL(redisUrl);
-  
-  return {
-    host: url.hostname,
-    port: parseInt(url.port) || 6379,
-    password: url.password || undefined,
-  };
-}
+import { logger } from '../helpers/cliHelper';
 
 /**
  * Process a retention retry job
@@ -33,7 +20,7 @@ async function processRetentionRetryJob(job: Job<RetentionRetryJobData>): Promis
 }> {
   const { configId, retentionItemId } = job.data;
 
-  console.log(`[RetentionWorker] Retrying item ${retentionItemId} for config ${configId}`);
+  logger.info(`RetentionWorker: Retrying item ${retentionItemId} for config ${configId}`);
 
   try {
     // Get the retention item
@@ -43,7 +30,7 @@ async function processRetentionRetryJob(job: Job<RetentionRetryJobData>): Promis
     );
 
     if (result.rows.length === 0) {
-      console.log(`[RetentionWorker] Item ${retentionItemId} not found, may have been processed`);
+      logger.info(`RetentionWorker: Item ${retentionItemId} not found, may have been processed`);
       return { success: true, dataType: 'unknown' };
     }
 
@@ -60,7 +47,7 @@ async function processRetentionRetryJob(job: Job<RetentionRetryJobData>): Promis
     if (config.storageType !== 'external' || !config.externalDbUrl) {
       // Config no longer uses external storage, delete retention item
       await databaseService.deleteTempRetentionItem(retentionItemId);
-      console.log(`[RetentionWorker] Config ${configId} no longer uses external storage, cleaned up`);
+      logger.info(`RetentionWorker: Config ${configId} no longer uses external storage, cleaned up`);
       return { success: true, dataType };
     }
 
@@ -87,13 +74,13 @@ async function processRetentionRetryJob(job: Job<RetentionRetryJobData>): Promis
     // Success - delete the retention item
     await databaseService.deleteTempRetentionItem(retentionItemId);
     
-    console.log(`[RetentionWorker] Successfully retried ${dataType} for config ${configId}`);
+    logger.info(`RetentionWorker: Successfully retried ${dataType} for config ${configId}`);
     
     return { success: true, dataType };
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`[RetentionWorker] Failed to retry item ${retentionItemId}:`, error);
+    logger.error(`RetentionWorker: Failed to retry item ${retentionItemId}`, error);
 
     // Update retry count
     await databaseService.updateTempRetentionRetry(retentionItemId, errorMessage);
@@ -105,7 +92,7 @@ async function processRetentionRetryJob(job: Job<RetentionRetryJobData>): Promis
     );
 
     if (result.rows.length > 0 && result.rows[0].retry_count >= 5) {
-      console.error(`[RetentionWorker] Item ${retentionItemId} exceeded max retries, giving up`);
+      logger.error(`RetentionWorker: Item ${retentionItemId} exceeded max retries, giving up`);
       // Could emit an alert or notification here
     }
 
@@ -138,18 +125,18 @@ export async function startRetentionWorker(): Promise<void> {
   );
 
   worker.on('completed', (job, result) => {
-    console.log(`[RetentionWorker] Job ${job.id} completed:`, result);
+    logger.info(`RetentionWorker: Job ${job.id} completed: ${JSON.stringify(result)}`);
   });
 
   worker.on('failed', (job, error) => {
-    console.error(`[RetentionWorker] Job ${job?.id} failed:`, error.message);
+    logger.error(`RetentionWorker: Job ${job?.id} failed: ${error.message}`);
   });
 
   worker.on('error', (error) => {
-    console.error('[RetentionWorker] Worker error:', error);
+    logger.error('RetentionWorker: Worker error', error);
   });
 
-  console.log('[RetentionWorker] Started');
+  logger.info('RetentionWorker: Started');
 }
 
 /**
@@ -159,7 +146,7 @@ export async function stopRetentionWorker(): Promise<void> {
   if (worker) {
     await worker.close();
     worker = null;
-    console.log('[RetentionWorker] Stopped');
+    logger.info('RetentionWorker: Stopped');
   }
 }
 
@@ -188,7 +175,7 @@ export async function scheduleRetentionRetries(): Promise<number> {
   }
 
   if (scheduled > 0) {
-    console.log(`[RetentionWorker] Scheduled ${scheduled} retry jobs`);
+    logger.info(`RetentionWorker: Scheduled ${scheduled} retry jobs`);
   }
 
   return scheduled;
@@ -206,7 +193,7 @@ export async function cleanupOldRetentionItems(): Promise<number> {
   `);
 
   if (result.rows.length > 0) {
-    console.log(`[RetentionWorker] Cleaned up ${result.rows.length} expired retention items`);
+    logger.info(`RetentionWorker: Cleaned up ${result.rows.length} expired retention items`);
   }
 
   return result.rows.length;

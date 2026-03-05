@@ -6,6 +6,8 @@
  *   IMGFLIP_PASSWORD - Imgflip account password
  */
 
+import { logger } from './cliHelper';
+
 const BASE_URL = "https://api.imgflip.com";
 
 export interface MemeResult {
@@ -47,7 +49,7 @@ export async function automeme(text: string, noWatermark = true): Promise<MemeRe
   const data = await response.json();
 
   if (process.env.DEBUG_ENRICHERS === 'true') {
-    console.log('Imgflip automeme response:', JSON.stringify(data, null, 2));
+    logger.info(`Imgflip automeme response: ${JSON.stringify(data, null, 2)}`);
   }
 
   if (!data.success) {

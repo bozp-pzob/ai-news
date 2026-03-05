@@ -413,98 +413,9 @@ export function useConnectionAuth() {
   };
 }
 
-// ============================================================================
-// LEGACY EXPORTS - For backward compatibility with existing Discord hooks
-// ============================================================================
-
-/**
- * @deprecated Use useConnections('discord') instead
- */
-export function useDiscordGuilds() {
-  const { connections, isLoading, error, refetch, removeConnection } = useConnections('discord');
-  
-  // Map to legacy format
-  const guilds = connections.map(c => ({
-    ...c,
-    guildId: c.externalId,
-    guildName: c.externalName,
-    guildIcon: c.externalIcon,
-  }));
-
-  return {
-    guilds,
-    isLoading,
-    error,
-    refetch,
-    removeGuild: removeConnection,
-  };
-}
-
-/**
- * @deprecated Use useConnectionChannels instead
- */
-export function useDiscordChannels(connectionId: string | null) {
-  const { channels, groupedChannels, connectionName, isLoading, isSyncing, error, refetch, syncChannels } = 
-    useConnectionChannels(connectionId);
-
-  // Map to legacy format
-  const mappedChannels = channels.map(c => ({
-    ...c,
-    guildConnectionId: c.connectionId,
-    channelId: c.externalId,
-    channelName: c.externalName,
-    channelType: c.resourceType,
-    categoryId: c.parentId,
-    categoryName: c.parentName,
-  }));
-
-  const mappedGrouped = Object.fromEntries(
-    Object.entries(groupedChannels).map(([k, v]) => [
-      k,
-      v.map(c => ({
-        ...c,
-        guildConnectionId: c.connectionId,
-        channelId: c.externalId,
-        channelName: c.externalName,
-        channelType: c.resourceType,
-        categoryId: c.parentId,
-        categoryName: c.parentName,
-      })),
-    ])
-  );
-
-  return {
-    channels: mappedChannels,
-    groupedChannels: mappedGrouped,
-    guildName: connectionName,
-    isLoading,
-    isSyncing,
-    error,
-    refetch,
-    syncChannels,
-  };
-}
-
-/**
- * @deprecated Use useConnectionAuth instead
- */
-export function useDiscordOAuth() {
-  const { startAuthFlow, isLoading, error } = useConnectionAuth();
-
-  return {
-    startOAuthFlow: (redirectUrl?: string) => startAuthFlow('discord', redirectUrl),
-    isLoading,
-    error,
-  };
-}
-
 export default {
   usePlatforms,
   useConnections,
   useConnectionChannels,
   useConnectionAuth,
-  // Legacy
-  useDiscordGuilds,
-  useDiscordChannels,
-  useDiscordOAuth,
 };

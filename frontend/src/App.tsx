@@ -548,7 +548,7 @@ function App({
     : "fixed inset-0 flex flex-col bg-stone-50 text-stone-800 overflow-hidden";
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-stone-50 text-stone-800 overflow-hidden">
+    <div className={containerClass}>
       {/* Full-width Toolbar */}
       <div className="h-12 bg-white border-b border-stone-200 shadow-sm flex items-center px-4 flex-shrink-0">
         <a href="/">

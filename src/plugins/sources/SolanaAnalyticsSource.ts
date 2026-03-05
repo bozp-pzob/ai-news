@@ -6,6 +6,7 @@
 import { ContentItem } from "../../types";
 import { ContentSource } from "./ContentSource"; // Assuming the ContentSource is in the same folder
 import fetch from "node-fetch";
+import { logger } from '../../helpers/cliHelper';
 
 /**
  * Configuration interface for SolanaAnalyticsSource
@@ -112,7 +113,7 @@ export class SolanaAnalyticsSource implements ContentSource {
 
         solanaResponse.push(summaryItem);
       } catch (error) {
-        console.error("Error fetching analytics data:", error);
+        logger.error("Error fetching analytics data", error);
       }
     }
 

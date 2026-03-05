@@ -2,6 +2,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { databaseService } from '../services/databaseService';
+import { logger } from '../helpers/cliHelper';
 
 /**
  * x402/pop402 Payment Protocol Implementation
@@ -123,7 +124,7 @@ async function verifyPaymentWithFacilitator(
     const result = await response.json();
     return { valid: result.valid, error: result.error };
   } catch (error) {
-    console.error('[x402] Error verifying payment:', error);
+    logger.error('x402: Error verifying payment', error);
     return { 
       valid: false, 
       error: `Failed to verify payment: ${error instanceof Error ? error.message : 'Unknown error'}` 
@@ -136,22 +137,25 @@ async function verifyPaymentWithFacilitator(
  */
 async function recordPayment(
   configId: string,
-  userId: string | null,
+  _userId: string | null,
   walletAddress: string | null,
   amount: number,
   platformFee: number,
   ownerAmount: number,
   signature: string,
-  memo: string
+  _memo: string
 ): Promise<void> {
   await databaseService.query(`
     INSERT INTO payments (
-      config_id, user_id, payer_wallet, amount, platform_fee, owner_amount,
-      tx_signature, memo, status
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed')
-  `, [configId, userId, walletAddress, amount, platformFee, ownerAmount, signature, memo]);
+      config_id, payer_wallet, amount, platform_fee, owner_revenue,
+      tx_signature, status
+    ) VALUES ($1, $2, $3, $4, $5, $6, 'verified')
+  `, [configId, walletAddress || 'unknown', amount, platformFee, ownerAmount, signature]);
 
-  // Update config stats
+  // Update config stats immediately for 'verified' payments.
+  // Note: The DB trigger `payments_update_revenue` also increments these
+  // counters when a payment transitions to 'settled'. If a settlement
+  // workflow is added later, remove this manual UPDATE to avoid double-counting.
   await databaseService.query(`
     UPDATE configs SET
       total_queries = total_queries + 1,
@@ -323,7 +327,7 @@ export async function requirePayment(
     // Payment verified, allow access
     next();
   } catch (error) {
-    console.error('[x402] Error in payment middleware:', error);
+    logger.error('x402: Error in payment middleware', error);
     res.status(500).json({ error: 'Payment processing failed' });
   }
 }
@@ -427,14 +431,14 @@ export async function getPaymentStats(configId: string): Promise<{
       SELECT 
         COALESCE(SUM(amount), 0) as total_revenue,
         COUNT(*) as total_queries,
-        COUNT(DISTINCT COALESCE(user_id::text, payer_wallet)) as unique_payers
+        COUNT(DISTINCT payer_wallet) as unique_payers
       FROM payments
-      WHERE config_id = $1 AND status = 'completed'
+      WHERE config_id = $1 AND status IN ('verified', 'settled')
     `, [configId]),
     databaseService.query(`
       SELECT amount, payer_wallet, created_at
       FROM payments
-      WHERE config_id = $1 AND status = 'completed'
+      WHERE config_id = $1 AND status IN ('verified', 'settled')
       ORDER BY created_at DESC
       LIMIT 10
     `, [configId]),

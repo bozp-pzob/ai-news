@@ -21,6 +21,7 @@ import { StoragePlugin } from '../storage/StoragePlugin';
 import { getCookiesAndHeaders, fetchHTML } from '../../helpers/patchrightHelper';
 import { extractPageContent } from '../../helpers/htmlHelper';
 import Parser from 'rss-parser';
+import { logger } from '../../helpers/cliHelper';
 
 // ============================================
 // CONFIGURATION
@@ -164,21 +165,21 @@ export class RSSSource implements ContentSource {
 
     // Storage must be injected (not still a string name) and available
     if (!this.storage) {
-      console.log(`[RSSSource:${this.name}] Dedup: No storage configured, processing all items`);
+      logger.info(`RSSSource:${this.name} Dedup: No storage configured, processing all items`);
       return existing;
     }
     if (typeof this.storage === 'string') {
-      console.warn(`[RSSSource:${this.name}] Dedup: Storage is still a string "${this.storage}" — injection did not happen. ` +
+      logger.warn(`RSSSource:${this.name} Dedup: Storage is still a string "${this.storage}" — injection did not happen. ` +
         `Ensure the storage name in this source's config matches the name in the storage config section.`);
       return existing;
     }
 
     const storage = this.storage;
-    console.log(`[RSSSource:${this.name}] Dedup: Checking ${items.length} items against storage (${storage.constructor?.name || 'unknown'})`);
+    logger.info(`RSSSource:${this.name} Dedup: Checking ${items.length} items against storage (${storage.constructor?.name || 'unknown'})`);
 
     // Log a sample CID for debugging
     if (items.length > 0 && items[0].cid) {
-      console.log(`[RSSSource:${this.name}] Dedup: Sample CID being checked: "${items[0].cid}"`);
+      logger.info(`RSSSource:${this.name} Dedup: Sample CID being checked: "${items[0].cid}"`);
     }
 
     let checked = 0;
@@ -195,16 +196,16 @@ export class RSSSource implements ContentSource {
           errors++;
           // Log first error in full, then summarize
           if (errors === 1) {
-            console.warn(`[RSSSource:${this.name}] Dedup: Storage error checking CID "${item.cid}": ${err.message}`);
+            logger.warn(`RSSSource:${this.name} Dedup: Storage error checking CID "${item.cid}": ${err.message}`);
           }
         }
       }
     }
 
     if (errors > 0) {
-      console.warn(`[RSSSource:${this.name}] Dedup: ${errors}/${checked + errors} storage lookups failed — those items will be re-processed`);
+      logger.warn(`RSSSource:${this.name} Dedup: ${errors}/${checked + errors} storage lookups failed — those items will be re-processed`);
     }
-    console.log(`[RSSSource:${this.name}] Dedup: ${existing.size} of ${items.length} items already in storage`);
+    logger.info(`RSSSource:${this.name} Dedup: ${existing.size} of ${items.length} items already in storage`);
 
     return existing;
   }
@@ -227,7 +228,7 @@ export class RSSSource implements ContentSource {
     // Diagnostic: show storage injection state
     const storageType = typeof this.storage;
     const storageInfo = storageType === 'object' ? this.storage?.constructor?.name : `"${this.storage}"`;
-    console.log(`[RSSSource:${this.name}] fetchItems() — storage: ${storageInfo} (${storageType}), provider: ${this.provider ? this.provider.constructor?.name || 'yes' : 'none'}`);
+    logger.info(`RSSSource:${this.name} fetchItems() — storage: ${storageInfo} (${storageType}), provider: ${this.provider ? this.provider.constructor?.name || 'yes' : 'none'}`);
 
     const allResults: ContentItem[] = [];
 
@@ -244,7 +245,7 @@ export class RSSSource implements ContentSource {
         try {
           headers = await getCookiesAndHeaders(cookieUrl, this.name);
         } catch (err: any) {
-          console.warn(`[RSSSource:${this.name}] Failed to get cookies from ${cookieUrl}:`, err.message);
+          logger.warn(`RSSSource:${this.name} Failed to get cookies from ${cookieUrl}: ${err.message}`);
         }
       }
 
@@ -255,7 +256,7 @@ export class RSSSource implements ContentSource {
         try {
           parsedFeed = await this.rssParser.parseURL(feedUrl);
         } catch (directErr: any) {
-          console.log(`[RSSSource:${this.name}] Direct RSS parse failed for ${feedUrl}: ${directErr.message}`);
+          logger.info(`RSSSource:${this.name} Direct RSS parse failed for ${feedUrl}: ${directErr.message}`);
           
           // Strategy 2: Fetch with auto-fallback (node-fetch -> patchright) then parse
           // This handles bot-protected feeds (Cloudflare, 429, etc.)
@@ -268,19 +269,19 @@ export class RSSSource implements ContentSource {
             // Verify the response is actually XML/RSS before parsing
             if (this.isLikelyXML(html)) {
               parsedFeed = await this.rssParser.parseString(html);
-              console.log(`[RSSSource:${this.name}] Parsed RSS via ${usedBrowser ? 'browser' : 'fetch'} fallback`);
+              logger.info(`RSSSource:${this.name} Parsed RSS via ${usedBrowser ? 'browser' : 'fetch'} fallback`);
             } else {
-              console.warn(`[RSSSource:${this.name}] Response from ${feedUrl} is not valid RSS/XML (likely bot protection page). ` +
+              logger.warn(`RSSSource:${this.name} Response from ${feedUrl} is not valid RSS/XML (likely bot protection page). ` +
                 `${usedBrowser ? 'Browser was used but site still blocked.' : 'Try installing patchright for browser-based fetching: npm install patchright'}`);
             }
           } catch (fetchErr: any) {
-            console.error(`[RSSSource:${this.name}] Fallback fetch also failed for ${feedUrl}: ${fetchErr.message}`);
+            logger.error(`RSSSource:${this.name} Fallback fetch also failed for ${feedUrl}: ${fetchErr.message}`);
           }
         }
 
         if (parsedFeed && parsedFeed.items && parsedFeed.items.length > 0) {
           const resultItems = this.processItems(parsedFeed.items, feedUrl);
-          console.log(`[RSSSource:${this.name}] Fetched ${resultItems.length} items from ${feedUrl}`);
+          logger.info(`RSSSource:${this.name} Fetched ${resultItems.length} items from ${feedUrl}`);
 
           // Phase 1: Check which items already exist in storage (cheap DB lookups)
           const existingCids = await this.getExistingCids(resultItems);
@@ -288,7 +289,7 @@ export class RSSSource implements ContentSource {
           const skippedCount = resultItems.length - newItems.length;
 
           if (skippedCount > 0) {
-            console.log(`[RSSSource:${this.name}] Skipping ${skippedCount} already-stored items, processing ${newItems.length} new items`);
+            logger.info(`RSSSource:${this.name} Skipping ${skippedCount} already-stored items, processing ${newItems.length} new items`);
           }
 
           // Phase 2: Only do expensive page extraction for NEW items
@@ -325,7 +326,7 @@ export class RSSSource implements ContentSource {
                   continue;
                 }
               } catch (err: any) {
-                console.warn(`[RSSSource:${this.name}] Failed to extract content for ${item.link}:`, err.message);
+                logger.warn(`RSSSource:${this.name} Failed to extract content for ${item.link}: ${err.message}`);
               }
             }
 
@@ -334,11 +335,11 @@ export class RSSSource implements ContentSource {
           }
         }
       } catch (error: any) {
-        console.error(`[RSSSource:${this.name}] Error fetching feed ${feedUrl}:`, error.message);
+        logger.error(`RSSSource:${this.name} Error fetching feed ${feedUrl}: ${error.message}`);
       }
     }
 
-    console.log(`[RSSSource:${this.name}] Total items fetched: ${allResults.length}`);
+    logger.info(`RSSSource:${this.name} Total items fetched: ${allResults.length}`);
     return allResults;
   }
 

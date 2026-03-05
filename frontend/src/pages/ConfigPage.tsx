@@ -19,6 +19,7 @@ import { ContentTab } from '../components/config/ContentTab';
 import { SettingsTab } from '../components/config/SettingsTab';
 import { RunsTab } from '../components/config/RunsTab';
 import { RunActions } from '../components/config/RunActions';
+import { WebhooksTab } from '../components/config/WebhooksTab';
 import { useToast } from '../components/ToastProvider';
 
 /**
@@ -231,9 +232,10 @@ function ConfigPageContent() {
     { id: 'topics', label: 'Topics' },
     ...(showItemsTab ? [{ id: 'items', label: 'Items' }] : []),
     { id: 'content', label: 'Content' },
-    // Runs and settings: owner only
+    // Runs, webhooks, and settings: owner only
     ...(isOwner ? [
       { id: 'runs', label: 'Runs' },
+      { id: 'webhooks', label: 'Webhooks' },
       { id: 'settings', label: 'Settings' },
     ] : []),
   ];
@@ -308,6 +310,10 @@ function ConfigPageContent() {
       )}
 
       {activeTab === 'runs' && isOwner && <RunsTab configId={config.id} />}
+
+      {activeTab === 'webhooks' && isOwner && authToken && (
+        <WebhooksTab configId={config.id} authToken={authToken} />
+      )}
 
       {activeTab === 'settings' && isOwner && authToken && (
         <SettingsTab 

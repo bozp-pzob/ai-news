@@ -23,6 +23,7 @@ import fs from 'fs';
 import os from 'os';
 import { execSync, spawn, ChildProcess } from 'child_process';
 import fetch from 'node-fetch';
+import { logger } from './cliHelper';
 
 // Dynamic import for patchright (optional dependency)
 // patchright may not be installed -- we dynamically import and handle the error
@@ -38,10 +39,10 @@ async function loadPatchright(): Promise<boolean> {
     // Dynamic require to avoid compile-time errors when patchright is not installed
     patchrightModule = require('patchright');
     patchrightAvailable = true;
-    console.log('[PatchrightHelper] patchright loaded successfully');
+    logger.info('PatchrightHelper: patchright loaded successfully');
   } catch {
     patchrightAvailable = false;
-    console.warn('[PatchrightHelper] patchright not installed. Browser-based fetching disabled. Install with: npm install patchright');
+    logger.warn('PatchrightHelper: patchright not installed. Browser-based fetching disabled. Install with: npm install patchright');
   }
   return patchrightAvailable;
 }
@@ -86,7 +87,7 @@ async function ensureDisplay(): Promise<void> {
   const isHeaded = process.env.BROWSER_HEADLESS === 'false';
 
   // Linux with no display -- try to start Xvfb
-  console.log('[PatchrightHelper] No DISPLAY detected on Linux. Attempting to start Xvfb...');
+  logger.info('PatchrightHelper: No DISPLAY detected on Linux. Attempting to start Xvfb...');
 
   // Check if Xvfb is installed
   let xvfbInstalled = false;
@@ -96,16 +97,16 @@ async function ensureDisplay(): Promise<void> {
   } catch {
     if (isHeaded) {
       // Headed mode absolutely requires a display
-      console.error(
-        '[PatchrightHelper] Xvfb is not installed. Headed browser mode requires a display server.\n' +
+      logger.error(
+        'PatchrightHelper: Xvfb is not installed. Headed browser mode requires a display server.\n' +
         '  Install with: sudo apt-get install -y xvfb\n' +
         '  Or set DISPLAY env var to an existing X server.'
       );
       throw new Error('Xvfb not installed and no DISPLAY available. Cannot launch headed browser.');
     }
     // Headless mode — warn but don't throw, Chrome may work without DISPLAY
-    console.warn(
-      '[PatchrightHelper] Xvfb is not installed. Headless Chrome may still work, but if it fails:\n' +
+    logger.warn(
+      'PatchrightHelper: Xvfb is not installed. Headless Chrome may still work, but if it fails:\n' +
       '  Install with: sudo apt-get install -y xvfb'
     );
     return;
@@ -119,7 +120,7 @@ async function ensureDisplay(): Promise<void> {
     // :99 is already running
     xvfbDisplay = ':99';
     process.env.DISPLAY = xvfbDisplay;
-    console.log('[PatchrightHelper] Found existing Xvfb on display :99');
+    logger.info('PatchrightHelper: Found existing Xvfb on display :99');
     return;
   } catch {
     // :99 is not running, we'll start it
@@ -141,7 +142,7 @@ async function ensureDisplay(): Promise<void> {
 
     xvfbDisplay = ':99';
     process.env.DISPLAY = xvfbDisplay;
-    console.log('[PatchrightHelper] Started Xvfb on display :99');
+    logger.info('PatchrightHelper: Started Xvfb on display :99');
 
     // Cleanup on process exit
     const cleanup = () => {
@@ -159,11 +160,11 @@ async function ensureDisplay(): Promise<void> {
     process.on('SIGTERM', cleanup);
   } catch (err: any) {
     if (isHeaded) {
-      console.error(`[PatchrightHelper] Failed to start Xvfb: ${err.message}`);
+      logger.error(`PatchrightHelper: Failed to start Xvfb: ${err.message}`);
       throw new Error('Failed to start Xvfb. Cannot launch headed browser without a display.');
     }
     // Headless mode — warn but continue
-    console.warn(`[PatchrightHelper] Failed to start Xvfb: ${err.message}. Continuing without display — headless Chrome may still work.`);
+    logger.warn(`PatchrightHelper: Failed to start Xvfb: ${err.message}. Continuing without display — headless Chrome may still work.`);
   }
 }
 
@@ -323,7 +324,7 @@ export class BrowserManager {
     });
 
     const modeLabel = headless ? 'headless (--headless=new)' : 'headed (Xvfb/display)';
-    console.log(`[BrowserManager] Persistent context launched for "${sourceId}" (profile: ${profileDir}, mode: ${modeLabel})`);
+    logger.info(`BrowserManager: Persistent context launched for "${sourceId}" (profile: ${profileDir}, mode: ${modeLabel})`);
     BrowserManager.contexts.set(sourceId, context);
     return context;
   }
@@ -337,9 +338,9 @@ export class BrowserManager {
     if (context) {
       try {
         await context.close();
-        console.log(`[BrowserManager] Closed persistent context for "${sourceId}"`);
+        logger.info(`BrowserManager: Closed persistent context for "${sourceId}"`);
       } catch (err) {
-        console.warn(`[BrowserManager] Error closing context for ${sourceId}:`, err);
+        logger.warn(`BrowserManager: Error closing context for ${sourceId}`, err);
       }
       BrowserManager.contexts.delete(sourceId);
     }
@@ -358,7 +359,7 @@ export class BrowserManager {
       }
     }
     BrowserManager.contexts.clear();
-    console.log('[BrowserManager] All browser contexts closed');
+    logger.info('BrowserManager: All browser contexts closed');
   }
 }
 
@@ -457,7 +458,7 @@ async function waitForChallengeResolution(page: any, maxWaitMs?: number): Promis
     return false; // No challenge detected
   }
 
-  console.log(`[FetchHTML] Bot protection challenge detected, waiting up to ${Math.round(timeout / 1000)}s for resolution...`);
+  logger.info(`FetchHTML: Bot protection challenge detected, waiting up to ${Math.round(timeout / 1000)}s for resolution...`);
   const startTime = Date.now();
   const initialUrl = page.url();
   const pollInterval = 2000;
@@ -470,20 +471,20 @@ async function waitForChallengeResolution(page: any, maxWaitMs?: number): Promis
     // Challenge resolved if the page is no longer a bot protection page
     if (!isBotProtected(currentHtml)) {
       const elapsed = Date.now() - startTime;
-      console.log(`[FetchHTML] Challenge resolved after ${elapsed}ms`);
+      logger.info(`FetchHTML: Challenge resolved after ${elapsed}ms`);
       return true;
     }
 
     // Also check if the URL changed (redirect after challenge)
     const currentUrl = page.url();
     if (currentUrl !== initialUrl) {
-      console.log(`[FetchHTML] Page redirected during challenge resolution: ${initialUrl} -> ${currentUrl}`);
+      logger.info(`FetchHTML: Page redirected during challenge resolution: ${initialUrl} -> ${currentUrl}`);
       await page.waitForTimeout(3000); // Wait for new page to settle
       return true;
     }
   }
 
-  console.log(`[FetchHTML] Challenge did not resolve within ${Math.round(timeout / 1000)}s`);
+  logger.info(`FetchHTML: Challenge did not resolve within ${Math.round(timeout / 1000)}s`);
   return false;
 }
 
@@ -516,7 +517,7 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
     return; // Already warmed up
   }
 
-  console.log(`[FetchHTML] No cookies for ${hostname}, performing warmup visit to homepage...`);
+  logger.info(`FetchHTML: No cookies for ${hostname}, performing warmup visit to homepage...`);
   const page = await context.newPage();
   try {
     await page.goto(origin, {
@@ -530,14 +531,14 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
     // Check if the homepage itself is a bot protection challenge page
     const html = await page.content();
     if (isBotProtected(html)) {
-      console.log(`[FetchHTML] Homepage is a bot protection challenge, waiting for resolution...`);
+      logger.info(`FetchHTML: Homepage is a bot protection challenge, waiting for resolution...`);
       // Use a generous timeout for warmup — this is the critical first visit
       // that establishes cookies for all subsequent requests.
       // Kasada's Proof-of-Work can take 15-30s+ on VMs with limited CPU.
       const warmupTimeout = parseInt(process.env.BROWSER_WARMUP_TIMEOUT || '45000', 10);
       const resolved = await waitForChallengeResolution(page, warmupTimeout);
       if (!resolved) {
-        console.warn(`[FetchHTML] Warmup challenge did not resolve for ${hostname}. ` +
+        logger.warn(`FetchHTML: Warmup challenge did not resolve for ${hostname}. ` +
           `Subsequent requests may be blocked.`);
       }
     }
@@ -547,10 +548,10 @@ async function warmupIfNeeded(context: any, targetUrl: string): Promise<void> {
     const cookies = await context.cookies(origin);
     const cookieNames = cookies.map((c: any) => c.name).join(', ');
     const hasKasada = cookies.some((c: any) => c.name.startsWith('KP_'));
-    console.log(`[FetchHTML] Warmup complete: ${cookies.length} cookies for ${hostname} [${cookieNames}]` +
+    logger.info(`FetchHTML: Warmup complete: ${cookies.length} cookies for ${hostname} [${cookieNames}]` +
       (hasKasada ? ' (Kasada cookies found)' : ''));
   } catch (err: any) {
-    console.warn(`[FetchHTML] Warmup visit failed for ${origin}: ${err.message}`);
+    logger.warn(`FetchHTML: Warmup visit failed for ${origin}: ${err.message}`);
     // Continue anyway -- the target URL might still work
   } finally {
     await page.close();
@@ -604,7 +605,7 @@ async function fetchWithBrowser(url: string, options: FetchHTMLOptions = {}): Pr
           if (contentType && !contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
             const body = await response.body();
             intercepted.body = body.toString('utf-8');
-            console.log(`[FetchHTML] Intercepted non-HTML response (${contentType}, ${intercepted.body!.length} bytes)`);
+            logger.info(`FetchHTML: Intercepted non-HTML response (${contentType}, ${intercepted.body!.length} bytes)`);
           }
 
           // Fulfill the route so the page doesn't hang
@@ -628,12 +629,12 @@ async function fetchWithBrowser(url: string, options: FetchHTMLOptions = {}): Pr
       // "Download is starting" error is expected for non-HTML content
       // We already captured the body via route interception
       if (err.message && err.message.includes('Download is starting') && intercepted.body) {
-        console.log(`[FetchHTML] Download intercepted successfully for ${url}`);
+        logger.info(`FetchHTML: Download intercepted successfully for ${url}`);
         return intercepted.body;
       }
       // For other navigation errors, check if we got the body via interception
       if (intercepted.body && intercepted.body.length > 100) {
-        console.log(`[FetchHTML] Navigation error but got intercepted body (${intercepted.body.length} bytes)`);
+        logger.info(`FetchHTML: Navigation error but got intercepted body (${intercepted.body.length} bytes)`);
         return intercepted.body;
       }
       throw err;
@@ -657,12 +658,12 @@ async function fetchWithBrowser(url: string, options: FetchHTMLOptions = {}): Pr
 
     // Debug: log the page title and content length so we can see what we got
     const title = await page.title().catch(() => 'unknown');
-    console.log(`[FetchHTML] Browser got: title="${title}", length=${html.length}, url=${page.url()}`);
+    logger.info(`FetchHTML: Browser got: title="${title}", length=${html.length}, url=${page.url()}`);
     
     // Log a snippet if it looks like a block page
     if (html.length < 5000 || isBotProtected(html)) {
       const snippet = html.replace(/\s+/g, ' ').substring(0, 300);
-      console.log(`[FetchHTML] Response snippet: ${snippet}...`);
+      logger.info(`FetchHTML: Response snippet: ${snippet}...`);
     }
 
     return html;
@@ -722,7 +723,7 @@ export async function fetchHTML(url: string, options: FetchHTMLOptions = {}): Pr
         const retryAfter = response.headers.get('retry-after');
         if (retryAfter && attempt < maxRetries) {
           const waitMs = parseInt(retryAfter, 10) * 1000 || 5000;
-          console.log(`[FetchHTML] 429 Too Many Requests, waiting ${waitMs}ms (Retry-After: ${retryAfter})`);
+          logger.info(`FetchHTML: 429 Too Many Requests, waiting ${waitMs}ms (Retry-After: ${retryAfter})`);
           await new Promise(resolve => setTimeout(resolve, waitMs));
           continue;
         }
@@ -737,13 +738,13 @@ export async function fetchHTML(url: string, options: FetchHTMLOptions = {}): Pr
         }
 
         // Bot protection detected -- fall through to browser
-        console.log(`[FetchHTML] Bot protection detected on ${url}, will try browser fallback`);
+        logger.info(`FetchHTML: Bot protection detected on ${url}, will try browser fallback`);
         break;
       }
 
       // 403/503 often mean bot protection
       if (response.status === 403 || response.status === 503) {
-        console.log(`[FetchHTML] HTTP ${response.status} on ${url}, will try browser fallback`);
+        logger.info(`FetchHTML: HTTP ${response.status} on ${url}, will try browser fallback`);
         fetchHtml = await response.text();
         break;
       }
@@ -755,7 +756,7 @@ export async function fetchHTML(url: string, options: FetchHTMLOptions = {}): Pr
     } catch (err: any) {
       lastError = err;
       if (err.name === 'AbortError') {
-        console.log(`[FetchHTML] Timeout on attempt ${attempt + 1} for ${url}`);
+        logger.info(`FetchHTML: Timeout on attempt ${attempt + 1} for ${url}`);
       }
       if (attempt < maxRetries) {
         await backoffDelay(attempt);
@@ -766,7 +767,7 @@ export async function fetchHTML(url: string, options: FetchHTMLOptions = {}): Pr
   // Step 2: Try patchright browser fallback
   const available = await loadPatchright();
   if (available) {
-    console.log(`[FetchHTML] Falling back to browser for ${url}`);
+    logger.info(`FetchHTML: Falling back to browser for ${url}`);
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const html = await fetchWithBrowser(url, options);
@@ -775,7 +776,7 @@ export async function fetchHTML(url: string, options: FetchHTMLOptions = {}): Pr
         }
       } catch (err: any) {
         lastError = err;
-        console.error(`[FetchHTML] Browser attempt ${attempt + 1} failed for ${url}:`, err.message);
+        logger.error(`FetchHTML: Browser attempt ${attempt + 1} failed for ${url}: ${err.message}`);
         if (attempt < maxRetries) {
           await backoffDelay(attempt);
         }
@@ -783,7 +784,7 @@ export async function fetchHTML(url: string, options: FetchHTMLOptions = {}): Pr
     }
   } else if (fetchHtml) {
     // No patchright available but we have some HTML from node-fetch (even if it's bot-protected)
-    console.warn(`[FetchHTML] Returning potentially incomplete HTML for ${url} (patchright not available for fallback)`);
+    logger.warn(`FetchHTML: Returning potentially incomplete HTML for ${url} (patchright not available for fallback)`);
     return { html: fetchHtml, usedBrowser: false, url, statusCode };
   }
 
@@ -805,7 +806,7 @@ export async function getCookiesAndHeaders(
   const available = await loadPatchright();
   if (!available) {
     // Fall back to basic fetch headers
-    console.warn('[PatchrightHelper] patchright not available, returning empty headers');
+    logger.warn('PatchrightHelper: patchright not available, returning empty headers');
     return {};
   }
 

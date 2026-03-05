@@ -37,6 +37,7 @@ import { generateSummarizeInput, SUMMARIZE_OPTIONS } from '../../helpers/promptH
 import { condenseGitHubText, condenseDiffHunk } from '../../helpers/textCondenser';
 import { externalConnectionService } from '../../services/externalConnections/ExternalConnectionService';
 import { Octokit } from 'octokit';
+import { logger } from '../../helpers/cliHelper';
 
 /**
  * Default activity types - all enabled for private repos (authenticated)
@@ -260,7 +261,7 @@ export class GitHubSource implements ContentSource {
     }
 
     const authMode = config.connectionId ? 'GitHub App' : 'public (unauthenticated)';
-    console.log(`[${this.name}] Initialized with ${this.repositories.length} repositories, auth: ${authMode}`);
+    logger.info(`${this.name}: Initialized with ${this.repositories.length} repositories, auth: ${authMode}`);
   }
 
   /**
@@ -271,7 +272,7 @@ export class GitHubSource implements ContentSource {
 
     // Auto-fetch repos from connection
     if (this.config.connectionId) {
-      console.log(`[${this.name}] Fetching repositories from GitHub App connection...`);
+      logger.info(`${this.name}: Fetching repositories from GitHub App connection...`);
       
       try {
         const channels = await externalConnectionService.getChannels(this.config.connectionId);
@@ -283,13 +284,13 @@ export class GitHubSource implements ContentSource {
           }))
           .filter(r => r.owner && r.repo);
 
-        console.log(`[${this.name}] Auto-loaded ${this.repositories.length} repositories from connection`);
+        logger.info(`${this.name}: Auto-loaded ${this.repositories.length} repositories from connection`);
         
         if (this.repositories.length === 0) {
           throw new Error('No accessible repositories found in GitHub App connection');
         }
       } catch (error) {
-        console.error(`[${this.name}] Failed to fetch repos from connection:`, error);
+        logger.error(`${this.name}: Failed to fetch repos from connection`, error);
         throw error;
       }
     }
@@ -309,7 +310,7 @@ export class GitHubSource implements ContentSource {
         const client = await githubAdapter.getClientForConnection(this.config.connectionId);
         return client;
       } catch (error) {
-        console.error(`[${this.name}] Failed to get client for connection:`, error);
+        logger.error(`${this.name}: Failed to get client for connection`, error);
         throw new Error(`GitHub App connection error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
@@ -319,10 +320,10 @@ export class GitHubSource implements ContentSource {
     if (!this.unauthenticatedClient) {
       if (token) {
         this.unauthenticatedClient = new Octokit({ auth: token });
-        console.log(`[${this.name}] Using authenticated GitHub API access (5,000 req/hr)`);
+        logger.info(`${this.name}: Using authenticated GitHub API access (5,000 req/hr)`);
       } else {
         this.unauthenticatedClient = new Octokit();
-        console.warn(`[${this.name}] Using unauthenticated GitHub API access (60 req/hr limit). Set GITHUB_TOKEN for higher limits.`);
+        logger.warn(`${this.name}: Using unauthenticated GitHub API access (60 req/hr limit). Set GITHUB_TOKEN for higher limits.`);
       }
     }
     return this.unauthenticatedClient;
@@ -376,7 +377,7 @@ export class GitHubSource implements ContentSource {
         const items = await this.fetchRepoDataForPeriod(repoConfig, since, until, displayDate);
         allItems.push(...items);
       } catch (error) {
-        console.error(`[${this.name}] Error fetching data for ${repoConfig.owner}/${repoConfig.repo}:`, error);
+        logger.error(`${this.name}: Error fetching data for ${repoConfig.owner}/${repoConfig.repo}`, error);
         // Continue with other repos
       }
     }
@@ -405,8 +406,8 @@ export class GitHubSource implements ContentSource {
     const { owner, repo } = repoConfig;
     const activityTypes = this.getEffectiveActivityTypes();
 
-    console.log(`[${this.name}] Fetching GitHub data for ${owner}/${repo} from ${since.toISOString()} to ${until.toISOString()}`);
-    console.log(`[${this.name}] Activity types enabled:`, Object.entries(activityTypes).filter(([_, v]) => v).map(([k]) => k).join(', '));
+    logger.info(`${this.name}: Fetching GitHub data for ${owner}/${repo} from ${since.toISOString()} to ${until.toISOString()}`);
+    logger.info(`${this.name}: Activity types enabled: ${Object.entries(activityTypes).filter(([_, v]) => v).map(([k]) => k).join(', ')}`);
 
     const client = await this.getClient();
 
@@ -508,7 +509,7 @@ export class GitHubSource implements ContentSource {
       stats,
     };
 
-    console.log(`[${this.name}] Fetched ${filteredPRs.length} PRs, ${filteredIssues.length} issues, ${filteredCommits.length} commits for ${owner}/${repo}`);
+    logger.info(`${this.name}: Fetched ${filteredPRs.length} PRs, ${filteredIssues.length} issues, ${filteredCommits.length} commits for ${owner}/${repo}`);
 
     // Convert to ContentItems
     return this.processRepoToContentItems(data, displayDate);
@@ -555,7 +556,7 @@ export class GitHubSource implements ContentSource {
               changeType: f.status,
             }));
           } catch (e) {
-            console.warn(`[${this.name}] Could not fetch files for PR #${pr.number}`);
+            logger.warn(`${this.name}: Could not fetch files for PR #${pr.number}`);
           }
 
           prs.push({
@@ -578,7 +579,7 @@ export class GitHubSource implements ContentSource {
         }
       }
     } catch (error) {
-      console.error(`[${this.name}] Error fetching PRs for ${owner}/${repo}:`, error);
+      logger.error(`${this.name}: Error fetching PRs for ${owner}/${repo}`, error);
     }
 
     return prs;
@@ -634,7 +635,7 @@ export class GitHubSource implements ContentSource {
         }
       }
     } catch (error) {
-      console.error(`[${this.name}] Error fetching issues for ${owner}/${repo}:`, error);
+      logger.error(`${this.name}: Error fetching issues for ${owner}/${repo}`, error);
     }
 
     return issues;
@@ -678,7 +679,7 @@ export class GitHubSource implements ContentSource {
         });
       }
     } catch (error) {
-      console.error(`[${this.name}] Error fetching commits for ${owner}/${repo}:`, error);
+      logger.error(`${this.name}: Error fetching commits for ${owner}/${repo}`, error);
     }
 
     return commits;
@@ -727,7 +728,7 @@ export class GitHubSource implements ContentSource {
         }
       }
     } catch (error) {
-      console.error(`[${this.name}] Error fetching comments for ${owner}/${repo}:`, error);
+      logger.error(`${this.name}: Error fetching comments for ${owner}/${repo}`, error);
     }
 
     return comments;
@@ -779,7 +780,7 @@ export class GitHubSource implements ContentSource {
         }
       }
     } catch (error) {
-      console.error(`[${this.name}] Error fetching review comments for ${owner}/${repo}:`, error);
+      logger.error(`${this.name}: Error fetching review comments for ${owner}/${repo}`, error);
     }
 
     return reviewComments;
@@ -843,11 +844,11 @@ export class GitHubSource implements ContentSource {
             }
           }
         } catch (error) {
-          console.warn(`[${this.name}] Could not fetch reviews for PR #${pr.number}`);
+          logger.warn(`${this.name}: Could not fetch reviews for PR #${pr.number}`);
         }
       }
     } catch (error) {
-      console.error(`[${this.name}] Error fetching review submissions for ${owner}/${repo}:`, error);
+      logger.error(`${this.name}: Error fetching review submissions for ${owner}/${repo}`, error);
     }
 
     return reviewSubmissions;
@@ -891,7 +892,7 @@ export class GitHubSource implements ContentSource {
         }
       }
     } catch (error) {
-      console.error(`[${this.name}] Error fetching merged PRs for ${owner}/${repo}:`, error);
+      logger.error(`${this.name}: Error fetching merged PRs for ${owner}/${repo}`, error);
     }
 
     return mergedPRs;
@@ -938,7 +939,7 @@ export class GitHubSource implements ContentSource {
         }
       }
     } catch (error) {
-      console.error(`[${this.name}] Error fetching closed issues for ${owner}/${repo}:`, error);
+      logger.error(`${this.name}: Error fetching closed issues for ${owner}/${repo}`, error);
     }
 
     return closedIssues;
@@ -1582,7 +1583,7 @@ export class GitHubSource implements ContentSource {
         );
         return await this.config.aiSummary.provider.summarize(input, SUMMARIZE_OPTIONS.githubSummary);
       } catch (error) {
-        console.error(`[${this.name}] AI summary generation failed:`, error);
+        logger.error(`${this.name}: AI summary generation failed`, error);
       }
     }
 
@@ -1793,7 +1794,7 @@ export class GitHubSource implements ContentSource {
         );
         summaryText = await this.config.aiSummary.provider.summarize(input, SUMMARIZE_OPTIONS.githubSummary);
       } catch (error) {
-        console.error(`[${this.name}] AI summary generation failed:`, error);
+        logger.error(`${this.name}: AI summary generation failed`, error);
         summaryText = this.generateSimpleSummary(data, dateStr, baseGithubUrl);
       }
     } else {

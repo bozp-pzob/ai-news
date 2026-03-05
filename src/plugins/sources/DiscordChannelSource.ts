@@ -188,7 +188,7 @@ export class DiscordChannelSource implements ContentSource {
       const channel = await client.channels.fetch(channelId);
 
       if (!channel || channel.type !== ChannelType.GuildText) {
-        console.warn(`Channel ID ${channelId} is not a text channel or does not exist.`);
+        logger.warn(`Channel ID ${channelId} is not a text channel or does not exist.`);
         continue;
       }
 
@@ -206,7 +206,7 @@ export class DiscordChannelSource implements ContentSource {
       const messages = await textChannel.messages.fetch(fetchOptions);
 
       if (messages.size === 0) {
-        console.log(`No new messages found for channel ${channelId}.`);
+        logger.info(`No new messages found for channel ${channelId}.`);
         continue;
       }
 
@@ -268,7 +268,7 @@ export class DiscordChannelSource implements ContentSource {
     for (const channelId of this.channelIds) {
       const channel = await client.channels.fetch(channelId);
       if (!channel || channel.type !== ChannelType.GuildText) {
-        console.warn(`Channel ID ${channelId} is not a text channel or does not exist.`);
+        logger.warn(`Channel ID ${channelId} is not a text channel or does not exist.`);
         continue;
       }
 
@@ -303,7 +303,7 @@ export class DiscordChannelSource implements ContentSource {
       }
 
       if (allMessages.length === 0) {
-        console.log(`No messages found for channel ${channelId} since ${date}.`);
+        logger.info(`No messages found for channel ${channelId} since ${date}.`);
         continue;
       }
 

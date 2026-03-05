@@ -17,6 +17,7 @@ import {
   MediaManifestEntry,
 } from "../types";
 import { extractFilenameFromUrl, removeEmptyArrays } from "./fileHelper";
+import { logger } from "./cliHelper";
 
 /**
  * Process a Discord attachment into standardized format
@@ -366,7 +367,7 @@ export class MediaLookup {
    */
   async load(): Promise<boolean> {
     if (!fs.existsSync(this.manifestPath)) {
-      console.warn(`[MediaLookup] Manifest not found: ${this.manifestPath}`);
+      logger.warn(`MediaLookup: Manifest not found: ${this.manifestPath}`);
       return false;
     }
 
@@ -375,7 +376,7 @@ export class MediaLookup {
       this.manifest = JSON.parse(content);
 
       if (!this.manifest?.files) {
-        console.warn("[MediaLookup] Manifest has no files array");
+        logger.warn("MediaLookup: Manifest has no files array");
         return false;
       }
 
@@ -413,13 +414,13 @@ export class MediaLookup {
         }
       }
 
-      console.log(
-        `[MediaLookup] Loaded ${this.manifest.files.length} media items, ` +
+      logger.info(
+        `MediaLookup: Loaded ${this.manifest.files.length} media items, ` +
           `${this.byMessageId.size} unique messages, ${this.byDate.size} dates`
       );
       return true;
     } catch (error) {
-      console.error(`[MediaLookup] Error loading manifest:`, error);
+      logger.error(`MediaLookup: Error loading manifest`, error);
       return false;
     }
   }
@@ -554,9 +555,9 @@ export function buildUrlSwapMap(manifestPath: string): Map<string, string> {
       }
     }
 
-    console.log(`[MediaLookup] Built URL swap map with ${swapMap.size} entries`);
+    logger.info(`MediaLookup: Built URL swap map with ${swapMap.size} entries`);
   } catch (error) {
-    console.error(`[MediaLookup] Error building swap map:`, error);
+    logger.error(`MediaLookup: Error building swap map`, error);
   }
 
   return swapMap;
@@ -597,7 +598,7 @@ export function swapUrlsInJsonFile(
   try {
     const swapMap = buildUrlSwapMap(manifestPath);
     if (swapMap.size === 0) {
-      console.warn("[MediaLookup] No URLs to swap");
+      logger.warn("MediaLookup: No URLs to swap");
       return false;
     }
 
@@ -611,11 +612,11 @@ export function swapUrlsInJsonFile(
 
     const outPath = outputPath || jsonPath;
     fs.writeFileSync(outPath, JSON.stringify(cleaned, null, 2));
-    console.log(`[MediaLookup] Swapped URLs and cleaned empty arrays in ${outPath}`);
+    logger.info(`MediaLookup: Swapped URLs and cleaned empty arrays in ${outPath}`);
 
     return true;
   } catch (error) {
-    console.error(`[MediaLookup] Error swapping URLs:`, error);
+    logger.error(`MediaLookup: Error swapping URLs`, error);
     return false;
   }
 }

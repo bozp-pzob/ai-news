@@ -71,6 +71,10 @@ CREATE TABLE IF NOT EXISTS configs (
   global_interval INTEGER,  -- Milliseconds, overrides per-source intervals for continuous runs
   active_job_id UUID,  -- Reference to currently running continuous job
   
+  -- Cron scheduling (BullMQ repeatable jobs)
+  cron_expression TEXT,  -- e.g. '0 */6 * * *' for every 6 hours
+  schedule_timezone TEXT DEFAULT 'UTC',  -- IANA timezone for cron evaluation
+  
   -- Limits tracking (for free tier)
   runs_today INTEGER DEFAULT 0,
   runs_today_reset_at DATE DEFAULT CURRENT_DATE,
@@ -305,6 +309,70 @@ CREATE TABLE IF NOT EXISTS aggregation_jobs (
 );
 
 -- ============================================
+-- WEBHOOK TABLES
+-- ============================================
+
+-- Webhook buffer: stores incoming payloads until consumed by WebhookSource
+CREATE TABLE IF NOT EXISTS webhook_buffer (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  webhook_id TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  content_type TEXT,
+  headers JSONB,
+  source_ip TEXT,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  processed BOOLEAN DEFAULT FALSE,
+  processed_at TIMESTAMPTZ
+);
+
+-- Webhook configs: maps webhook_id -> webhook_secret for validation
+CREATE TABLE IF NOT EXISTS webhook_configs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  webhook_id TEXT NOT NULL UNIQUE,
+  webhook_secret TEXT NOT NULL,
+  config_id UUID REFERENCES configs(id) ON DELETE CASCADE,
+  source_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Outbound webhooks: notify external URLs on events (job completion, failure, etc.)
+CREATE TABLE IF NOT EXISTS outbound_webhooks (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  config_id UUID REFERENCES configs(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  events TEXT[] NOT NULL DEFAULT '{job.completed,job.failed}',
+  signing_secret TEXT NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE,
+  description TEXT,
+  -- Delivery tracking
+  last_triggered_at TIMESTAMPTZ,
+  last_success_at TIMESTAMPTZ,
+  last_failure_at TIMESTAMPTZ,
+  last_error TEXT,
+  consecutive_failures INTEGER DEFAULT 0,
+  total_deliveries INTEGER DEFAULT 0,
+  total_successes INTEGER DEFAULT 0,
+  total_failures INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Outbound webhook delivery log (recent deliveries for debugging)
+CREATE TABLE IF NOT EXISTS outbound_webhook_deliveries (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  webhook_id UUID NOT NULL REFERENCES outbound_webhooks(id) ON DELETE CASCADE,
+  event TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  status_code INTEGER,
+  response_body TEXT,
+  error TEXT,
+  duration_ms INTEGER,
+  delivered_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================
 -- INDEXES
 -- ============================================
 
@@ -325,6 +393,7 @@ CREATE INDEX IF NOT EXISTS idx_configs_status ON configs(status);
 CREATE INDEX IF NOT EXISTS idx_configs_monetization ON configs(monetization_enabled) WHERE monetization_enabled = TRUE;
 CREATE INDEX IF NOT EXISTS idx_configs_public ON configs(visibility, monetization_enabled) WHERE visibility = 'public';
 CREATE INDEX IF NOT EXISTS idx_configs_featured ON configs(is_featured, featured_at DESC) WHERE is_featured = TRUE;
+CREATE INDEX IF NOT EXISTS idx_configs_cron_active ON configs(cron_expression) WHERE cron_expression IS NOT NULL;
 
 -- Config shares
 CREATE INDEX IF NOT EXISTS idx_config_shares_config ON config_shares(config_id);
@@ -386,6 +455,24 @@ CREATE INDEX IF NOT EXISTS idx_aggregation_jobs_running ON aggregation_jobs(stat
 CREATE INDEX IF NOT EXISTS idx_aggregation_jobs_user ON aggregation_jobs(user_id);
 CREATE INDEX IF NOT EXISTS idx_aggregation_jobs_user_created ON aggregation_jobs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_aggregation_jobs_continuous_running ON aggregation_jobs(job_type, status) WHERE job_type = 'continuous' AND status = 'running';
+
+-- Webhook buffer
+CREATE INDEX IF NOT EXISTS idx_webhook_buffer_pending ON webhook_buffer(webhook_id, processed) WHERE processed = FALSE;
+CREATE INDEX IF NOT EXISTS idx_webhook_buffer_received ON webhook_buffer(webhook_id, received_at DESC);
+
+-- Webhook configs
+CREATE INDEX IF NOT EXISTS idx_webhook_configs_webhook_id ON webhook_configs(webhook_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_configs_config ON webhook_configs(config_id);
+
+-- Outbound webhooks
+CREATE INDEX IF NOT EXISTS idx_outbound_webhooks_user ON outbound_webhooks(user_id);
+CREATE INDEX IF NOT EXISTS idx_outbound_webhooks_config ON outbound_webhooks(config_id);
+CREATE INDEX IF NOT EXISTS idx_outbound_webhooks_active ON outbound_webhooks(is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_outbound_webhooks_config_active ON outbound_webhooks(config_id, is_active) WHERE is_active = TRUE;
+
+-- Outbound webhook deliveries (keep recent for debugging)
+CREATE INDEX IF NOT EXISTS idx_outbound_webhook_deliveries_webhook ON outbound_webhook_deliveries(webhook_id);
+CREATE INDEX IF NOT EXISTS idx_outbound_webhook_deliveries_delivered ON outbound_webhook_deliveries(delivered_at DESC);
 
 -- ============================================
 -- VECTOR INDEXES (IVFFlat for ANN search)

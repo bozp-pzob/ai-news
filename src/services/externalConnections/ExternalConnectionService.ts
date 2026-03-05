@@ -22,6 +22,7 @@ import {
   mapChannelRow,
 } from './types';
 import { databaseService } from '../databaseService';
+import { logger } from '../../helpers/cliHelper';
 
 /**
  * External Connection Service
@@ -63,18 +64,18 @@ class ExternalConnectionService {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    console.log('[ExternalConnectionService] Initializing adapters...');
+    logger.info('ExternalConnectionService: Initializing adapters...');
 
     for (const [platform, adapter] of this.adapters) {
       if (adapter.isConfigured()) {
         try {
           await adapter.initialize();
-          console.log(`[ExternalConnectionService] ${platform} adapter initialized`);
+          logger.info(`ExternalConnectionService: ${platform} adapter initialized`);
         } catch (error) {
-          console.error(`[ExternalConnectionService] Failed to initialize ${platform} adapter:`, error);
+          logger.error(`ExternalConnectionService: Failed to initialize ${platform} adapter`, error);
         }
       } else {
-        console.log(`[ExternalConnectionService] ${platform} adapter not configured, skipping`);
+        logger.info(`ExternalConnectionService: ${platform} adapter not configured, skipping`);
       }
     }
 

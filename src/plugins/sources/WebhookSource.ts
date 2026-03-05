@@ -21,6 +21,7 @@ import { AiProvider, ContentItem } from '../../types';
 import { StoragePlugin } from '../storage/StoragePlugin';
 import { extractReadableContent, extractPageContent } from '../../helpers/htmlHelper';
 import crypto from 'crypto';
+import { logger } from '../../helpers/cliHelper';
 
 // ============================================
 // CONFIGURATION
@@ -131,7 +132,7 @@ export class WebhookSource implements ContentSource {
       try {
         this.payloadMapping = JSON.parse(config.payloadMapping) as PayloadMapping;
       } catch {
-        console.warn(`[WebhookSource:${this.name}] Invalid payloadMapping JSON, ignoring`);
+        logger.warn(`WebhookSource:${this.name} Invalid payloadMapping JSON, ignoring`);
       }
     }
 
@@ -194,7 +195,7 @@ export class WebhookSource implements ContentSource {
           );
         }
       } catch (err: any) {
-        console.warn(`[WebhookSource:${this.name}] Failed to create buffer table:`, err.message);
+        logger.warn(`WebhookSource:${this.name} Failed to create buffer table: ${err.message}`);
       }
     }
 
@@ -268,7 +269,7 @@ export class WebhookSource implements ContentSource {
       return [];
     }
 
-    console.log(`[WebhookSource:${this.name}] Processing ${rows.length} buffered webhook(s)`);
+    logger.info(`WebhookSource:${this.name} Processing ${rows.length} buffered webhook(s)`);
 
     const processedIds: string[] = [];
 
@@ -280,7 +281,7 @@ export class WebhookSource implements ContentSource {
         }
         processedIds.push(row.id);
       } catch (err: any) {
-        console.error(`[WebhookSource:${this.name}] Error processing webhook payload:`, err.message);
+        logger.error(`WebhookSource:${this.name} Error processing webhook payload: ${err.message}`);
         processedIds.push(row.id); // Mark as processed even on error to prevent re-processing
       }
     }
@@ -293,7 +294,7 @@ export class WebhookSource implements ContentSource {
     // Cleanup old processed records
     await this.cleanup();
 
-    console.log(`[WebhookSource:${this.name}] Produced ${results.length} content item(s)`);
+    logger.info(`WebhookSource:${this.name} Produced ${results.length} content item(s)`);
     return results;
   }
 

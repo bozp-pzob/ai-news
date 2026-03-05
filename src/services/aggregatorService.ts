@@ -1,5 +1,6 @@
 import { ContentAggregator } from "../aggregator/ContentAggregator";
 import { loadDirectoryModules, loadItems, loadProviders, loadStorage } from "../helpers/configHelper";
+import { logger } from '../helpers/cliHelper';
 import { Config } from "./configService";
 import { AggregationStatus, AiProvider, AiUsageStats, JobStatus, GeneratorPlugin, GeneratorInstanceConfig, ExporterPlugin, ExporterInstanceConfig } from "../types";
 import EventEmitter from "events";
@@ -126,12 +127,44 @@ export class AggregatorService {
       }
     }
 
+    // Calculate progress based on actual job phase rather than hardcoding 50%
+    let progress = 0;
+    if (job.status === 'completed') {
+      progress = 100;
+    } else if (job.status === 'failed' || job.status === 'cancelled') {
+      progress = 0;
+    } else if (job.status === 'running') {
+      // Estimate progress from the active aggregator state
+      const activeState = this.activeJobStates.get(job.id);
+      const aggregator = activeState?.aggregator;
+      if (aggregator) {
+        const status = aggregator.getStatus();
+        const phase = status.currentPhase;
+        if (phase === 'fetching') {
+          // Fetching phase: 10-50% range
+          progress = 30;
+        } else if (phase === 'enriching') {
+          progress = 55;
+        } else if (phase === 'generating') {
+          progress = 75;
+        } else if (phase === 'storing') {
+          progress = 90;
+        } else {
+          // Default: use items fetched as a rough indicator
+          progress = job.itemsFetched > 0 ? 40 : 15;
+        }
+      } else {
+        // No aggregator yet — loading/initializing phase
+        progress = 10;
+      }
+    }
+
     return {
       jobId: job.id,
       configName: '', // Will need to look this up if needed
       startTime: job.startedAt?.getTime() || job.createdAt.getTime(),
       status: job.status as JobStatus['status'],
-      progress: job.status === 'completed' ? 100 : job.status === 'running' ? 50 : 0,
+      progress,
       error: job.errorMessage,
       cancelReason,
       intervals: this.activeJobStates.get(job.id)?.intervals,
@@ -219,7 +252,7 @@ export class AggregatorService {
     
     // Start the continuous aggregation process in the background
     this.startContinuousAggregationProcess(jobId, configName, config, settings, secrets, globalInterval, userId).catch(async error => {
-      console.error(`Error in continuous aggregation process for job ${jobId}:`, error);
+      logger.error(`Error in continuous aggregation process for job ${jobId}`, error);
       await jobService.failJob(jobId, error.message || 'Unknown error');
       await jobService.addJobLog(jobId, 'error', error.message || 'Unknown error');
     });
@@ -248,7 +281,7 @@ export class AggregatorService {
     
     // Start the continuous aggregation process
     this.startContinuousAggregationProcess(jobId, configName, config, settings, secrets).catch(error => {
-      console.error(`Error in background continuous aggregation process for job ${jobId}:`, error);
+      logger.error(`Error in background continuous aggregation process for job ${jobId}`, error);
     });
     
     return jobId;
@@ -391,10 +424,19 @@ export class AggregatorService {
           const dateStr = yesterday.toISOString().slice(0, 10);
 
           if (genInstances.length > 0 && primaryStorage) {
+            // Update phase to 'generating'
+            const status = aggregator.getStatus();
+            status.currentPhase = 'generating';
+            status.currentSource = undefined;
+            status.lastUpdated = Date.now();
+
             const result = await runGeneratorsForDate(dateStr, {
               generators: genInstances,
               storage: primaryStorage,
             });
+
+            status.currentPhase = 'idle';
+            status.lastUpdated = Date.now();
             return result;
           }
           return null;
@@ -483,7 +525,7 @@ export class AggregatorService {
     
     // Start the aggregation process in the background
     this.runAggregationProcess(jobId, configName, config, settings, secrets).catch(async error => {
-      console.error(`Error in aggregation process for job ${jobId}:`, error);
+      logger.error(`Error in aggregation process for job ${jobId}`, error);
       await jobService.failJob(jobId, error.message || 'Unknown error');
       await jobService.addJobLog(jobId, 'error', error.message || 'Unknown error');
     });
@@ -511,7 +553,7 @@ export class AggregatorService {
     
     // Start the aggregation process
     this.runAggregationProcess(jobId, configName, config, settings, secrets).catch(error => {
-      console.error(`Error in background aggregation process for job ${jobId}:`, error);
+      logger.error(`Error in background aggregation process for job ${jobId}`, error);
     });
     
     return jobId;
@@ -522,7 +564,7 @@ export class AggregatorService {
     const isDbJob = jobId.length === 36; // UUIDs are 36 chars
     
     // Log config summary
-    console.log('[AggregatorService] Received config:', {
+    logger.info('AggregatorService: Received config:', {
       storageCount: config.storage?.length || 0,
       generatorCount: config.generators?.length || 0,
       sourceCount: config.sources?.length || 0,
@@ -570,7 +612,7 @@ export class AggregatorService {
 
       if (isHistoricalMode) {
         // Use HistoricalAggregator for historical data
-        console.log('Running in historical mode with settings:', settings.historicalDate);
+        logger.info('Running in historical mode with settings:', settings.historicalDate);
         const aggregator = new HistoricalAggregator();
         
         // Register sources that support historical fetching
@@ -578,7 +620,7 @@ export class AggregatorService {
           if (config.instance?.fetchHistorical) {
             aggregator.registerSource(config.instance);
           } else {
-            console.warn(`Source ${config.instance.name} does not support historical data fetching`);
+            logger.warn(`Source ${config.instance.name} does not support historical data fetching`);
           }
         });
         
@@ -637,13 +679,13 @@ export class AggregatorService {
                 generators: histGenInstances,
                 storage: histPrimaryStorage,
               });
-              console.log(`[AggregatorService] Historical range generation complete: ${result.summaryItems.length} summaries, ${result.totalTokensUsed} tokens`);
+              logger.info(`AggregatorService: Historical range generation complete: ${result.summaryItems.length} summaries, ${result.totalTokensUsed} tokens`);
             } else {
               const result = await runGeneratorsForDate(startDate, {
                 generators: histGenInstances,
                 storage: histPrimaryStorage,
               });
-              console.log(`[AggregatorService] Historical generation complete: ${result.summaryItems.length} summaries, ${result.totalTokensUsed} tokens`);
+              logger.info(`AggregatorService: Historical generation complete: ${result.summaryItems.length} summaries, ${result.totalTokensUsed} tokens`);
             }
             await this.emitStatusUpdate(configName, jobId);
           }
@@ -712,6 +754,13 @@ export class AggregatorService {
         if (isDbJob) {
           await jobService.addJobLog(jobId, 'info', 'Generating summaries...');
         }
+
+        // Update phase to 'generating' so progress tracking can reflect it
+        const genStatus = aggregator.getStatus();
+        genStatus.currentPhase = 'generating';
+        genStatus.currentSource = undefined;
+        genStatus.lastUpdated = Date.now();
+        await this.emitStatusUpdate(configName, jobId);
 
         const { generators: otGenInstances, exporters: otExpInstances } = this.separatePlugins(generatorConfigs);
         const otPrimaryStorage = storageConfigs[0]?.instance;
@@ -824,7 +873,7 @@ export class AggregatorService {
     // Emit a final job status update via WebSocket so the frontend is notified immediately
     await this.emitJobStatusUpdate(jobId);
     
-    console.log(`[AggregatorService] Stopped continuous job ${jobId} due to expired Pro license`);
+    logger.info(`AggregatorService: Stopped continuous job ${jobId} due to expired Pro license`);
     return true;
   }
 
@@ -843,7 +892,7 @@ export class AggregatorService {
       }
       return false;
     } catch (error) {
-      console.error(`[AggregatorService] Error checking Pro license for user ${userId}:`, error);
+      logger.error(`AggregatorService: Error checking Pro license for user ${userId}`, error);
       // On error, don't stop the job — let the next tick or cron handle it
       return true;
     }
@@ -870,7 +919,7 @@ export class AggregatorService {
           interval: config.interval,
         });
       } else {
-        console.warn(`[AggregatorService] Plugin "${config.instance.name}" does not implement GeneratorPlugin or ExporterPlugin, skipping.`);
+        logger.warn(`AggregatorService: Plugin "${config.instance.name}" does not implement GeneratorPlugin or ExporterPlugin, skipping.`);
       }
     }
 
@@ -904,23 +953,23 @@ export class AggregatorService {
   async resumeRunningJobs(): Promise<void> {
     try {
       const runningJobs = await jobService.getRunningJobs();
-      console.log(`[AggregatorService] Found ${runningJobs.length} running jobs to clean up`);
+      logger.info(`AggregatorService: Found ${runningJobs.length} running jobs to clean up`);
       
       for (const job of runningJobs) {
         if (job.jobType === 'continuous') {
           // Continuous jobs cannot be auto-resumed without config/secrets.
           // Cancel them so they don't appear as phantom "active" jobs in the UI.
-          console.log(`[AggregatorService] Cancelling orphaned continuous job ${job.id} for config ${job.configId}`);
+          logger.info(`AggregatorService: Cancelling orphaned continuous job ${job.id} for config ${job.configId}`);
           await jobService.cancelJob(job.id);
           await jobService.addJobLog(job.id, 'info', 'Server restarted — continuous job cancelled. Please restart it manually.');
         } else {
           // One-time job was interrupted - mark as failed
-          console.log(`[AggregatorService] Marking interrupted one-time job ${job.id} as failed`);
+          logger.info(`AggregatorService: Marking interrupted one-time job ${job.id} as failed`);
           await jobService.failJob(job.id, 'Server restarted during execution');
         }
       }
     } catch (error) {
-      console.error('[AggregatorService] Error resuming running jobs:', error);
+      logger.error('AggregatorService: Error resuming running jobs', error);
     }
   }
 

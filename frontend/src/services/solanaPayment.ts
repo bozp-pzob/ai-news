@@ -26,9 +26,9 @@ const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 const USDC_DECIMALS = 6;
 
 // Solana RPC endpoint
-// IMPORTANT: Set REACT_APP_SOLANA_RPC_URL in your .env for production
+// IMPORTANT: Set VITE_SOLANA_RPC_URL in your .env for production
 // Free RPC providers: Helius, QuickNode, Alchemy
-const RPC_ENDPOINT = process.env.REACT_APP_SOLANA_RPC_URL || 'https://solana-mainnet.g.alchemy.com/v2/demo';
+const RPC_ENDPOINT = import.meta.env.VITE_SOLANA_RPC_URL || 'https://solana-mainnet.g.alchemy.com/v2/demo';
 
 // Log RPC endpoint being used (helpful for debugging)
 console.log('[SolanaPayment] Using RPC endpoint:', RPC_ENDPOINT.includes('api-key') ? RPC_ENDPOINT.split('?')[0] + '?api-key=***' : RPC_ENDPOINT);

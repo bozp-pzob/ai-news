@@ -350,7 +350,7 @@ const OPENAPI_SPEC = {
         operationId: 'getItems',
         summary: 'Get raw content items',
         description:
-          'Get individual content items (messages, PRs, issues, commits) from a community. Returns truncated preview for monetized communities without payment.',
+          'Get individual content items (messages, PRs, issues, commits) from a community. Returns truncated preview for monetized communities without payment. Agents can send an X-Payment-Proof header (x402 protocol) for per-request full access.',
         tags: ['Data'],
         parameters: [
           {

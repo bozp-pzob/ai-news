@@ -6,6 +6,7 @@
 import { ContentSource } from "./ContentSource";
 import { ContentItem } from "../../types";
 import fetch from "node-fetch";
+import { logger } from '../../helpers/cliHelper';
 
 /**
  * Configuration interface for ApiSource
@@ -88,7 +89,7 @@ export class ApiSource implements ContentSource {
    * @throws {Error} If the API request fails
    */
   public async fetchItems(): Promise<ContentItem[]> {
-    console.log(`Fetching data from API endpoint: ${this.endpoint}`);
+    logger.info(`Fetching data from API endpoint: ${this.endpoint}`);
 
     const url = `${this.endpoint}&apiKey=${this.apiKey}`;
     const response = await fetch(url);
@@ -98,16 +99,26 @@ export class ApiSource implements ContentSource {
     }
     const jsonData = (await response.json()) as ApiResponse;
     
-    const articles: ContentItem[] = []
-    // jsonData.articles.map(item => ({
-    //   source: this.name,
-    //   title: item.title,
-    //   link: item.url,
-    //   date: item.publishedAt ? new Date(item.publishedAt) : null,
-    //   content: item.content,
-    //   description: item.description,
-    // }));
+    if (!jsonData.articles || !Array.isArray(jsonData.articles)) {
+      logger.warn(`ApiSource:${this.name} No articles array in response`);
+      return [];
+    }
 
+    const articles: ContentItem[] = jsonData.articles.map(item => ({
+      cid: `api-${this.name}-${Buffer.from(item.url || item.title || '').toString('base64url').slice(0, 32)}`,
+      type: 'apiArticle',
+      source: this.name,
+      title: item.title,
+      text: item.content || item.description || '',
+      link: item.url,
+      date: item.publishedAt ? Math.floor(new Date(item.publishedAt).getTime() / 1000) : Math.floor(Date.now() / 1000),
+      metadata: {
+        sourceType: 'api',
+        endpoint: this.endpoint,
+      },
+    }));
+
+    logger.info(`ApiSource:${this.name} Fetched ${articles.length} articles`);
     return articles;
   }
 }

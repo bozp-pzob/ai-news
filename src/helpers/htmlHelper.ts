@@ -28,6 +28,7 @@ import {
   extractDomain,
 } from './parserGenerator';
 import { validateAgainstExample, validateMinimumFields } from './parserValidator';
+import { logger } from './cliHelper';
 
 // ============================================
 // READABLE CONTENT EXTRACTION
@@ -69,7 +70,7 @@ export function extractReadableContent(html: string, url: string): ReadableConte
       };
     }
   } catch (err) {
-    console.warn('[HTMLHelper] Readability extraction failed, falling back to basic extraction:', err);
+    logger.warn('HTMLHelper: Readability extraction failed, falling back to basic extraction', err);
   }
 
   // Fallback: basic extraction using cheerio
@@ -617,7 +618,7 @@ export async function extractPageContent(
     const hasProvider = !!options.provider;
     const hasStorage = !!(options.storage && typeof options.storage !== 'string');
     const strategy = hasProvider && hasStorage ? 'parser-cache' : hasProvider ? 'direct-llm (no storage)' : 'readability-only';
-    console.log(`[extractPageContent] url=${url} provider=${hasProvider} storage=${hasStorage} strategy=${strategy}`);
+    logger.info(`extractPageContent: url=${url} provider=${hasProvider} storage=${hasStorage} strategy=${strategy}`);
 
     // 1. Get HTML (fetch from URL or use pre-fetched)
     let html: string;
@@ -654,26 +655,26 @@ export async function extractPageContent(
               if (validation.valid) {
                 // Parser works — record success and return
                 await storage.updateSiteParserStatus(cachedParser.id!, true);
-                console.log(`[extractPageContent] Cached parser hit for ${domain}${pathPattern} (v${cachedParser.version}, ${validation.presentFields.length} fields)`);
+                logger.info(`extractPageContent: Cached parser hit for ${domain}${pathPattern} (v${cachedParser.version}, ${validation.presentFields.length} fields)`);
                 return buildContentItemFromParsed(url, parsed, readable, structuredData, options, 'cached-parser');
               }
 
               // Parser produced too few fields
               await storage.updateSiteParserStatus(cachedParser.id!, false);
-              console.warn(`[extractPageContent] Cached parser returned only ${validation.presentFields.length} fields for ${url}`);
+              logger.warn(`extractPageContent: Cached parser returned only ${validation.presentFields.length} fields for ${url}`);
 
               if (cachedParser.consecutiveFailures + 1 < maxFailures) {
-                console.log(`[extractPageContent] Consecutive failures: ${cachedParser.consecutiveFailures + 1}/${maxFailures}, will use direct LLM extraction`);
+                logger.info(`extractPageContent: Consecutive failures: ${cachedParser.consecutiveFailures + 1}/${maxFailures}, will use direct LLM extraction`);
               } else {
-                console.log(`[extractPageContent] ${maxFailures} consecutive failures reached, will regenerate parser for ${domain}${pathPattern}`);
+                logger.info(`extractPageContent: ${maxFailures} consecutive failures reached, will regenerate parser for ${domain}${pathPattern}`);
               }
             } catch (execErr: any) {
               await storage.updateSiteParserStatus(cachedParser.id!, false);
-              console.warn(`[extractPageContent] Cached parser execution error for ${url}: ${execErr.message}`);
+              logger.warn(`extractPageContent: Cached parser execution error for ${url}: ${execErr.message}`);
             }
           }
         } catch (lookupErr: any) {
-          console.warn(`[extractPageContent] Parser lookup failed: ${lookupErr.message}`);
+          logger.warn(`extractPageContent: Parser lookup failed: ${lookupErr.message}`);
         }
       }
 
@@ -694,7 +695,7 @@ export async function extractPageContent(
           // Step B: Generate a reusable parser from the gold-standard (fire-and-forget)
           if (storage) {
             try {
-              console.log(`[extractPageContent] Generating parser for ${domain}${pathPattern} from gold-standard (${Object.keys(goldStandard).length} fields)...`);
+              logger.info(`extractPageContent: Generating parser for ${domain}${pathPattern} from gold-standard (${Object.keys(goldStandard).length} fields)...`);
               const code = await generateParserFromExample(html, goldStandard, options.provider, options.objectTypeString);
 
               // Step C: Execute the parser against the same HTML and validate against gold-standard
@@ -723,12 +724,12 @@ export async function extractPageContent(
                 };
 
                 await storage.saveSiteParser(parser);
-                console.log(`[extractPageContent] Parser saved for ${domain}${pathPattern} (score=${validation.score.toFixed(2)}, ${validation.presentFields.length}/${validation.totalFields} fields)`);
+                logger.info(`extractPageContent: Parser saved for ${domain}${pathPattern} (score=${validation.score.toFixed(2)}, ${validation.presentFields.length}/${validation.totalFields} fields)`);
               } else {
-                console.warn(`[extractPageContent] Generated parser failed validation (score=${validation.score.toFixed(2)}, missing=[${validation.missingFields.join(', ')}]). Parser not saved, but gold-standard result is fine.`);
+                logger.warn(`extractPageContent: Generated parser failed validation (score=${validation.score.toFixed(2)}, missing=[${validation.missingFields.join(', ')}]). Parser not saved, but gold-standard result is fine.`);
               }
             } catch (parserErr: any) {
-              console.warn(`[extractPageContent] Parser generation failed: ${parserErr.message}. Gold-standard result still returned.`);
+              logger.warn(`extractPageContent: Parser generation failed: ${parserErr.message}. Gold-standard result still returned.`);
             }
           }
 
@@ -736,7 +737,7 @@ export async function extractPageContent(
           return goldStandardItem;
         }
       } catch (aiErr) {
-        console.warn(`[extractPageContent] AI extraction failed for ${url}:`, aiErr);
+        logger.warn(`extractPageContent: AI extraction failed for ${url}`, aiErr);
         // Fall through to readability-based extraction
       }
     }
@@ -764,7 +765,7 @@ export async function extractPageContent(
       },
     };
   } catch (error) {
-    console.error(`[extractPageContent] Error extracting ${url}:`, error);
+    logger.error(`extractPageContent: Error extracting ${url}`, error);
     return undefined;
   }
 }

@@ -57,3 +57,52 @@ export const runRateLimiter = rateLimit({
     retryAfterSeconds: 60,
   },
 });
+
+/**
+ * Config creation/mutation endpoints
+ * 10 requests per hour per IP
+ */
+export const configMutationRateLimiter = rateLimit({
+  windowMs: 3_600_000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Rate limit exceeded',
+    code: 'RATE_LIMIT_EXCEEDED',
+    message: 'Too many config creation requests. Please try again later.',
+    retryAfterSeconds: 3600,
+  },
+});
+
+/**
+ * Admin endpoints
+ * 60 requests per minute per IP
+ */
+export const adminRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Rate limit exceeded',
+    code: 'RATE_LIMIT_EXCEEDED',
+    message: 'Too many admin requests. Please try again later.',
+    retryAfterSeconds: 60,
+  },
+});
+
+/**
+ * Webhook ingestion endpoints
+ * 120 requests per minute per IP (webhooks can be bursty)
+ */
+export const webhookIngestionRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Always return 200 to prevent retry storms from external webhook senders
+  handler: (_req, res) => {
+    res.status(200).json({ received: true, throttled: true });
+  },
+});

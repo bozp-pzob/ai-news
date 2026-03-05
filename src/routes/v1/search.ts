@@ -11,6 +11,7 @@ import { searchRateLimiter } from '../../middleware/rateLimitMiddleware';
 import { contextService } from '../../services/contextService';
 import { databaseService } from '../../services/databaseService';
 import { trackConfigQuery } from './configs';
+import { logger } from '../../helpers/cliHelper';
 
 const router = Router();
 
@@ -147,7 +148,7 @@ router.post('/', searchRateLimiter, optionalAuth, async (req: AuthenticatedReque
             searchTimeMs: result.searchTimeMs,
           });
         }).catch(error => {
-          console.error('[API] Error searching:', error);
+          logger.error('API: Error searching', error);
           res.status(500).json({ error: 'Search failed' });
         });
       });
@@ -173,7 +174,7 @@ router.post('/', searchRateLimiter, optionalAuth, async (req: AuthenticatedReque
       searchTimeMs: result.searchTimeMs,
     });
   } catch (error: any) {
-    console.error('[API] Error searching:', error);
+    logger.error('API: Error searching', error);
     res.status(500).json({ error: 'Search failed' });
   }
 });
@@ -233,7 +234,7 @@ router.get('/:configId', searchRateLimiter, optionalAuth,
       searchTimeMs: result.searchTimeMs,
     });
   } catch (error: any) {
-    console.error('[API] Error searching:', error);
+    logger.error('API: Error searching', error);
     res.status(500).json({ error: 'Search failed' });
   }
 });
@@ -346,7 +347,7 @@ router.post('/multi', searchRateLimiter, optionalAuth, async (req: Authenticated
       searchTimeMs: totalTime,
     });
   } catch (error: any) {
-    console.error('[API] Error multi-searching:', error);
+    logger.error('API: Error multi-searching', error);
     res.status(500).json({ error: 'Multi-search failed' });
   }
 });

@@ -10,6 +10,7 @@ import { generateMeme, MemeResult } from "../../helpers/imgflip";
 import { downloadAndUploadToCDN, getDefaultCDNConfig } from "../../helpers/cdnUploader";
 import fs from "fs";
 import path from "path";
+import { logger } from '../../helpers/cliHelper';
 
 const MEME_HISTORY_FILE = "data/meme-history.json";
 const HISTORY_RETENTION_DAYS = 14;
@@ -39,7 +40,7 @@ function saveMemeHistory(history: MemeHistoryEntry[]): void {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(MEME_HISTORY_FILE, JSON.stringify(history, null, 2));
   } catch (err) {
-    console.error("MemeEnricher: Failed to save history:", err);
+    logger.error("MemeEnricher: Failed to save history", err);
   }
 }
 
@@ -70,8 +71,8 @@ export class MemeEnricher implements EnricherPlugin {
 ${text.slice(0, 1000)}`;
 
     if (DEBUG) {
-      console.log(`\nMeme Summary Prompt:`);
-      console.log(prompt);
+      logger.info(`Meme Summary Prompt:`);
+      logger.info(prompt);
     }
 
     try {
@@ -90,12 +91,12 @@ ${text.slice(0, 1000)}`;
   public async enrich(contentItems: ContentItem[]): Promise<ContentItem[]> {
     const DEBUG = process.env.DEBUG_ENRICHERS === 'true';
 
-    console.log(`\n=== MemeEnricher ===`);
-    console.log(`Input: ${contentItems.length} items`);
+    logger.info(`=== MemeEnricher ===`);
+    logger.info(`Input: ${contentItems.length} items`);
 
     // Check if credentials are available
     if (!process.env.IMGFLIP_USERNAME || !process.env.IMGFLIP_PASSWORD) {
-      console.log("MemeEnricher: Skipping - IMGFLIP credentials not set");
+      logger.info("MemeEnricher: Skipping - IMGFLIP credentials not set");
       return contentItems;
     }
 
@@ -120,14 +121,14 @@ ${text.slice(0, 1000)}`;
       }
 
       if (DEBUG) {
-        console.log(`\n--- Processing: ${itemId} ---`);
-        console.log(`Content (${item.text.length} chars):`);
-        console.log(item.text);
+        logger.info(`--- Processing: ${itemId} ---`);
+        logger.info(`Content (${item.text.length} chars):`);
+        logger.info(item.text);
       }
 
       try {
         const memeSummary = await this.createMemeSummary(item.text, [...memeHistory, ...newEntries]);
-        console.log(`MemeEnricher: [${itemId}] Summary: "${memeSummary}"`);
+        logger.info(`MemeEnricher: [${itemId}] Summary: "${memeSummary}"`);
 
         const result: MemeResult = await generateMeme(memeSummary);
 
@@ -137,14 +138,14 @@ ${text.slice(0, 1000)}`;
           const cdnConfig = getDefaultCDNConfig();
 
           if (cdnConfig.storageZone && cdnConfig.password) {
-            console.log(`MemeEnricher: [${itemId}] Uploading to CDN...`);
+            logger.info(`MemeEnricher: [${itemId}] Uploading to CDN...`);
             const cdnResult = await downloadAndUploadToCDN(result.url, "imgflip", cdnConfig);
 
             if (cdnResult.success && cdnResult.cdnUrl) {
               finalUrl = cdnResult.cdnUrl;
-              console.log(`MemeEnricher: [${itemId}] ✅ Mirrored to CDN: ${finalUrl}`);
+              logger.info(`MemeEnricher: [${itemId}] Mirrored to CDN: ${finalUrl}`);
             } else {
-              console.log(`MemeEnricher: [${itemId}] ⚠️ CDN upload failed, keeping Imgflip URL: ${cdnResult.message}`);
+              logger.warn(`MemeEnricher: [${itemId}] CDN upload failed, keeping Imgflip URL: ${cdnResult.message}`);
             }
           }
 
@@ -164,13 +165,13 @@ ${text.slice(0, 1000)}`;
             }],
           };
           const templateInfo = result.templateName ? ` using "${result.templateName}"` : '';
-          console.log(`MemeEnricher: [${itemId}] ✅ Generated meme${templateInfo}`);
-          console.log(`  URL: ${finalUrl}`);
+          logger.info(`MemeEnricher: [${itemId}] Generated meme${templateInfo}`);
+          logger.info(`  URL: ${finalUrl}`);
         } else {
-          console.log(`MemeEnricher: [${itemId}] ❌ Failed - ${result.error}`);
+          logger.info(`MemeEnricher: [${itemId}] Failed - ${result.error}`);
         }
       } catch (error) {
-        console.error(`MemeEnricher: [${itemId}] Error:`, error);
+        logger.error(`MemeEnricher: [${itemId}] Error`, error);
       }
     }
 
@@ -178,7 +179,7 @@ ${text.slice(0, 1000)}`;
       saveMemeHistory([...memeHistory, ...newEntries]);
     }
 
-    console.log(`MemeEnricher: Generated ${generated} memes, skipped ${skipped} items\n`);
+    logger.info(`MemeEnricher: Generated ${generated} memes, skipped ${skipped} items`);
     return contentItems;
   }
 }

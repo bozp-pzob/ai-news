@@ -310,9 +310,9 @@ function StorageStep({
           )}
           <p className="text-stone-400 text-xs mt-2">
             Your database must have the pgvector extension installed. 
-            <a href="/docs/external-database" className="text-emerald-600 hover:underline ml-1">
-              Learn more
-            </a>
+            <span className="text-emerald-600 ml-1">
+              pgvector required for semantic search.
+            </span>
           </p>
         </div>
       )}
@@ -371,13 +371,9 @@ function SourcesStep({
           <label className="block text-sm font-medium text-stone-600">
             Configuration JSON
           </label>
-          <a 
-            href="/docs/config-schema" 
-            target="_blank"
-            className="text-emerald-600 text-sm hover:underline"
-          >
-            View schema docs
-          </a>
+          <span className="text-emerald-600 text-sm">
+            JSON configuration format
+          </span>
         </div>
         <textarea
           value={jsonText}

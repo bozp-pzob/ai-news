@@ -10,6 +10,7 @@
 import { ContentSource } from "../plugins/sources/ContentSource";
 import { StoragePlugin } from "../plugins/storage/StoragePlugin";
 import { ContentItem, EnricherPlugin, AggregationStatus } from "../types";
+import { logger } from '../helpers/cliHelper';
 
 /**
  * ContentAggregator class that orchestrates the collection and processing of content.
@@ -86,7 +87,7 @@ export class ContentAggregator {
   public async saveItems(items : ContentItem[], sourceName : string) {
     if (! this.storage) {
       const error = `Error aggregator storage hasn't be set.`;
-      console.error(error);
+      logger.error(error);
       this._status.errors?.push({
         message: error,
         source: sourceName,
@@ -96,9 +97,12 @@ export class ContentAggregator {
     }
 
     try {
+      this._status.currentPhase = 'storing';
+      this._status.lastUpdated = Date.now();
+
       if (items.length > 0) {
         await this.storage.saveContentItems(items);
-        console.log(`Stored ${items.length} items from source: ${sourceName}`);
+        logger.info(`Stored ${items.length} items from source: ${sourceName}`);
         
         // Update stats
         if (this._status.stats) {
@@ -108,7 +112,7 @@ export class ContentAggregator {
           }
         }
       } else {
-        console.log(`No new items fetched from source: ${sourceName}`);
+        logger.info(`No new items fetched from source: ${sourceName}`);
       }
       
       // Update status
@@ -116,7 +120,9 @@ export class ContentAggregator {
       this._status.lastUpdated = Date.now();
     } catch (error) {
       const errorMsg = `Error fetching/storing data from source ${sourceName}: ${error}`;
-      console.error(errorMsg);
+      logger.error(errorMsg);
+      this._status.currentPhase = 'idle';
+      this._status.lastUpdated = Date.now();
       this._status.errors?.push({
         message: errorMsg,
         source: sourceName,
@@ -166,7 +172,7 @@ export class ContentAggregator {
       this._status.lastUpdated = Date.now();
     } catch (error) {
       const errorMsg = `Error Fetch All: ${error}`;
-      console.error(errorMsg);
+      logger.error(errorMsg);
       this._status.errors?.push({
         message: errorMsg,
         timestamp: Date.now()
@@ -208,7 +214,7 @@ export class ContentAggregator {
         }
       } catch (error) {
         const errorMsg = `Error fetching from ${source.name}: ${error}`;
-        console.error(errorMsg);
+        logger.error(errorMsg);
         this._status.errors?.push({
           message: errorMsg,
           source: source.name,
@@ -219,7 +225,7 @@ export class ContentAggregator {
     
     if (!sourceFound) {
       const errorMsg = `Source not found: ${sourceName}`;
-      console.error(errorMsg);
+      logger.error(errorMsg);
       this._status.errors?.push({
         message: errorMsg,
         source: sourceName,
@@ -252,12 +258,12 @@ export class ContentAggregator {
    */
   public async fetchAndStore(sourceName: string) {
     try {
-      console.log(`Fetching data from source: ${sourceName}`);
+      logger.info(`Fetching data from source: ${sourceName}`);
       const items = await this.fetchSource(sourceName);
       await this.saveItems(items, sourceName);
     } catch (error) {
       const errorMsg = `Error fetching/storing data from source ${sourceName}: ${error}`;
-      console.error(errorMsg);
+      logger.error(errorMsg);
       this._status.errors?.push({
         message: errorMsg,
         source: sourceName,

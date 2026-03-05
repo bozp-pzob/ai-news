@@ -177,7 +177,7 @@ Options:
     if (downloadMedia) {
       sourceConfigs.forEach(config => {
         if (config.instance && config.instance.mediaDownload !== undefined) {
-          console.log(`[INFO] Enabling media download for source: ${config.instance.name} (overriding config)`);
+          logger.info(`Enabling media download for source: ${config.instance.name} (overriding config)`);
           config.instance.mediaDownload.enabled = true;
         }
       });
@@ -474,7 +474,7 @@ Options:
     });
     process.exit(0);
   } catch (error) {
-    console.error("Error initializing the content aggregator:", error);
+    logger.error("Error initializing the content aggregator:", error);
     process.exit(1);
   }
 })();

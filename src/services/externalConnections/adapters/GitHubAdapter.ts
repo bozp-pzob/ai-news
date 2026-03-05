@@ -43,6 +43,7 @@ import {
   mapChannelRow,
 } from '../types';
 import { databaseService } from '../../databaseService';
+import { logger } from '../../../helpers/cliHelper';
 
 // GitHub API endpoints
 const GITHUB_API_URL = 'https://api.github.com';
@@ -119,7 +120,7 @@ export class GitHubAdapter extends BaseAdapter {
    */
   async initialize(): Promise<void> {
     if (!this.isConfigured()) {
-      console.log('[GitHubAdapter] Not configured - skipping initialization');
+      logger.info('GitHubAdapter: Not configured - skipping initialization');
       return;
     }
 
@@ -135,7 +136,7 @@ export class GitHubAdapter extends BaseAdapter {
       },
     });
 
-    console.log('[GitHubAdapter] Initialized with GitHub App');
+    logger.info('GitHubAdapter: Initialized with GitHub App');
   }
 
   /**
@@ -309,7 +310,7 @@ export class GitHubAdapter extends BaseAdapter {
     // Delete used state
     await databaseService.query('DELETE FROM external_oauth_states WHERE id = $1', [oauthState.id]);
 
-    console.log(`[GitHubAdapter] Processing installation ${installationId}, action: ${setupAction}`);
+    logger.info(`GitHubAdapter: Processing installation ${installationId}, action: ${setupAction}`);
 
     // Get installation details
     if (!this.appOctokit) {
@@ -409,7 +410,7 @@ export class GitHubAdapter extends BaseAdapter {
 
       return true;
     } catch (error: any) {
-      console.error('[GitHubAdapter] Connection verification failed:', error);
+      logger.error('GitHubAdapter: Connection verification failed', error);
       
       // Mark as inactive if installation no longer exists
       if (error.status === 404) {
@@ -446,7 +447,7 @@ export class GitHubAdapter extends BaseAdapter {
     const client = await this.getClientForInstallation(metadata.installationId);
     const repositories: ExternalChannel[] = [];
 
-    console.log(`[GitHubAdapter] Syncing repositories for installation ${metadata.installationId}`);
+    logger.info(`GitHubAdapter: Syncing repositories for installation ${metadata.installationId}`);
 
     // Fetch all repositories accessible to this installation
     let page = 1;
@@ -499,12 +500,12 @@ export class GitHubAdapter extends BaseAdapter {
 
       // Safety limit
       if (page > 50) {
-        console.warn('[GitHubAdapter] Reached page limit, stopping sync');
+        logger.warn('GitHubAdapter: Reached page limit, stopping sync');
         break;
       }
     }
 
-    console.log(`[GitHubAdapter] Found ${repositories.length} accessible repositories`);
+    logger.info(`GitHubAdapter: Found ${repositories.length} accessible repositories`);
 
     // Update database
     // First, mark all existing channels for this connection as inaccessible

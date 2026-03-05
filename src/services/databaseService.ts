@@ -3,6 +3,8 @@
 import { Pool, PoolClient } from 'pg';
 import { PostgresStorage } from '../plugins/storage/PostgresStorage';
 import { encryptionService } from './encryptionService';
+import { logger } from '../helpers/cliHelper';
+import { runDrizzleMigrations } from '../db/migrate';
 
 /**
  * Database validation result
@@ -90,126 +92,57 @@ let platformPool: Pool | null = null;
 const externalPools: Map<string, Pool> = new Map();
 
 /**
- * Run database migrations to add missing columns
- * This is safe to run multiple times (idempotent)
+ * Run custom SQL that Drizzle ORM cannot generate:
+ *   - Partial/filtered indexes (WHERE clauses)
+ *   - Expression-based unique indexes (COALESCE)
+ *   - Legacy constraint migration (PL/pgSQL DO block)
+ *   - pgvector extension & embedding columns
+ *
+ * All statements are idempotent — safe to run on every startup.
+ * Table DDL is handled by Drizzle migrations (see src/db/migrate.ts).
  */
-async function runMigrations(pool: Pool): Promise<void> {
+async function runCustomSQL(pool: Pool): Promise<void> {
   const client = await pool.connect();
   try {
-    // Add ai_calls_today columns if they don't exist
-    await client.query(`
-      ALTER TABLE users 
-      ADD COLUMN IF NOT EXISTS ai_calls_today INTEGER DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS ai_calls_today_reset_at DATE DEFAULT CURRENT_DATE
-    `);
-    
-    // Add index if it doesn't exist
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_users_ai_reset ON users(ai_calls_today_reset_at)
-    `);
+    // ── pgvector extension & embedding columns ──────────────────────
+    // Silently skip if extension isn't available (e.g. local dev without pgvector)
+    try {
+      await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+      await client.query('ALTER TABLE items ADD COLUMN IF NOT EXISTS embedding vector(1536)');
+      await client.query('ALTER TABLE summaries ADD COLUMN IF NOT EXISTS embedding vector(1536)');
+    } catch {
+      logger.warn('DatabaseService: pgvector not available — embedding columns skipped');
+    }
 
-    // Admin system: Add ban columns to users
+    // ── Partial / filtered indexes ─────────────────────────────────
     await client.query(`
-      ALTER TABLE users 
-      ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS banned_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS banned_reason TEXT
-    `);
-    
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_users_banned ON users(is_banned) WHERE is_banned = TRUE
-    `);
-
-    // Admin system: Add featured columns to configs
-    await client.query(`
-      ALTER TABLE configs
-      ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS featured_at TIMESTAMPTZ
-    `);
-
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_configs_featured ON configs(is_featured, featured_at DESC) WHERE is_featured = TRUE
-    `);
-
-    // Local execution: configs that run on user's local server
-    await client.query(`
-      ALTER TABLE configs
-      ADD COLUMN IF NOT EXISTS is_local_execution BOOLEAN DEFAULT FALSE
-    `);
-
-    // AI token usage and cost tracking on aggregation jobs
-    await client.query(`
-      ALTER TABLE aggregation_jobs
-      ADD COLUMN IF NOT EXISTS total_prompt_tokens INTEGER DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS total_completion_tokens INTEGER DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS total_ai_calls INTEGER DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC(10,6) DEFAULT 0
-    `);
-
-    // Encrypted resolved config/secrets for server restart resilience (continuous jobs)
-    await client.query(`
-      ALTER TABLE aggregation_jobs
-      ADD COLUMN IF NOT EXISTS resolved_config_encrypted BYTEA,
-      ADD COLUMN IF NOT EXISTS resolved_secrets_encrypted BYTEA
-    `);
-
-    // Webhook buffer tables for WebhookSource
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS webhook_buffer (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        webhook_id TEXT NOT NULL,
-        payload JSONB NOT NULL,
-        content_type TEXT,
-        headers JSONB,
-        source_ip TEXT,
-        received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        processed BOOLEAN DEFAULT FALSE,
-        processed_at TIMESTAMPTZ
-      )
+      CREATE INDEX IF NOT EXISTS idx_users_banned
+      ON users(is_banned) WHERE is_banned = TRUE
     `);
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_webhook_buffer_pending 
+      CREATE INDEX IF NOT EXISTS idx_configs_featured
+      ON configs(is_featured, featured_at DESC) WHERE is_featured = TRUE
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_webhook_buffer_pending
       ON webhook_buffer(webhook_id, processed) WHERE processed = FALSE
     `);
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_webhook_buffer_received 
-      ON webhook_buffer(webhook_id, received_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_configs_cron_active
+      ON configs(cron_expression) WHERE cron_expression IS NOT NULL
     `);
     await client.query(`
-      CREATE TABLE IF NOT EXISTS webhook_configs (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        webhook_id TEXT NOT NULL UNIQUE,
-        webhook_secret TEXT NOT NULL,
-        config_id UUID,
-        source_name TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_webhook_configs_webhook_id 
-      ON webhook_configs(webhook_id)
+      CREATE INDEX IF NOT EXISTS idx_outbound_webhooks_config_active
+      ON outbound_webhooks(config_id, is_active) WHERE is_active = TRUE
     `);
 
-    // Generator system: Add new columns to summaries table
-    await client.query(`
-      ALTER TABLE summaries
-      ADD COLUMN IF NOT EXISTS content_hash TEXT,
-      ADD COLUMN IF NOT EXISTS start_date BIGINT,
-      ADD COLUMN IF NOT EXISTS end_date BIGINT,
-      ADD COLUMN IF NOT EXISTS granularity TEXT DEFAULT 'daily',
-      ADD COLUMN IF NOT EXISTS metadata JSONB,
-      ADD COLUMN IF NOT EXISTS tokens_used INTEGER,
-      ADD COLUMN IF NOT EXISTS estimated_cost_usd REAL
-    `);
+    // ── Expression-based unique indexes ────────────────────────────
 
-    // Update summaries unique constraint: old was (config_id, type, date),
-    // new is (config_id, type, date, COALESCE(granularity, 'daily'))
-    // Drop the old constraint if it exists, then create the new one
+    // Legacy constraint migration: drop old 3-column unique on summaries
+    // before creating the new expression-based unique index.
     await client.query(`
       DO $$
       BEGIN
-        -- Check if the old constraint exists (without granularity)
         IF EXISTS (
           SELECT 1 FROM pg_constraint c
           JOIN pg_namespace n ON n.oid = c.connamespace
@@ -217,9 +150,6 @@ async function runMigrations(pool: Pool): Promise<void> {
             AND c.contype = 'u'
             AND n.nspname = 'public'
             AND NOT EXISTS (
-              -- The new unique index includes COALESCE(granularity, 'daily'),
-              -- so it's an expression index, not a simple constraint.
-              -- If it's a simple 3-column unique constraint, it's the old one.
               SELECT 1 FROM pg_attribute a
               WHERE a.attrelid = c.conrelid
                 AND a.attnum = ANY(c.conkey)
@@ -228,7 +158,6 @@ async function runMigrations(pool: Pool): Promise<void> {
             AND array_length(c.conkey, 1) = 3
         )
         THEN
-          -- Find and drop the old constraint by name
           EXECUTE (
             SELECT 'ALTER TABLE summaries DROP CONSTRAINT ' || quote_ident(c.conname)
             FROM pg_constraint c
@@ -248,65 +177,19 @@ async function runMigrations(pool: Pool): Promise<void> {
         END IF;
       END $$
     `);
-
-    // Create the new unique index with granularity (idempotent)
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_summaries_config_type_date_granularity
       ON summaries (config_id, type, date, COALESCE(granularity, 'daily'))
-    `);
-
-    // Token budget tracking columns on users table
-    await client.query(`
-      ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS tokens_used_today INTEGER DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS tokens_used_today_reset_at DATE DEFAULT CURRENT_DATE,
-      ADD COLUMN IF NOT EXISTS estimated_cost_today_cents INTEGER DEFAULT 0
-    `);
-
-    // Free run tracking column on users table
-    await client.query(`
-      ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS free_run_used_at DATE
-    `);
-
-    // Site parsers table for cached LLM-generated HTML parsers (shared across configs)
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS site_parsers (
-        id SERIAL PRIMARY KEY,
-        domain TEXT NOT NULL,
-        path_pattern TEXT NOT NULL,
-        parser_code TEXT NOT NULL,
-        object_type_string TEXT,
-        version INTEGER DEFAULT 1,
-        consecutive_failures INTEGER DEFAULT 0,
-        last_success_at BIGINT,
-        last_failure_at BIGINT,
-        created_at BIGINT NOT NULL,
-        updated_at BIGINT NOT NULL,
-        sample_url TEXT,
-        metadata JSONB
-      )
     `);
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_site_parsers_unique
       ON site_parsers(domain, path_pattern, COALESCE(object_type_string, ''))
     `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_site_parsers_domain ON site_parsers(domain)
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_site_parsers_lookup ON site_parsers(domain, path_pattern)
-    `);
-    
-    // Make api_usage.config_id nullable — many API requests don't relate to a specific config
-    await client.query(`
-      ALTER TABLE api_usage ALTER COLUMN config_id DROP NOT NULL
-    `);
 
-    console.log('[DatabaseService] Migrations completed successfully');
+    logger.info('DatabaseService: Custom SQL completed successfully');
   } catch (error) {
-    console.error('[DatabaseService] Migration error (non-fatal):', error);
-    // Don't throw - migrations are best-effort
+    logger.error('DatabaseService: Custom SQL error (non-fatal)', error);
+    // Don't throw — custom SQL is best-effort
   } finally {
     client.release();
   }
@@ -337,13 +220,14 @@ export async function initPlatformDatabase(): Promise<void> {
   const client = await platformPool.connect();
   try {
     await client.query('SELECT 1');
-    console.log('[DatabaseService] Platform database connected successfully');
+    logger.info('DatabaseService: Platform database connected successfully');
   } finally {
     client.release();
   }
 
-  // Run migrations
-  await runMigrations(platformPool);
+  // Run Drizzle migrations (table DDL), then custom SQL (partial indexes, pgvector, etc.)
+  await runDrizzleMigrations(platformPool);
+  await runCustomSQL(platformPool);
 }
 
 /**

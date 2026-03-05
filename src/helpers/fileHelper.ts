@@ -44,7 +44,7 @@ export const writeFile = async (outputPath: string, dateStr: string, content: an
       
       fs.writeFileSync(filePath, content);
     } catch (error) {
-      console.error(`Error saving Discord summary to ${format} file ${dateStr}:`, error);
+      logger.error(`Error saving Discord summary to ${format} file ${dateStr}`, error);
     }
 }
 

@@ -66,19 +66,19 @@ export class SummaryEnricher {
     const jsonPath = path.join(this.outputPath, jsonSubpath, `${dateStr}.json`);
 
     if (!fs.existsSync(jsonPath)) {
-      console.log(`SummaryEnricher: No JSON file found at ${jsonPath}`);
+      logger.info(`SummaryEnricher: No JSON file found at ${jsonPath}`);
       return;
     }
 
-    console.log(`\n=== SummaryEnricher ===`);
-    console.log(`Enriching: ${jsonPath}`);
+    logger.info(`=== SummaryEnricher ===`);
+    logger.info(`Enriching: ${jsonPath}`);
 
     try {
       const jsonContent = fs.readFileSync(jsonPath, "utf-8");
       const summary: SummaryJson = JSON.parse(jsonContent);
 
       if (!summary.categories || summary.categories.length === 0) {
-        console.log(`SummaryEnricher: No categories in summary`);
+        logger.info(`SummaryEnricher: No categories in summary`);
         return;
       }
 
@@ -89,7 +89,7 @@ export class SummaryEnricher {
         if (!category.content || !Array.isArray(category.content) || category.content.length === 0) continue;
 
         const categoryTopic = category.topic || category.title || "unknown";
-        console.log(`SummaryEnricher: Processing category "${categoryTopic}" with ${category.content.length} content items`);
+        logger.info(`SummaryEnricher: Processing category "${categoryTopic}" with ${category.content.length} content items`);
 
         // Process each content item in the category
         for (let i = 0; i < category.content.length; i++) {
@@ -149,10 +149,10 @@ export class SummaryEnricher {
 
       // Write updated JSON back
       fs.writeFileSync(jsonPath, JSON.stringify(summary, null, 2));
-      console.log(`SummaryEnricher: Enriched ${totalEnriched} content items, saved to ${jsonPath}\n`);
+      logger.info(`SummaryEnricher: Enriched ${totalEnriched} content items, saved to ${jsonPath}`);
 
     } catch (error) {
-      console.error(`SummaryEnricher: Error enriching ${jsonPath}:`, error);
+      logger.error(`SummaryEnricher: Error enriching ${jsonPath}`, error);
     }
   }
 
@@ -215,8 +215,7 @@ function parseJsonPath(jsonPath: string): { outputPath: string; jsonSubpath: str
  * Print help message
  */
 function printHelp(): void {
-  console.log(`
-Enrich JSON Summaries with Memes and Posters
+  logger.info(`Enrich JSON Summaries with Memes and Posters
 
 Usage:
   npm run enrich-json -- --json <file.json> --config <config.json>
@@ -233,8 +232,7 @@ Options:
 Examples:
   npm run enrich-json -- --json ./output/elizaos/json/2026-01-06.json
   npm run enrich-json -- --json ./output/elizaos/json/2026-01-06.json --force
-  npm run enrich-json -- --dir ./output/elizaos/json --date 2026-01-06
-`);
+  npm run enrich-json -- --dir ./output/elizaos/json --date 2026-01-06`);
 }
 
 /**

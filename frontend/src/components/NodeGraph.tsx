@@ -2436,8 +2436,17 @@ export const NodeGraph = forwardRef<
   }, [currentJobId, config.name]);
 
   // Add effect to make sure job status is cleared when config changes
+  // BUT skip the reset if a job is actively running to prevent the
+  // config.name effect from clobbering progress tracking mid-aggregation.
   useEffect(() => {
-    // Reset job-related state when config changes
+    // Don't reset job state if a job is currently running — this prevents
+    // config re-renders (e.g., from parent prop changes in platform mode)
+    // from killing active progress tracking and WebSocket connections.
+    if (isAggregationRunning || currentJobIdRef.current) {
+      return;
+    }
+
+    // Reset job-related state when config changes (and no active job)
     currentJobIdRef.current = null;
     setCurrentJobId(null);
     setJobStatus(null);
@@ -2453,12 +2462,6 @@ export const NodeGraph = forwardRef<
     if (jobStatusCleanupRef.current) {
       jobStatusCleanupRef.current();
       jobStatusCleanupRef.current = null;
-    }
-    
-    // Reconnect to websocket if needed for the new config
-    if (config?.name) {
-      websocketService.disconnect();
-      websocketService.connect(config.name);
     }
   }, [config.name]);
 
@@ -2568,18 +2571,6 @@ export const NodeGraph = forwardRef<
               onDrop={handleDropPlugin}
               onDragLeave={handleDragLeave}
             ></canvas>
-            
-            {/* Display Job Status */}
-            {jobStatus && !jobStatusDisplayClosed && (
-              <div className="absolute bottom-4 right-4 z-50 w-96">
-                <JobStatusDisplay 
-                  key={jobStatus.jobId}
-                  jobStatus={jobStatus}
-                  runMode={isRunOnceJob ? "once" : "continuous"}
-                  onClose={() => setJobStatusDisplayClosed(true)}
-                />
-              </div>
-            )}
           </div>
         ) : (
           <div className="flex-1 w-full h-full">
@@ -2632,6 +2623,18 @@ export const NodeGraph = forwardRef<
                 />
               );
             })()}
+          </div>
+        )}
+
+        {/* Display Job Status - visible in both graph and JSON views */}
+        {jobStatus && !jobStatusDisplayClosed && (
+          <div className="absolute bottom-4 right-4 z-50 w-96">
+            <JobStatusDisplay 
+              key={jobStatus.jobId}
+              jobStatus={jobStatus}
+              runMode={isRunOnceJob ? "once" : "continuous"}
+              onClose={() => setJobStatusDisplayClosed(true)}
+            />
           </div>
         )}
       </div>

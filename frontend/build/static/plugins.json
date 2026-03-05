@@ -69,16 +69,10 @@
             "description": "Seed URLs to scrape"
           },
           {
-            "name": "headless",
-            "type": "boolean",
-            "required": false,
-            "description": "Run browser in headless mode (default: true)"
-          },
-          {
             "name": "userAgent",
             "type": "string",
             "required": false,
-            "description": "Custom User-Agent string"
+            "description": "Custom User-Agent string (used for node-fetch only; browser uses its real UA)"
           },
           {
             "name": "provider",
@@ -97,6 +91,12 @@
             "type": "string",
             "required": false,
             "description": "Topics to exclude from extraction"
+          },
+          {
+            "name": "storage",
+            "type": "object",
+            "required": false,
+            "description": "Storage plugin for caching generated HTML parsers"
           },
           {
             "name": "crawlEnabled",
@@ -243,10 +243,10 @@
             "description": "AI provider for structured content extraction from feed item pages"
           },
           {
-            "name": "headless",
-            "type": "boolean",
+            "name": "storage",
+            "type": "object",
             "required": false,
-            "description": "Run browser in headless mode for cookie capture (default: true)"
+            "description": "Storage plugin to skip already-processed items (saves AI tokens)"
           }
         ]
       }
@@ -270,41 +270,6 @@
             "type": "string",
             "required": true,
             "description": "URL template for historical summaries (with date placeholders)"
-          }
-        ]
-      }
-    },
-    {
-      "name": "GitHubStatsDataSource",
-      "pluginName": "GitHubStatsDataSource",
-      "type": "source",
-      "description": "",
-      "configSchema": {},
-      "constructorInterface": {
-        "parameters": [
-          {
-            "name": "statsUrl",
-            "type": "string",
-            "required": true,
-            "description": "URL for stats data JSON endpoint"
-          },
-          {
-            "name": "historicalStatsUrl",
-            "type": "string",
-            "required": true,
-            "description": "URL template for historical summary data (includes date placeholders)"
-          },
-          {
-            "name": "githubCompany",
-            "type": "string",
-            "required": true,
-            "description": "GitHub company/organization name"
-          },
-          {
-            "name": "githubRepo",
-            "type": "string",
-            "required": true,
-            "description": "GitHub repository name"
           }
         ]
       }
@@ -358,53 +323,6 @@
             "type": "object",
             "required": false,
             "description": "Activity types to track (newPRs, newIssues, commits, comments, reviews, reviewComments, mergedPRs, closedIssues)"
-          }
-        ]
-      }
-    },
-    {
-      "name": "GitHubDataSource",
-      "pluginName": "GitHubDataSource",
-      "type": "source",
-      "description": "",
-      "configSchema": {},
-      "constructorInterface": {
-        "parameters": [
-          {
-            "name": "contributorsUrl",
-            "type": "string",
-            "required": true,
-            "description": "URL for contributors data JSON endpoint"
-          },
-          {
-            "name": "summaryUrl",
-            "type": "string",
-            "required": true,
-            "description": "URL for summary data JSON endpoint"
-          },
-          {
-            "name": "historicalSummaryUrl",
-            "type": "string",
-            "required": true,
-            "description": "URL template for historical summary data (includes date placeholders)"
-          },
-          {
-            "name": "historicalContributorUrl",
-            "type": "string",
-            "required": true,
-            "description": "URL template for historical contributor data (includes date placeholders)"
-          },
-          {
-            "name": "githubCompany",
-            "type": "string",
-            "required": true,
-            "description": "GitHub company/organization name"
-          },
-          {
-            "name": "githubRepo",
-            "type": "string",
-            "required": true,
-            "description": "GitHub repository name"
           }
         ]
       }
@@ -921,6 +839,53 @@
       }
     },
     {
+      "name": "RangeSummaryGenerator",
+      "pluginName": "RangeSummaryGenerator",
+      "type": "generator",
+      "description": "",
+      "configSchema": {},
+      "constructorInterface": {
+        "parameters": [
+          {
+            "name": "provider",
+            "type": "AIProvider",
+            "required": true,
+            "description": "AI Provider plugin for summarization."
+          },
+          {
+            "name": "storage",
+            "type": "StoragePlugin",
+            "required": true,
+            "description": "Storage Plugin to read daily summaries and raw content from."
+          },
+          {
+            "name": "dailySummaryType",
+            "type": "string",
+            "required": true,
+            "description": "The summaryType of existing daily summaries to read (e.g., \"dailySummary\")."
+          },
+          {
+            "name": "summaryType",
+            "type": "string",
+            "required": true,
+            "description": "The summaryType this generator produces (e.g., \"weeklySummary\")."
+          },
+          {
+            "name": "source",
+            "type": "string",
+            "required": false,
+            "description": "Content source type for raw/hybrid modes."
+          },
+          {
+            "name": "hybridRawItemLimit",
+            "type": "number",
+            "required": false,
+            "description": "Max raw content items for hybrid deep-dive topics (default: 50)."
+          }
+        ]
+      }
+    },
+    {
       "name": "DiscordSummaryGenerator",
       "pluginName": "DiscordSummaryGenerator",
       "type": "generator",
@@ -938,13 +903,13 @@
             "name": "storage",
             "type": "StoragePlugin",
             "required": true,
-            "description": "Storage Plugin to store the generated Daily Summary."
+            "description": "Storage Plugin to read content items from."
           },
           {
             "name": "summaryType",
             "type": "string",
             "required": true,
-            "description": "Type for summary to store in the database."
+            "description": "Type for summary stored in the database."
           },
           {
             "name": "source",
@@ -979,31 +944,25 @@
             "name": "storage",
             "type": "StoragePlugin",
             "required": true,
-            "description": "Storage Plugin to store the generated Daily Summary."
+            "description": "Storage Plugin to read content items from."
           },
           {
             "name": "summaryType",
             "type": "string",
             "required": true,
-            "description": "Type for summary to store in the database."
+            "description": "Type for summary stored in the database (e.g., \"dailySummary\", \"elizaosDailySummary\")."
           },
           {
             "name": "source",
             "type": "string",
             "required": false,
-            "description": "Specific source to generate the summary off."
-          },
-          {
-            "name": "outputPath",
-            "type": "string",
-            "required": false,
-            "description": "Location to store summary for md and json generation"
+            "description": "Specific content type to generate the summary from. If omitted, uses all types."
           },
           {
             "name": "maxGroupsToSummarize",
             "type": "string",
             "required": false,
-            "description": "Max number of groups to generate summaries off ( Default 10 )."
+            "description": "Max number of topic groups to generate summaries for (default 10)."
           },
           {
             "name": "groupBySourceType",
@@ -1022,12 +981,6 @@
             "type": "string[]",
             "required": false,
             "description": "Topics to exclude from summaries (default: [\"open source\"])."
-          },
-          {
-            "name": "skipFileOutput",
-            "type": "boolean",
-            "required": false,
-            "description": "Skip writing JSON/MD files to disk (for platform storage mode)."
           },
           {
             "name": "generateAfterHour",

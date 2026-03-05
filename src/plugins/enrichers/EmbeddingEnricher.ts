@@ -1,6 +1,7 @@
 // src/plugins/enrichers/EmbeddingEnricher.ts
 
 import { EnricherPlugin, ContentItem, AiProvider } from "../../types";
+import { logger } from '../../helpers/cliHelper';
 
 /**
  * Configuration for the embedding enricher
@@ -134,7 +135,7 @@ export class EmbeddingEnricher implements EnricherPlugin {
   public async enrich(contentItems: ContentItem[]): Promise<ContentItem[]> {
     // Check if provider is ready (injected by loadProviders)
     if (!this.isProviderReady()) {
-      console.warn('[EmbeddingEnricher] AI provider not configured, skipping embeddings');
+      logger.warn('EmbeddingEnricher: AI provider not configured, skipping embeddings');
       return contentItems;
     }
 
@@ -156,11 +157,11 @@ export class EmbeddingEnricher implements EnricherPlugin {
     }
 
     if (itemsToProcess.length === 0) {
-      console.log('[EmbeddingEnricher] No items need embedding');
+      logger.info('EmbeddingEnricher: No items need embedding');
       return contentItems;
     }
 
-    console.log(`[EmbeddingEnricher] Generating embeddings for ${itemsToProcess.length} items`);
+    logger.info(`EmbeddingEnricher: Generating embeddings for ${itemsToProcess.length} items`);
 
     try {
       // Process in batches using the AI provider
@@ -189,11 +190,11 @@ export class EmbeddingEnricher implements EnricherPlugin {
         }
       }
 
-      console.log(`[EmbeddingEnricher] Successfully generated ${allEmbeddings.filter(e => e.length > 0).length} embeddings`);
+      logger.info(`EmbeddingEnricher: Successfully generated ${allEmbeddings.filter(e => e.length > 0).length} embeddings`);
       
       return enrichedItems;
     } catch (error) {
-      console.error('[EmbeddingEnricher] Error generating embeddings:', error);
+      logger.error('EmbeddingEnricher: Error generating embeddings', error);
       // Return original items without embeddings rather than failing
       return contentItems;
     }
@@ -216,7 +217,7 @@ export class EmbeddingEnricher implements EnricherPlugin {
       const results = await (this.provider as AiProvider).embed([text]);
       return results[0] || null;
     } catch (error) {
-      console.error('[EmbeddingEnricher] Error generating single embedding:', error);
+      logger.error('EmbeddingEnricher: Error generating single embedding', error);
       return null;
     }
   }

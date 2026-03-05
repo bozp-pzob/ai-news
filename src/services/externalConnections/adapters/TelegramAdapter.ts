@@ -29,6 +29,7 @@ import {
   mapChannelRow,
 } from '../types';
 import { databaseService } from '../../databaseService';
+import { logger } from '../../../helpers/cliHelper';
 
 // Token expiration (30 minutes for Telegram since it requires user action)
 const TOKEN_EXPIRATION_MS = 30 * 60 * 1000;
@@ -89,15 +90,15 @@ export class TelegramAdapter extends BaseAdapter {
       // Webhook mode for production
       const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL;
       await this.bot.telegram.setWebhook(webhookUrl);
-      console.log(`[TelegramAdapter] Webhook set to: ${webhookUrl}`);
+      logger.info(`TelegramAdapter: Webhook set to: ${webhookUrl}`);
     } else if (process.env.TELEGRAM_USE_POLLING === 'true') {
       // Polling mode for development
       this.bot.launch();
-      console.log('[TelegramAdapter] Bot started in polling mode');
+      logger.info('TelegramAdapter: Bot started in polling mode');
     }
 
     this.isInitialized = true;
-    console.log('[TelegramAdapter] Bot initialized');
+    logger.info('TelegramAdapter: Bot initialized');
   }
 
   /**
@@ -262,7 +263,7 @@ export class TelegramAdapter extends BaseAdapter {
 
       await ctx.reply('Successfully connected! This group is now linked to your Digital Gardener account.');
     } catch (error: any) {
-      console.error('[TelegramAdapter] Connection error:', error);
+      logger.error('TelegramAdapter: Connection error', error);
       await ctx.reply(`Connection failed: ${error.message}`);
     }
   }
@@ -285,7 +286,7 @@ export class TelegramAdapter extends BaseAdapter {
          WHERE platform = 'telegram' AND external_id = $1`,
         [chat.id.toString()]
       );
-      console.log(`[TelegramAdapter] Bot removed from chat: ${chat.id}`);
+      logger.info(`TelegramAdapter: Bot removed from chat: ${chat.id}`);
     }
   }
 
@@ -334,7 +335,7 @@ export class TelegramAdapter extends BaseAdapter {
           ]
         );
       } catch (error) {
-        console.error('[TelegramAdapter] Error caching message:', error);
+        logger.error('TelegramAdapter: Error caching message', error);
       }
     }
   }
@@ -431,7 +432,7 @@ export class TelegramAdapter extends BaseAdapter {
 
       return result.rows.map((row: ExternalChannelRow) => mapChannelRow(row));
     } catch (error) {
-      console.error('[TelegramAdapter] Error syncing channels:', error);
+      logger.error('TelegramAdapter: Error syncing channels', error);
       return [];
     }
   }

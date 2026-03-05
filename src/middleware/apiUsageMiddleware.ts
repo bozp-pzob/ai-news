@@ -2,6 +2,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { databaseService } from '../services/databaseService';
+import { logger } from '../helpers/cliHelper';
 
 /**
  * Paths to exclude from API usage tracking.
@@ -87,7 +88,7 @@ export function apiUsageMiddleware(req: Request, res: Response, next: NextFuncti
     ).catch(err => {
       // Silent fail — API usage tracking should never break the app
       if (process.env.NODE_ENV === 'development') {
-        console.warn('[API Usage] Failed to track request:', err.message);
+        logger.warn(`API Usage: Failed to track request: ${err.message}`);
       }
     });
   });

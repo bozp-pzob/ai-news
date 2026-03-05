@@ -4,6 +4,7 @@ import { databaseService } from './databaseService';
 import { encryptionService } from './encryptionService';
 import { AuthUser } from '../middleware/authMiddleware';
 import { sanitizeConfigSecrets } from '../helpers/secretSanitizer';
+import { logger } from '../helpers/cliHelper';
 
 /**
  * Config visibility options
@@ -277,8 +278,7 @@ export async function createConfig(params: CreateConfigParams): Promise<Config> 
   const { sanitizedConfig, removedSecrets } = sanitizeConfigSecrets(configJson);
   
   if (removedSecrets.length > 0) {
-    console.warn('[UserService] Removed actual secrets from config before saving:', 
-      removedSecrets.length, 'field(s)');
+    logger.warn(`UserService: Removed actual secrets from config before saving: ${removedSecrets.length} field(s)`);
   }
 
   // Generate unique slug
@@ -413,8 +413,7 @@ export async function updateConfig(configId: string, params: UpdateConfigParams)
     const { sanitizedConfig, removedSecrets } = sanitizeConfigSecrets(params.configJson);
     
     if (removedSecrets.length > 0) {
-      console.warn('[UserService] Removed actual secrets from config update:', 
-        removedSecrets.length, 'field(s)');
+      logger.warn(`UserService: Removed actual secrets from config update: ${removedSecrets.length} field(s)`);
     }
     
     updates.push(`config_json = $${paramIndex++}::jsonb`);
@@ -964,6 +963,193 @@ export function getTierLimits(tier: string): {
   };
 }
 
+/**
+ * Update the cron schedule for a config.
+ * Pass null for cronExpression to clear the schedule.
+ */
+export async function updateConfigSchedule(
+  configId: string,
+  cronExpression: string | null,
+  timezone: string = 'UTC'
+): Promise<void> {
+  await databaseService.query(
+    `UPDATE configs SET 
+      cron_expression = $1,
+      schedule_timezone = $2,
+      updated_at = NOW()
+     WHERE id = $3`,
+    [cronExpression, timezone, configId]
+  );
+}
+
+/**
+ * Get the cron schedule for a config.
+ */
+export async function getConfigSchedule(configId: string): Promise<{
+  cronExpression: string | null;
+  timezone: string;
+} | null> {
+  const result = await databaseService.query(
+    `SELECT cron_expression, schedule_timezone FROM configs WHERE id = $1`,
+    [configId]
+  );
+  if (result.rows.length === 0) return null;
+  return {
+    cronExpression: result.rows[0].cron_expression,
+    timezone: result.rows[0].schedule_timezone || 'UTC',
+  };
+}
+
+/**
+ * Get all configs with active cron schedules.
+ */
+export async function getScheduledConfigs(): Promise<Array<{
+  id: string;
+  userId: string;
+  name: string;
+  cronExpression: string;
+  timezone: string;
+}>> {
+  const result = await databaseService.query(
+    `SELECT id, user_id, name, cron_expression, schedule_timezone 
+     FROM configs 
+     WHERE cron_expression IS NOT NULL`,
+  );
+  return result.rows.map((r: any) => ({
+    id: r.id,
+    userId: r.user_id,
+    name: r.name,
+    cronExpression: r.cron_expression,
+    timezone: r.schedule_timezone || 'UTC',
+  }));
+}
+
+// ============================================
+// GDPR: DATA EXPORT & ACCOUNT DELETION
+// ============================================
+
+/**
+ * Export all user data as a JSON archive (GDPR data portability).
+ *
+ * Collects every table that references the user, strips internal-only
+ * fields (encrypted blobs, raw secrets), and returns a single object.
+ */
+export async function exportUserData(userId: string): Promise<Record<string, unknown>> {
+  const q = databaseService.query;
+
+  // Run all reads in parallel for speed
+  const [
+    userResult,
+    configsResult,
+    jobsResult,
+    paymentsResult,
+    apiUsageResult,
+    discordResult,
+    discordChannelsResult,
+    externalResult,
+    externalChannelsResult,
+    outboundResult,
+    webhookConfigsResult,
+  ] = await Promise.all([
+    q('SELECT id, privy_id, email, wallet_address, tier, settings, ai_calls_today, tokens_used_today, estimated_cost_today_cents, free_run_used_at, created_at, updated_at FROM users WHERE id = $1', [userId]),
+    q('SELECT id, name, slug, description, visibility, storage_type, status, monetization_enabled, price_per_query, owner_wallet, config_json, last_run_at, last_run_duration_ms, runs_today, total_items, total_queries, total_revenue, cron_expression, schedule_timezone, is_local_execution, hide_items, created_at, updated_at FROM configs WHERE user_id = $1 ORDER BY created_at', [userId]),
+    q('SELECT id, config_id, job_type, status, started_at, completed_at, items_fetched, items_processed, run_count, total_prompt_tokens, total_completion_tokens, total_ai_calls, estimated_cost_usd, error_message, created_at FROM aggregation_jobs WHERE user_id = $1 ORDER BY created_at', [userId]),
+    q(`SELECT p.id, p.config_id, p.payer_wallet, p.amount, p.platform_fee, p.owner_revenue, p.tx_signature, p.status, p.created_at, p.settled_at
+       FROM payments p JOIN configs c ON p.config_id = c.id WHERE c.user_id = $1 ORDER BY p.created_at`, [userId]),
+    q('SELECT id, config_id, endpoint, method, status_code, response_time_ms, ip_address, created_at FROM api_usage WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1000', [userId]),
+    q('SELECT id, guild_id, guild_name, guild_icon, bot_permissions, added_at, is_active, last_verified_at, created_at FROM discord_guild_connections WHERE user_id = $1', [userId]),
+    q(`SELECT dc.id, dc.channel_id, dc.channel_name, dc.channel_type, dc.category_name, dc.is_accessible
+       FROM discord_guild_channels dc JOIN discord_guild_connections dg ON dc.guild_connection_id = dg.id WHERE dg.user_id = $1`, [userId]),
+    q('SELECT id, platform, external_id, external_name, external_icon, is_active, last_verified_at, created_at FROM external_connections WHERE user_id = $1', [userId]),
+    q(`SELECT ec.id, ec.channel_id, ec.channel_name, ec.channel_type, ec.category_name, ec.is_accessible
+       FROM external_channels ec JOIN external_connections ex ON ec.connection_id = ex.id WHERE ex.user_id = $1`, [userId]),
+    q('SELECT id, config_id, url, events, is_active, description, total_deliveries, total_successes, total_failures, created_at FROM outbound_webhooks WHERE user_id = $1', [userId]),
+    q(`SELECT wc.id, wc.webhook_id, wc.config_id, wc.source_name, wc.created_at
+       FROM webhook_configs wc JOIN configs c ON wc.config_id = c.id WHERE c.user_id = $1`, [userId]),
+  ]);
+
+  // Also gather items & summaries per config
+  const configIds = configsResult.rows.map((r: any) => r.id);
+  let items: any[] = [];
+  let summaries: any[] = [];
+  if (configIds.length > 0) {
+    const placeholders = configIds.map((_: any, i: number) => `$${i + 1}`).join(',');
+    const [itemsResult, summariesResult] = await Promise.all([
+      q(`SELECT id, config_id, cid, type, source, title, link, topics, date, metadata, created_at FROM items WHERE config_id IN (${placeholders}) ORDER BY created_at DESC LIMIT 10000`, configIds),
+      q(`SELECT id, config_id, type, title, categories, markdown, date, granularity, metadata, created_at FROM summaries WHERE config_id IN (${placeholders}) ORDER BY created_at DESC LIMIT 1000`, configIds),
+    ]);
+    items = itemsResult.rows;
+    summaries = summariesResult.rows;
+  }
+
+  return {
+    exportedAt: new Date().toISOString(),
+    user: userResult.rows[0] || null,
+    configs: configsResult.rows,
+    items,
+    summaries,
+    aggregationJobs: jobsResult.rows,
+    payments: paymentsResult.rows,
+    apiUsage: apiUsageResult.rows,
+    discordConnections: discordResult.rows,
+    discordChannels: discordChannelsResult.rows,
+    externalConnections: externalResult.rows,
+    externalChannels: externalChannelsResult.rows,
+    outboundWebhooks: outboundResult.rows,
+    webhookConfigs: webhookConfigsResult.rows,
+  };
+}
+
+/**
+ * Permanently delete a user account and all associated data.
+ *
+ * Most child data cascades automatically via ON DELETE CASCADE foreign keys.
+ * The `api_usage.user_id` column is SET NULL on delete (preserving anonymized
+ * analytics), which is compliant since the remaining row is no longer PII.
+ *
+ * Runs inside a transaction to ensure atomicity.
+ */
+export async function deleteUser(userId: string): Promise<void> {
+  const client = await databaseService.getClient();
+  try {
+    await client.query('BEGIN');
+
+    // Cancel any active/pending BullMQ jobs first (best-effort)
+    const activeJobs = await client.query(
+      `SELECT id FROM aggregation_jobs WHERE user_id = $1 AND status IN ('pending', 'running')`,
+      [userId]
+    );
+    for (const row of activeJobs.rows) {
+      try {
+        // Mark job cancelled so the worker knows to stop
+        await client.query(
+          `UPDATE aggregation_jobs SET status = 'cancelled', completed_at = NOW() WHERE id = $1`,
+          [row.id]
+        );
+      } catch {
+        // Best-effort — the CASCADE delete will remove it anyway
+      }
+    }
+
+    // Delete user — CASCADE removes: configs (→ items, summaries, cursors,
+    // payments, temp_retention, webhook_configs, webhook_buffer, aggregation_jobs,
+    // outbound_webhooks → deliveries), discord_guild_connections (→ channels),
+    // discord_oauth_states, external_connections (→ channels, telegram_cache),
+    // external_oauth_states, config_shares
+    // api_usage.user_id is SET NULL (anonymized)
+    await client.query('DELETE FROM users WHERE id = $1', [userId]);
+
+    await client.query('COMMIT');
+    logger.info(`UserService: Deleted user account ${userId}`);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    logger.error('UserService: Failed to delete user', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export const userService = {
   canCreateConfig,
   canRunAggregation,
@@ -990,4 +1176,11 @@ export const userService = {
   getUserTokenUsage,
   incrementTokenUsage,
   getMaxRangeGenerationDays,
+  // Scheduling
+  updateConfigSchedule,
+  getConfigSchedule,
+  getScheduledConfigs,
+  // GDPR
+  exportUserData,
+  deleteUser,
 };

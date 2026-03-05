@@ -16,8 +16,9 @@ import { adminService } from '../../services/adminService';
 import { jobService } from '../../services/jobService';
 import { licenseService, RUN_PAYMENT } from '../../services/licenseService';
 import { requirePayment } from '../../middleware/x402Middleware';
-import { dataRateLimiter, runRateLimiter } from '../../middleware/rateLimitMiddleware';
+import { dataRateLimiter, runRateLimiter, configMutationRateLimiter } from '../../middleware/rateLimitMiddleware';
 import { verifyPop402Payment, buildPaymentRequiredResponse } from '../../helpers/pop402Helper';
+import { logger } from '../../helpers/cliHelper';
 
 // ============================================
 // ACCESS GRANTS — 24-hour purchasable data access
@@ -58,7 +59,7 @@ async function ensureHideItemsColumn(): Promise<void> {
 
 // Run migration on module load (non-blocking)
 ensureHideItemsColumn().catch(err =>
-  console.warn('[configs] Failed to add hide_items column (may already exist):', err.message)
+  logger.warn('configs: Failed to add hide_items column (may already exist)', err.message)
 );
 
 /** Check if a user/wallet has an active (unexpired) access grant for a config */
@@ -93,7 +94,7 @@ async function hasActiveAccessGrant(
  */
 async function checkDataAccess(
   req: any,
-  _res: any,
+  res: any,
   next: any
 ): Promise<void> {
   const accessType = req.accessType;
@@ -111,7 +112,21 @@ async function checkDataAccess(
     return;
   }
 
-  // Monetized config — check for active grant
+  // x402 agent payment: if X-Payment-Proof header is present, run the full
+  // requirePayment middleware inline.  On success it calls our inner next()
+  // which sets hasDataAccess = true; on 402/error it sends the response.
+  const paymentProofHeader = req.headers['x-payment-proof'];
+  if (paymentProofHeader) {
+    // Delegate to requirePayment — it handles 402, verification, recording.
+    // If payment is valid it calls next(), which we intercept here to grant full access.
+    return requirePayment(req, res, () => {
+      req.hasDataAccess = true;
+      req.hasPaid = true;
+      next();
+    });
+  }
+
+  // No x402 payment — check for active 24-hour access grant (browser users)
   const user = req.user;
   const grant = await hasActiveAccessGrant(
     config.id,
@@ -170,7 +185,7 @@ export function trackConfigQuery(configId: string): void {
     'UPDATE configs SET total_queries = total_queries + 1 WHERE id = $1',
     [configId]
   ).catch(err => {
-    console.error('[trackConfigQuery] Failed to increment total_queries:', err.message);
+    logger.error('trackConfigQuery: Failed to increment total_queries', err.message);
   });
 }
 
@@ -222,7 +237,7 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) =
       offset: parseInt(offset as string) || 0,
     });
   } catch (error: any) {
-    console.error('[API] Error listing configs:', error);
+    logger.error('API: Error listing configs', error);
     res.status(500).json({ error: 'Failed to list configs' });
   }
 });
@@ -253,7 +268,7 @@ router.get('/featured', async (req: AuthenticatedRequest, res: Response) => {
       total: featuredConfigs.length,
     });
   } catch (error: any) {
-    console.error('[API] Error listing featured configs:', error);
+    logger.error('API: Error listing featured configs', error);
     res.status(500).json({ error: 'Failed to list featured configs' });
   }
 });
@@ -262,7 +277,7 @@ router.get('/featured', async (req: AuthenticatedRequest, res: Response) => {
  * POST /api/v1/configs
  * Create a new config
  */
-router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', configMutationRateLimiter, requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
@@ -349,7 +364,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =
         message: `You already have a config named "${req.body.name}". Please choose a different name.`
       });
     }
-    console.error('[API] Error creating config:', error);
+    logger.error('API: Error creating config', error);
     res.status(500).json({ error: 'Failed to create config' });
   }
 });
@@ -423,7 +438,7 @@ router.get('/:id', optionalAuth, requireConfigAccess, async (req: AuthenticatedR
 
     res.json(response);
   } catch (error: any) {
-    console.error('[API] Error getting config:', error);
+    logger.error('API: Error getting config', error);
     res.status(500).json({ error: 'Failed to get config' });
   }
 });
@@ -523,7 +538,7 @@ router.patch('/:id', requireAuth, requireConfigOwner, async (req: AuthenticatedR
         message: `You already have a config named "${req.body.name}". Please choose a different name.`
       });
     }
-    console.error('[API] Error updating config:', error);
+    logger.error('API: Error updating config', error);
     res.status(500).json({ error: 'Failed to update config' });
   }
 });
@@ -540,7 +555,7 @@ router.delete('/:id', requireAuth, requireConfigOwner, async (req: Authenticated
 
     res.status(204).send();
   } catch (error: any) {
-    console.error('[API] Error deleting config:', error);
+    logger.error('API: Error deleting config', error);
     res.status(500).json({ error: 'Failed to delete config' });
   }
 });
@@ -569,7 +584,7 @@ router.get('/:id/context', dataRateLimiter, optionalAuth, requireConfigAccess, r
       res.json(context);
     }
   } catch (error: any) {
-    console.error('[API] Error getting context:', error);
+    logger.error('API: Error getting context', error);
     res.status(500).json({ error: 'Failed to get context' });
   }
 });
@@ -592,7 +607,7 @@ router.get('/:id/summary', dataRateLimiter, optionalAuth, requireConfigAccess, r
     trackConfigQuery(configId);
     res.json(summary);
   } catch (error: any) {
-    console.error('[API] Error getting summary:', error);
+    logger.error('API: Error getting summary', error);
     res.status(500).json({ error: 'Failed to get summary' });
   }
 });
@@ -615,7 +630,7 @@ router.get('/:id/topics', dataRateLimiter, optionalAuth, requireConfigAccess, as
     trackConfigQuery(configId);
     res.json({ topics });
   } catch (error: any) {
-    console.error('[API] Error getting topics:', error);
+    logger.error('API: Error getting topics', error);
     res.status(500).json({ error: 'Failed to get topics' });
   }
 });
@@ -646,7 +661,7 @@ router.get('/:id/stats', dataRateLimiter, optionalAuth, requireConfigAccess, asy
       sources: sourceStats,
     });
   } catch (error: any) {
-    console.error('[API] Error getting stats:', error);
+    logger.error('API: Error getting stats', error);
     res.status(500).json({ error: 'Failed to get stats' });
   }
 });
@@ -794,7 +809,7 @@ router.post('/:id/run', runRateLimiter, requireAuth, requireConfigOwner, async (
         // Don't block - just skip AI processing and store raw data
         skipAiProcessing = true;
         aiQuotaExhausted = true;
-        console.log(`[API] AI quota exhausted for user ${req.user.id}, running without AI processing`);
+        logger.info(`API: AI quota exhausted for user ${req.user.id}, running without AI processing`);
       }
     }
 
@@ -812,7 +827,7 @@ router.post('/:id/run', runRateLimiter, requireAuth, requireConfigOwner, async (
       const siteName = process.env.SITE_NAME || '';
       
       if (!platformApiKey) {
-        console.warn('[API] No OPENAI_API_KEY configured for platform AI');
+        logger.warn('API: No OPENAI_API_KEY configured for platform AI');
       }
             
       // Inject credentials into AI plugins that use platform AI (or all for free/admin tier)
@@ -848,7 +863,7 @@ router.post('/:id/run', runRateLimiter, requireAuth, requireConfigOwner, async (
 
     // If AI quota exhausted, remove AI processing entirely (store raw data only)
     if (skipAiProcessing) {
-      console.log('[API] Skipping AI processing - quota exhausted, storing raw data only');
+      logger.info('API: Skipping AI processing - quota exhausted, storing raw data only');
       configJson = {
         ...configJson,
         ai: [], // No AI provider
@@ -873,11 +888,25 @@ router.post('/:id/run', runRateLimiter, requireAuth, requireConfigOwner, async (
       const platformDbUrl = process.env.DATABASE_URL;
       
       if (!platformDbUrl) {
-        console.warn('[API] No DATABASE_URL configured for platform storage');
+        logger.warn('API: No DATABASE_URL configured for platform storage');
       }
             
-      // Inject credentials into storage plugins that use platform storage (or all for free/admin tier)
+      // Inject credentials into storage plugins that use platform storage (or all for free/admin tier).
+      // SQLiteStorage is always converted to PostgresStorage in platform mode — SQLite has no place
+      // on a multi-tenant server and its schema would fail with expressions in UNIQUE constraints
+      // on some SQLite versions anyway.
       configJson.storage = configJson.storage?.map((storage: any) => {
+        if (storage.type === 'SQLiteStorage') {
+          return {
+            ...storage,
+            type: 'PostgresStorage',
+            params: {
+              ...storage.params,
+              configId,
+              connectionString: platformDbUrl,
+            }
+          };
+        }
         if (storage.params?.usePlatformStorage || isFreeTier || isAdminTier) {
           return {
             ...storage,
@@ -944,12 +973,12 @@ router.post('/:id/run', runRateLimiter, requireAuth, requireConfigOwner, async (
       queuedAt: new Date().toISOString(),
     });
   } catch (error: any) {
-    console.error('[API] Error running aggregation:', error);
+    logger.error('API: Error running aggregation', error);
     // Update status to error
     try {
       await userService.updateConfigRunStatus(configId, 'error', undefined, error.message);
     } catch (updateError) {
-      console.error('[API] Error updating config status:', updateError);
+      logger.error('API: Error updating config status', updateError);
     }
     res.status(500).json({ error: 'Failed to run aggregation', message: error.message });
   }
@@ -988,7 +1017,7 @@ router.post('/:id/validate-db', requireAuth, requireConfigOwner, async (req: Aut
       hasTables: validation.hasTables,
     });
   } catch (error: any) {
-    console.error('[API] Error validating database:', error);
+    logger.error('API: Error validating database', error);
     res.status(500).json({ error: 'Failed to validate database' });
   }
 });
@@ -1088,7 +1117,7 @@ router.get('/:id/items', dataRateLimiter, optionalAuth, requireConfigAccess, che
       } : {}),
     });
   } catch (error: any) {
-    console.error('[API] Error getting items:', error);
+    logger.error('API: Error getting items', error);
     res.status(500).json({ error: 'Failed to get items' });
   }
 });
@@ -1163,7 +1192,7 @@ router.get('/:id/content', dataRateLimiter, optionalAuth, requireConfigAccess, c
       } : {}),
     });
   } catch (error: any) {
-    console.error('[API] Error getting content:', error);
+    logger.error('API: Error getting content', error);
     res.status(500).json({ error: 'Failed to get content' });
   }
 });
@@ -1188,7 +1217,7 @@ router.get('/:id/content/:contentId', dataRateLimiter, optionalAuth, requireConf
 
     res.json(result.rows[0]);
   } catch (error: any) {
-    console.error('[API] Error getting content:', error);
+    logger.error('API: Error getting content', error);
     res.status(500).json({ error: 'Failed to get content' });
   }
 });
@@ -1243,7 +1272,7 @@ router.get('/:id/access', optionalAuth, requireConfigAccess, async (req: Authent
       durationHours: 24,
     });
   } catch (error: any) {
-    console.error('[API] Error checking access:', error);
+    logger.error('API: Error checking access', error);
     res.status(500).json({ error: 'Failed to check access' });
   }
 });
@@ -1415,7 +1444,7 @@ router.post('/:id/access/purchase', optionalAuth, requireConfigAccess, async (re
       },
     });
   } catch (error: any) {
-    console.error('[API] Error purchasing access:', error);
+    logger.error('API: Error purchasing access', error);
     res.status(500).json({ error: 'Failed to process access purchase' });
   }
 });
@@ -1571,7 +1600,7 @@ router.post('/:id/run/free', runRateLimiter, requireAuth, requireConfigOwner, as
       queuedAt: new Date().toISOString(),
     });
   } catch (error: any) {
-    console.error('[API] Error running free aggregation:', error);
+    logger.error('API: Error running free aggregation', error);
     res.status(500).json({ error: 'Failed to run aggregation', message: error.message });
   }
 });
@@ -1657,7 +1686,7 @@ router.post('/:id/run/continuous', runRateLimiter, requireAuth, requireConfigOwn
       const siteName = process.env.SITE_NAME || '';
 
       if (!platformApiKey) {
-        console.warn('[API] No OPENAI_API_KEY configured for platform AI');
+        logger.warn('API: No OPENAI_API_KEY configured for platform AI');
       }
 
       // Inject credentials into AI plugins that use platform AI (or all for admin)
@@ -1689,7 +1718,7 @@ router.post('/:id/run/continuous', runRateLimiter, requireAuth, requireConfigOwn
       const platformDbUrl = process.env.DATABASE_URL;
 
       if (!platformDbUrl) {
-        console.warn('[API] No DATABASE_URL configured for platform storage');
+        logger.warn('API: No DATABASE_URL configured for platform storage');
       }
 
       // Inject credentials into storage plugins that use platform storage (or all for admin)
@@ -1708,26 +1737,66 @@ router.post('/:id/run/continuous', runRateLimiter, requireAuth, requireConfigOwn
       }) || [];
     }
 
-    // Start continuous aggregation
-    const jobId = await aggregatorService.startContinuousJob(
-      configId,
-      req.user.id,
-      config.name,
-      configJson,
-      { runOnce: false },
-      aggregationSecrets,
-      globalInterval
-    );
+    // Check if BullMQ is available — if so, use repeatable jobs instead of setInterval
+    const { isQueueAvailable, scheduleContinuousAggregation, addAggregationJob } = await import('../../services/queueService');
+    
+    if (isQueueAvailable()) {
+      // BullMQ path: create a DB job record and schedule repeatable ticks
+      const jobId = await jobService.createJob({
+        configId,
+        userId: req.user.id,
+        jobType: 'continuous',
+        globalInterval,
+      });
 
-    res.json({
-      message: 'Continuous aggregation started',
-      configId,
-      jobId,
-      globalInterval,
-      queuedAt: new Date().toISOString(),
-    });
+      // Schedule repeatable ticks via BullMQ
+      await scheduleContinuousAggregation(configId, req.user.id, globalInterval, jobId);
+
+      // Update config status
+      await userService.updateConfigRunStatus(configId, 'running');
+
+      // Run the first tick immediately by adding a non-repeating job
+      await addAggregationJob({
+        configId,
+        userId: req.user.id,
+        runType: 'continuous-tick',
+        continuousJobId: jobId,
+      });
+
+      res.json({
+        message: 'Continuous aggregation started (BullMQ)',
+        configId,
+        jobId,
+        globalInterval,
+        mode: 'bullmq',
+        queuedAt: new Date().toISOString(),
+      });
+    } else {
+      // Fallback: in-process setInterval (original behavior)
+      const jobId = await aggregatorService.startContinuousJob(
+        configId,
+        req.user.id,
+        config.name,
+        configJson,
+        { runOnce: false },
+        aggregationSecrets,
+        globalInterval
+      );
+
+      // Update config status (BullMQ path does this above; in-process needs it too)
+      await userService.updateConfigRunStatus(configId, 'running');
+
+      res.json({
+        message: 'Continuous aggregation started',
+        configId,
+        jobId,
+        globalInterval,
+        mode: 'in-process',
+        queuedAt: new Date().toISOString(),
+      });
+    }
   } catch (error: any) {
-    console.error('[API] Error starting continuous aggregation:', error);
+    logger.error('API: Error starting continuous aggregation', error);
     res.status(500).json({ error: 'Failed to start continuous aggregation', message: error.message });
   }
 });
@@ -1753,11 +1822,26 @@ router.post('/:id/run/stop', requireAuth, requireConfigOwner, async (req: Authen
       });
     }
 
-    // Stop the job
+    // Cancel BullMQ repeatable job if queues are available
+    const { isQueueAvailable, cancelContinuousAggregation } = await import('../../services/queueService');
+    if (isQueueAvailable()) {
+      try {
+        await cancelContinuousAggregation(configId);
+      } catch (err) {
+        logger.warn('API: Failed to cancel BullMQ continuous job (may not exist)', err);
+      }
+    }
+
+    // Stop the in-process job (no-op if running via BullMQ, but safe to call)
     const stopped = await aggregatorService.stopContinuousJob(activeJob.id);
     if (!stopped) {
-      return res.status(500).json({ error: 'Failed to stop job' });
+      // If in-process stop failed, the job may be BullMQ-only — complete it manually
+      await jobService.completeJob(activeJob.id);
+      await jobService.addJobLog(activeJob.id, 'info', 'Continuous job stopped by user');
     }
+
+    // Update config status
+    await userService.updateConfigRunStatus(configId, 'idle');
 
     res.json({
       message: 'Continuous job stopped',
@@ -1765,7 +1849,7 @@ router.post('/:id/run/stop', requireAuth, requireConfigOwner, async (req: Authen
       jobId: activeJob.id,
     });
   } catch (error: any) {
-    console.error('[API] Error stopping continuous job:', error);
+    logger.error('API: Error stopping continuous job', error);
     res.status(500).json({ error: 'Failed to stop job', message: error.message });
   }
 });
@@ -1805,7 +1889,7 @@ router.get('/:id/runs', requireAuth, requireConfigOwner, async (req: Authenticat
       }
     });
   } catch (error: any) {
-    console.error('[API] Error getting run history:', error);
+    logger.error('API: Error getting run history', error);
     res.status(500).json({ error: 'Failed to get run history' });
   }
 });
@@ -1848,7 +1932,7 @@ router.get('/:id/runs/:runId', requireAuth, requireConfigOwner, async (req: Auth
       createdAt: job.createdAt.toISOString(),
     });
   } catch (error: any) {
-    console.error('[API] Error getting run details:', error);
+    logger.error('API: Error getting run details', error);
     res.status(500).json({ error: 'Failed to get run details' });
   }
 });
@@ -2113,11 +2197,296 @@ router.post('/:id/generate', runRateLimiter, requireAuth, requireConfigOwner, as
     });
 
   } catch (error: any) {
-    console.error('[API] Error in range generation:', error);
+    logger.error('API: Error in range generation', error);
     return res.status(500).json({
       error: 'Internal server error',
       message: error.message || 'An unexpected error occurred during generation.',
     });
+  }
+});
+
+// ============================================
+// CRON SCHEDULING (BullMQ repeatable jobs)
+// ============================================
+
+import { isWorkerAvailable } from '../../workers/aggregationWorker';
+import { scheduleRecurringAggregation, cancelRecurringAggregation, getAggregationQueue } from '../../services/queueService';
+
+/**
+ * Common cron presets for the frontend schedule builder.
+ * Returned by GET /api/v1/configs/:id/schedule so the UI can offer one-click options.
+ */
+const CRON_PRESETS = [
+  { label: 'Every 6 hours',  cron: '0 */6 * * *' },
+  { label: 'Every 12 hours', cron: '0 */12 * * *' },
+  { label: 'Daily at midnight', cron: '0 0 * * *' },
+  { label: 'Daily at 6 AM', cron: '0 6 * * *' },
+  { label: 'Twice a week (Mon & Thu)', cron: '0 0 * * 1,4' },
+  { label: 'Weekly (Monday)', cron: '0 0 * * 1' },
+];
+
+/**
+ * Validate a cron expression (basic syntax check).
+ * Accepts 5-field cron (minute hour dom month dow).
+ */
+function isValidCron(expression: string): boolean {
+  // 5 space-separated fields: minute hour dom month dow
+  const parts = expression.trim().split(/\s+/);
+  if (parts.length !== 5) return false;
+
+  // Max values for each field: minute(0-59), hour(0-23), dom(1-31), month(1-12), dow(0-7)
+  const maxValues = [59, 23, 31, 12, 7];
+  const fieldPattern = /^(\*|\d{1,2})([-/,]\d{1,2})*$/;
+
+  return parts.every((p, i) => {
+    if (!fieldPattern.test(p)) return false;
+    // Extract all numeric values and verify they're within range
+    const nums = p.match(/\d{1,2}/g);
+    if (!nums) return p === '*';
+    return nums.every(n => parseInt(n, 10) <= maxValues[i]);
+  });
+}
+
+/**
+ * GET /api/v1/configs/:id/schedule
+ * Get the current cron schedule for a config.
+ */
+router.get('/:id/schedule', requireAuth, requireConfigOwner, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const configId = req.params.id;
+    const schedule = await userService.getConfigSchedule(configId);
+
+    if (!schedule) {
+      return res.status(404).json({ error: 'Config not found' });
+    }
+
+    // Check if BullMQ is available
+    const queueAvailable = isWorkerAvailable();
+
+    // If there's an active schedule, get next run info from BullMQ
+    let nextRun: string | null = null;
+    if (schedule.cronExpression && queueAvailable) {
+      try {
+        const queue = getAggregationQueue();
+        const repeatableJobs = await queue.getRepeatableJobs();
+        const thisJob = repeatableJobs.find(j => j.name === `scheduled:${configId}`);
+        if (thisJob && thisJob.next) {
+          nextRun = new Date(thisJob.next).toISOString();
+        }
+      } catch {
+        // Queue may not be available
+      }
+    }
+
+    res.json({
+      cronExpression: schedule.cronExpression,
+      timezone: schedule.timezone,
+      presets: CRON_PRESETS,
+      nextRun,
+      queueAvailable,
+    });
+  } catch (error: any) {
+    logger.error('API: Error getting schedule', error);
+    res.status(500).json({ error: 'Failed to get schedule' });
+  }
+});
+
+/**
+ * POST /api/v1/configs/:id/schedule
+ * Set or update the cron schedule for a config.
+ * Requires Pro tier (scheduling is a continuous-run feature).
+ *
+ * Body:
+ *   cronExpression: string - 5-field cron expression (e.g. "0 0 * * *")
+ *   timezone?: string - IANA timezone (default: "UTC")
+ */
+router.post('/:id/schedule', requireAuth, requireConfigOwner, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const configId = req.params.id;
+
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Scheduling requires BullMQ (Redis)
+    if (!isWorkerAvailable()) {
+      return res.status(503).json({
+        error: 'Scheduling unavailable',
+        message: 'Redis is not configured. Set REDIS_URL to enable scheduled runs.',
+      });
+    }
+
+    // Scheduling requires Pro tier (paid or admin)
+    const isPro = req.user.tier === 'admin' || req.user.tier === 'paid';
+    if (!isPro) {
+      // Also check on-chain license
+      if (req.user.walletAddress) {
+        const license = await licenseService.verifyLicense(req.user.walletAddress);
+        if (!license.isActive) {
+          return res.status(403).json({
+            error: 'Pro required',
+            message: 'Scheduled runs require a Pro subscription.',
+          });
+        }
+      } else {
+        return res.status(403).json({
+          error: 'Pro required',
+          message: 'Scheduled runs require a Pro subscription.',
+        });
+      }
+    }
+
+    const { cronExpression, timezone = 'UTC' } = req.body || {};
+
+    if (!cronExpression || typeof cronExpression !== 'string') {
+      return res.status(400).json({
+        error: 'Missing cronExpression',
+        message: 'Provide a 5-field cron expression (e.g. "0 */6 * * *").',
+      });
+    }
+
+    if (!isValidCron(cronExpression)) {
+      return res.status(400).json({
+        error: 'Invalid cron expression',
+        message: 'Must be a valid 5-field cron expression (minute hour day-of-month month day-of-week).',
+      });
+    }
+
+    // Minimum interval: no more frequent than every 30 minutes
+    // Simple check: if minute field is */N where N < 30, reject
+    const minuteField = cronExpression.trim().split(/\s+/)[0];
+    if (minuteField.startsWith('*/')) {
+      const interval = parseInt(minuteField.slice(2));
+      if (interval < 30) {
+        return res.status(400).json({
+          error: 'Schedule too frequent',
+          message: 'Minimum schedule interval is every 30 minutes.',
+        });
+      }
+    }
+
+    // Save to database
+    await userService.updateConfigSchedule(configId, cronExpression, timezone);
+
+    // Schedule in BullMQ
+    await scheduleRecurringAggregation(configId, req.user.id, cronExpression);
+
+    logger.info(`API: Scheduled config ${configId} with cron "${cronExpression}" (${timezone})`);
+
+    res.json({
+      message: 'Schedule set',
+      cronExpression,
+      timezone,
+    });
+  } catch (error: any) {
+    logger.error('API: Error setting schedule', error);
+    res.status(500).json({ error: 'Failed to set schedule', message: error.message });
+  }
+});
+
+/**
+ * DELETE /api/v1/configs/:id/schedule
+ * Remove the cron schedule for a config (stop recurring runs).
+ */
+router.delete('/:id/schedule', requireAuth, requireConfigOwner, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const configId = req.params.id;
+
+    // Remove from database
+    await userService.updateConfigSchedule(configId, null);
+
+    // Remove from BullMQ (if available)
+    if (isWorkerAvailable()) {
+      try {
+        await cancelRecurringAggregation(configId);
+      } catch {
+        // Queue may not be available — that's fine, DB is the source of truth
+      }
+    }
+
+    logger.info(`API: Removed schedule for config ${configId}`);
+
+    res.json({ message: 'Schedule removed' });
+  } catch (error: any) {
+    logger.error('API: Error removing schedule', error);
+    res.status(500).json({ error: 'Failed to remove schedule', message: error.message });
+  }
+});
+
+// ============================================
+// SHARING — Twitter/X auto-post and manual share
+// ============================================
+
+import { twitterService, composeTweet, ShareableContent } from '../../services/twitterService';
+
+/**
+ * POST /api/v1/configs/:id/share/twitter - Share a summary to Twitter/X
+ *
+ * Body: { date: "YYYY-MM-DD", customText?: string }
+ *
+ * If customText is provided, it's posted as-is.
+ * Otherwise, the latest summary for the given date is auto-composed into a tweet.
+ */
+router.post('/:id/share/twitter', requireAuth, requireConfigOwner, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!twitterService.isConfigured()) {
+      return res.status(501).json({
+        error: 'Twitter integration not configured',
+        details: 'Set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, and TWITTER_ACCESS_SECRET environment variables.',
+      });
+    }
+
+    const config = (req as any).config;
+    if (!config) {
+      return res.status(404).json({ error: 'Config not found' });
+    }
+
+    const { date, customText } = req.body;
+
+    if (customText) {
+      // Post custom text directly
+      const result = await twitterService.postTweet(customText);
+      return res.json(result);
+    }
+
+    if (!date) {
+      return res.status(400).json({ error: 'date is required (YYYY-MM-DD)' });
+    }
+
+    // Fetch the summary for this date using contextService
+    const summaryResult = await contextService.getSummary(config.id, date);
+
+    if (!summaryResult) {
+      return res.status(404).json({ error: `No summary found for date ${date}` });
+    }
+
+    // Compose and post
+    const shareable: ShareableContent = {
+      configSlug: config.slug,
+      configName: config.name,
+      title: summaryResult.title || `${config.name} — ${date}`,
+      summary: (summaryResult.markdown || '').slice(0, 200).replace(/[#*_`]/g, ''),
+      date,
+    };
+
+    // Extract topics from categories if available
+    if (summaryResult.categories && Array.isArray(summaryResult.categories)) {
+      shareable.topics = (summaryResult.categories as any[])
+        .slice(0, 3)
+        .map((c: any) => (typeof c === 'string' ? c : c.name || c.title || ''))
+        .filter(Boolean);
+    }
+
+    const tweetText = composeTweet(shareable);
+    const result = await twitterService.postTweet(tweetText);
+
+    res.json({
+      ...result,
+      tweetText,
+    });
+  } catch (error: any) {
+    logger.error('API: Error sharing to Twitter', error);
+    res.status(500).json({ error: 'Failed to share to Twitter' });
   }
 });
 

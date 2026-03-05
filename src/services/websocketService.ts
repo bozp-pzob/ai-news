@@ -3,6 +3,7 @@ import { IncomingMessage } from 'http';
 import { URL } from 'url';
 import { AggregationStatus, JobStatus } from '../types';
 import { AggregatorService } from './aggregatorService';
+import { logger } from '../helpers/cliHelper';
 
 export class WebSocketService {
   private wss: WebSocketServer;
@@ -43,7 +44,7 @@ export class WebSocketService {
 
       // Handle config based connections (original functionality)
       if (!configName) {
-        console.error('WebSocket connection attempted without config parameter or jobId');
+        logger.error('WebSocket connection attempted without config parameter or jobId');
         ws.close(1008, 'Config name or Job ID is required');
         return;
       }
@@ -78,7 +79,7 @@ export class WebSocketService {
           const data = JSON.parse(message.toString());
           this.handleClientMessage(configName, data, ws);
         } catch (error) {
-          console.error('Error processing WebSocket message:', error);
+          logger.error('Error processing WebSocket message', error);
         }
       });
 
@@ -161,10 +162,10 @@ export class WebSocketService {
           break;
           
         default:
-          console.warn(`Unknown WebSocket action: ${data.action}`);
+          logger.warn(`Unknown WebSocket action: ${data.action}`);
       }
     } catch (error) {
-      console.error(`Error handling WebSocket message for ${configName}:`, error);
+      logger.error(`Error handling WebSocket message for ${configName}`, error);
       ws.send(JSON.stringify({
         type: 'error',
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -180,7 +181,7 @@ export class WebSocketService {
         status
       }));
     } catch (error) {
-      console.error(`Error sending status for ${configName}:`, error);
+      logger.error(`Error sending status for ${configName}`, error);
     }
   }
 
@@ -196,7 +197,7 @@ export class WebSocketService {
         }));
       }
     } catch (error) {
-      console.error(`Error sending job status for ${jobId}:`, error);
+      logger.error(`Error sending job status for ${jobId}`, error);
     }
   }
 

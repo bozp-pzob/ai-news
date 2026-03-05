@@ -11,7 +11,7 @@ interface PrivyWrapperProps {
 /**
  * Privy configuration
  */
-const PRIVY_APP_ID = process.env.REACT_APP_PRIVY_APP_ID || '';
+const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID || '';
 
 /**
  * PrivyProvider wrapper with our app configuration
@@ -21,7 +21,7 @@ const PRIVY_APP_ID = process.env.REACT_APP_PRIVY_APP_ID || '';
  */
 export function PrivyProvider({ children }: PrivyWrapperProps) {
   if (!PRIVY_APP_ID) {
-    console.warn('[PrivyProvider] REACT_APP_PRIVY_APP_ID not set - auth will be disabled');
+    console.warn('[PrivyProvider] VITE_PRIVY_APP_ID not set - auth will be disabled');
     // Return children without Privy if no app ID configured
     return <>{children}</>;
   }
@@ -50,7 +50,7 @@ export function PrivyProvider({ children }: PrivyWrapperProps) {
         
         // Solana cluster configuration for funding and transactions
         solanaClusters: [
-          { name: 'mainnet-beta', rpcUrl: process.env.REACT_APP_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com' },
+          { name: 'mainnet-beta', rpcUrl: import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com' },
         ],
         
         // Legal/consent links (update with actual URLs)
@@ -60,7 +60,7 @@ export function PrivyProvider({ children }: PrivyWrapperProps) {
         },
         
         // Wallet connection configuration
-        walletConnectCloudProjectId: process.env.REACT_APP_WALLETCONNECT_PROJECT_ID,
+        walletConnectCloudProjectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID,
         
         // Session configuration
         // Sessions last 7 days by default

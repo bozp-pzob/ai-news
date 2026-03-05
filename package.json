@@ -31,7 +31,13 @@
     "migrate-to-postgres": "ts-node --transpile-only scripts/migrate-to-postgres.ts",
     "backfill-embeddings": "ts-node --transpile-only scripts/backfill-embeddings.ts",
     "bootstrap-admin": "ts-node --transpile-only scripts/bootstrap-admin.ts",
-    "check-duplicates": "ts-node --transpile-only scripts/check-duplicates.ts"
+    "check-duplicates": "ts-node --transpile-only scripts/check-duplicates.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "digital-gardener",
@@ -62,6 +68,7 @@
     "cors": "^2.8.5",
     "discord.js": "^14.17.3",
     "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.45.1",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
     "ioredis": "^5.9.1",
@@ -98,9 +105,11 @@
     "@types/react-transition-group": "^4.4.12",
     "@types/uuid": "^11.0.0",
     "@types/ws": "^8.5.5",
+    "drizzle-kit": "^0.31.9",
     "glob": "^13.0.0",
     "nodemon": "^3.0.1",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.18"
   }
 }

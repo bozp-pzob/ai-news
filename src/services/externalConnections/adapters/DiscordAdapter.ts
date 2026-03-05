@@ -23,6 +23,7 @@ import {
   mapChannelRow,
 } from '../types';
 import { databaseService } from '../../databaseService';
+import { logger } from '../../../helpers/cliHelper';
 
 // Discord OAuth2 endpoints
 const DISCORD_AUTH_URL = 'https://discord.com/api/oauth2/authorize';
@@ -79,11 +80,11 @@ export class DiscordAdapter extends BaseAdapter {
 
     // Handle bot being added/removed from guilds
     this.client.on('guildCreate', async (guild) => {
-      console.log(`[DiscordAdapter] Bot added to guild: ${guild.name} (${guild.id})`);
+      logger.info(`DiscordAdapter: Bot added to guild: ${guild.name} (${guild.id})`);
     });
 
     this.client.on('guildDelete', async (guild) => {
-      console.log(`[DiscordAdapter] Bot removed from guild: ${guild.name} (${guild.id})`);
+      logger.info(`DiscordAdapter: Bot removed from guild: ${guild.name} (${guild.id})`);
       // Mark connection as inactive
       await databaseService.query(
         `UPDATE external_connections 
@@ -94,13 +95,13 @@ export class DiscordAdapter extends BaseAdapter {
     });
 
     this.client.on('error', (error) => {
-      console.error('[DiscordAdapter] Client error:', error);
+      logger.error('DiscordAdapter: Client error', error);
     });
 
     // Login
     await this.client.login(process.env.DISCORD_BOT_TOKEN);
     this.isInitialized = true;
-    console.log('[DiscordAdapter] Bot logged in successfully');
+    logger.info('DiscordAdapter: Bot logged in successfully');
   }
 
   /**
@@ -212,7 +213,7 @@ export class DiscordAdapter extends BaseAdapter {
     const clientSecret = process.env.DISCORD_CLIENT_SECRET;
     const redirectUri = process.env.DISCORD_OAUTH_REDIRECT_URI;
 
-    console.log('[DiscordAdapter] Exchanging authorization code for tokens...');
+    logger.info('DiscordAdapter: Exchanging authorization code for tokens...');
     
     const tokenResponse = await fetch(tokenUrl, {
       method: 'POST',
@@ -230,12 +231,12 @@ export class DiscordAdapter extends BaseAdapter {
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
-      console.error('[DiscordAdapter] Token exchange failed:', errorText);
+      logger.error(`DiscordAdapter: Token exchange failed: ${errorText}`);
       throw new Error(`Failed to exchange authorization code: ${errorText}`);
     }
 
     const tokenData = await tokenResponse.json();
-    console.log('[DiscordAdapter] Token exchange successful, guild should be joined now');
+    logger.info('DiscordAdapter: Token exchange successful, guild should be joined now');
 
     // Give the bot a moment to join the guild
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -244,9 +245,9 @@ export class DiscordAdapter extends BaseAdapter {
     const client = await this.getClient();
     
     // Debug: Log current guilds the bot is in
-    console.log(`[DiscordAdapter] Bot is currently in ${client.guilds.cache.size} guilds:`);
-    client.guilds.cache.forEach(g => console.log(`  - ${g.name} (${g.id})`));
-    console.log(`[DiscordAdapter] Trying to fetch guild: ${guild_id}`);
+    logger.info(`DiscordAdapter: Bot is currently in ${client.guilds.cache.size} guilds:`);
+    client.guilds.cache.forEach(g => logger.info(`  - ${g.name} (${g.id})`));
+    logger.info(`DiscordAdapter: Trying to fetch guild: ${guild_id}`);
     
     // Sometimes the bot needs a moment to join the guild after OAuth
     let guild;
@@ -256,7 +257,7 @@ export class DiscordAdapter extends BaseAdapter {
         guild = await client.guilds.fetch(guild_id);
         break;
       } catch (fetchError: any) {
-        console.log(`[DiscordAdapter] Failed to fetch guild ${guild_id}, retries left: ${retries - 1}`, fetchError.message);
+        logger.info(`DiscordAdapter: Failed to fetch guild ${guild_id}, retries left: ${retries - 1}: ${fetchError.message}`);
         retries--;
         if (retries > 0) {
           // Wait 2 seconds before retrying

@@ -16,6 +16,7 @@ import {
 } from "./helpers/configHelper";
 import { runGeneratorsForDate } from "./helpers/generatorHelper";
 import { GeneratorPlugin, GeneratorInstanceConfig, ExporterPlugin } from "./types";
+import { logger } from "./helpers/cliHelper";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -184,7 +185,7 @@ dotenv.config();
           const dateStr = yesterday.toISOString().slice(0, 10);
           await (config.instance as ExporterPlugin).export(dateStr);
         } else {
-          console.warn(`[index] Plugin "${config.instance.name}" does not implement GeneratorPlugin or ExporterPlugin, skipping.`);
+          logger.warn(`Plugin "${config.instance.name}" does not implement GeneratorPlugin or ExporterPlugin, skipping.`);
         }
       }
 
@@ -204,7 +205,7 @@ dotenv.config();
           });
 
           if (result.anyFailed) {
-            console.error(`[index] Some generators failed: ${result.errors.join(', ')}`);
+            logger.error(`Some generators failed: ${result.errors.join(', ')}`);
           }
         };
 
@@ -218,17 +219,17 @@ dotenv.config();
       }
     }
     else {
-      console.log("Summary will not be generated.");
+      logger.info("Summary will not be generated.");
     }
 
-    console.log("Content aggregator is running and scheduled.");
+    logger.info("Content aggregator is running and scheduled.");
     
     /**
      * Set up graceful shutdown handlers
      * This ensures resources are properly released when the application exits
      */
     const shutdown = async () => {
-      console.log("Shutting down...");
+      logger.info("Shutting down...");
       storageConfigs.forEach(async (storage : any) => {
         await storage.close();
       });
@@ -244,10 +245,10 @@ dotenv.config();
      */
     if (runOnce) {
       await shutdown();
-      console.log("Content aggregator is complete.");
+      logger.info("Content aggregator is complete.");
     }
   } catch (error) {
-    console.error("Error initializing the content aggregator:", error);
+    logger.error("Error initializing the content aggregator:", error);
     process.exit(1);
   }
 })();

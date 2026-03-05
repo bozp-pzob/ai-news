@@ -10,7 +10,7 @@ import { Config, PluginInfo, AggregationStatus, JobStatus } from '../types';
 import { deepCopy } from '../utils/deepCopy';
 
 // API base URL - defaults to same origin, can be overridden for local development
-export const API_BASE = process.env.REACT_APP_API_URL || '';
+export const API_BASE = import.meta.env.VITE_API_URL || '';
 
 /**
  * Platform Types
@@ -2110,6 +2110,259 @@ export const relayApi = {
   },
 };
 
+// ============================================
+// Schedule API — Cron scheduling for configs
+// ============================================
+
+export interface ScheduleInfo {
+  cronExpression: string | null;
+  timezone: string;
+  presets: Array<{ label: string; cron: string }>;
+  nextRun: string | null;
+  queueAvailable: boolean;
+}
+
+export const scheduleApi = {
+  /**
+   * Get the current schedule for a config
+   */
+  async get(authToken: string, configId: string): Promise<ScheduleInfo> {
+    return apiRequest<ScheduleInfo>(
+      `/api/v1/configs/${configId}/schedule`,
+      {},
+      authToken
+    );
+  },
+
+  /**
+   * Set or update the cron schedule
+   */
+  async set(
+    authToken: string,
+    configId: string,
+    cronExpression: string,
+    timezone: string = 'UTC'
+  ): Promise<{ message: string; cronExpression: string; timezone: string }> {
+    return apiRequest<{ message: string; cronExpression: string; timezone: string }>(
+      `/api/v1/configs/${configId}/schedule`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ cronExpression, timezone }),
+      },
+      authToken
+    );
+  },
+
+  /**
+   * Remove the schedule (stop recurring runs)
+   */
+  async remove(authToken: string, configId: string): Promise<{ message: string }> {
+    return apiRequest<{ message: string }>(
+      `/api/v1/configs/${configId}/schedule`,
+      { method: 'DELETE' },
+      authToken
+    );
+  },
+};
+
+// ============================================
+// Webhook API — Inbound + Outbound webhook management
+// ============================================
+
+export type WebhookEventType = 'job.completed' | 'job.failed' | 'job.started' | 'job.cancelled';
+
+export interface InboundWebhook {
+  id: string;
+  webhookId: string;
+  webhookSecret: string;
+  configId: string | null;
+  sourceName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OutboundWebhook {
+  id: string;
+  userId: string;
+  configId: string | null;
+  url: string;
+  events: WebhookEventType[];
+  signingSecret?: string;
+  signingSecretPreview?: string;
+  isActive: boolean;
+  description: string | null;
+  lastTriggeredAt: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+  totalDeliveries: number;
+  totalSuccesses: number;
+  totalFailures: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  webhookId: string;
+  event: string;
+  payload: any;
+  statusCode: number | null;
+  responseBody: string | null;
+  error: string | null;
+  durationMs: number | null;
+  deliveredAt: string;
+}
+
+export const webhookApi = {
+  // --- Inbound (WebhookSource ingestion endpoints) ---
+
+  async listInbound(authToken: string): Promise<{ webhooks: InboundWebhook[] }> {
+    return apiRequest<{ webhooks: InboundWebhook[] }>(
+      '/api/v1/webhooks/manage/inbound',
+      {},
+      authToken
+    );
+  },
+
+  async listInboundForConfig(authToken: string, configId: string): Promise<{ webhooks: InboundWebhook[] }> {
+    return apiRequest<{ webhooks: InboundWebhook[] }>(
+      `/api/v1/webhooks/manage/inbound/${configId}`,
+      {},
+      authToken
+    );
+  },
+
+  async createInbound(
+    authToken: string,
+    configId: string,
+    sourceName?: string
+  ): Promise<{ webhook: InboundWebhook }> {
+    return apiRequest<{ webhook: InboundWebhook }>(
+      '/api/v1/webhooks/manage/inbound',
+      {
+        method: 'POST',
+        body: JSON.stringify({ configId, sourceName }),
+      },
+      authToken
+    );
+  },
+
+  async deleteInbound(authToken: string, id: string): Promise<{ success: boolean }> {
+    return apiRequest<{ success: boolean }>(
+      `/api/v1/webhooks/manage/inbound/${id}`,
+      { method: 'DELETE' },
+      authToken
+    );
+  },
+
+  async rotateInboundSecret(authToken: string, id: string): Promise<{ webhook: InboundWebhook }> {
+    return apiRequest<{ webhook: InboundWebhook }>(
+      `/api/v1/webhooks/manage/inbound/${id}/rotate`,
+      { method: 'POST' },
+      authToken
+    );
+  },
+
+  // --- Outbound (notifications to external URLs) ---
+
+  async listOutbound(authToken: string): Promise<{ webhooks: OutboundWebhook[] }> {
+    return apiRequest<{ webhooks: OutboundWebhook[] }>(
+      '/api/v1/webhooks/manage/outbound',
+      {},
+      authToken
+    );
+  },
+
+  async getOutbound(authToken: string, id: string): Promise<{ webhook: OutboundWebhook }> {
+    return apiRequest<{ webhook: OutboundWebhook }>(
+      `/api/v1/webhooks/manage/outbound/${id}`,
+      {},
+      authToken
+    );
+  },
+
+  async createOutbound(
+    authToken: string,
+    params: {
+      url: string;
+      configId?: string;
+      events?: WebhookEventType[];
+      description?: string;
+    }
+  ): Promise<{ webhook: OutboundWebhook }> {
+    return apiRequest<{ webhook: OutboundWebhook }>(
+      '/api/v1/webhooks/manage/outbound',
+      {
+        method: 'POST',
+        body: JSON.stringify(params),
+      },
+      authToken
+    );
+  },
+
+  async updateOutbound(
+    authToken: string,
+    id: string,
+    updates: {
+      url?: string;
+      events?: WebhookEventType[];
+      isActive?: boolean;
+      description?: string;
+    }
+  ): Promise<{ webhook: OutboundWebhook }> {
+    return apiRequest<{ webhook: OutboundWebhook }>(
+      `/api/v1/webhooks/manage/outbound/${id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      },
+      authToken
+    );
+  },
+
+  async deleteOutbound(authToken: string, id: string): Promise<{ success: boolean }> {
+    return apiRequest<{ success: boolean }>(
+      `/api/v1/webhooks/manage/outbound/${id}`,
+      { method: 'DELETE' },
+      authToken
+    );
+  },
+
+  async rotateOutboundSecret(authToken: string, id: string): Promise<{ webhook: OutboundWebhook }> {
+    return apiRequest<{ webhook: OutboundWebhook }>(
+      `/api/v1/webhooks/manage/outbound/${id}/rotate`,
+      { method: 'POST' },
+      authToken
+    );
+  },
+
+  async testOutbound(
+    authToken: string,
+    id: string
+  ): Promise<{ success: boolean; statusCode: number | null; error: string | null; durationMs: number }> {
+    return apiRequest<{ success: boolean; statusCode: number | null; error: string | null; durationMs: number }>(
+      `/api/v1/webhooks/manage/outbound/${id}/test`,
+      { method: 'POST' },
+      authToken
+    );
+  },
+
+  async getDeliveries(
+    authToken: string,
+    id: string,
+    limit?: number
+  ): Promise<{ deliveries: WebhookDelivery[] }> {
+    const qs = limit ? `?limit=${limit}` : '';
+    return apiRequest<{ deliveries: WebhookDelivery[] }>(
+      `/api/v1/webhooks/manage/outbound/${id}/deliveries${qs}`,
+      {},
+      authToken
+    );
+  },
+};
+
 export default {
   plugin: pluginApi,
   localConfig: localConfigApi,
@@ -2123,5 +2376,7 @@ export default {
   connections: connectionsApi,
   discord: discordApi, // Legacy - use connectionsApi instead
   relay: relayApi,
+  schedule: scheduleApi,
+  webhooks: webhookApi,
   checkHealth,
 };

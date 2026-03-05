@@ -1,5 +1,7 @@
 // src/services/licenseService.ts
 
+import { logger } from '../helpers/cliHelper';
+
 /**
  * License Service - pop402 Integration
  *
@@ -163,12 +165,12 @@ export async function verifyLicense(
   if (!skipCache) {
     const cached = getCachedLicense(walletAddress);
     if (cached !== null) {
-      console.log(`[LicenseService] Cache hit for ${walletAddress.slice(0, 8)}...`);
+      logger.info(`LicenseService: Cache hit for ${walletAddress.slice(0, 8)}...`);
       return cached;
     }
   }
 
-  console.log(`[LicenseService] Verifying license for ${walletAddress.slice(0, 8)}... (mock: ${MOCK_MODE})`);
+  logger.info(`LicenseService: Verifying license for ${walletAddress.slice(0, 8)}... (mock: ${MOCK_MODE})`);
 
   // Mock mode - check in-memory storage
   if (MOCK_MODE) {
@@ -181,7 +183,7 @@ export async function verifyLicense(
       expiresAt: mockLicense?.expiresAt,
     };
     setCachedLicense(walletAddress, status);
-    console.log(`[LicenseService] MOCK: License ${isActive ? 'ACTIVE' : 'INACTIVE'} for ${walletAddress.slice(0, 8)}...`);
+    logger.info(`LicenseService: MOCK: License ${isActive ? 'ACTIVE' : 'INACTIVE'} for ${walletAddress.slice(0, 8)}...`);
     return status;
   }
 
@@ -192,7 +194,7 @@ export async function verifyLicense(
       walletAddress,
     };
     
-    console.log(`[LicenseService] Checking license with facilitator:`, {
+    logger.info(`LicenseService: Checking license with facilitator:`, {
       url: `${FACILITATOR_URL}/license`,
       sku: SKU,
       walletAddress: walletAddress.slice(0, 8) + '...' + walletAddress.slice(-4),
@@ -204,25 +206,25 @@ export async function verifyLicense(
       body: JSON.stringify(requestBody),
     });
 
-    console.log(`[LicenseService] Facilitator /license response: ${response.status}`);
+    logger.info(`LicenseService: Facilitator /license response: ${response.status}`);
 
     // 404 = no license found (expected for new users)
     if (response.status === 404) {
       const status: LicenseStatus = { isActive: false, walletAddress, sku: SKU };
       setCachedLicense(walletAddress, status);
-      console.log(`[LicenseService] No license found for ${walletAddress.slice(0, 8)}...`);
+      logger.info(`LicenseService: No license found for ${walletAddress.slice(0, 8)}...`);
       return status;
     }
 
     if (!response.ok) {
-      console.error(`[LicenseService] Verify failed: ${response.status} ${response.statusText}`);
+      logger.error(`LicenseService: Verify failed: ${response.status} ${response.statusText}`);
       const status: LicenseStatus = { isActive: false, walletAddress };
       // Don't cache errors to allow retry
       return status;
     }
 
     const result = await response.json();
-    console.log(`[LicenseService] Facilitator response:`, JSON.stringify(result, null, 2));
+    logger.info(`LicenseService: Facilitator response:`, JSON.stringify(result, null, 2));
 
     // Parse response based on pop402 format
     // Expected format: { license: { expirationDate: timestamp } }
@@ -240,14 +242,14 @@ export async function verifyLicense(
     // Cache the result
     setCachedLicense(walletAddress, status);
 
-    console.log(
-      `[LicenseService] License ${status.isActive ? 'ACTIVE' : 'INACTIVE'} for ${walletAddress.slice(0, 8)}...` +
+    logger.info(
+      `LicenseService: License ${status.isActive ? 'ACTIVE' : 'INACTIVE'} for ${walletAddress.slice(0, 8)}...` +
       (status.expiresAt ? ` (expires: ${status.expiresAt.toISOString()})` : '')
     );
 
     return status;
   } catch (error) {
-    console.error('[LicenseService] Error verifying license:', error);
+    logger.error('LicenseService: Error verifying license', error);
     // On error, return inactive but don't cache (allow retry)
     return { isActive: false, walletAddress };
   }
@@ -261,7 +263,7 @@ export async function verifyLicense(
  * @returns Challenge object
  */
 export async function getChallenge(walletAddress: string, ttl = 300): Promise<Challenge> {
-  console.log(`[LicenseService] Getting challenge for ${walletAddress.slice(0, 8)}... (mock: ${MOCK_MODE})`);
+  logger.info(`LicenseService: Getting challenge for ${walletAddress.slice(0, 8)}... (mock: ${MOCK_MODE})`);
 
   // Mock mode - generate a simple challenge
   if (MOCK_MODE) {
@@ -282,7 +284,7 @@ export async function getChallenge(walletAddress: string, ttl = 300): Promise<Ch
     network: NETWORK,
   };
   
-  console.log(`[LicenseService] Requesting challenge from ${FACILITATOR_URL}/challenge:`, requestBody);
+  logger.info(`LicenseService: Requesting challenge from ${FACILITATOR_URL}/challenge:`, requestBody);
   
   const response = await fetch(`${FACILITATOR_URL}/challenge`, {
     method: 'POST',
@@ -291,7 +293,7 @@ export async function getChallenge(walletAddress: string, ttl = 300): Promise<Ch
   });
 
   const responseText = await response.text();
-  console.log(`[LicenseService] Challenge response (${response.status}):`, responseText.slice(0, 500));
+  logger.info(`LicenseService: Challenge response (${response.status}):`, responseText.slice(0, 500));
 
   if (!response.ok) {
     throw new Error(`Failed to get challenge: ${responseText}`);
@@ -309,7 +311,7 @@ export async function getChallenge(walletAddress: string, ttl = 300): Promise<Ch
     expiresIn: challenge.expiresIn || ttl,
   };
   
-  console.log(`[LicenseService] Parsed challenge:`, {
+  logger.info(`LicenseService: Parsed challenge:`, {
     id: result.id,
     messagePreview: result.message?.slice(0, 50) + '...',
     expiresIn: result.expiresIn,
@@ -335,8 +337,8 @@ export async function mockPurchase(params: PurchaseParams): Promise<PurchaseResu
     return { success: false, error: 'Mock purchase only available in mock mode. Use the purchase route with X-PAYMENT header for real purchases.' };
   }
 
-  console.log(
-    `[LicenseService] MOCK: Processing purchase: ${planId} for ${walletAddress.slice(0, 8)}...`
+  logger.info(
+    `LicenseService: MOCK: Processing purchase: ${planId} for ${walletAddress.slice(0, 8)}...`
   );
 
   // Calculate expiration date
@@ -347,7 +349,7 @@ export async function mockPurchase(params: PurchaseParams): Promise<PurchaseResu
   mockLicenses.set(walletAddress.toLowerCase(), { expiresAt });
   clearLicenseCache(walletAddress);
 
-  console.log(`[LicenseService] MOCK: Purchase successful! Expires: ${expiresAt.toISOString()}`);
+  logger.info(`LicenseService: MOCK: Purchase successful! Expires: ${expiresAt.toISOString()}`);
 
   return {
     success: true,

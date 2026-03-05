@@ -9,6 +9,7 @@ import { addOneDay, callbackDateRangeLogic, formatDate, parseDate } from "../hel
 import { ContentSource } from "../plugins/sources/ContentSource";
 import { StoragePlugin } from "../plugins/storage/StoragePlugin";
 import { ContentItem, EnricherPlugin, DateConfig } from "../types";
+import { logger } from '../helpers/cliHelper';
 
 /**
  * HistoricalAggregator class that orchestrates the collection and processing of historical content.
@@ -62,19 +63,19 @@ export class HistoricalAggregator {
    */
   public async saveItems(items : ContentItem[], sourceName : string) {
     if (! this.storage) {
-      console.error(`Error aggregator storage hasn't be set.`);
+      logger.error(`Error aggregator storage hasn't be set.`);
       return
     }
 
     try {
       if (items.length > 0) {
         await this.storage.saveContentItems(items);
-        console.log(`Stored ${items.length} items from source: ${sourceName}`);
+        logger.info(`Stored ${items.length} items from source: ${sourceName}`);
       } else {
-        console.log(`No new items fetched from source: ${sourceName}`);
+        logger.info(`No new items fetched from source: ${sourceName}`);
       }
     } catch (error) {
-      console.error(`Error fetching/storing data from source ${sourceName}:`, error);
+      logger.error(`Error fetching/storing data from source ${sourceName}`, error);
     }
   }
 
@@ -99,7 +100,7 @@ export class HistoricalAggregator {
           allItems = allItems.concat(items);
         }
       } catch (error) {
-        console.error(`Error fetching from ${source.name}:`, error);
+        logger.error(`Error fetching from ${source.name}`, error);
       }
     }
 
@@ -132,7 +133,7 @@ export class HistoricalAggregator {
           }
         }
       } catch (error) {
-        console.error(`Error fetching from ${source.name}:`, error);
+        logger.error(`Error fetching from ${source.name}`, error);
       }
     }
 
@@ -149,11 +150,11 @@ export class HistoricalAggregator {
    */
   public async fetchAndStore(sourceName: string, date : string) {
     try {
-      console.log(`Fetching data from source: ${sourceName} for Date: ${date}`);
+      logger.info(`Fetching data from source: ${sourceName} for Date: ${date}`);
       const items = await this.fetchSource(sourceName, date);
       await this.saveItems(items, sourceName);
     } catch (error) {
-      console.error(`Error fetching/storing data from source ${sourceName}:`, error);
+      logger.error(`Error fetching/storing data from source ${sourceName}`, error);
     }
   };
   
@@ -171,7 +172,7 @@ export class HistoricalAggregator {
     try {
       await callbackDateRangeLogic(filter, (dayStr:string) => this.fetchAndStore(sourceName, dayStr))
     } catch (error) {
-      console.error(`Error fetching/storing data from source ${sourceName}:`, error);
+      logger.error(`Error fetching/storing data from source ${sourceName}`, error);
     }
   };
 

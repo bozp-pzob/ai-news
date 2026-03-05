@@ -8,6 +8,8 @@
  * This calls the same facilitator endpoint that @pop402/x402-express uses internally.
  */
 
+import { logger } from './cliHelper';
+
 const FACILITATOR_URL = process.env.POP402_FACILITATOR_URL || 'https://facilitator.pop402.com';
 const NETWORK = process.env.POP402_NETWORK || 'solana';
 const PLATFORM_WALLET = process.env.PLATFORM_WALLET_ADDRESS || '';
@@ -34,7 +36,7 @@ export async function verifyPop402Payment(
   resource: string,
 ): Promise<Pop402VerificationResult> {
   if (MOCK_MODE) {
-    console.log('[pop402] Mock mode - skipping payment verification');
+    logger.info('pop402: Mock mode - skipping payment verification');
     return { valid: true };
   }
 
@@ -68,14 +70,14 @@ export async function verifyPop402Payment(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[pop402] Facilitator verification failed:', response.status, errorText);
+      logger.error(`pop402: Facilitator verification failed: ${response.status} ${errorText}`);
       return { valid: false, error: `Facilitator returned ${response.status}` };
     }
 
     const result = await response.json() as any;
     return { valid: !!result.isValid, error: result.error };
   } catch (error) {
-    console.error('[pop402] Payment verification error:', error);
+    logger.error('pop402: Payment verification error', error);
     return { valid: false, error: 'Payment verification failed' };
   }
 }

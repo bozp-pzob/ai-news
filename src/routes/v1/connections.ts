@@ -9,6 +9,7 @@ import { Router, Response, Request } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/authMiddleware';
 import { externalConnectionService } from '../../services/externalConnections';
 import { PlatformType } from '../../services/externalConnections/types';
+import { logger } from '../../helpers/cliHelper';
 
 const router = Router();
 
@@ -26,7 +27,7 @@ router.get('/platforms', async (req: Request, res: Response) => {
     const platforms = externalConnectionService.getAvailablePlatforms();
     res.json({ platforms });
   } catch (error: any) {
-    console.error('[Connections] Error listing platforms:', error);
+    logger.error('Connections: Error listing platforms', error);
     res.status(500).json({
       error: 'Failed to list platforms',
       message: error.message,
@@ -55,7 +56,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =>
 
     res.json({ connections });
   } catch (error: any) {
-    console.error('[Connections] Error listing connections:', error);
+    logger.error('Connections: Error listing connections', error);
     res.status(500).json({
       error: 'Failed to list connections',
       message: error.message,
@@ -99,7 +100,7 @@ router.get('/:platform/auth', requireAuth, async (req: AuthenticatedRequest, res
 
     res.json(result);
   } catch (error: any) {
-    console.error('[Connections] Error generating auth URL:', error);
+    logger.error('Connections: Error generating auth URL', error);
     res.status(500).json({
       error: 'Failed to generate authorization URL',
       message: error.message,
@@ -119,7 +120,7 @@ router.get('/:platform/callback', async (req: Request, res: Response) => {
   // Get frontend URL for redirects (defaults to same origin)
   const frontendUrl = process.env.FRONTEND_URL || '';
   
-  console.log('[Connections] OAuth callback received:', {
+  logger.info('Connections: OAuth callback received', {
     platform: req.params.platform,
     hasCode: !!req.query.code,
     hasState: !!req.query.state,
@@ -153,7 +154,7 @@ router.get('/:platform/callback', async (req: Request, res: Response) => {
 
     // Validate required parameters
     if (!state || typeof state !== 'string') {
-      console.log('[Connections] Missing state, redirecting to error');
+      logger.info('Connections: Missing state, redirecting to error');
       return res.redirect(`${frontendUrl}/connections?connection_error=missing_state`);
     }
 
@@ -172,7 +173,7 @@ router.get('/:platform/callback', async (req: Request, res: Response) => {
       setup_action: setup_action as string,
     });
 
-    console.log('[Connections] Connection created successfully:', connection.externalName);
+    logger.info('Connections: Connection created successfully', connection.externalName);
 
     // Handle popup mode
     if (isPopup) {
@@ -186,10 +187,10 @@ router.get('/:platform/callback', async (req: Request, res: Response) => {
     // Standard redirect mode
     const encodedName = encodeURIComponent(connection.externalName);
     const redirectUrl = `${frontendUrl}/connections?connection_success=true&platform=${platform}&name=${encodedName}`;
-    console.log('[Connections] Redirecting to:', redirectUrl);
+    logger.info('Connections: Redirecting to', redirectUrl);
     res.redirect(redirectUrl);
   } catch (error: any) {
-    console.error('[Connections] OAuth callback error:', error);
+    logger.error('Connections: OAuth callback error', error);
     
     // Check if popup mode from state
     const state = req.query.state as string;
@@ -203,7 +204,7 @@ router.get('/:platform/callback', async (req: Request, res: Response) => {
 
     const errorMessage = encodeURIComponent(error.message || 'Unknown error');
     const redirectUrl = `${frontendUrl}/connections?connection_error=${errorMessage}`;
-    console.log('[Connections] Redirecting to error page:', redirectUrl);
+    logger.info('Connections: Redirecting to error page', redirectUrl);
     res.redirect(redirectUrl);
   }
 });
@@ -222,7 +223,7 @@ router.post('/:platform/webhook', async (req: Request, res: Response) => {
     // Always return 200 to acknowledge webhook
     res.sendStatus(200);
   } catch (error: any) {
-    console.error('[Connections] Webhook error:', error);
+    logger.error('Connections: Webhook error', error);
     // Still return 200 to prevent webhook retries
     res.sendStatus(200);
   }
@@ -266,7 +267,7 @@ router.get('/:connectionId', requireAuth, async (req: AuthenticatedRequest, res:
       channelCount,
     });
   } catch (error: any) {
-    console.error('[Connections] Error getting connection:', error);
+    logger.error('Connections: Error getting connection', error);
     res.status(500).json({
       error: 'Failed to get connection',
       message: error.message,
@@ -297,7 +298,7 @@ router.delete('/:connectionId', requireAuth, async (req: AuthenticatedRequest, r
 
     res.status(204).send();
   } catch (error: any) {
-    console.error('[Connections] Error removing connection:', error);
+    logger.error('Connections: Error removing connection', error);
     res.status(500).json({
       error: 'Failed to remove connection',
       message: error.message,
@@ -334,7 +335,7 @@ router.post('/:connectionId/verify', requireAuth, async (req: AuthenticatedReque
       verifiedAt: new Date().toISOString(),
     });
   } catch (error: any) {
-    console.error('[Connections] Error verifying connection:', error);
+    logger.error('Connections: Error verifying connection', error);
     res.status(500).json({
       error: 'Failed to verify connection',
       message: error.message,
@@ -376,7 +377,7 @@ router.get('/:connectionId/channels', requireAuth, async (req: AuthenticatedRequ
       platform: connection.platform,
     });
   } catch (error: any) {
-    console.error('[Connections] Error listing channels:', error);
+    logger.error('Connections: Error listing channels', error);
     res.status(500).json({
       error: 'Failed to list channels',
       message: error.message,
@@ -421,7 +422,7 @@ router.post('/:connectionId/sync', requireAuth, async (req: AuthenticatedRequest
       syncedAt: new Date().toISOString(),
     });
   } catch (error: any) {
-    console.error('[Connections] Error syncing channels:', error);
+    logger.error('Connections: Error syncing channels', error);
     res.status(500).json({
       error: 'Failed to sync channels',
       message: error.message,
@@ -470,7 +471,7 @@ router.post('/validate-channels', requireAuth, async (req: AuthenticatedRequest,
 
     res.json(result);
   } catch (error: any) {
-    console.error('[Connections] Error validating channels:', error);
+    logger.error('Connections: Error validating channels', error);
     res.status(500).json({
       error: 'Failed to validate channels',
       message: error.message,
@@ -514,7 +515,7 @@ router.get('/status', requireAuth, async (req: AuthenticatedRequest, res: Respon
       res.json({ platforms });
     }
   } catch (error: any) {
-    console.error('[Connections] Error getting status:', error);
+    logger.error('Connections: Error getting status', error);
     res.status(500).json({
       error: 'Failed to get status',
       message: error.message,

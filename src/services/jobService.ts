@@ -2,6 +2,7 @@
 
 import { databaseService } from './databaseService';
 import { encryptionService } from './encryptionService';
+import { logger } from '../helpers/cliHelper';
 
 /**
  * Job type
@@ -181,7 +182,7 @@ export async function createJob(params: CreateJobParams): Promise<string> {
       }
     } catch (error) {
       // Non-fatal: job can still run, just won't be resumable on restart
-      console.warn(`[JobService] Failed to store encrypted resolved config for job ${jobId}:`, error);
+      logger.warn(`JobService: Failed to store encrypted resolved config for job ${jobId}`, error);
     }
   }
   
@@ -198,6 +199,18 @@ export async function createJob(params: CreateJobParams): Promise<string> {
     );
   }
   
+  // Fire job.started webhook event (fire-and-forget)
+  // Wrapped in try/catch so a transient DB error here can't prevent
+  // returning the successfully-created jobId to the caller.
+  try {
+    const startedJob = await getJob(jobId);
+    if (startedJob) {
+      fireWebhookEvent('job.started', startedJob).catch(() => {});
+    }
+  } catch {
+    // Non-fatal: webhook delivery is best-effort
+  }
+
   return jobId;
 }
 
@@ -395,11 +408,63 @@ export async function addJobLog(
 }
 
 /**
+ * Fire an outbound webhook event for a job.
+ * Uses lazy import to avoid circular dependency with webhookService.
+ * Errors are caught and logged — webhook delivery never blocks job lifecycle.
+ */
+async function fireWebhookEvent(
+  event: 'job.started' | 'job.completed' | 'job.failed' | 'job.cancelled',
+  job: AggregationJob,
+  error?: string,
+): Promise<void> {
+  try {
+    const { webhookService } = await import('./webhookService');
+    const durationMs = job.startedAt && job.completedAt
+      ? new Date(job.completedAt).getTime() - new Date(job.startedAt).getTime()
+      : undefined;
+
+    // Get config name for the payload
+    let configName: string | undefined;
+    try {
+      const configResult = await databaseService.query(
+        'SELECT name FROM configs WHERE id = $1',
+        [job.configId]
+      );
+      configName = configResult.rows?.[0]?.name;
+    } catch {
+      // Non-fatal — config name is just metadata
+    }
+
+    await webhookService.fireEvent(event, {
+      event,
+      timestamp: new Date().toISOString(),
+      data: {
+        jobId: job.id,
+        configId: job.configId,
+        configName,
+        status: event.split('.')[1], // 'started' | 'completed' | 'failed' | 'cancelled'
+        itemsFetched: job.itemsFetched,
+        itemsProcessed: job.itemsProcessed,
+        durationMs,
+        error,
+        aiUsage: job.totalAiCalls > 0 ? {
+          totalCalls: job.totalAiCalls,
+          totalTokens: job.totalPromptTokens + job.totalCompletionTokens,
+          estimatedCostUsd: job.estimatedCostUsd,
+        } : undefined,
+      },
+    }, job.configId);
+  } catch (err) {
+    logger.warn(`JobService: Failed to fire webhook event ${event} for job ${job.id}`, err);
+  }
+}
+
+/**
  * Mark a job as completed
  */
 export async function completeJob(jobId: string): Promise<void> {
-  const job = await getJob(jobId);
-  if (!job) return;
+  const preJob = await getJob(jobId);
+  if (!preJob) return;
   
   await databaseService.query(
     `UPDATE aggregation_jobs 
@@ -415,16 +480,20 @@ export async function completeJob(jobId: string): Promise<void> {
          last_run_at = NOW(),
          active_job_id = CASE WHEN active_job_id = $1 THEN NULL ELSE active_job_id END
      WHERE id = $2`,
-    [jobId, job.configId]
+    [jobId, preJob.configId]
   );
+
+  // Re-fetch job AFTER update so completedAt is populated for durationMs calculation
+  const updatedJob = await getJob(jobId);
+  fireWebhookEvent('job.completed', updatedJob || preJob).catch(() => {});
 }
 
 /**
  * Mark a job as failed
  */
 export async function failJob(jobId: string, error: string): Promise<void> {
-  const job = await getJob(jobId);
-  if (!job) return;
+  const preJob = await getJob(jobId);
+  if (!preJob) return;
   
   await databaseService.query(
     `UPDATE aggregation_jobs 
@@ -441,16 +510,20 @@ export async function failJob(jobId: string, error: string): Promise<void> {
          last_error = $1,
          active_job_id = CASE WHEN active_job_id = $2 THEN NULL ELSE active_job_id END
      WHERE id = $3`,
-    [error, jobId, job.configId]
+    [error, jobId, preJob.configId]
   );
+
+  // Re-fetch job AFTER update so completedAt is populated for durationMs calculation
+  const updatedJob = await getJob(jobId);
+  fireWebhookEvent('job.failed', updatedJob || preJob, error).catch(() => {});
 }
 
 /**
  * Cancel a job
  */
 export async function cancelJob(jobId: string): Promise<void> {
-  const job = await getJob(jobId);
-  if (!job) return;
+  const preJob = await getJob(jobId);
+  if (!preJob) return;
   
   await databaseService.query(
     `UPDATE aggregation_jobs 
@@ -465,8 +538,12 @@ export async function cancelJob(jobId: string): Promise<void> {
      SET status = 'idle',
          active_job_id = CASE WHEN active_job_id = $1 THEN NULL ELSE active_job_id END
      WHERE id = $2`,
-    [jobId, job.configId]
+     [jobId, preJob.configId]
   );
+
+  // Re-fetch job AFTER update so completedAt is populated for durationMs calculation
+  const updatedJob = await getJob(jobId);
+  fireWebhookEvent('job.cancelled', updatedJob || preJob).catch(() => {});
 }
 
 /**
@@ -526,7 +603,7 @@ export async function getJobResolvedConfig(jobId: string): Promise<any | null> {
     const encryptedBase64 = Buffer.from(encryptedBuffer).toString('base64');
     return encryptionService.decrypt(encryptedBase64, jobId);
   } catch (error) {
-    console.error(`[JobService] Failed to decrypt resolved config for job ${jobId}:`, error);
+    logger.error(`JobService: Failed to decrypt resolved config for job ${jobId}`, error);
     return null;
   }
 }
@@ -550,7 +627,7 @@ export async function getJobResolvedSecrets(jobId: string): Promise<Record<strin
     const encryptedBase64 = Buffer.from(encryptedBuffer).toString('base64');
     return encryptionService.decrypt<Record<string, string>>(encryptedBase64, jobId);
   } catch (error) {
-    console.error(`[JobService] Failed to decrypt resolved secrets for job ${jobId}:`, error);
+    logger.error(`JobService: Failed to decrypt resolved secrets for job ${jobId}`, error);
     return null;
   }
 }

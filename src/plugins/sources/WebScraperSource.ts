@@ -32,6 +32,7 @@ import {
   matchesPathPattern,
 } from '../../helpers/htmlHelper';
 import crypto from 'crypto';
+import { logger } from '../../helpers/cliHelper';
 
 // ============================================
 // CONFIGURATION
@@ -229,7 +230,7 @@ export class WebScraperSource implements ContentSource {
    * Fetch items from configured URLs, optionally crawling for more pages.
    */
   public async fetchItems(): Promise<ContentItem[]> {
-    console.log(`[WebScraperSource:${this.name}] Starting fetch for ${this.urls.length} seed URL(s), crawl=${this.crawlEnabled}`);
+    logger.info(`WebScraperSource:${this.name} Starting fetch for ${this.urls.length} seed URL(s), crawl=${this.crawlEnabled}`);
 
     const results: ContentItem[] = [];
     const visited = new Set<string>();
@@ -249,13 +250,13 @@ export class WebScraperSource implements ContentSource {
       if (this.crawlRespectRobotsTxt && depth > 0) {
         const allowed = await this.isAllowedByRobots(url);
         if (!allowed) {
-          console.log(`[WebScraperSource:${this.name}] Blocked by robots.txt: ${url}`);
+          logger.info(`WebScraperSource:${this.name} Blocked by robots.txt: ${url}`);
           continue;
         }
       }
 
       try {
-        console.log(`[WebScraperSource:${this.name}] Fetching (depth=${depth}): ${url}`);
+        logger.info(`WebScraperSource:${this.name} Fetching (depth=${depth}): ${url}`);
 
         const fetchOptions: FetchHTMLOptions = {
           sourceId: this.name,
@@ -269,7 +270,7 @@ export class WebScraperSource implements ContentSource {
         const discoveredFeeds = discoverRSSFeeds(html);
 
         if (discoveredFeeds.length > 0) {
-          console.log(`[WebScraperSource:${this.name}] Discovered RSS feeds on ${url}: ${discoveredFeeds.join(', ')}`);
+          logger.info(`WebScraperSource:${this.name} Discovered RSS feeds on ${url}: ${discoveredFeeds.join(', ')}`);
         }
 
         // Extract content (cached parser, AI-generated parser, or Readability fallback)
@@ -350,7 +351,7 @@ export class WebScraperSource implements ContentSource {
           }
 
           if (addedCount > 0) {
-            console.log(`[WebScraperSource:${this.name}] Queued ${addedCount} links from ${url}`);
+            logger.info(`WebScraperSource:${this.name} Queued ${addedCount} links from ${url}`);
           }
         }
 
@@ -359,7 +360,7 @@ export class WebScraperSource implements ContentSource {
           await new Promise(resolve => setTimeout(resolve, this.crawlDelayMs));
         }
       } catch (error: any) {
-        console.error(`[WebScraperSource:${this.name}] Error fetching ${url}:`, error.message);
+        logger.error(`WebScraperSource:${this.name} Error fetching ${url}: ${error.message}`);
         // Continue with next URL
       }
     }
@@ -367,7 +368,7 @@ export class WebScraperSource implements ContentSource {
     // Close browser context for this source
     await BrowserManager.closeContext(this.name);
 
-    console.log(`[WebScraperSource:${this.name}] Completed. Scraped ${results.length} page(s), visited ${visited.size} URL(s)`);
+    logger.info(`WebScraperSource:${this.name} Completed. Scraped ${results.length} page(s), visited ${visited.size} URL(s)`);
     return results;
   }
 
@@ -376,7 +377,7 @@ export class WebScraperSource implements ContentSource {
    * so this returns current content (same as fetchItems).
    */
   public async fetchHistorical(date: string): Promise<ContentItem[]> {
-    console.log(`[WebScraperSource:${this.name}] fetchHistorical called for ${date}, returning current content`);
+    logger.info(`WebScraperSource:${this.name} fetchHistorical called for ${date}, returning current content`);
     return this.fetchItems();
   }
 

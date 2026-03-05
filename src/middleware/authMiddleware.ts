@@ -5,6 +5,7 @@ import { PrivyClient } from '@privy-io/server-auth';
 import { databaseService } from '../services/databaseService';
 import { licenseService } from '../services/licenseService';
 import { adminService } from '../services/adminService';
+import { logger } from '../helpers/cliHelper';
 
 /**
  * User object attached to request after authentication
@@ -73,7 +74,7 @@ async function resolveEffectiveTier(
         return 'paid';
       }
     } catch (error) {
-      console.error('[AuthMiddleware] Error checking license:', error);
+      logger.error('Auth: Error checking license', error);
       // On error, fall back to database tier
     }
   }
@@ -226,14 +227,14 @@ export async function requireAuth(
             tier: impersonatedUser.tier,
             isBanned: impersonatedUser.isBanned,
           };
-          console.log(`[AuthMiddleware] Admin ${user.email} impersonating ${impersonatedUser.email}`);
+          logger.info(`Auth: Admin ${user.email} impersonating ${impersonatedUser.email}`);
         }
       }
     }
     
     next();
   } catch (error) {
-    console.error('[AuthMiddleware] Error:', error);
+    logger.error('Auth: Error', error);
     res.status(401).json({ error: 'Authentication failed' });
   }
 }
@@ -375,7 +376,7 @@ export async function requireConfigOwner(
 
     next();
   } catch (error) {
-    console.error('[AuthMiddleware] Error checking config ownership:', error);
+    logger.error('Auth: Error checking config ownership', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
@@ -448,7 +449,7 @@ export async function requireConfigAccess(
     (req as any).accessType = config.access_type;
     next();
   } catch (error) {
-    console.error('[AuthMiddleware] Error checking config access:', error);
+    logger.error('Auth: Error checking config access', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

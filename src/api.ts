@@ -4,9 +4,7 @@ import bodyParser from 'body-parser';
 import http from 'http';
 import path from 'path';
 import crypto from 'crypto';
-import { ConfigService, Config } from './services/configService';
 import { AggregatorService } from './services/aggregatorService';
-import { PluginService } from './services/pluginService';
 import { WebSocketService } from './services/websocketService';
 import { databaseService } from './services/databaseService';
 import { externalConnectionService } from './services/externalConnections';
@@ -14,7 +12,11 @@ import { jobService } from './services/jobService';
 import { userService } from './services/userService';
 import { licenseService } from './services/licenseService';
 import { cronService } from './services/cronService';
+import { initQueues, closeQueues, scheduleRecurringAggregation } from './services/queueService';
+import { startAggregationWorker, stopAggregationWorker } from './workers/aggregationWorker';
 import v1Routes from './routes/v1';
+import { errorMiddleware } from './middleware/errorMiddleware';
+import { logger } from './helpers/cliHelper';
 
 // Import pop402 payment middleware
 // @ts-ignore - package may not have types
@@ -55,7 +57,7 @@ for (const [planId, plan] of Object.entries(PRO_PLANS)) {
 // Debug middleware to log payment headers
 app.use((req, res, next) => {
   if (req.path.includes('/license/purchase/')) {
-    console.log('[pop402] Request to protected route:', {
+    logger.info('pop402 Request to protected route:', {
       path: req.path,
       method: req.method,
       hasXPayment: !!req.headers['x-payment'],
@@ -70,7 +72,7 @@ app.use((req, res, next) => {
 
 // Apply pop402 payment middleware at app level (only if configured and not mock mode)
 if (!MOCK_MODE && PLATFORM_WALLET) {
-  console.log('[pop402] Payment middleware enabled:', {
+  logger.info('pop402 Payment middleware enabled:', {
     platformWallet: PLATFORM_WALLET.slice(0, 8) + '...',
     facilitatorUrl: FACILITATOR_URL,
     network: NETWORK,
@@ -79,9 +81,9 @@ if (!MOCK_MODE && PLATFORM_WALLET) {
   
   app.use(paymentMiddleware(PLATFORM_WALLET, protectedRoutes, { url: FACILITATOR_URL }));
 } else if (MOCK_MODE) {
-  console.log('[pop402] Mock mode - payment middleware disabled');
+  logger.info('pop402 Mock mode - payment middleware disabled');
 } else {
-  console.warn('[pop402] PLATFORM_WALLET_ADDRESS not set - payment middleware disabled');
+  logger.warn('pop402 PLATFORM_WALLET_ADDRESS not set - payment middleware disabled');
 }
 
 // Serve static files from the frontend build directory
@@ -91,192 +93,13 @@ app.use(express.static(path.join(__dirname, '../frontend/build')));
 app.use('/api/v1', v1Routes);
 
 // Initialize services
-const configService = new ConfigService();
 const aggregatorService = AggregatorService.getInstance();
-const pluginService = new PluginService();
 
 // Initialize WebSocket service
 const webSocketService = new WebSocketService(server, aggregatorService);
 
-// GET /plugins - Get all available plugins
-app.get('/plugins', async (req, res) => {
-  try {
-    const plugins = await pluginService.getAvailablePlugins();
-    res.json(plugins);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Failed to load plugins' });
-  }
-});
-
-// GET /configs - List all available configurations
-app.get('/configs', async (req, res) => {
-  try {
-    const configs = await configService.listConfigs();
-    res.json(configs);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Failed to list configurations' });
-  }
-});
-
-// GET /config/:name - Get a specific configuration
-app.get('/config/:name', async (req, res) => {
-  try {
-    const config = await configService.getConfig(req.params.name);
-    res.json(config);
-  } catch (error: any) {
-    res.status(404).json({ error: error.message || 'Configuration not found' });
-  }
-});
-
-// POST /config/:name - Create or update a configuration
-app.post('/config/:name', async (req, res) => {
-  try {
-    
-    await configService.saveConfig(req.params.name, req.body);
-    
-    // Notify websocket clients that the config has changed
-    webSocketService.notifyConfigChange(req.params.name);
-    
-    res.json({ message: 'Configuration saved successfully' });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message || 'Failed to save configuration' });
-  }
-});
-
-// DELETE /config/:name - Delete a configuration
-app.delete('/config/:name', async (req, res) => {
-  try {
-    await configService.deleteConfig(req.params.name);
-    res.json({ message: 'Configuration deleted successfully' });
-  } catch (error: any) {
-    res.status(404).json({ error: error.message || 'Configuration not found' });
-  }
-});
-
-// POST /aggregate/:configName/run - Run aggregation once without starting continuous process
-app.post('/aggregate', async (req, res) => {
-  try {
-    const _config: any = req.body?.config || {};
-    // SECRETS PASSED IN FROM CLIENT. NEVER LOG. NEVER SAVE
-    const secrets: any = req.body?.secrets || {};
-
-    const configName: string = _config?.name || '';
-    const runOnce: boolean = _config?.settings?.runOnce === true;
-    const onlyGenerate: boolean = _config?.settings?.onlyGenerate === true;
-    const onlyFetch: boolean = _config?.settings?.onlyFetch === true;
-    const historicalDate = _config?.settings?.historicalDate;
-
-    // Use the config from request body if it has the required fields,
-    // otherwise fall back to loading from file (for backwards compatibility)
-    let config: Config;
-    if (_config.sources && _config.ai && _config.storage) {
-      // Config was sent in the request body - use it directly
-      config = _config;
-    } else if (configName) {
-      // Only config name provided - load from file
-      config = await configService.getConfig(configName);
-    } else {
-      throw new Error('Either a full config or a config name must be provided');
-    }
-
-    const runtimeSettings = {
-      runOnce,
-      onlyGenerate,
-      onlyFetch,
-      historicalDate
-    }
-
-    let jobId: string;
-    if (runOnce) {
-      jobId = await aggregatorService.runAggregationOnce(configName, config, runtimeSettings, secrets);
-    } else {
-      jobId = await aggregatorService.startAggregation(configName, config, runtimeSettings, secrets);
-    }
-    
-    // Broadcast the updated status to all WebSocket clients
-    webSocketService.broadcastStatus(configName);
-    // Also broadcast the initial job status
-    webSocketService.broadcastJobStatus(jobId);
-    
-    res.json({ 
-      message: 'Content aggregation executed successfully',
-      jobId
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Failed to execute content aggregation' });
-  }
-});
-
-// POST /aggregate/:configName/stop - Stop content aggregation for a specific config
-app.post('/aggregate/:configName/stop', async (req, res) => {
-  try {
-    aggregatorService.stopAggregation(req.params.configName);
-    
-    // Broadcast the updated status to all WebSocket clients
-    webSocketService.broadcastStatus(req.params.configName);
-    
-    res.json({ message: 'Content aggregation stopped successfully' });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Failed to stop content aggregation' });
-  }
-});
-
-// GET /status/:configName - Get status of content aggregation for a specific config
-app.get('/status/:configName', (req, res) => {
-  const status = aggregatorService.getAggregationStatus(req.params.configName);
-  res.json(status);
-});
-
-// GET /job/:jobId - Get status of a specific job
-app.get('/job/:jobId', (req, res) => {
-  const jobId = req.params.jobId;
-  const jobStatus = aggregatorService.getJobStatus(jobId);
-  
-  if (!jobStatus) {
-    res.status(404).json({ error: 'Job not found' });
-    return;
-  }
-  
-  res.json(jobStatus);
-});
-
-// GET /jobs - Get all jobs
-app.get('/jobs', (req, res) => {
-  const jobs = aggregatorService.getAllJobs();
-  res.json(jobs);
-});
-
-// GET /jobs/:configName - Get all jobs for a specific config
-app.get('/jobs/:configName', (req, res) => {
-  const jobs = aggregatorService.getJobsByConfig(req.params.configName);
-  res.json(jobs);
-});
-
-// POST /job/:jobId/stop - Stop a specific job by ID
-app.post('/job/:jobId/stop', (req, res) => {
-  try {
-    const jobId = req.params.jobId;
-    const success = aggregatorService.stopJob(jobId);
-    
-    if (!success) {
-      res.status(404).json({ error: 'Job not found or not in a stoppable state' });
-      return;
-    }
-    
-    // Get the updated job status to include in the response
-    const jobStatus = aggregatorService.getJobStatus(jobId);
-    
-    // Broadcast job status update to WebSocket clients
-    webSocketService.broadcastJobStatus(jobId);
-    
-    res.json({ 
-      message: 'Job stopped successfully',
-      jobStatus
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Failed to stop job' });
-  }
-});
+// Legacy routes removed - all API access goes through /api/v1 routes
+// See src/routes/v1/ for the platform API
 
 // Agent discovery routes (served before the SPA catch-all)
 import { AI_PLUGIN_MANIFEST, ROBOTS_TXT } from './routes/v1/discovery';
@@ -290,6 +113,81 @@ app.get('/robots.txt', (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=86400');
   res.type('text/plain').send(ROBOTS_TXT);
 });
+
+// Centralized error handling for API routes
+// Must be registered after all API routes but before the SPA catch-all
+app.use('/api', errorMiddleware);
+
+// ── OG Meta Tag Injection for Social Crawlers ────────────────────
+// When a bot (Twitter, Facebook, Slack, Discord) requests /configs/:slug,
+// we serve a minimal HTML page with OG meta tags so the link preview shows
+// the config name, description, and latest summary stats.
+// Human browsers still get the full React SPA (the SPA catch-all below).
+const SOCIAL_CRAWLER_RE = /Twitterbot|facebookexternalhit|Facebot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot/i;
+
+app.get('/configs/:slugOrId', async (req, res, next) => {
+  const ua = req.headers['user-agent'] || '';
+  if (!SOCIAL_CRAWLER_RE.test(ua)) {
+    // Not a social crawler — fall through to the SPA catch-all
+    return next();
+  }
+
+  try {
+    const { slugOrId } = req.params;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slugOrId);
+    const query = isUUID
+      ? 'SELECT name, slug, description, visibility, total_items, total_queries FROM configs WHERE id = $1'
+      : 'SELECT name, slug, description, visibility, total_items, total_queries FROM configs WHERE slug = $1';
+
+    const result = await databaseService.query(query, [slugOrId]);
+    if (result.rows.length === 0 || result.rows[0].visibility === 'private') {
+      return next(); // fall through to SPA
+    }
+
+    const config = result.rows[0];
+    const siteUrl = process.env.SITE_URL || `https://${req.headers.host || 'digitalgardener.com'}`;
+    const pageUrl = `${siteUrl}/configs/${config.slug}`;
+    const title = `${config.name} — Digital Gardener`;
+    const desc = config.description
+      || `${config.total_items || 0} items collected, ${config.total_queries || 0} queries served.`;
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(title)}</title>
+  <meta name="description" content="${escapeHtml(desc)}" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="${escapeHtml(title)}" />
+  <meta property="og:description" content="${escapeHtml(desc)}" />
+  <meta property="og:url" content="${escapeHtml(pageUrl)}" />
+  <meta property="og:site_name" content="Digital Gardener" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="${escapeHtml(title)}" />
+  <meta name="twitter:description" content="${escapeHtml(desc)}" />
+  <meta http-equiv="refresh" content="0; url=${escapeHtml(pageUrl)}" />
+</head>
+<body><p>Redirecting to <a href="${escapeHtml(pageUrl)}">${escapeHtml(config.name)}</a></p></body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    return res.send(html);
+  } catch (error) {
+    logger.error('OG meta injection error (falling through to SPA)', error);
+    return next();
+  }
+});
+
+/** Escape HTML special chars for safe embedding in attribute values */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 // Serve the React app for any other routes (catch-all)
 app.get('/{*splat}', (req, res) => {
@@ -305,31 +203,71 @@ export function getLocalServerKey(): string | null {
   return _localServerKey;
 }
 
+/**
+ * Restore cron schedules from the database into BullMQ repeatable jobs.
+ * Called on startup after queues are initialized.
+ */
+async function restoreScheduledJobs() {
+  try {
+    const scheduledConfigs = await userService.getScheduledConfigs();
+    logger.info(`Startup: Found ${scheduledConfigs.length} configs with cron schedules`);
+
+    for (const config of scheduledConfigs) {
+      try {
+        await scheduleRecurringAggregation(config.id, config.userId, config.cronExpression);
+        logger.info(`Startup: Restored schedule for config ${config.name} (${config.cronExpression})`);
+      } catch (error) {
+        logger.error(`Startup: Failed to restore schedule for config ${config.id}`, error);
+      }
+    }
+
+    logger.info('Startup: Finished restoring scheduled jobs');
+  } catch (error) {
+    logger.error('Startup: Error restoring scheduled jobs', error);
+  }
+}
+
 // Initialize database and start server
 async function start() {
   try {
     // Generate or load local server key for encrypted config execution
     _localServerKey = process.env.LOCAL_SERVER_KEY || crypto.randomBytes(32).toString('base64');
     if (!process.env.LOCAL_SERVER_KEY) {
-      console.log('');
-      console.log('  Local Server Key (paste this into the platform UI):');
-      console.log(`  ${_localServerKey}`);
-      console.log('');
-      console.log('  Set LOCAL_SERVER_KEY env var to use a fixed key.');
-      console.log('');
+      logger.info('');
+      logger.info('  Local Server Key (paste this into the platform UI):');
+      logger.info(`  ${_localServerKey}`);
+      logger.info('');
+      logger.info('  Set LOCAL_SERVER_KEY env var to use a fixed key.');
+      logger.info('');
     } else {
-      console.log('Local server key loaded from LOCAL_SERVER_KEY env var');
+      logger.info('Local server key loaded from LOCAL_SERVER_KEY env var');
     }
 
     // Initialize platform database if DATABASE_URL is set
     if (process.env.DATABASE_URL) {
       await databaseService.initPlatformDatabase();
-      console.log('Platform database initialized');
+      logger.info('Platform database initialized');
       
       // Initialize external connection service (Discord bot, Telegram bot, etc.)
       // This starts the bots so they can receive events
       await externalConnectionService.initialize();
-      console.log('External connection service initialized');
+      logger.info('External connection service initialized');
+      
+      // Initialize BullMQ queues + worker if Redis is configured
+      if (process.env.REDIS_URL) {
+        try {
+          await initQueues();
+          await startAggregationWorker();
+          logger.info('BullMQ queues and aggregation worker initialized');
+          
+          // Restore cron schedules from the database into BullMQ
+          await restoreScheduledJobs();
+        } catch (error) {
+          logger.warn('Failed to initialize BullMQ (Redis may be unavailable). Falling back to in-process execution.', error);
+        }
+      } else {
+        logger.info('REDIS_URL not set — BullMQ disabled, using in-process execution');
+      }
       
       // Resume running continuous jobs
       await resumeRunningJobs();
@@ -340,12 +278,12 @@ async function start() {
 
     // Start the server
     server.listen(port, () => {
-      console.log(`API server running on port ${port}`);
-      console.log(`Frontend served at http://localhost:${port}`);
-      console.log(`API v1 available at http://localhost:${port}/api/v1`);
+      logger.info(`API server running on port ${port}`);
+      logger.info(`Frontend served at http://localhost:${port}`);
+      logger.info(`API v1 available at http://localhost:${port}/api/v1`);
     });
   } catch (error) {
-    console.error('Failed to start server:', error);
+    logger.error('Failed to start server:', error);
     process.exit(1);
   }
 }
@@ -357,7 +295,7 @@ async function start() {
 async function resumeRunningJobs() {
   try {
     const runningJobs = await jobService.getRunningJobs();
-    console.log(`[Startup] Found ${runningJobs.length} running jobs to process`);
+    logger.info(`Startup: Found ${runningJobs.length} running jobs to process`);
     
     for (const job of runningJobs) {
       if (job.jobType === 'continuous') {
@@ -373,25 +311,25 @@ async function resumeRunningJobs() {
             hasProLicense = license.isActive;
           }
         } catch (error) {
-          console.error(`[Startup] Error checking user ${job.userId}:`, error);
+          logger.error(`Startup: Error checking user ${job.userId}:`, error);
         }
         
         if (!hasProLicense) {
           // User lost pro, stop the continuous job
-          console.log(`[Startup] User ${job.userId} no longer has pro license, cancelling job ${job.id}`);
+          logger.info(`Startup: User ${job.userId} no longer has pro license, cancelling job ${job.id}`);
           await jobService.cancelJob(job.id);
           await jobService.addJobLog(job.id, 'warn', 'Continuous job cancelled - Pro license no longer active');
           continue;
         }
         
         // Resume the continuous job
-        console.log(`[Startup] Resuming continuous job ${job.id} for config ${job.configId}`);
+        logger.info(`Startup: Resuming continuous job ${job.id} for config ${job.configId}`);
         
         try {
           // Load config metadata (needed for name, storageType, etc.)
           const config = await userService.getConfigById(job.configId);
           if (!config) {
-            console.error(`[Startup] Config ${job.configId} not found for job ${job.id}`);
+            logger.error(`Startup: Config ${job.configId} not found for job ${job.id}`);
             await jobService.failJob(job.id, 'Config not found during resume');
             continue;
           }
@@ -408,7 +346,7 @@ async function resumeRunningJobs() {
           if (resolvedConfig && resolvedSecrets) {
             // Use the encrypted resolved config — all secrets are already baked in.
             // Re-inject platform credentials since env vars may have rotated since last start.
-            console.log(`[Startup] Using encrypted resolved config for job ${job.id}`);
+            logger.info(`Startup: Using encrypted resolved config for job ${job.id}`);
             configJson = resolvedConfig;
             secrets = resolvedSecrets;
             
@@ -464,7 +402,7 @@ async function resumeRunningJobs() {
             // Load from configs table and re-inject platform credentials.
             // NOTE: $SECRET:uuid$ references in config_json won't resolve correctly,
             // but ALL_CAPS and process.env.X references will work.
-            console.log(`[Startup] No encrypted resolved config for job ${job.id}, using legacy fallback`);
+            logger.info(`Startup: No encrypted resolved config for job ${job.id}, using legacy fallback`);
             secrets = await userService.getConfigSecrets(job.configId) || {};
             configJson = config.configJson as any;
 
@@ -530,21 +468,21 @@ async function resumeRunningJobs() {
           );
           
           await jobService.addJobLog(job.id, 'info', 'Continuous job resumed after server restart');
-          console.log(`[Startup] Successfully resumed job ${job.id}`);
+          logger.info(`Startup: Successfully resumed job ${job.id}`);
         } catch (error) {
-          console.error(`[Startup] Error resuming job ${job.id}:`, error);
+          logger.error(`Startup: Error resuming job ${job.id}:`, error);
           await jobService.failJob(job.id, `Failed to resume after restart: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       } else {
         // One-time job was interrupted - mark as failed
-        console.log(`[Startup] Marking interrupted one-time job ${job.id} as failed`);
+        logger.info(`Startup: Marking interrupted one-time job ${job.id} as failed`);
         await jobService.failJob(job.id, 'Server restarted during execution');
       }
     }
     
-    console.log('[Startup] Finished processing running jobs');
+    logger.info('Startup: Finished processing running jobs');
   } catch (error) {
-    console.error('[Startup] Error resuming running jobs:', error);
+    logger.error('Startup: Error resuming running jobs:', error);
   }
 }
 
@@ -552,12 +490,14 @@ start();
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down...');
+  logger.info('SIGTERM received, shutting down...');
   cronService.stopCronJobs();
+  await stopAggregationWorker();
+  await closeQueues();
   await externalConnectionService.shutdown();
   await databaseService.closeAllConnections();
   server.close(() => {
-    console.log('Server closed');
+    logger.info('Server closed');
     process.exit(0);
   });
 });

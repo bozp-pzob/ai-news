@@ -294,6 +294,30 @@ export async function runGeneratorsForDate(
     }
   }
 
+  // ── Auto-post to Twitter if enabled ─────────────────────
+  // Fire-and-forget: don't let Twitter failures affect the generator pipeline.
+  if (allSummaryItems.length > 0 && !anyFailed) {
+    try {
+      const { twitterService, composeTweet } = await import('../services/twitterService');
+      if (twitterService.isAutoPostEnabled()) {
+        // Use the first summary item for the tweet (usually the primary daily summary)
+        const primary = allSummaryItems[0];
+        // We need a config slug to build the URL. The generator context doesn't carry this,
+        // so auto-post only works when the RunGeneratorsOptions includes an onGeneratorComplete
+        // callback that has access to config metadata. For now, use a generic format.
+        const title = primary.title || `Summary — ${dateStr}`;
+        const markdown = (primary.markdown || '').slice(0, 200).replace(/[#*_`]/g, '');
+        const tweetText = `${title}\n\n${markdown}`;
+        const result = await twitterService.postTweet(tweetText.slice(0, 275));
+        if (result.success) {
+          logger.info(`[generatorHelper] Auto-posted to Twitter: ${result.tweetUrl}`);
+        }
+      }
+    } catch {
+      // Silently ignore — Twitter auto-post is best-effort
+    }
+  }
+
   return {
     summaryItems: allSummaryItems,
     totalTokensUsed,

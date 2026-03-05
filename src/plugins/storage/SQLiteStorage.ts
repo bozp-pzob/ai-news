@@ -108,6 +108,9 @@ export class SQLiteStorage implements StoragePlugin {
     `);
 
     // Site parsers table for cached LLM-generated HTML parsers
+    // Note: SQLite does not allow expressions (e.g. COALESCE) inside inline UNIQUE
+    // constraints, so the uniqueness on (domain, path_pattern, object_type_string) is
+    // enforced via a separate CREATE UNIQUE INDEX that supports expression syntax.
     await this.db.exec(`
       CREATE TABLE IF NOT EXISTS site_parsers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,9 +125,13 @@ export class SQLiteStorage implements StoragePlugin {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         sample_url TEXT,
-        metadata TEXT,
-        UNIQUE(domain, path_pattern, COALESCE(object_type_string, ''))
+        metadata TEXT
       );
+    `);
+
+    await this.db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_site_parsers_unique
+        ON site_parsers(domain, path_pattern, COALESCE(object_type_string, ''));
     `);
   }
 
@@ -331,7 +338,7 @@ export class SQLiteStorage implements StoragePlugin {
             granularity,
           ]
         );
-        console.log(`Updated existing summary for ${item.type} (${granularity}) on date ${dateStr}`);
+        logger.info(`Updated existing summary for ${item.type} (${granularity}) on date ${dateStr}`);
       } else {
         // Insert new summary
         await this.db.run(
@@ -355,11 +362,11 @@ export class SQLiteStorage implements StoragePlugin {
             item.estimatedCostUsd || null,
           ]
         );
-        console.log(`Saved new summary for ${item.type} (${granularity}) on date ${dateStr}`);
+        logger.info(`Saved new summary for ${item.type} (${granularity}) on date ${dateStr}`);
       }
     } catch (error) {
       // Use epoch seconds * 1000 for correct Date object creation in error message
-      console.error(`Error saving summary for ${item.type} on date ${new Date(item.date * 1000).toISOString()}:`, error); 
+      logger.error(`Error saving summary for ${item.type} on date ${new Date(item.date * 1000).toISOString()}`, error); 
       throw error;
     }
   }
@@ -503,7 +510,7 @@ export class SQLiteStorage implements StoragePlugin {
         estimatedCostUsd: row.estimated_cost_usd || undefined,
       }));
     } catch (error) {
-      console.error("Error fetching summary between epochs:", error);
+      logger.error("Error fetching summary between epochs", error);
       throw error;
     }
   }

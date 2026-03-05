@@ -6,6 +6,7 @@
 import { ContentItem } from "../../types";
 import { ContentSource } from "./ContentSource";
 import fetch from "node-fetch";
+import { logger } from '../../helpers/cliHelper';
 
 /**
  * Configuration interface for CodexAnalyticsSource
@@ -97,7 +98,7 @@ export class CodexAnalyticsSource implements ContentSource {
             }
         }
     } catch (error) {
-        console.error("Error fetching analytics data:", error);
+        logger.error("Error fetching analytics data", error);
     }
     
     return codexResponse;
@@ -141,7 +142,7 @@ export class CodexAnalyticsSource implements ContentSource {
             }
         }
     } catch (error) {
-        console.error("Error fetching analytics data:", error);
+        logger.error("Error fetching analytics data", error);
     }
     
     return codexResponse;
@@ -242,13 +243,13 @@ export class CodexAnalyticsSource implements ContentSource {
         const responseData : any = await response.json();
 
         if (responseData.errors) {
-            console.error("GraphQL errors:", responseData.errors);
+            logger.error("GraphQL errors", responseData.errors);
             throw new Error("GraphQL error occurred.");
         }
 
         return responseData;
     } catch (error) {
-        console.error(error);
+        logger.error("Codex API query failed", error);
         return;
     }
   }

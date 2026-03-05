@@ -1,6 +1,7 @@
 // src/plugins/enrichers/AiTopicEnricher.ts
 
 import { EnricherPlugin, ContentItem, AiEnricherConfig, AiProvider } from "../../types";
+import { logger } from '../../helpers/cliHelper';
 
 /**
  * AiTopicsEnricher class implements the EnricherPlugin interface to add AI-generated topics
@@ -74,7 +75,7 @@ export class AiTopicsEnricher implements EnricherPlugin {
           topics,
         });
       } catch (error) {
-        console.error("Error creating topics: ", error);
+        logger.error("Error creating topics", error);
         enrichedContent.push(contentItem);
       }
     }

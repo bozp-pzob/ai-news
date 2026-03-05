@@ -20,6 +20,7 @@ import {
   createParserFromExamplePrompt,
   SUMMARIZE_OPTIONS,
 } from './promptHelper';
+import { logger } from './cliHelper';
 
 // ============================================
 // GOLD-STANDARD PARSER GENERATION
@@ -292,7 +293,7 @@ ${parserCode}
       delete cloned.__parserError;
       const fieldCount = Object.keys(cloned).length;
       if (fieldCount > 0) {
-        console.warn(`[executeParser] Parser threw "${errorMsg}" but recovered ${fieldCount} fields`);
+        logger.warn(`executeParser: Parser threw "${errorMsg}" but recovered ${fieldCount} fields`);
         return cloned;
       }
       throw new Error(errorMsg);

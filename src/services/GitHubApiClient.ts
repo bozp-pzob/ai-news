@@ -10,6 +10,7 @@
 import { Octokit } from 'octokit';
 import pRetry, { AbortError } from 'p-retry';
 import { delay } from '../helpers/generalHelper';
+import { logger as cliLogger } from '../helpers/cliHelper';
 import {
   TokenBucket,
   RateLimitInfo,
@@ -55,10 +56,10 @@ interface Logger {
  * Default console-based logger
  */
 const defaultLogger: Logger = {
-  debug: (msg, meta) => console.debug(`[GitHub] ${msg}`, meta || ''),
-  info: (msg, meta) => console.info(`[GitHub] ${msg}`, meta || ''),
-  warn: (msg, meta) => console.warn(`[GitHub] ${msg}`, meta || ''),
-  error: (msg, meta) => console.error(`[GitHub] ${msg}`, meta || ''),
+  debug: (msg, meta) => cliLogger.info(`GitHub: ${msg}${meta ? ' ' + JSON.stringify(meta) : ''}`),
+  info: (msg, meta) => cliLogger.info(`GitHub: ${msg}${meta ? ' ' + JSON.stringify(meta) : ''}`),
+  warn: (msg, meta) => cliLogger.warn(`GitHub: ${msg}${meta ? ' ' + JSON.stringify(meta) : ''}`),
+  error: (msg, meta) => cliLogger.error(`GitHub: ${msg}${meta ? ' ' + JSON.stringify(meta) : ''}`),
 };
 
 /**

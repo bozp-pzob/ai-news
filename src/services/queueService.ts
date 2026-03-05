@@ -3,6 +3,7 @@
 import { Queue, Worker, Job, QueueEvents, ConnectionOptions } from 'bullmq';
 import { databaseService } from './databaseService';
 import { userService } from './userService';
+import { logger } from '../helpers/cliHelper';
 
 /**
  * Queue names
@@ -19,7 +20,9 @@ export const QUEUES = {
 export interface AggregationJobData {
   configId: string;
   userId: string;
-  runType: 'scheduled' | 'manual' | 'historical';
+  runType: 'scheduled' | 'manual' | 'historical' | 'continuous-tick';
+  /** DB job ID for continuous jobs — ticks record progress against this parent job */
+  continuousJobId?: string;
   options?: {
     onlyFetch?: boolean;
     onlyGenerate?: boolean;
@@ -41,7 +44,7 @@ export interface EmbeddingBackfillJobData {
 /**
  * Redis connection options
  */
-function getRedisConnection(): ConnectionOptions {
+export function getRedisConnection(): ConnectionOptions {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
   const url = new URL(redisUrl);
   
@@ -78,7 +81,7 @@ export async function initQueues(): Promise<void> {
   // Create event listeners
   aggregationEvents = new QueueEvents(QUEUES.AGGREGATION, { connection });
 
-  console.log('[QueueService] Queues initialized');
+  logger.info('QueueService: Queues initialized');
 }
 
 /**
@@ -128,11 +131,10 @@ export async function addAggregationJob(
     delay: options?.delay,
     priority: options?.priority,
     jobId: options?.jobId || `agg:${data.configId}:${Date.now()}`,
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 5000,
-    },
+    // Don't retry at BullMQ level — each attempt creates a new DB job record,
+    // causing duplicate DB jobs. Application-level failure handling (jobService.failJob)
+    // already records the error. Users can manually re-trigger if needed.
+    attempts: 1,
     removeOnComplete: {
       age: 24 * 60 * 60, // Keep completed jobs for 24 hours
       count: 100,
@@ -171,22 +173,77 @@ export async function scheduleRecurringAggregation(
     }
   );
   
-  console.log(`[QueueService] Scheduled recurring aggregation for config ${configId}: ${cronExpression}`);
+  logger.info(`QueueService: Scheduled recurring aggregation for config ${configId}: ${cronExpression}`);
 }
 
 /**
- * Cancel recurring aggregation for a config
+ * Schedule continuous aggregation for a config using a fixed interval.
+ * Each tick runs as a separate BullMQ job processed by the worker.
+ */
+export async function scheduleContinuousAggregation(
+  configId: string,
+  userId: string,
+  intervalMs: number,
+  continuousJobId: string,
+): Promise<void> {
+  const queue = getAggregationQueue();
+
+  // Remove any existing continuous repeatable job for this config
+  const repeatableJobs = await queue.getRepeatableJobs();
+  for (const job of repeatableJobs) {
+    if (job.name === `continuous:${configId}`) {
+      await queue.removeRepeatableByKey(job.key);
+    }
+  }
+
+  // Add repeatable job with a fixed interval (every N milliseconds)
+  await queue.add(
+    `continuous:${configId}`,
+    { configId, userId, runType: 'continuous-tick' as const, continuousJobId },
+    {
+      repeat: { every: intervalMs },
+      jobId: `continuous:${configId}`,
+    }
+  );
+
+  logger.info(`QueueService: Scheduled continuous aggregation for config ${configId} every ${intervalMs}ms`);
+}
+
+/**
+ * Cancel recurring aggregation for a config (both scheduled cron and continuous interval)
  */
 export async function cancelRecurringAggregation(configId: string): Promise<void> {
   const queue = getAggregationQueue();
   
   const repeatableJobs = await queue.getRepeatableJobs();
   for (const job of repeatableJobs) {
-    if (job.name === `scheduled:${configId}`) {
+    if (job.name === `scheduled:${configId}` || job.name === `continuous:${configId}`) {
       await queue.removeRepeatableByKey(job.key);
-      console.log(`[QueueService] Cancelled recurring aggregation for config ${configId}`);
+      logger.info(`QueueService: Cancelled repeatable job ${job.name} for config ${configId}`);
     }
   }
+}
+
+/**
+ * Cancel only the continuous repeatable job for a config (not the cron schedule)
+ */
+export async function cancelContinuousAggregation(configId: string): Promise<void> {
+  const queue = getAggregationQueue();
+  
+  const repeatableJobs = await queue.getRepeatableJobs();
+  for (const job of repeatableJobs) {
+    if (job.name === `continuous:${configId}`) {
+      await queue.removeRepeatableByKey(job.key);
+      logger.info(`QueueService: Cancelled continuous aggregation for config ${configId}`);
+    }
+  }
+}
+
+/**
+ * Check if queues are initialized and available
+ */
+export function isQueueAvailable(): boolean {
+  return aggregationQueue !== null;
 }
 
 /**
@@ -317,7 +374,7 @@ export async function cleanupOldJobs(olderThanMs: number = 7 * 24 * 60 * 60 * 10
     await queue.clean(olderThanMs, 1000, 'failed');
   }
   
-  console.log('[QueueService] Cleaned up old jobs');
+  logger.info('QueueService: Cleaned up old jobs');
 }
 
 /**
@@ -336,7 +393,7 @@ export async function closeQueues(): Promise<void> {
     await aggregationEvents.close();
   }
   
-  console.log('[QueueService] Queues closed');
+  logger.info('QueueService: Queues closed');
 }
 
 /**
@@ -376,7 +433,10 @@ export const queueService = {
   getEmbeddingBackfillQueue,
   addAggregationJob,
   scheduleRecurringAggregation,
+  scheduleContinuousAggregation,
   cancelRecurringAggregation,
+  cancelContinuousAggregation,
+  isQueueAvailable,
   addRetentionRetryJob,
   addEmbeddingBackfillJob,
   getJobStatus,

@@ -1,11 +1,12 @@
 /**
  * Fetches AI-generated GitHub summaries from elizaos.github.io summary API
- * NOT for stats - use GitHubStatsDataSource for that
+ * For raw GitHub data (PRs, issues, commits), use GitHubSource instead.
  */
 
 import { ContentSource } from "./ContentSource";
 import { ContentItem } from "../../types";
 import fetch from "node-fetch";
+import { logger } from '../../helpers/cliHelper';
 
 interface GitHubSummaryDataSourceConfig {
   name: string;
@@ -54,14 +55,14 @@ export class GitHubSummaryDataSource implements ContentSource {
     try {
       const response = await fetch(this.summaryUrl);
       if (!response.ok) {
-        console.error(`Failed to fetch summary. Status: ${response.status}`);
+        logger.error(`Failed to fetch summary. Status: ${response.status}`);
         return [];
       }
 
       const data = await response.json() as SummaryAPIResponse;
       return this.processSummary(data, this.summaryUrl);
     } catch (error) {
-      console.error("Error fetching GitHub summary:", error);
+      logger.error("Error fetching GitHub summary", error);
       return [];
     }
   }
@@ -80,14 +81,14 @@ export class GitHubSummaryDataSource implements ContentSource {
 
       const response = await fetch(url);
       if (!response.ok) {
-        console.error(`Failed to fetch historical summary. Status: ${response.status}`);
+        logger.error(`Failed to fetch historical summary. Status: ${response.status}`);
         return [];
       }
 
       const data = await response.json() as SummaryAPIResponse;
       return this.processSummary(data, url);
     } catch (error) {
-      console.error("Error fetching historical GitHub summary:", error);
+      logger.error("Error fetching historical GitHub summary", error);
       return [];
     }
   }

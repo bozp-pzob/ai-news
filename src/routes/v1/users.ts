@@ -13,6 +13,7 @@ import {
   PRO_PLANS,
 } from '../../services/licenseService';
 import { jobService } from '../../services/jobService';
+import { logger } from '../../helpers/cliHelper';
 
 const router = Router();
 
@@ -61,7 +62,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =>
       createdAt: new Date().toISOString(),
     });
   } catch (error: any) {
-    console.error('[API] Error getting user:', error);
+    logger.error('API: Error getting user', error);
     res.status(500).json({ error: 'Failed to get user profile' });
   }
 });
@@ -95,7 +96,7 @@ router.patch('/', requireAuth, async (req: AuthenticatedRequest, res: Response) 
       tier: updatedUser.tier,
     });
   } catch (error: any) {
-    console.error('[API] Error updating user:', error);
+    logger.error('API: Error updating user', error);
     res.status(500).json({ error: 'Failed to update user profile' });
   }
 });
@@ -131,7 +132,7 @@ router.get('/configs', requireAuth, async (req: AuthenticatedRequest, res: Respo
       total: configs.length,
     });
   } catch (error: any) {
-    console.error('[API] Error getting user configs:', error);
+    logger.error('API: Error getting user configs', error);
     res.status(500).json({ error: 'Failed to get user configs' });
   }
 });
@@ -148,7 +149,7 @@ router.get('/revenue', requireAuth, async (req: AuthenticatedRequest, res: Respo
     const revenue = await userService.getUserRevenue(req.user.id);
     res.json(revenue);
   } catch (error: any) {
-    console.error('[API] Error getting user revenue:', error);
+    logger.error('API: Error getting user revenue', error);
     res.status(500).json({ error: 'Failed to get revenue statistics' });
   }
 });
@@ -219,7 +220,7 @@ router.get('/limits', requireAuth, async (req: AuthenticatedRequest, res: Respon
 
     res.json(response);
   } catch (error: any) {
-    console.error('[API] Error getting user limits:', error);
+    logger.error('API: Error getting user limits', error);
     res.status(500).json({ error: 'Failed to get user limits' });
   }
 });
@@ -255,7 +256,7 @@ router.get('/license', requireAuth, async (req: AuthenticatedRequest, res: Respo
       });
     }
 
-    console.log(`[API] Checking license for user ${req.user.id}, wallet: ${req.user.walletAddress.slice(0, 8)}...${req.user.walletAddress.slice(-4)}`);
+    logger.info(`API: Checking license for user ${req.user.id}, wallet: ${req.user.walletAddress.slice(0, 8)}...${req.user.walletAddress.slice(-4)}`);
     
     const license = await licenseService.verifyLicense(req.user.walletAddress);
 
@@ -274,7 +275,7 @@ router.get('/license', requireAuth, async (req: AuthenticatedRequest, res: Respo
       sku: license.sku,
     });
   } catch (error: any) {
-    console.error('[API] Error getting license:', error);
+    logger.error('API: Error getting license', error);
     res.status(500).json({ error: 'Failed to get license status' });
   }
 });
@@ -289,7 +290,7 @@ router.get('/plans', async (_req, res: Response) => {
     const platformWallet = process.env.PLATFORM_WALLET_ADDRESS;
 
     if (!platformWallet) {
-      console.error('[API] PLATFORM_WALLET_ADDRESS not configured');
+      logger.error('API: PLATFORM_WALLET_ADDRESS not configured');
       return res.status(500).json({ error: 'Payment configuration error' });
     }
 
@@ -309,7 +310,7 @@ router.get('/plans', async (_req, res: Response) => {
       mockMode: MOCK_MODE,
     });
   } catch (error: any) {
-    console.error('[API] Error getting plans:', error);
+    logger.error('API: Error getting plans', error);
     res.status(500).json({ error: 'Failed to get plans' });
   }
 });
@@ -339,7 +340,7 @@ router.post('/license/challenge', requireAuth, async (req: AuthenticatedRequest,
     const challenge = await licenseService.getChallenge(walletAddress, ttl || 300);
     res.json({ challenge });
   } catch (error: any) {
-    console.error('[API] Error getting challenge:', error);
+    logger.error('API: Error getting challenge', error);
     res.status(500).json({ error: 'Failed to get challenge' });
   }
 });
@@ -383,14 +384,14 @@ async function handleLicensePurchase(
         const paymentMeta = JSON.parse(Buffer.from(paymentMetaHeader, 'base64').toString());
         walletAddress = paymentMeta.payerPubkey;
         paymentSku = paymentMeta.sku;
-        console.log('[API] Payment meta:', { 
+        logger.info('API: Payment meta', { 
           sku: paymentMeta.sku, 
           walletAddress: walletAddress?.slice(0, 8) + '...' + walletAddress?.slice(-4),
           challengeId: paymentMeta.challengeId?.slice(0, 20) + '...',
           expirationDate: paymentMeta.expirationDate ? new Date(paymentMeta.expirationDate).toISOString() : 'not set',
         });
       } catch (e) {
-        console.error('[API] Failed to parse X-PAYMENT-META:', e);
+        logger.error('API: Failed to parse X-PAYMENT-META', e);
       }
     }
 
@@ -421,11 +422,11 @@ async function handleLicensePurchase(
     // Always update user's wallet to the Solana wallet used for payment
     // This is required because pop402 licenses are tied to the Solana wallet
     if (walletAddress && req.user.walletAddress !== walletAddress) {
-      console.log(`[API] Updating user wallet from ${req.user.walletAddress?.slice(0, 8) || 'none'}... to ${walletAddress.slice(0, 8)}... (Solana)`);
+      logger.info(`API: Updating user wallet from ${req.user.walletAddress?.slice(0, 8) || 'none'}... to ${walletAddress.slice(0, 8)}... (Solana)`);
       await updateUser(req.user.id, { walletAddress });
     }
 
-    console.log(`[API] License purchase successful!`, {
+    logger.info('API: License purchase successful!', {
       planId,
       wallet: walletAddress.slice(0, 8) + '...' + walletAddress.slice(-4),
       paymentSku,
@@ -441,7 +442,7 @@ async function handleLicensePurchase(
       },
     });
   } catch (error: any) {
-    console.error('[API] Error processing license purchase:', error);
+    logger.error('API: Error processing license purchase', error);
     res.status(500).json({ error: 'Failed to process license purchase' });
   }
 }
@@ -520,8 +521,73 @@ router.post('/license/purchase-mock', requireAuth, async (req: AuthenticatedRequ
       },
     });
   } catch (error: any) {
-    console.error('[API] Error processing mock purchase:', error);
+    logger.error('API: Error processing mock purchase', error);
     res.status(500).json({ error: 'Failed to process mock purchase' });
+  }
+});
+
+// ============================================================================
+// GDPR: DATA EXPORT & ACCOUNT DELETION
+// ============================================================================
+
+/**
+ * GET /api/v1/me/export - Export all user data as a JSON archive
+ *
+ * GDPR Article 20 — Right to data portability.
+ * Returns a JSON object containing every piece of data we store for the
+ * authenticated user: profile, configs, items, summaries, jobs, payments,
+ * connections, webhooks, and API usage history.
+ */
+router.get('/export', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const archive = await userService.exportUserData(req.user.id);
+
+    // Set filename header so browsers offer a download
+    res.setHeader('Content-Disposition', `attachment; filename="digital-gardener-export-${Date.now()}.json"`);
+    res.setHeader('Content-Type', 'application/json');
+    res.json(archive);
+  } catch (error: any) {
+    logger.error('API: Error exporting user data', error);
+    res.status(500).json({ error: 'Failed to export user data' });
+  }
+});
+
+/**
+ * DELETE /api/v1/me - Permanently delete user account and all data
+ *
+ * GDPR Article 17 — Right to erasure ("right to be forgotten").
+ * Requires explicit confirmation via `{ "confirm": true }` body.
+ * This action is irreversible.
+ */
+router.delete('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Require explicit confirmation to prevent accidental deletion
+    if (req.body?.confirm !== true) {
+      return res.status(400).json({
+        error: 'Account deletion requires explicit confirmation',
+        details: 'Send { "confirm": true } in the request body to proceed. This action is irreversible.',
+      });
+    }
+
+    logger.info(`API: User ${req.user.id} requested account deletion`);
+
+    await userService.deleteUser(req.user.id);
+
+    res.json({
+      success: true,
+      message: 'Your account and all associated data have been permanently deleted.',
+    });
+  } catch (error: any) {
+    logger.error('API: Error deleting user account', error);
+    res.status(500).json({ error: 'Failed to delete account' });
   }
 });
 
@@ -546,7 +612,7 @@ router.get('/free-run-status', requireAuth, async (req: AuthenticatedRequest, re
       resetAt: status.resetAt.toISOString(),
     });
   } catch (error: any) {
-    console.error('[API] Error getting free run status:', error);
+    logger.error('API: Error getting free run status', error);
     res.status(500).json({ error: 'Failed to get free run status' });
   }
 });

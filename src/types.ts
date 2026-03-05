@@ -46,12 +46,18 @@ export interface SummaryItem {
 export type SummaryGranularity = 'daily' | 'weekly' | 'monthly' | 'custom';
 
 /**
+ * Shared type for aggregation phase tracking.
+ * Used by both AggregationStatus and JobStatus to prevent drift.
+ */
+export type AggregationPhase = 'fetching' | 'enriching' | 'generating' | 'storing' | 'idle' | 'connecting' | 'waiting';
+
+/**
  * Represents the detailed status of an aggregation process
  */
 export interface AggregationStatus {
   status: 'running' | 'stopped';
   currentSource?: string;
-  currentPhase?: 'fetching' | 'enriching' | 'generating' | 'idle' | 'connecting' | 'waiting';
+  currentPhase?: AggregationPhase;
   lastUpdated?: number;
   errors?: Array<{
     message: string;
@@ -83,26 +89,10 @@ export interface JobStatus {
   /** Reason for cancellation (e.g. 'license_expired') — helps frontend show targeted messaging */
   cancelReason?: string;
   intervals?: NodeJS.Timeout[]; // Array of interval IDs for cleanup when stopping
-  aggregationStatus?: {
-    currentSource?: string;
-    currentPhase?: 'fetching' | 'enriching' | 'generating' | 'idle' | 'connecting' | 'waiting';
+  aggregationStatus?: Pick<AggregationStatus, 'currentSource' | 'currentPhase' | 'errors' | 'stats'> & {
     mode?: 'standard' | 'historical';
     config?: any;
     filter?: any;
-    errors?: Array<{
-      message: string;
-      source?: string;
-      timestamp: number;
-    }>;
-    stats?: {
-      totalItemsFetched?: number;
-      itemsPerSource?: Record<string, number>;
-      lastFetchTimes?: Record<string, number>;
-      totalPromptTokens?: number;
-      totalCompletionTokens?: number;
-      totalAiCalls?: number;
-      estimatedCostUsd?: number;
-    };
   };
 }
   

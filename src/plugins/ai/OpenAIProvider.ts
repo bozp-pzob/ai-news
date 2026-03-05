@@ -486,7 +486,7 @@ export class OpenAIProvider implements AiProvider {
     try {
       // Generate optimized prompt using templates
       const imagePrompt = await this.generateImagePrompt(text, category);
-      console.log(`Generated Prompt:\n"${imagePrompt}"\n`);
+      logger.info(`Generated Prompt:\n"${imagePrompt}"`);
       logger.debug(`Image prompt (category=${category || "default"}): ${imagePrompt.substring(0, 100)}...`);
 
       // Build content array with text prompt first, then any reference images

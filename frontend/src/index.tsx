@@ -14,7 +14,6 @@ import { AuthProvider } from './context/AuthContext';
 
 // Lazy-loaded pages (code-split for smaller initial bundle)
 const BuilderPage = React.lazy(() => import('./pages/BuilderPage'));
-const DocsPage = React.lazy(() => import('./pages/DocsPage'));
 const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
 const ExplorePage = React.lazy(() => import('./pages/ExplorePage'));
 const ConfigPage = React.lazy(() => import('./pages/ConfigPage'));
@@ -22,6 +21,8 @@ const NewConfigPage = React.lazy(() => import('./pages/NewConfigPage'));
 const UpgradePage = React.lazy(() => import('./pages/UpgradePage'));
 const AdminPage = React.lazy(() => import('./pages/AdminPage'));
 const ConnectionsPage = React.lazy(() => import('./pages/ConnectionsPage'));
+const TermsPage = React.lazy(() => import('./pages/TermsPage'));
+const PrivacyPage = React.lazy(() => import('./pages/PrivacyPage'));
 
 // Shared loading fallback for lazy-loaded pages
 const PageLoadingFallback = (
@@ -50,7 +51,8 @@ root.render(
                   <Route path="/explore" element={<ExplorePage />} />
                   <Route path="/builder" element={<BuilderPage />} />
                   <Route path="/builder/:id" element={<BuilderPage />} />
-                  <Route path="/docs/*" element={<DocsPage />} />
+                  <Route path="/terms" element={<TermsPage />} />
+                  <Route path="/privacy" element={<PrivacyPage />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/configs/new" element={<NewConfigPage />} />
                   <Route path="/configs/:id" element={<ConfigPage />} />

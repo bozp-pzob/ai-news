@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { logger } from '../helpers/cliHelper';
 
 export interface PluginInfo {
   name: string;
@@ -59,7 +60,7 @@ export class PluginService {
             })
         );
       } catch (error) {
-        console.error(`Error loading plugins from ${dir}:`, error);
+        logger.error(`Error loading plugins from ${dir}`, error);
         plugins[type] = [];
       }
     }

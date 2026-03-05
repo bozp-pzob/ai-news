@@ -1,6 +1,7 @@
 // src/plugins/enrichers/AiImageEnricher.ts
 
 import { EnricherPlugin, ContentItem, AiEnricherConfig, AiProvider } from "../../types";
+import { logger } from '../../helpers/cliHelper';
 
 export interface AiImageEnricherConfig extends AiEnricherConfig {}
 
@@ -34,8 +35,8 @@ export class AiImageEnricher implements EnricherPlugin {
   public async enrich(contentItems: ContentItem[]): Promise<ContentItem[]> {
     const DEBUG = process.env.DEBUG_ENRICHERS === 'true';
 
-    console.log(`\n=== AiImageEnricher ===`);
-    console.log(`Input: ${contentItems.length} items`);
+    logger.info(`=== AiImageEnricher ===`);
+    logger.info(`Input: ${contentItems.length} items`);
 
     let generated = 0;
     let skipped = 0;
@@ -56,12 +57,12 @@ export class AiImageEnricher implements EnricherPlugin {
       }
 
       if (DEBUG) {
-        console.log(`\n--- Processing: ${itemId} ---`);
-        console.log(`Content (${item.text.length} chars):`);
-        console.log(item.text);
+        logger.info(`--- Processing: ${itemId} ---`);
+        logger.info(`Content (${item.text.length} chars):`);
+        logger.info(item.text);
       }
 
-      console.log(`AiImageEnricher: [${itemId}] Generating poster (${item.text.length} chars)`);
+      logger.info(`AiImageEnricher: [${itemId}] Generating poster (${item.text.length} chars)`);
 
       try {
         const image = await this.provider.image(item.text, {
@@ -74,16 +75,16 @@ export class AiImageEnricher implements EnricherPlugin {
             ...item.metadata,
             images: image,
           };
-          console.log(`AiImageEnricher: [${itemId}] ✅ Generated poster`);
+          logger.info(`AiImageEnricher: [${itemId}] Generated poster`);
         } else {
-          console.log(`AiImageEnricher: [${itemId}] ❌ No image returned`);
+          logger.info(`AiImageEnricher: [${itemId}] No image returned`);
         }
       } catch (error) {
-        console.error(`AiImageEnricher: [${itemId}] Error:`, error);
+        logger.error(`AiImageEnricher: [${itemId}] Error`, error);
       }
     }
 
-    console.log(`AiImageEnricher: Generated ${generated} posters, skipped ${skipped} items\n`);
+    logger.info(`AiImageEnricher: Generated ${generated} posters, skipped ${skipped} items`);
     return contentItems;
   }
 }

@@ -4,6 +4,7 @@ import { jobService } from './jobService';
 import { userService } from './userService';
 import { licenseService } from './licenseService';
 import { AggregatorService } from './aggregatorService';
+import { logger } from '../helpers/cliHelper';
 
 /**
  * Cron Service
@@ -26,11 +27,11 @@ export async function pruneOldJobs(): Promise<void> {
   const retentionDays = parseInt(process.env.RUN_RETENTION_DAYS || '90', 10);
   
   try {
-    console.log(`[CronService] Pruning jobs older than ${retentionDays} days...`);
+    logger.info(`CronService: Pruning jobs older than ${retentionDays} days...`);
     const deletedCount = await jobService.pruneOldJobs(retentionDays);
-    console.log(`[CronService] Pruned ${deletedCount} old jobs`);
+    logger.info(`CronService: Pruned ${deletedCount} old jobs`);
   } catch (error) {
-    console.error('[CronService] Error pruning old jobs:', error);
+    logger.error('CronService: Error pruning old jobs', error);
   }
 }
 
@@ -40,7 +41,7 @@ export async function pruneOldJobs(): Promise<void> {
  */
 export async function validateContinuousJobsProStatus(): Promise<void> {
   try {
-    console.log('[CronService] Validating pro status for continuous jobs...');
+    logger.info('CronService: Validating pro status for continuous jobs...');
     
     const runningContinuousJobs = await jobService.getRunningContinuousJobs();
     const aggregatorService = AggregatorService.getInstance();
@@ -61,7 +62,7 @@ export async function validateContinuousJobsProStatus(): Promise<void> {
         }
         
         if (!hasProLicense) {
-          console.log(`[CronService] User ${job.userId} no longer has pro license, stopping job ${job.id}`);
+          logger.info(`CronService: User ${job.userId} no longer has pro license, stopping job ${job.id}`);
           
           // Stop the continuous job with license-expired status
           await aggregatorService.stopContinuousJobForExpiredLicense(job.id);
@@ -69,13 +70,13 @@ export async function validateContinuousJobsProStatus(): Promise<void> {
           stoppedCount++;
         }
       } catch (error) {
-        console.error(`[CronService] Error validating job ${job.id}:`, error);
+        logger.error(`CronService: Error validating job ${job.id}`, error);
       }
     }
     
-    console.log(`[CronService] Pro validation complete. Stopped ${stoppedCount}/${runningContinuousJobs.length} jobs.`);
+    logger.info(`CronService: Pro validation complete. Stopped ${stoppedCount}/${runningContinuousJobs.length} jobs.`);
   } catch (error) {
-    console.error('[CronService] Error validating continuous jobs:', error);
+    logger.error('CronService: Error validating continuous jobs', error);
   }
 }
 
@@ -83,25 +84,25 @@ export async function validateContinuousJobsProStatus(): Promise<void> {
  * Start all cron jobs
  */
 export function startCronJobs(): void {
-  console.log('[CronService] Starting cron jobs...');
+  logger.info('CronService: Starting cron jobs...');
   
   // Run initial prune immediately
   pruneOldJobs();
   
   // Schedule daily job pruning
   pruneIntervalId = setInterval(pruneOldJobs, JOB_PRUNE_INTERVAL_MS);
-  console.log('[CronService] Job pruning scheduled (daily)');
+  logger.info('CronService: Job pruning scheduled (daily)');
   
   // Schedule hourly pro validation
   proValidationIntervalId = setInterval(validateContinuousJobsProStatus, PRO_VALIDATION_INTERVAL_MS);
-  console.log('[CronService] Pro validation scheduled (hourly)');
+  logger.info('CronService: Pro validation scheduled (hourly)');
 }
 
 /**
  * Stop all cron jobs (for graceful shutdown)
  */
 export function stopCronJobs(): void {
-  console.log('[CronService] Stopping cron jobs...');
+  logger.info('CronService: Stopping cron jobs...');
   
   if (pruneIntervalId) {
     clearInterval(pruneIntervalId);
@@ -113,7 +114,7 @@ export function stopCronJobs(): void {
     proValidationIntervalId = null;
   }
   
-  console.log('[CronService] Cron jobs stopped');
+  logger.info('CronService: Cron jobs stopped');
 }
 
 export const cronService = {

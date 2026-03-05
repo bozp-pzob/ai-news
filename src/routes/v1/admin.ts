@@ -13,11 +13,13 @@ import {
   UserFilterOptions,
   ConfigFilterOptions 
 } from '../../services/adminService';
+import { adminRateLimiter } from '../../middleware/rateLimitMiddleware';
+import { logger } from '../../helpers/cliHelper';
 
 const router = Router();
 
-// All admin routes require authentication and admin tier
-router.use(requireAuth, requireAdmin);
+// All admin routes require authentication, admin tier, and rate limiting
+router.use(adminRateLimiter, requireAuth, requireAdmin);
 
 // ============================================================================
 // STATISTICS ROUTES
@@ -33,7 +35,7 @@ router.get('/stats', async (req: AuthenticatedRequest, res: Response) => {
     const stats = await adminService.getSystemStats(range);
     res.json(stats);
   } catch (error: any) {
-    console.error('[Admin API] Error getting stats:', error);
+    logger.error('Admin API: Error getting stats', error);
     res.status(500).json({ error: 'Failed to get system statistics' });
   }
 });
@@ -48,7 +50,7 @@ router.get('/stats/usage', async (req: AuthenticatedRequest, res: Response) => {
     const usageData = await adminService.getUsageOverTime(range);
     res.json({ data: usageData });
   } catch (error: any) {
-    console.error('[Admin API] Error getting usage stats:', error);
+    logger.error('Admin API: Error getting usage stats', error);
     res.status(500).json({ error: 'Failed to get usage statistics' });
   }
 });
@@ -85,7 +87,7 @@ router.get('/users', async (req: AuthenticatedRequest, res: Response) => {
       totalPages: Math.ceil(result.total / options.limit!),
     });
   } catch (error: any) {
-    console.error('[Admin API] Error listing users:', error);
+    logger.error('Admin API: Error listing users', error);
     res.status(500).json({ error: 'Failed to list users' });
   }
 });
@@ -103,7 +105,7 @@ router.get('/users/:id', async (req: AuthenticatedRequest, res: Response) => {
 
     res.json(user);
   } catch (error: any) {
-    console.error('[Admin API] Error getting user:', error);
+    logger.error('Admin API: Error getting user', error);
     res.status(500).json({ error: 'Failed to get user' });
   }
 });
@@ -135,7 +137,7 @@ router.patch('/users/:id/tier', async (req: AuthenticatedRequest, res: Response)
       message: `User tier updated to ${tier}`,
     });
   } catch (error: any) {
-    console.error('[Admin API] Error updating user tier:', error);
+    logger.error('Admin API: Error updating user tier', error);
     
     if (error.message === 'Cannot modify your own account') {
       return res.status(400).json({ error: error.message });
@@ -168,7 +170,7 @@ router.post('/users/:id/ban', async (req: AuthenticatedRequest, res: Response) =
       message: 'User has been banned',
     });
   } catch (error: any) {
-    console.error('[Admin API] Error banning user:', error);
+    logger.error('Admin API: Error banning user', error);
     
     if (error.message === 'Cannot modify your own account') {
       return res.status(400).json({ error: error.message });
@@ -194,7 +196,7 @@ router.post('/users/:id/unban', async (req: AuthenticatedRequest, res: Response)
       message: 'User has been unbanned',
     });
   } catch (error: any) {
-    console.error('[Admin API] Error unbanning user:', error);
+    logger.error('Admin API: Error unbanning user', error);
     
     if (error.message === 'User not found') {
       return res.status(404).json({ error: error.message });
@@ -220,7 +222,7 @@ router.post('/users/:id/impersonate', async (req: AuthenticatedRequest, res: Res
       expiresAt: result.expiresAt.toISOString(),
     });
   } catch (error: any) {
-    console.error('[Admin API] Error creating impersonation token:', error);
+    logger.error('Admin API: Error creating impersonation token', error);
     
     if (error.message === 'User not found') {
       return res.status(404).json({ error: error.message });
@@ -266,7 +268,7 @@ router.get('/configs', async (req: AuthenticatedRequest, res: Response) => {
       totalPages: Math.ceil(result.total / options.limit!),
     });
   } catch (error: any) {
-    console.error('[Admin API] Error listing configs:', error);
+    logger.error('Admin API: Error listing configs', error);
     res.status(500).json({ error: 'Failed to list configs' });
   }
 });
@@ -296,7 +298,7 @@ router.patch('/configs/:id/featured', async (req: AuthenticatedRequest, res: Res
         : 'Config has been unfeatured',
     });
   } catch (error: any) {
-    console.error('[Admin API] Error updating config featured status:', error);
+    logger.error('Admin API: Error updating config featured status', error);
     
     if (error.message === 'Config not found') {
       return res.status(404).json({ error: error.message });
