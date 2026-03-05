@@ -42,7 +42,18 @@ export function AppHeader({ adminBadge, maxWidth = 'max-w-6xl', limits, children
           {/* Left: Logo */}
           <div className="flex items-center gap-3">
             <a href="/" className="flex items-center">
-              <img src="/logo.svg" alt="Digital Gardener" className="h-8 w-8" />
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" className="h-8 w-8" aria-label="Digital Gardener" role="img">
+                <g transform="translate(32,32)">
+                  <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#15a072" transform="rotate(0)" />
+                  <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#0d9268" transform="rotate(72)" />
+                  <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#15a072" transform="rotate(144)" />
+                  <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#0d9268" transform="rotate(216)" />
+                  <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#15a072" transform="rotate(288)" />
+                  <circle r="8" fill="#064e3b" />
+                  <circle r="5" fill="#34d399" />
+                  <circle r="2.5" fill="#ecfdf5" />
+                </g>
+              </svg>
             </a>
             {adminBadge && (
               <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded font-medium">
