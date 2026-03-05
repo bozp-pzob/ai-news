@@ -25,18 +25,6 @@ interface RunActionsProps {
 }
 
 /**
- * Interval options for continuous runs
- */
-const INTERVAL_OPTIONS = [
-  { value: 15 * 60 * 1000, label: '15 minutes' },
-  { value: 30 * 60 * 1000, label: '30 minutes' },
-  { value: 60 * 60 * 1000, label: '1 hour' },
-  { value: 6 * 60 * 60 * 1000, label: '6 hours' },
-  { value: 12 * 60 * 60 * 1000, label: '12 hours' },
-  { value: 24 * 60 * 60 * 1000, label: '24 hours' },
-];
-
-/**
  * Format time until next free run
  */
 function formatTimeUntilFreeRun(resetAt: string): string {
@@ -147,11 +135,8 @@ export function RunActions({
   const { isActive: isPro } = useLicense();
   const { run: runFree, isRunning: isRunningFree, error: freeError } = useRunFree(configId);
   const { run: runPaid, isRunning: isRunningPaid, error: paidError, paymentRequired } = useRunPaid(configId);
-  const { start: startContinuous, stop: stopContinuous, isStarting, isStopping, error: continuousError } = useRunContinuous(configId);
+  const { stop: stopContinuous, isStopping } = useRunContinuous(configId);
   
-  const [showIntervalPicker, setShowIntervalPicker] = useState(false);
-  const [selectedInterval, setSelectedInterval] = useState(INTERVAL_OPTIONS[2].value); // Default 1 hour
-  const [showUpgradeHint, setShowUpgradeHint] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [isLocalRunning, setIsLocalRunning] = useState(false);
 
@@ -165,7 +150,7 @@ export function RunActions({
 
   const isRunning = configStatus === 'running';
   const hasContinuousJob = activeJob?.jobType === 'continuous' && activeJob?.status === 'running';
-  const isAnyOperationInProgress = isRunningFree || isRunningPaid || isStarting || isStopping || isLocalRunning;
+  const isAnyOperationInProgress = isRunningFree || isRunningPaid || isStopping || isLocalRunning;
 
   // Refresh free run status after a run completes
   useEffect(() => {
@@ -336,19 +321,6 @@ export function RunActions({
     }
   };
 
-  const handleStartContinuous = async () => {
-    setLocalError(null);
-
-    // Resolve secrets for continuous execution (same as free/paid runs)
-    const resolved = await getResolvedConfig();
-    const resolvedConfig = resolved && configJson ? resolved : undefined;
-    const result = await startContinuous(selectedInterval, resolvedConfig);
-    if (result?.jobId) {
-      onRunStarted?.(result.jobId, 'continuous');
-      setShowIntervalPicker(false);
-    }
-  };
-
   const handleStopContinuous = async () => {
     const result = await stopContinuous();
     if (result) {
@@ -357,7 +329,7 @@ export function RunActions({
   };
 
   // Combine all error sources
-  const displayError = localError || freeError || paidError || continuousError;
+  const displayError = localError || freeError || paidError;
 
   // If there's an active continuous job, show stop button
   if (hasContinuousJob) {
@@ -434,125 +406,50 @@ export function RunActions({
   return (
     <div className="relative">
       <div className="flex items-center gap-2">
-        {/* Free Run Button */}
+        {/* Run Button — shows "Run Free" while available, switches to "Run $0.10" once the daily free run is used */}
         <div className="relative">
-          <button
-            onClick={handleFreeRun}
-            disabled={!canUseFreeRun || isAnyOperationInProgress}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              canUseFreeRun && !isAnyOperationInProgress
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-stone-200 text-stone-400 cursor-not-allowed'
-            }`}
-            title={canUseFreeRun ? 'Run once for free (1 per day)' : freeRunStatus?.resetAt ? formatTimeUntilFreeRun(freeRunStatus.resetAt) : 'Free run not available'}
-          >
-            {isRunningFree ? (
-              <span className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Running...
-              </span>
-            ) : (
-              'Run Free'
-            )}
-          </button>
-          {!canUseFreeRun && freeRunStatus?.resetAt && (
-            <p className="absolute top-full left-0 mt-1 text-xs text-stone-500 whitespace-nowrap">
-              {formatTimeUntilFreeRun(freeRunStatus.resetAt)}
-            </p>
-          )}
-        </div>
-
-        {/* Paid Run Button */}
-        <button
-          onClick={handlePaidRun}
-          disabled={isAnyOperationInProgress}
-          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-stone-200 text-white rounded-lg font-medium transition-colors"
-          title="Run once ($0.10 or included with Pro)"
-        >
-          {isRunningPaid ? (
-            <span className="flex items-center gap-2">
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Running...
-            </span>
+          {canUseFreeRun ? (
+            /* Free run available */
+            <button
+              onClick={handleFreeRun}
+              disabled={isAnyOperationInProgress}
+              className="px-4 py-2 rounded-lg font-medium transition-colors bg-green-600 hover:bg-green-700 text-white"
+              title="Run once for free (1 per day)"
+            >
+              {isRunningFree ? (
+                <span className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Running...
+                </span>
+              ) : (
+                'Run Free'
+              )}
+            </button>
           ) : (
-            <>
-              Run <span className="text-emerald-200 text-sm ml-1">$0.10</span>
-            </>
-          )}
-        </button>
-
-        {/* Continuous Run Button (Pro only) */}
-        <div className="relative">
-          <button
-            onClick={() => {
-              if (isPro) {
-                setShowIntervalPicker(!showIntervalPicker);
-              } else {
-                setShowUpgradeHint(true);
-                setTimeout(() => setShowUpgradeHint(false), 3000);
-              }
-            }}
-            disabled={isAnyOperationInProgress}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              isPro && !isAnyOperationInProgress
-                ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                : 'bg-stone-200 text-stone-400 hover:bg-stone-100'
-            }`}
-            title={isPro ? 'Start continuous aggregation' : 'Pro subscription required'}
-          >
-            Continuous
-            {!isPro && <span className="ml-1 text-xs text-emerald-600">PRO</span>}
-          </button>
-          
-          {/* Upgrade hint tooltip */}
-          {showUpgradeHint && !isPro && (
-            <div className="absolute top-full left-0 mt-2 px-3 py-2 bg-white border border-stone-200 rounded-lg shadow-lg z-10 whitespace-nowrap">
-              <p className="text-sm text-stone-600">
-                Continuous runs require{' '}
-                <a href="/upgrade" className="text-emerald-600 hover:text-emerald-700">
-                  Pro subscription
-                </a>
-              </p>
-            </div>
-          )}
-
-          {/* Interval Picker Dropdown */}
-          {showIntervalPicker && isPro && (
-            <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-stone-200 rounded-lg shadow-lg z-10">
-              <div className="p-3 border-b border-stone-200">
-                <p className="text-sm font-medium text-stone-800">Select Interval</p>
-                <p className="text-xs text-stone-500">How often to fetch new data</p>
-              </div>
-              <div className="p-2">
-                {INTERVAL_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => setSelectedInterval(option.value)}
-                    className={`w-full px-3 py-2 text-left text-sm rounded-md transition-colors ${
-                      selectedInterval === option.value
-                        ? 'bg-purple-600 text-white'
-                        : 'text-stone-600 hover:bg-stone-100'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              <div className="p-3 border-t border-stone-200 flex gap-2">
-                <button
-                  onClick={() => setShowIntervalPicker(false)}
-                  className="flex-1 px-3 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-md text-sm transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleStartContinuous}
-                  disabled={isStarting}
-                  className="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-stone-200 text-white rounded-md text-sm font-medium transition-colors"
-                >
-                  {isStarting ? 'Starting...' : 'Start'}
-                </button>
-              </div>
+            /* Free run used — show paid option */
+            <div className="flex flex-col items-start gap-1">
+              <button
+                onClick={handlePaidRun}
+                disabled={isAnyOperationInProgress}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-stone-200 text-white rounded-lg font-medium transition-colors"
+                title="Run once ($0.10 or included with Pro)"
+              >
+                {isRunningPaid ? (
+                  <span className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Running...
+                  </span>
+                ) : (
+                  <>
+                    Run <span className="text-emerald-200 text-sm ml-1">$0.10</span>
+                  </>
+                )}
+              </button>
+              {freeRunStatus?.resetAt && (
+                <p className="text-xs text-stone-400 whitespace-nowrap">
+                  Free run {formatTimeUntilFreeRun(freeRunStatus.resetAt).toLowerCase()}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -563,10 +460,6 @@ export function RunActions({
             onClick={() => {
               if (isPro) {
                 setShowSchedulePicker(!showSchedulePicker);
-                setShowIntervalPicker(false);
-              } else {
-                setShowUpgradeHint(true);
-                setTimeout(() => setShowUpgradeHint(false), 3000);
               }
             }}
             disabled={isAnyOperationInProgress}

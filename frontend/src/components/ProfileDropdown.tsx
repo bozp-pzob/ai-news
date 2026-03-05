@@ -36,10 +36,13 @@ export function ProfileDropdown() {
       if (!connectedWallet?.address || !isOpen) return;
       setIsLoadingBalance(true);
       try {
+        // Returns a number (including 0) on success, or null when the RPC
+        // call fails so we can display "--" instead of a misleading "$0.00".
         const balance = await solanaPayment.getUSDCBalance(connectedWallet.address);
-        setUsdcBalance(balance);
+        setUsdcBalance(balance); // null → "--", 0 → "$0.00", >0 → "$X.XX"
       } catch (error) {
-        setUsdcBalance(0);
+        // Unexpected error — show "--" not "$0.00"
+        setUsdcBalance(null);
       } finally {
         setIsLoadingBalance(false);
       }

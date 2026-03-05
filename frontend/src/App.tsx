@@ -549,12 +549,14 @@ function App({
 
   return (
     <div className={containerClass}>
-      {/* Full-width Toolbar */}
-      <div className="h-12 bg-white border-b border-stone-200 shadow-sm flex items-center px-4 flex-shrink-0">
-        <a href="/">
-          <img src="/logo.svg" alt="Digital Gardener" className="h-7 w-7" />
-        </a>
-      </div>
+      {/* Full-width Toolbar — hidden in platform/builder mode (BuilderPage provides its own header) */}
+      {!platformMode && (
+        <div className="h-12 bg-white border-b border-stone-200 shadow-sm flex items-center px-4 flex-shrink-0">
+          <a href="/">
+            <img src="/logo.svg" alt="Digital Gardener" className="h-7 w-7" />
+          </a>
+        </div>
+      )}
       
       <div className="flex flex-1 overflow-hidden">
         {/* Hidden file input for JSON import */}

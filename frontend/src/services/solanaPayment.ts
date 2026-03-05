@@ -26,9 +26,10 @@ const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 const USDC_DECIMALS = 6;
 
 // Solana RPC endpoint
-// IMPORTANT: Set VITE_SOLANA_RPC_URL in your .env for production
-// Free RPC providers: Helius, QuickNode, Alchemy
-const RPC_ENDPOINT = import.meta.env.VITE_SOLANA_RPC_URL || 'https://solana-mainnet.g.alchemy.com/v2/demo';
+// IMPORTANT: Set VITE_SOLANA_RPC_URL in your .env for production.
+// The official mainnet-beta endpoint is used as a fallback.
+// For higher rate limits use a dedicated provider: Helius, QuickNode, or Alchemy.
+const RPC_ENDPOINT = import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
 // Log RPC endpoint being used (helpful for debugging)
 console.log('[SolanaPayment] Using RPC endpoint:', RPC_ENDPOINT.includes('api-key') ? RPC_ENDPOINT.split('?')[0] + '?api-key=***' : RPC_ENDPOINT);
@@ -175,33 +176,53 @@ export function addSignatureAndSerialize(
 }
 
 /**
- * Get USDC balance for a wallet
- * 
+ * Get USDC balance for a wallet.
+ *
+ * Returns:
+ *   - A number >= 0 when the call succeeds (0 means the USDC token account
+ *     genuinely does not exist for this wallet yet).
+ *   - null when the RPC call fails (network error, rate-limit, etc.) so the
+ *     caller can show "--" rather than a misleading "$0.00".
+ *
  * @param walletAddress - Wallet public key (base58 string)
- * @returns USDC balance as a number
  */
-export async function getUSDCBalance(walletAddress: string): Promise<number> {
+export async function getUSDCBalance(walletAddress: string): Promise<number | null> {
   const connection = new Connection(RPC_ENDPOINT, 'confirmed');
   const pubkey = new PublicKey(walletAddress);
   
+  let tokenAccount: PublicKey;
   try {
-    const tokenAccount = await getAssociatedTokenAddress(
+    tokenAccount = await getAssociatedTokenAddress(
       USDC_MINT,
       pubkey,
       false,
       TOKEN_PROGRAM_ID,
       ASSOCIATED_TOKEN_PROGRAM_ID
     );
-    
+  } catch (error) {
+    // Address derivation failing is an unexpected RPC / network error
+    console.error('[SolanaPayment] Failed to derive USDC token address:', error);
+    return null;
+  }
+
+  try {
     const account = await getAccount(connection, tokenAccount);
     const balance = Number(account.amount) / Math.pow(10, USDC_DECIMALS);
-    
     console.log('[SolanaPayment] USDC balance:', balance);
     return balance;
-  } catch (error) {
-    // Token account doesn't exist = 0 balance
-    console.log('[SolanaPayment] No USDC token account, balance is 0');
-    return 0;
+  } catch (error: any) {
+    // TokenAccountNotFoundError → the wallet exists but has no USDC ATA yet
+    if (
+      error?.name === 'TokenAccountNotFoundError' ||
+      error?.message?.includes('could not find account') ||
+      error?.message?.includes('Account does not exist')
+    ) {
+      console.log('[SolanaPayment] No USDC token account found — balance is $0.00');
+      return 0;
+    }
+    // Any other error (network timeout, rate-limit, etc.) → signal unknown
+    console.error('[SolanaPayment] RPC error fetching USDC balance:', error);
+    return null;
   }
 }
 

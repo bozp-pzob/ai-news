@@ -7,7 +7,11 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
     setupFiles: ['test/setup.ts'],
-    testTimeout: 10000,
+    // Generous timeout: SQLite in-memory init + HTTP round-trips
+    testTimeout: 30000,
+    hookTimeout: 15000,
+    // Show which tests are slow
+    slowTestThreshold: 5000,
   },
   resolve: {
     alias: {

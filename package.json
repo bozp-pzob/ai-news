@@ -37,7 +37,10 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:api": "vitest run test/api",
+    "test:cli": "vitest run test/cli",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "digital-gardener",
@@ -103,11 +106,13 @@
     "@types/react": "^19.1.4",
     "@types/react-dom": "^19.1.5",
     "@types/react-transition-group": "^4.4.12",
+    "@types/supertest": "^7.2.0",
     "@types/uuid": "^11.0.0",
     "@types/ws": "^8.5.5",
     "drizzle-kit": "^0.31.9",
     "glob": "^13.0.0",
     "nodemon": "^3.0.1",
+    "supertest": "^7.2.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.8.3",
     "vitest": "^4.0.18"
