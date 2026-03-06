@@ -2196,6 +2196,7 @@ export const relayApi = {
 
 export interface ScheduleInfo {
   cronExpression: string | null;
+  label: string | null;
   timezone: string;
   presets: Array<{ label: string; cron: string }>;
   nextRun: string | null;

@@ -2432,11 +2432,67 @@ import { scheduleRecurringAggregation, cancelRecurringAggregation, getAggregatio
 const CRON_PRESETS = [
   { label: 'Every 6 hours',  cron: '0 */6 * * *' },
   { label: 'Every 12 hours', cron: '0 */12 * * *' },
-  { label: 'Daily at midnight', cron: '0 0 * * *' },
-  { label: 'Daily at 6 AM', cron: '0 6 * * *' },
-  { label: 'Twice a week (Mon & Thu)', cron: '0 0 * * 1,4' },
-  { label: 'Weekly (Monday)', cron: '0 0 * * 1' },
+  { label: 'Once a day', cron: '0 0 * * *' },
+  { label: 'Twice a week', cron: '0 0 * * 1,4' },
+  { label: 'Once a week', cron: '0 0 * * 1' },
 ];
+
+/**
+ * Convert a cron expression to a human-readable label.
+ * Matches against known presets first, then attempts to parse common patterns.
+ */
+function cronToLabel(cronExpression: string): string {
+  // Check against presets first
+  const preset = CRON_PRESETS.find(p => p.cron === cronExpression.trim());
+  if (preset) return preset.label;
+
+  const parts = cronExpression.trim().split(/\s+/);
+  if (parts.length !== 5) return cronExpression;
+
+  const [minute, hour, dom, month, dow] = parts;
+
+  // Pattern: 0 */N * * * → "Every N hours"
+  if (minute === '0' && hour.startsWith('*/') && dom === '*' && month === '*' && dow === '*') {
+    const n = parseInt(hour.slice(2));
+    if (n === 1) return 'Every hour';
+    return `Every ${n} hours`;
+  }
+
+  // Pattern: */N * * * * → "Every N minutes" (30+ only)
+  if (minute.startsWith('*/') && hour === '*' && dom === '*' && month === '*' && dow === '*') {
+    const n = parseInt(minute.slice(2));
+    if (n === 1) return 'Every minute';
+    return `Every ${n} minutes`;
+  }
+
+  // Pattern: 0 0 */N * * → "Every N days"
+  if (minute === '0' && hour === '0' && dom.startsWith('*/') && month === '*' && dow === '*') {
+    const n = parseInt(dom.slice(2));
+    if (n === 1) return 'Once a day';
+    return `Every ${n} days`;
+  }
+
+  // Pattern: 0 H * * * → "Once a day" (specific hour)
+  if (minute === '0' && /^\d{1,2}$/.test(hour) && dom === '*' && month === '*' && dow === '*') {
+    return 'Once a day';
+  }
+
+  // Pattern: 0 0 * * D → weekly on specific day(s)
+  if (minute === '0' && hour === '0' && dom === '*' && month === '*' && dow !== '*') {
+    const dayNames: Record<string, string> = { '0': 'Sunday', '1': 'Monday', '2': 'Tuesday', '3': 'Wednesday', '4': 'Thursday', '5': 'Friday', '6': 'Saturday', '7': 'Sunday' };
+    if (/^\d$/.test(dow)) {
+      return `Weekly on ${dayNames[dow] || dow}`;
+    }
+    if (dow.includes(',')) {
+      const days = dow.split(',').map(d => dayNames[d.trim()] || d.trim());
+      if (days.length === 2) return `Twice a week`;
+      return `${days.length}x per week`;
+    }
+  }
+
+  // Fallback: return the raw expression (legacy data)
+  return cronExpression;
+}
 
 /**
  * Validate a cron expression (basic syntax check).
@@ -2493,6 +2549,7 @@ router.get('/:id/schedule', requireAuth, requireConfigOwner, async (req: Authent
 
     res.json({
       cronExpression: schedule.cronExpression,
+      label: schedule.cronExpression ? cronToLabel(schedule.cronExpression) : null,
       timezone: schedule.timezone,
       presets: CRON_PRESETS,
       nextRun,

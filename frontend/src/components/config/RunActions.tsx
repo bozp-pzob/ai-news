@@ -144,9 +144,11 @@ export function RunActions({
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [scheduleInfo, setScheduleInfo] = useState<ScheduleInfo | null>(null);
   const [selectedCron, setSelectedCron] = useState<string>('');
-  const [customCron, setCustomCron] = useState('');
+  const [customAmount, setCustomAmount] = useState<number>(6);
+  const [customUnit, setCustomUnit] = useState<'hours' | 'days'>('hours');
   const [isScheduleSaving, setIsScheduleSaving] = useState(false);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [countdownText, setCountdownText] = useState<string>('');
 
   const isRunning = configStatus === 'running';
   const hasContinuousJob = activeJob?.jobType === 'continuous' && activeJob?.status === 'running';
@@ -175,7 +177,6 @@ export function RunActions({
         .then((info) => {
           setScheduleInfo(info);
           setSelectedCron(info.cronExpression || '');
-          setCustomCron('');
         })
         .catch((err) => {
           setScheduleError(err?.message || 'Failed to load schedule');
@@ -183,9 +184,54 @@ export function RunActions({
     }
   }, [showSchedulePicker, authToken, configId]);
 
+  // Countdown timer for next scheduled run
+  useEffect(() => {
+    if (!scheduleInfo?.nextRun) {
+      setCountdownText('');
+      return;
+    }
+
+    const updateCountdown = () => {
+      const now = Date.now();
+      const next = new Date(scheduleInfo.nextRun!).getTime();
+      const diff = next - now;
+
+      if (diff <= 0) {
+        setCountdownText('running soon');
+        return;
+      }
+
+      const totalMinutes = Math.floor(diff / 60000);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      const days = Math.floor(hours / 24);
+      const remainingHours = hours % 24;
+
+      if (days > 0) {
+        setCountdownText(`next run in ${days}d ${remainingHours}h`);
+      } else if (hours > 0) {
+        setCountdownText(`next run in ${hours}h ${minutes}m`);
+      } else {
+        setCountdownText(`next run in ${minutes}m`);
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, [scheduleInfo?.nextRun]);
+
+  const buildCustomCron = (): string => {
+    if (customUnit === 'hours') {
+      return `0 */${customAmount} * * *`;
+    }
+    // days
+    return `0 0 */${customAmount} * *`;
+  };
+
   const handleSetSchedule = async () => {
     if (!authToken) return;
-    const cron = selectedCron === 'custom' ? customCron.trim() : selectedCron;
+    const cron = selectedCron === 'custom' ? buildCustomCron() : selectedCron;
     if (!cron) return;
 
     setIsScheduleSaving(true);
@@ -209,8 +255,9 @@ export function RunActions({
     setScheduleError(null);
     try {
       await scheduleApi.remove(authToken, configId);
-      setScheduleInfo((prev) => prev ? { ...prev, cronExpression: null, nextRun: null } : null);
+      setScheduleInfo((prev) => prev ? { ...prev, cronExpression: null, label: null, nextRun: null } : null);
       setSelectedCron('');
+      setCountdownText('');
       setShowSchedulePicker(false);
     } catch (err: any) {
       setScheduleError(err?.message || 'Failed to remove schedule');
@@ -454,52 +501,84 @@ export function RunActions({
           )}
         </div>
 
-        {/* Schedule Button (Pro only) */}
+        {/* Schedule / Stop Schedule Button (Pro only) */}
         <div className="relative">
-          <button
-            onClick={() => {
-              if (isPro) {
-                setShowSchedulePicker(!showSchedulePicker);
-              }
-            }}
-            disabled={isAnyOperationInProgress}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              isPro && !isAnyOperationInProgress
-                ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                : 'bg-stone-200 text-stone-400 hover:bg-stone-100'
-            }`}
-            title={isPro ? 'Set a cron schedule for automatic runs' : 'Pro subscription required'}
-          >
-            <span className="flex items-center gap-1.5">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Schedule
-              {!isPro && <span className="text-xs text-emerald-600">PRO</span>}
-            </span>
-          </button>
-
-          {/* Active schedule indicator */}
-          {scheduleInfo?.cronExpression && !showSchedulePicker && (
-            <p className="absolute top-full left-0 mt-1 text-xs text-blue-600 whitespace-nowrap">
-              {scheduleInfo.cronExpression}
-              {scheduleInfo.nextRun && (
-                <span className="text-stone-400 ml-1">
-                  (next: {new Date(scheduleInfo.nextRun).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })})
-                </span>
-              )}
-            </p>
+          {scheduleInfo?.cronExpression ? (
+            /* ── Active schedule: Stop button + info ── */
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRemoveSchedule}
+                  disabled={isScheduleSaving || isAnyOperationInProgress}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    isScheduleSaving
+                      ? 'bg-stone-200 text-stone-400'
+                      : 'bg-red-600 hover:bg-red-700 text-white'
+                  }`}
+                  title="Stop the current schedule"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                    </svg>
+                    {isScheduleSaving ? 'Stopping...' : 'Stop Schedule'}
+                  </span>
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-stone-500">
+                <span className="text-blue-600 font-medium">{scheduleInfo.label || scheduleInfo.cronExpression}</span>
+                {countdownText && (
+                  <>
+                    <span className="text-stone-300">&middot;</span>
+                    <span>{countdownText}</span>
+                  </>
+                )}
+                <button
+                  onClick={() => setShowSchedulePicker(true)}
+                  className="text-blue-500 hover:text-blue-700 underline underline-offset-2 ml-0.5"
+                >
+                  Change
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* ── No schedule: Schedule button ── */
+            <button
+              onClick={() => {
+                if (isPro) {
+                  setShowSchedulePicker(!showSchedulePicker);
+                }
+              }}
+              disabled={isAnyOperationInProgress}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                isPro && !isAnyOperationInProgress
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                  : 'bg-stone-200 text-stone-400 hover:bg-stone-100'
+              }`}
+              title={isPro ? 'Set up automatic scheduled runs' : 'Pro subscription required'}
+            >
+              <span className="flex items-center gap-1.5">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Schedule
+                {!isPro && <span className="text-xs text-emerald-600">PRO</span>}
+              </span>
+            </button>
           )}
 
           {/* Schedule Picker Dropdown */}
           {showSchedulePicker && isPro && (
             <div className="absolute top-full right-0 mt-2 w-72 bg-white border border-stone-200 rounded-lg shadow-lg z-10">
               <div className="p-3 border-b border-stone-200">
-                <p className="text-sm font-medium text-stone-800">Schedule Runs</p>
+                <p className="text-sm font-medium text-stone-800">
+                  {scheduleInfo?.cronExpression ? 'Change Schedule' : 'Schedule Runs'}
+                </p>
                 <p className="text-xs text-stone-500">
-                  {scheduleInfo?.queueAvailable
-                    ? 'Pick a preset or enter a custom cron expression'
-                    : 'Scheduling unavailable (Redis not configured)'}
+                  {scheduleInfo?.queueAvailable !== false
+                    ? 'How often should this run?'
+                    : 'Scheduling unavailable'}
                 </p>
               </div>
 
@@ -513,10 +592,7 @@ export function RunActions({
                     {(scheduleInfo?.presets || []).map((preset) => (
                       <button
                         key={preset.cron}
-                        onClick={() => {
-                          setSelectedCron(preset.cron);
-                          setCustomCron('');
-                        }}
+                        onClick={() => setSelectedCron(preset.cron)}
                         className={`w-full px-3 py-2 text-left text-sm rounded-md transition-colors ${
                           selectedCron === preset.cron
                             ? 'bg-blue-600 text-white'
@@ -524,12 +600,10 @@ export function RunActions({
                         }`}
                       >
                         <span className="font-medium">{preset.label}</span>
-                        <span className={`ml-2 text-xs ${selectedCron === preset.cron ? 'text-blue-200' : 'text-stone-400'}`}>
-                          {preset.cron}
-                        </span>
                       </button>
                     ))}
-                    {/* Custom cron option */}
+
+                    {/* Custom frequency builder */}
                     <button
                       onClick={() => setSelectedCron('custom')}
                       className={`w-full px-3 py-2 text-left text-sm rounded-md transition-colors ${
@@ -538,20 +612,42 @@ export function RunActions({
                           : 'text-stone-600 hover:bg-stone-100'
                       }`}
                     >
-                      Custom cron expression
+                      Custom frequency
                     </button>
                   </div>
 
                   {selectedCron === 'custom' && (
                     <div className="px-3 pb-2">
-                      <input
-                        type="text"
-                        value={customCron}
-                        onChange={(e) => setCustomCron(e.target.value)}
-                        placeholder="0 */6 * * *"
-                        className="w-full px-3 py-2 text-sm border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <p className="text-xs text-stone-400 mt-1">minute hour day-of-month month day-of-week</p>
+                      <div className="flex items-center gap-2 text-sm text-stone-700">
+                        <span className="whitespace-nowrap">Every</span>
+                        <select
+                          value={customAmount}
+                          onChange={(e) => setCustomAmount(parseInt(e.target.value))}
+                          className="px-2 py-1.5 border border-stone-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        >
+                          {customUnit === 'hours'
+                            ? [1, 2, 3, 4, 6, 8, 12].map((n) => (
+                                <option key={n} value={n}>{n}</option>
+                              ))
+                            : [1, 2, 3, 4, 5, 6, 7].map((n) => (
+                                <option key={n} value={n}>{n}</option>
+                              ))
+                          }
+                        </select>
+                        <select
+                          value={customUnit}
+                          onChange={(e) => {
+                            const unit = e.target.value as 'hours' | 'days';
+                            setCustomUnit(unit);
+                            // Reset amount to a sensible default for the new unit
+                            setCustomAmount(unit === 'hours' ? 6 : 1);
+                          }}
+                          className="px-2 py-1.5 border border-stone-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        >
+                          <option value="hours">hours</option>
+                          <option value="days">days</option>
+                        </select>
+                      </div>
                     </div>
                   )}
 
@@ -560,16 +656,6 @@ export function RunActions({
                   )}
 
                   <div className="p-3 border-t border-stone-200 flex gap-2">
-                    {scheduleInfo?.cronExpression && (
-                      <button
-                        onClick={handleRemoveSchedule}
-                        disabled={isScheduleSaving}
-                        className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md text-sm transition-colors"
-                        title="Remove schedule"
-                      >
-                        Remove
-                      </button>
-                    )}
                     <button
                       onClick={() => {
                         setShowSchedulePicker(false);
@@ -581,10 +667,10 @@ export function RunActions({
                     </button>
                     <button
                       onClick={handleSetSchedule}
-                      disabled={isScheduleSaving || (!selectedCron || (selectedCron === 'custom' && !customCron.trim()))}
+                      disabled={isScheduleSaving || !selectedCron}
                       className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-stone-200 text-white rounded-md text-sm font-medium transition-colors"
                     >
-                      {isScheduleSaving ? 'Saving...' : 'Save'}
+                      {isScheduleSaving ? 'Saving...' : scheduleInfo?.cronExpression ? 'Update' : 'Save'}
                     </button>
                   </div>
                 </>
