@@ -208,11 +208,11 @@ export function RunActions({
       const remainingHours = hours % 24;
 
       if (days > 0) {
-        setCountdownText(`next run in ${days}d ${remainingHours}h`);
+        setCountdownText(`in ${days}d ${remainingHours}h`);
       } else if (hours > 0) {
-        setCountdownText(`next run in ${hours}h ${minutes}m`);
+        setCountdownText(`in ${hours}h ${minutes}m`);
       } else {
-        setCountdownText(`next run in ${minutes}m`);
+        setCountdownText(`in ${minutes}m`);
       }
     };
 
@@ -452,13 +452,130 @@ export function RunActions({
 
   const hasActiveSchedule = !!scheduleInfo?.cronExpression;
 
+  // Shared dropdown content — used by both the "Schedule" button and the active schedule pill
+  const scheduleDropdown = showSchedulePicker && isPro && (
+    <div className="absolute top-full right-0 mt-2 w-72 bg-white border border-stone-200 rounded-xl shadow-xl z-10">
+      <div className="p-3 border-b border-stone-100">
+        <p className="text-sm font-medium text-stone-800">
+          {hasActiveSchedule ? 'Change Schedule' : 'Schedule Runs'}
+        </p>
+        <p className="text-xs text-stone-400">
+          {scheduleInfo?.queueAvailable !== false
+            ? 'How often should this run?'
+            : 'Scheduling unavailable'}
+        </p>
+      </div>
+
+      {scheduleInfo?.queueAvailable === false ? (
+        <div className="p-3 text-sm text-stone-500">
+          Redis is required for scheduled runs. Ask your admin to set <code className="bg-stone-100 px-1 rounded">REDIS_URL</code>.
+        </div>
+      ) : (
+        <>
+          <div className="p-1.5">
+            {(scheduleInfo?.presets || []).map((preset) => (
+              <button
+                key={preset.cron}
+                onClick={() => setSelectedCron(preset.cron)}
+                className={`w-full px-3 py-2 text-left text-sm rounded-lg transition-colors ${
+                  selectedCron === preset.cron
+                    ? 'bg-blue-50 text-blue-700 font-medium'
+                    : 'text-stone-600 hover:bg-stone-50'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+
+            <button
+              onClick={() => setSelectedCron('custom')}
+              className={`w-full px-3 py-2 text-left text-sm rounded-lg transition-colors ${
+                selectedCron === 'custom'
+                  ? 'bg-blue-50 text-blue-700 font-medium'
+                  : 'text-stone-600 hover:bg-stone-50'
+              }`}
+            >
+              Custom frequency
+            </button>
+          </div>
+
+          {selectedCron === 'custom' && (
+            <div className="px-3 pb-2">
+              <div className="flex items-center gap-2 text-sm text-stone-700">
+                <span className="text-stone-400">Every</span>
+                <select
+                  value={customAmount}
+                  onChange={(e) => setCustomAmount(parseInt(e.target.value))}
+                  className="px-2 py-1.5 border border-stone-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  {customUnit === 'hours'
+                    ? [1, 2, 3, 4, 6, 8, 12].map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))
+                    : [1, 2, 3, 4, 5, 6, 7].map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))
+                  }
+                </select>
+                <select
+                  value={customUnit}
+                  onChange={(e) => {
+                    const unit = e.target.value as 'hours' | 'days';
+                    setCustomUnit(unit);
+                    setCustomAmount(unit === 'hours' ? 6 : 1);
+                  }}
+                  className="px-2 py-1.5 border border-stone-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="hours">hours</option>
+                  <option value="days">days</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {scheduleError && (
+            <p className="px-3 pb-2 text-xs text-red-500">{scheduleError}</p>
+          )}
+
+          <div className="p-2 border-t border-stone-100 flex gap-2">
+            {hasActiveSchedule && (
+              <button
+                onClick={handleRemoveSchedule}
+                disabled={isScheduleSaving}
+                className="px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg text-sm font-medium transition-colors"
+              >
+                {isScheduleSaving ? 'Stopping...' : 'Stop'}
+              </button>
+            )}
+            <div className="flex-1" />
+            <button
+              onClick={() => {
+                setShowSchedulePicker(false);
+                setScheduleError(null);
+              }}
+              className="px-3 py-2 text-stone-500 hover:text-stone-700 rounded-lg text-sm transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSetSchedule}
+              disabled={isScheduleSaving || !selectedCron}
+              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-stone-200 disabled:text-stone-400 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              {isScheduleSaving ? 'Saving...' : hasActiveSchedule ? 'Update' : 'Save'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div>
       <div className="flex items-center gap-2">
-        {/* Run Button — shows "Run Free" while available, switches to "Run $0.10" once the daily free run is used */}
+        {/* Run Button */}
         <div className="relative">
           {canUseFreeRun ? (
-            /* Free run available */
             <button
               onClick={handleFreeRun}
               disabled={isAnyOperationInProgress}
@@ -475,7 +592,6 @@ export function RunActions({
               )}
             </button>
           ) : (
-            /* Free run used — show paid option */
             <div className="flex flex-col items-start gap-1">
               <button
                 onClick={handlePaidRun}
@@ -503,286 +619,57 @@ export function RunActions({
           )}
         </div>
 
-        {/* Schedule button — only shown when no active schedule */}
-        {!hasActiveSchedule && (
-          <div className="relative">
-            <button
-              onClick={() => {
-                if (isPro) {
-                  setShowSchedulePicker(!showSchedulePicker);
-                }
-              }}
-              disabled={isAnyOperationInProgress}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                isPro && !isAnyOperationInProgress
+        {/* Schedule / Scheduled button */}
+        <div className="relative">
+          <button
+            onClick={() => {
+              if (isPro || hasActiveSchedule) {
+                setShowSchedulePicker(!showSchedulePicker);
+              }
+            }}
+            disabled={!hasActiveSchedule && isAnyOperationInProgress}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              hasActiveSchedule
+                ? scheduleInfo?.lastError
+                  ? 'border border-red-200 text-red-600 bg-red-50 hover:bg-red-100'
+                  : 'border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100'
+                : isPro && !isAnyOperationInProgress
                   ? 'border border-stone-300 text-stone-700 bg-white hover:bg-stone-50'
                   : 'bg-stone-100 text-stone-400 border border-stone-200'
-              }`}
-              title={isPro ? 'Set up automatic scheduled runs' : 'Pro subscription required'}
-            >
-              <span className="flex items-center gap-1.5">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Schedule
-                {!isPro && <span className="text-xs text-emerald-600 font-semibold ml-0.5">PRO</span>}
-              </span>
-            </button>
-
-            {/* Schedule Picker Dropdown — anchored to the Schedule button */}
-            {showSchedulePicker && isPro && (
-              <div className="absolute top-full right-0 mt-2 w-72 bg-white border border-stone-200 rounded-xl shadow-xl z-10">
-                <div className="p-3 border-b border-stone-100">
-                  <p className="text-sm font-medium text-stone-800">Schedule Runs</p>
-                  <p className="text-xs text-stone-400">
-                    {scheduleInfo?.queueAvailable !== false
-                      ? 'How often should this run?'
-                      : 'Scheduling unavailable'}
-                  </p>
-                </div>
-
-                {scheduleInfo?.queueAvailable === false ? (
-                  <div className="p-3 text-sm text-stone-500">
-                    Redis is required for scheduled runs. Ask your admin to set <code className="bg-stone-100 px-1 rounded">REDIS_URL</code>.
-                  </div>
-                ) : (
-                  <>
-                    <div className="p-1.5">
-                      {(scheduleInfo?.presets || []).map((preset) => (
-                        <button
-                          key={preset.cron}
-                          onClick={() => setSelectedCron(preset.cron)}
-                          className={`w-full px-3 py-2 text-left text-sm rounded-lg transition-colors ${
-                            selectedCron === preset.cron
-                              ? 'bg-blue-50 text-blue-700 font-medium'
-                              : 'text-stone-600 hover:bg-stone-50'
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-
-                      {/* Custom frequency builder */}
-                      <button
-                        onClick={() => setSelectedCron('custom')}
-                        className={`w-full px-3 py-2 text-left text-sm rounded-lg transition-colors ${
-                          selectedCron === 'custom'
-                            ? 'bg-blue-50 text-blue-700 font-medium'
-                            : 'text-stone-600 hover:bg-stone-50'
-                        }`}
-                      >
-                        Custom frequency
-                      </button>
-                    </div>
-
-                    {selectedCron === 'custom' && (
-                      <div className="px-3 pb-2">
-                        <div className="flex items-center gap-2 text-sm text-stone-700">
-                          <span className="text-stone-400">Every</span>
-                          <select
-                            value={customAmount}
-                            onChange={(e) => setCustomAmount(parseInt(e.target.value))}
-                            className="px-2 py-1.5 border border-stone-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                          >
-                            {customUnit === 'hours'
-                              ? [1, 2, 3, 4, 6, 8, 12].map((n) => (
-                                  <option key={n} value={n}>{n}</option>
-                                ))
-                              : [1, 2, 3, 4, 5, 6, 7].map((n) => (
-                                  <option key={n} value={n}>{n}</option>
-                                ))
-                            }
-                          </select>
-                          <select
-                            value={customUnit}
-                            onChange={(e) => {
-                              const unit = e.target.value as 'hours' | 'days';
-                              setCustomUnit(unit);
-                              setCustomAmount(unit === 'hours' ? 6 : 1);
-                            }}
-                            className="px-2 py-1.5 border border-stone-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                          >
-                            <option value="hours">hours</option>
-                            <option value="days">days</option>
-                          </select>
-                        </div>
-                      </div>
-                    )}
-
-                    {scheduleError && (
-                      <p className="px-3 pb-2 text-xs text-red-500">{scheduleError}</p>
-                    )}
-
-                    <div className="p-2 border-t border-stone-100 flex gap-2">
-                      <button
-                        onClick={() => {
-                          setShowSchedulePicker(false);
-                          setScheduleError(null);
-                        }}
-                        className="flex-1 px-3 py-2 text-stone-500 hover:text-stone-700 rounded-lg text-sm transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSetSchedule}
-                        disabled={isScheduleSaving || !selectedCron}
-                        className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-stone-200 disabled:text-stone-400 text-white rounded-lg text-sm font-medium transition-colors"
-                      >
-                        {isScheduleSaving ? 'Saving...' : 'Save'}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Active schedule status bar — below button row, self-contained */}
-      {hasActiveSchedule && (
-        <div className="relative mt-2">
-          <div className={`flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-sm ${
-            scheduleInfo?.lastError
-              ? 'bg-red-50 border border-red-100'
-              : 'bg-blue-50 border border-blue-100'
-          }`}>
-            <div className="flex items-center gap-2 min-w-0">
-              {/* Recurring icon */}
-              <svg className={`w-3.5 h-3.5 flex-shrink-0 ${scheduleInfo?.lastError ? 'text-red-400' : 'text-blue-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            }`}
+            title={
+              hasActiveSchedule
+                ? scheduleInfo?.lastError
+                  ? `Schedule error: ${scheduleInfo.lastError}`
+                  : `${scheduleInfo?.label || ''} — click to manage`
+                : isPro
+                  ? 'Set up automatic scheduled runs'
+                  : 'Pro subscription required'
+            }
+          >
+            <span className="flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span className={`font-medium ${scheduleInfo?.lastError ? 'text-red-700' : 'text-blue-700'}`}>
-                {scheduleInfo?.label || scheduleInfo?.cronExpression}
-              </span>
-              {scheduleInfo?.lastError ? (
-                <span className="text-red-500 truncate" title={scheduleInfo.lastError}>
-                  Failed: {scheduleInfo.lastError}
-                </span>
-              ) : countdownText ? (
-                <span className="text-blue-400">
-                  {countdownText}
-                </span>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <button
-                onClick={() => setShowSchedulePicker(true)}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  scheduleInfo?.lastError
-                    ? 'text-red-600 hover:bg-red-100'
-                    : 'text-blue-600 hover:bg-blue-100'
-                }`}
-              >
-                Change
-              </button>
-              <button
-                onClick={handleRemoveSchedule}
-                disabled={isScheduleSaving}
-                className="px-2 py-1 rounded text-xs font-medium text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-              >
-                {isScheduleSaving ? 'Stopping...' : 'Stop'}
-              </button>
-            </div>
-          </div>
+              {hasActiveSchedule ? (
+                <>
+                  Scheduled
+                  {countdownText && <span className="font-normal text-blue-400">{countdownText}</span>}
+                  {scheduleInfo?.lastError && <span className="font-normal text-red-400">error</span>}
+                </>
+              ) : (
+                <>
+                  Schedule
+                  {!isPro && <span className="text-xs text-emerald-600 font-semibold ml-0.5">PRO</span>}
+                </>
+              )}
+            </span>
+          </button>
 
-          {/* Schedule Picker Dropdown — anchored to the status bar */}
-          {showSchedulePicker && isPro && (
-            <div className="absolute top-full right-0 mt-1 w-72 bg-white border border-stone-200 rounded-xl shadow-xl z-10">
-              <div className="p-3 border-b border-stone-100">
-                <p className="text-sm font-medium text-stone-800">Change Schedule</p>
-                <p className="text-xs text-stone-400">How often should this run?</p>
-              </div>
-
-              <>
-                <div className="p-1.5">
-                  {(scheduleInfo?.presets || []).map((preset) => (
-                    <button
-                      key={preset.cron}
-                      onClick={() => setSelectedCron(preset.cron)}
-                      className={`w-full px-3 py-2 text-left text-sm rounded-lg transition-colors ${
-                        selectedCron === preset.cron
-                          ? 'bg-blue-50 text-blue-700 font-medium'
-                          : 'text-stone-600 hover:bg-stone-50'
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-
-                  <button
-                    onClick={() => setSelectedCron('custom')}
-                    className={`w-full px-3 py-2 text-left text-sm rounded-lg transition-colors ${
-                      selectedCron === 'custom'
-                        ? 'bg-blue-50 text-blue-700 font-medium'
-                        : 'text-stone-600 hover:bg-stone-50'
-                    }`}
-                  >
-                    Custom frequency
-                  </button>
-                </div>
-
-                {selectedCron === 'custom' && (
-                  <div className="px-3 pb-2">
-                    <div className="flex items-center gap-2 text-sm text-stone-700">
-                      <span className="text-stone-400">Every</span>
-                      <select
-                        value={customAmount}
-                        onChange={(e) => setCustomAmount(parseInt(e.target.value))}
-                        className="px-2 py-1.5 border border-stone-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      >
-                        {customUnit === 'hours'
-                          ? [1, 2, 3, 4, 6, 8, 12].map((n) => (
-                              <option key={n} value={n}>{n}</option>
-                            ))
-                          : [1, 2, 3, 4, 5, 6, 7].map((n) => (
-                              <option key={n} value={n}>{n}</option>
-                            ))
-                        }
-                      </select>
-                      <select
-                        value={customUnit}
-                        onChange={(e) => {
-                          const unit = e.target.value as 'hours' | 'days';
-                          setCustomUnit(unit);
-                          setCustomAmount(unit === 'hours' ? 6 : 1);
-                        }}
-                        className="px-2 py-1.5 border border-stone-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      >
-                        <option value="hours">hours</option>
-                        <option value="days">days</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-
-                {scheduleError && (
-                  <p className="px-3 pb-2 text-xs text-red-500">{scheduleError}</p>
-                )}
-
-                <div className="p-2 border-t border-stone-100 flex gap-2">
-                  <button
-                    onClick={() => {
-                      setShowSchedulePicker(false);
-                      setScheduleError(null);
-                    }}
-                    className="flex-1 px-3 py-2 text-stone-500 hover:text-stone-700 rounded-lg text-sm transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSetSchedule}
-                    disabled={isScheduleSaving || !selectedCron}
-                    className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-stone-200 disabled:text-stone-400 text-white rounded-lg text-sm font-medium transition-colors"
-                  >
-                    {isScheduleSaving ? 'Saving...' : 'Update'}
-                  </button>
-                </div>
-              </>
-            </div>
-          )}
+          {/* Dropdown — anchored to the button */}
+          {scheduleDropdown}
         </div>
-      )}
+      </div>
 
       {/* Error Messages */}
       {displayError && (
