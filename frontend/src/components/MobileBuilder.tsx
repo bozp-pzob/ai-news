@@ -33,13 +33,21 @@ interface SectionDef {
   bgColor: string;        // tailwind bg color for the category dot
 }
 
-const SECTIONS: SectionDef[] = [
+/** Pipeline sections — the sequential data flow */
+const PIPELINE_SECTIONS: SectionDef[] = [
   { key: 'sources',    title: 'Data Sources',     registryKey: 'source',    color: 'text-blue-600',    bgColor: 'bg-blue-500'    },
-  { key: 'ai',         title: 'AI Providers',     registryKey: 'ai',        color: 'text-purple-600',  bgColor: 'bg-purple-500'  },
   { key: 'enrichers',  title: 'Data Processors',  registryKey: 'enricher',  color: 'text-amber-600',   bgColor: 'bg-amber-500'   },
   { key: 'generators', title: 'Content Creators', registryKey: 'generator', color: 'text-emerald-600', bgColor: 'bg-emerald-500' },
-  { key: 'storage',    title: 'Data Storage',     registryKey: 'storage',   color: 'text-stone-600',   bgColor: 'bg-stone-500'   },
 ];
+
+/** Infrastructure sections — shared dependencies referenced by pipeline plugins */
+const INFRA_SECTIONS: SectionDef[] = [
+  { key: 'ai',      title: 'AI Providers', registryKey: 'ai',      color: 'text-purple-600', bgColor: 'bg-purple-500' },
+  { key: 'storage', title: 'Data Storage', registryKey: 'storage',  color: 'text-stone-600',  bgColor: 'bg-stone-500'  },
+];
+
+/** All sections combined (used for expand state initialization) */
+const ALL_SECTIONS = [...PIPELINE_SECTIONS, ...INFRA_SECTIONS];
 
 /** Category display names (same mapping as Sidebar.tsx) */
 const CATEGORY_TITLES: Record<string, string> = {
@@ -329,7 +337,7 @@ export function MobileBuilder({
 
   // Section expand/collapse
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(SECTIONS.map(s => [s.key, true]))
+    Object.fromEntries(ALL_SECTIONS.map(s => [s.key, true]))
   );
 
   // Plugin picker sheet
@@ -382,12 +390,16 @@ export function MobileBuilder({
   };
 
   const handlePluginPicked = (sectionDef: SectionDef, pluginInfo: PluginInfo) => {
-    // Create skeleton plugin config
+    // Create skeleton plugin config matching the format NodeGraph uses,
+    // including the full schema so PluginParamDialog can render params.
     const newPlugin: any = {
-      type: pluginInfo.pluginName,
-      name: pluginInfo.pluginName,
+      type: pluginInfo.type,                    // category type e.g. "source", not class name
+      name: pluginInfo.name,
       pluginName: pluginInfo.pluginName,
       params: {},
+      constructorInterface: pluginInfo.constructorInterface,
+      configSchema: pluginInfo.configSchema,
+      description: pluginInfo.description,
     };
 
     // Close picker, open param dialog for the new plugin
@@ -403,6 +415,20 @@ export function MobileBuilder({
   const handleEditPlugin = (sectionKey: string, index: number) => {
     const plugins = config[sectionKey] || [];
     const plugin = deepCopy(plugins[index]);
+
+    // Attach schema from registry so PluginParamDialog can render params.
+    // Config JSON plugins have type=className (e.g. "GitHubSource") but the
+    // dialog needs constructorInterface to render the form fields.
+    const pluginName = plugin.pluginName || plugin.type || plugin.name;
+    if (pluginName && !plugin.constructorInterface) {
+      const info = pluginRegistry.findPlugin(pluginName);
+      if (info) {
+        plugin.constructorInterface = info.constructorInterface;
+        plugin.configSchema = info.configSchema;
+        plugin.description = info.description;
+      }
+    }
+
     setEditingPlugin({
       section: sectionKey,
       index,
@@ -425,16 +451,23 @@ export function MobileBuilder({
   const handlePluginDialogSave = (updatedPlugin: any) => {
     if (!editingPlugin) return;
 
+    // Strip schema/UI-only fields that shouldn't be persisted in config JSON
+    const cleanPlugin = { ...updatedPlugin };
+    delete cleanPlugin.constructorInterface;
+    delete cleanPlugin.configSchema;
+    delete cleanPlugin.description;
+    delete cleanPlugin.position;
+
     setConfig((prev: any) => {
       const updated = deepCopy(prev);
       const arr = updated[editingPlugin.section] || [];
 
       if (editingPlugin.isNew) {
         // Append new plugin
-        arr.push(updatedPlugin);
+        arr.push(cleanPlugin);
       } else {
         // Update existing
-        arr[editingPlugin.index] = updatedPlugin;
+        arr[editingPlugin.index] = cleanPlugin;
       }
 
       updated[editingPlugin.section] = arr;
@@ -465,11 +498,15 @@ export function MobileBuilder({
     <div className="flex flex-col h-full bg-stone-50">
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">
-        {/* Pipeline flow */}
+        {/* ── Pipeline ─────────────────────────────── */}
+        <div className="mb-2">
+          <span className="text-[10px] uppercase font-semibold tracking-wider text-stone-400 px-1">
+            Pipeline
+          </span>
+        </div>
         <div className="space-y-3">
-          {SECTIONS.map((section, i) => (
+          {PIPELINE_SECTIONS.map((section, i) => (
             <React.Fragment key={section.key}>
-              {/* Section card */}
               <PipelineSection
                 sectionDef={section}
                 plugins={config[section.key] || []}
@@ -480,8 +517,8 @@ export function MobileBuilder({
                 onDelete={(idx) => handleDeletePlugin(section.key, idx)}
               />
 
-              {/* Flow arrow between sections */}
-              {i < SECTIONS.length - 1 && (
+              {/* Flow arrow between pipeline sections */}
+              {i < PIPELINE_SECTIONS.length - 1 && (
                 <div className="flex justify-center">
                   <svg className="w-4 h-4 text-stone-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
@@ -489,6 +526,27 @@ export function MobileBuilder({
                 </div>
               )}
             </React.Fragment>
+          ))}
+        </div>
+
+        {/* ── Infrastructure ───────────────────────── */}
+        <div className="mt-6 mb-2">
+          <span className="text-[10px] uppercase font-semibold tracking-wider text-stone-400 px-1">
+            Infrastructure
+          </span>
+        </div>
+        <div className="space-y-3">
+          {INFRA_SECTIONS.map((section) => (
+            <PipelineSection
+              key={section.key}
+              sectionDef={section}
+              plugins={config[section.key] || []}
+              expanded={expanded[section.key] ?? true}
+              onToggle={() => toggleSection(section.key)}
+              onAdd={() => handleAddClick(section)}
+              onEdit={(idx) => handleEditPlugin(section.key, idx)}
+              onDelete={(idx) => handleDeletePlugin(section.key, idx)}
+            />
           ))}
         </div>
       </div>
@@ -521,7 +579,7 @@ export function MobileBuilder({
       <PluginPickerSheet
         isOpen={!!pickerSection}
         onClose={() => setPickerSection(null)}
-        sectionDef={pickerSection || SECTIONS[0]}
+        sectionDef={pickerSection || PIPELINE_SECTIONS[0]}
         onSelect={(plugin) => pickerSection && handlePluginPicked(pickerSection, plugin)}
         connectedPlatforms={connectedPlatforms}
         onConnectPlatform={(platform) => {
