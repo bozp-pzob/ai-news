@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Transaction, VersionedTransaction, Connection } from '@solana/web3.js';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE, licenseApi, LicenseStatus, Plan, userApi } from '../services/api';
-import { solanaPayment } from '../services/solanaPayment';
+import { solanaPayment, setAuthToken as setSolanaAuthToken } from '../services/solanaPayment';
 import { encodeBase58 } from '../services/pop402';
 
 type SolanaTransaction = Transaction | VersionedTransaction;
@@ -267,6 +267,8 @@ export function usePurchase() {
       });
 
       // Step 5: Build USDC transfer transaction using the payment details
+      // Set auth token so the RPC proxy can authenticate our requests
+      if (authToken) setSolanaAuthToken(authToken);
       console.log('[usePurchase] Step 4: Building transaction...');
       const { transaction, connection } = await solanaPayment.createUSDCTransferTransaction(
         walletAddress,

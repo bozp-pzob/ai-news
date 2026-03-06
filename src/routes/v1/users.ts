@@ -300,6 +300,76 @@ router.get('/wallet/balance', requireAuth, async (req: AuthenticatedRequest, res
   }
 });
 
+/**
+ * POST /api/v1/me/wallet/rpc - Solana JSON-RPC proxy
+ *
+ * Proxies Solana RPC calls server-side to avoid browser CORS restrictions
+ * from public RPC endpoints (api.mainnet-beta.solana.com returns 403 to
+ * browser requests). The frontend's @solana/web3.js Connection object
+ * points here instead of directly at the Solana RPC.
+ *
+ * Only allows a safe subset of read-only methods needed for building
+ * and signing transactions.
+ */
+const ALLOWED_RPC_METHODS = new Set([
+  // Transaction building
+  'getLatestBlockhash',
+  'getRecentBlockhash',        // deprecated but some libs still use it
+  'getFeeForMessage',
+  // Account lookups (needed for ATA checks & signTransaction simulation)
+  'getAccountInfo',
+  'getMultipleAccounts',
+  'getTokenAccountsByOwner',
+  // Transaction simulation (Privy may call this during signing)
+  'simulateTransaction',
+  // Minimum balance for rent exemption (needed for ATA creation)
+  'getMinimumBalanceForRentExemption',
+]);
+
+router.post('/wallet/rpc', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ jsonrpc: '2.0', error: { code: -32600, message: 'Not authenticated' }, id: null });
+    }
+
+    const body = req.body;
+
+    // Validate JSON-RPC structure
+    if (!body || body.jsonrpc !== '2.0' || !body.method) {
+      return res.status(400).json({ jsonrpc: '2.0', error: { code: -32600, message: 'Invalid JSON-RPC request' }, id: body?.id ?? null });
+    }
+
+    // Only allow safe read-only methods
+    if (!ALLOWED_RPC_METHODS.has(body.method)) {
+      logger.warn(`Solana RPC proxy: blocked method "${body.method}" from user ${req.user.id}`);
+      return res.status(403).json({ jsonrpc: '2.0', error: { code: -32601, message: `Method "${body.method}" not allowed` }, id: body.id });
+    }
+
+    // Forward to Solana RPC
+    const rpcResponse = await fetch(SOLANA_RPC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: body.id ?? 1,
+        method: body.method,
+        params: body.params ?? [],
+      }),
+    });
+
+    if (!rpcResponse.ok) {
+      logger.error(`Solana RPC proxy: upstream HTTP ${rpcResponse.status} for ${body.method}`);
+      return res.status(502).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Solana RPC upstream error' }, id: body.id });
+    }
+
+    const json = await rpcResponse.json();
+    return res.json(json);
+  } catch (error: any) {
+    logger.error('Solana RPC proxy: Error', error?.message || error);
+    return res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal proxy error' }, id: req.body?.id ?? null });
+  }
+});
+
 // ============================================================================
 // LICENSE ROUTES
 // ============================================================================

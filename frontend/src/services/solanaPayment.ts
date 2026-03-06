@@ -3,6 +3,10 @@
  * 
  * Handles creating USDC transfer transactions for pop402 payments.
  * Based on pop402-gallery reference implementation.
+ *
+ * All Solana RPC calls are proxied through the backend to avoid browser
+ * CORS restrictions from public RPC endpoints (api.mainnet-beta.solana.com
+ * returns 403 to browser requests).
  */
 
 import { API_BASE } from './api';
@@ -14,7 +18,6 @@ import {
 } from '@solana/web3.js';
 import {
   getAssociatedTokenAddress,
-  createAssociatedTokenAccountInstruction,
   getAccount,
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -26,14 +29,36 @@ const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 // USDC has 6 decimals
 const USDC_DECIMALS = 6;
 
-// Solana RPC endpoint
-// IMPORTANT: Set VITE_SOLANA_RPC_URL in your .env for production.
-// The official mainnet-beta endpoint is used as a fallback.
-// For higher rate limits use a dedicated provider: Helius, QuickNode, or Alchemy.
-const RPC_ENDPOINT = import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+// Solana RPC proxy endpoint — routes through our backend to avoid CORS 403s.
+// The backend at /api/v1/me/wallet/rpc forwards allowed methods to Solana RPC.
+const RPC_PROXY_ENDPOINT = `${API_BASE}/api/v1/me/wallet/rpc`;
 
-// Log RPC endpoint being used (helpful for debugging)
-console.log('[SolanaPayment] Using RPC endpoint:', RPC_ENDPOINT.includes('api-key') ? RPC_ENDPOINT.split('?')[0] + '?api-key=***' : RPC_ENDPOINT);
+// Auth token for the RPC proxy (set before purchase flow begins)
+let _authToken: string | null = null;
+
+/**
+ * Set the auth token used for RPC proxy requests.
+ * Must be called before createUSDCTransferTransaction.
+ */
+export function setAuthToken(token: string) {
+  _authToken = token;
+}
+
+/**
+ * Create a Connection that routes through our backend RPC proxy.
+ * Requires setAuthToken() to have been called first.
+ */
+function createProxiedConnection(): Connection {
+  if (!_authToken) {
+    console.warn('[SolanaPayment] No auth token set for RPC proxy — calls may fail');
+  }
+  return new Connection(RPC_PROXY_ENDPOINT, {
+    commitment: 'confirmed',
+    httpHeaders: _authToken ? { Authorization: `Bearer ${_authToken}` } : {},
+  });
+}
+
+console.log('[SolanaPayment] Using RPC proxy:', RPC_PROXY_ENDPOINT || '(same-origin)');
 
 /**
  * Create a USDC transfer transaction
@@ -48,7 +73,7 @@ export async function createUSDCTransferTransaction(
   toWallet: string,
   amountUSDC: number
 ): Promise<{ transaction: Transaction; connection: Connection }> {
-  const connection = new Connection(RPC_ENDPOINT, 'confirmed');
+  const connection = createProxiedConnection();
   
   const fromPubkey = new PublicKey(fromWallet);
   const toPubkey = new PublicKey(toWallet);

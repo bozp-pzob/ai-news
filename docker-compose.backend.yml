@@ -55,6 +55,8 @@ services:
       - POP402_FACILITATOR_URL=https://facilitator.pop402.com
       - PLATFORM_WALLET_ADDRESS=${PLATFORM_WALLET_ADDRESS:-}
       - PLATFORM_FEE_PERCENT=${PLATFORM_FEE_PERCENT:-10}
+      # Solana RPC (optional — defaults to public mainnet-beta endpoint)
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL:-}
       # Rate Limiting
       - FREE_TIER_MAX_CONFIGS=${FREE_TIER_MAX_CONFIGS:-1}
       - FREE_TIER_MAX_RUNS_PER_DAY=${FREE_TIER_MAX_RUNS_PER_DAY:-1}
