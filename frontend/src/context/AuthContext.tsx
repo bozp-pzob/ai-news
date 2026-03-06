@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 // @ts-ignore - Privy types resolved after npm install
 import { usePrivy, useLogout, User as PrivyUser } from '@privy-io/react-auth';
-import { API_BASE, type UserTier, type PlatformUser, userApi, ApiError } from '../services/api';
+import { API_BASE, type UserTier, type PlatformUser, userApi, ApiError, registerAuthHandlers } from '../services/api';
 
 // Re-export types for backward compatibility
 export type { UserTier, PlatformUser };
@@ -83,23 +83,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
-   * Refresh user data from backend
+   * Refresh user data from backend.
+   * Always fetches a fresh Privy token first so this works even after expiry.
    */
   const refreshUser = useCallback(async () => {
-    if (!authToken) return;
-    
     setIsLoading(true);
     setError(null);
     
     try {
-      const platformUser = await fetchPlatformUser(authToken);
-      setUser(platformUser);
+      // Always get a fresh token from Privy — handles mid-session expiry
+      const freshToken = await getAccessToken();
+      if (!freshToken) {
+        // Privy session is truly dead — clean up so the login prompt shows
+        await privyLogout();
+        return;
+      }
+      setAuthToken(freshToken);
+
+      const platformUser = await fetchPlatformUser(freshToken);
+      if (platformUser) {
+        setUser(platformUser);
+      } else {
+        setError('Failed to load user profile');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to refresh user');
     } finally {
       setIsLoading(false);
     }
-  }, [authToken, fetchPlatformUser]);
+  }, [getAccessToken, fetchPlatformUser, privyLogout]);
 
   /**
    * Handle authentication state changes
@@ -228,6 +240,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('[AuthContext] Logout error:', err);
     }
   }, [privyLogout]);
+
+  /**
+   * Register token-refresh callbacks with the API layer once Privy is ready.
+   * This gives the central apiRequest function the ability to silently refresh
+   * an expired token and retry rather than surfacing a 401 to the UI.
+   */
+  useEffect(() => {
+    if (!ready) return;
+    registerAuthHandlers(
+      // Privy's getAccessToken handles the underlying session refresh
+      () => getAccessToken(),
+      // Sync the newly-issued token back into React state
+      (newToken: string) => setAuthToken(newToken),
+      // If refresh itself fails, log out so the login prompt appears
+      () => {
+        console.warn('[AuthContext] Token refresh failed — logging out');
+        logout();
+      }
+    );
+  }, [ready, getAccessToken, logout]);
 
   // Compute tier checks
   const isFreeUser = user?.tier === 'free';

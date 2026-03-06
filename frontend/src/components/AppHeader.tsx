@@ -50,7 +50,7 @@ export function AppHeader({ adminBadge, maxWidth = 'max-w-6xl', limits, children
                   <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#DD98FF" transform="rotate(180)" />
                   <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#CF70FF" transform="rotate(240)" />
                   <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#DD98FF" transform="rotate(300)" />
-                  <circle r="6" fill="#D36135" />
+                  <circle r="8" fill="#ffee9a" />
                 </g>
               </svg>
             </a>

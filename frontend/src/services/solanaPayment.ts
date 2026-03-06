@@ -189,38 +189,34 @@ export function addSignatureAndSerialize(
 export async function getUSDCBalance(walletAddress: string): Promise<number | null> {
   const connection = new Connection(RPC_ENDPOINT, 'confirmed');
   const pubkey = new PublicKey(walletAddress);
-  
-  let tokenAccount: PublicKey;
-  try {
-    tokenAccount = await getAssociatedTokenAddress(
-      USDC_MINT,
-      pubkey,
-      false,
-      TOKEN_PROGRAM_ID,
-      ASSOCIATED_TOKEN_PROGRAM_ID
-    );
-  } catch (error) {
-    // Address derivation failing is an unexpected RPC / network error
-    console.error('[SolanaPayment] Failed to derive USDC token address:', error);
-    return null;
-  }
 
   try {
-    const account = await getAccount(connection, tokenAccount);
-    const balance = Number(account.amount) / Math.pow(10, USDC_DECIMALS);
-    console.log('[SolanaPayment] USDC balance:', balance);
-    return balance;
-  } catch (error: any) {
-    // TokenAccountNotFoundError → the wallet exists but has no USDC ATA yet
-    if (
-      error?.name === 'TokenAccountNotFoundError' ||
-      error?.message?.includes('could not find account') ||
-      error?.message?.includes('Account does not exist')
-    ) {
+    // Use getParsedTokenAccountsByOwner — more robust than getAccount:
+    // - No need to derive ATA address first
+    // - Returns empty array (not an error) when wallet has no USDC
+    // - Returns pre-parsed balance data (no manual decimal math)
+    // - Catches USDC in any token account, not just the ATA
+    const response = await connection.getParsedTokenAccountsByOwner(pubkey, {
+      mint: USDC_MINT,
+    });
+
+    if (response.value.length === 0) {
       console.log('[SolanaPayment] No USDC token account found — balance is $0.00');
       return 0;
     }
-    // Any other error (network timeout, rate-limit, etc.) → signal unknown
+
+    // Sum balances across all USDC token accounts (usually just one ATA)
+    let totalBalance = 0;
+    for (const account of response.value) {
+      const uiAmount = account.account.data.parsed?.info?.tokenAmount?.uiAmount;
+      if (typeof uiAmount === 'number') {
+        totalBalance += uiAmount;
+      }
+    }
+
+    console.log('[SolanaPayment] USDC balance:', totalBalance);
+    return totalBalance;
+  } catch (error: any) {
     console.error('[SolanaPayment] RPC error fetching USDC balance:', error);
     return null;
   }

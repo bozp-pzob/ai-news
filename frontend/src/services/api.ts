@@ -242,6 +242,44 @@ export class AccessAlreadyGrantedError extends Error {
 
 
 
+// ============================================================================
+// AUTH HANDLER REGISTRY
+// Allows AuthContext to inject Privy's token refresh into the API layer so
+// every authenticated request can transparently recover from an expired token.
+// ============================================================================
+
+let _getTokenFn: (() => Promise<string | null>) | null = null;
+let _onTokenRefreshed: ((token: string) => void) | null = null;
+let _onAuthFailure: (() => void) | null = null;
+
+// Deduplicates concurrent refresh attempts — all in-flight 401s share one promise
+let _refreshPromise: Promise<string | null> | null = null;
+
+/**
+ * Called once by AuthContext after Privy is ready.
+ * Registers the three callbacks needed for silent token refresh.
+ */
+export function registerAuthHandlers(
+  getToken: () => Promise<string | null>,
+  onTokenRefreshed: (token: string) => void,
+  onAuthFailure: () => void
+): void {
+  _getTokenFn = getToken;
+  _onTokenRefreshed = onTokenRefreshed;
+  _onAuthFailure = onAuthFailure;
+}
+
+/** Returns a fresh Privy token. Concurrent callers all await the same promise. */
+async function refreshToken(): Promise<string | null> {
+  if (!_getTokenFn) return null;
+  if (!_refreshPromise) {
+    _refreshPromise = _getTokenFn().finally(() => {
+      _refreshPromise = null;
+    });
+  }
+  return _refreshPromise;
+}
+
 /**
  * Make authenticated API request
  */
@@ -263,6 +301,48 @@ async function apiRequest<T>(
     ...options,
     headers,
   });
+
+  // --- Transparent token refresh on 401 ---
+  if (response.status === 401 && _getTokenFn) {
+    const freshToken = await refreshToken();
+    if (freshToken) {
+      // Sync the new token back to React state so subsequent calls use it
+      _onTokenRefreshed?.(freshToken);
+
+      const retryHeaders = { ...headers, 'Authorization': `Bearer ${freshToken}` };
+      const retryResponse = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers: retryHeaders,
+      });
+
+      if (retryResponse.ok) {
+        if (retryResponse.status === 204) return undefined as T;
+        return retryResponse.json();
+      }
+
+      // Retry also failed — session is genuinely dead, force logout
+      if (retryResponse.status === 401) {
+        _onAuthFailure?.();
+      }
+
+      // Fall through to parse the retry error below
+      let errorMessage = `API error: ${retryResponse.statusText}`;
+      let errorCode: string | undefined;
+      try {
+        const errorData = await retryResponse.json();
+        if (errorData.error && errorData.message) {
+          errorMessage = `${errorData.error}: ${errorData.message}`;
+        } else {
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        }
+        errorCode = errorData.code;
+      } catch { /* use default */ }
+      throw new ApiError(errorMessage, retryResponse.status, errorCode);
+    } else {
+      // Could not get a fresh token — session is dead
+      _onAuthFailure?.();
+    }
+  }
 
   if (!response.ok) {
     let errorMessage = `API error: ${response.statusText}`;

@@ -205,7 +205,7 @@ export default function UpgradePage() {
         setUsdcBalance(balance);
       } catch (error) {
         console.error('[UpgradePage] Error fetching USDC balance:', error);
-        setUsdcBalance(0);
+        setUsdcBalance(null);
       } finally {
         setIsLoadingBalance(false);
       }
