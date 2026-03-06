@@ -29,9 +29,9 @@ const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 // USDC has 6 decimals
 const USDC_DECIMALS = 6;
 
-// Solana RPC proxy endpoint — routes through our backend to avoid CORS 403s.
+// Solana RPC proxy — routes through our backend to avoid CORS 403s.
 // The backend at /api/v1/me/wallet/rpc forwards allowed methods to Solana RPC.
-const RPC_PROXY_ENDPOINT = `${API_BASE}/api/v1/me/wallet/rpc`;
+const RPC_PROXY_PATH = '/api/v1/me/wallet/rpc';
 
 // Auth token for the RPC proxy (set before purchase flow begins)
 let _authToken: string | null = null;
@@ -45,20 +45,31 @@ export function setAuthToken(token: string) {
 }
 
 /**
+ * Build the full RPC proxy URL at call time.
+ * Connection requires an absolute URL (http/https). When API_BASE is empty
+ * (same-origin deployment), we resolve against the current page origin.
+ */
+function getRpcProxyUrl(): string {
+  if (API_BASE) return `${API_BASE}${RPC_PROXY_PATH}`;
+  if (typeof window !== 'undefined') return `${window.location.origin}${RPC_PROXY_PATH}`;
+  return `http://localhost:3000${RPC_PROXY_PATH}`;
+}
+
+/**
  * Create a Connection that routes through our backend RPC proxy.
  * Requires setAuthToken() to have been called first.
  */
 function createProxiedConnection(): Connection {
+  const url = getRpcProxyUrl();
   if (!_authToken) {
     console.warn('[SolanaPayment] No auth token set for RPC proxy — calls may fail');
   }
-  return new Connection(RPC_PROXY_ENDPOINT, {
+  console.log('[SolanaPayment] Creating proxied connection to:', url);
+  return new Connection(url, {
     commitment: 'confirmed',
     httpHeaders: _authToken ? { Authorization: `Bearer ${_authToken}` } : {},
   });
 }
-
-console.log('[SolanaPayment] Using RPC proxy:', RPC_PROXY_ENDPOINT || '(same-origin)');
 
 /**
  * Create a USDC transfer transaction
