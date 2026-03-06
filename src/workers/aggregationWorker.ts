@@ -199,7 +199,7 @@ async function processAggregationJob(job: Job<AggregationJobData>): Promise<{
     if (runType === 'scheduled' || isContinuousTick) {
       if (!user) throw new Error(`User ${userId} not found`);
 
-      if (user.tier !== 'admin') {
+      if (user.tier !== 'admin' && user.tier !== 'paid') {
         if (user.walletAddress) {
           const license = await licenseService.verifyLicense(user.walletAddress);
           if (!license.isActive) {

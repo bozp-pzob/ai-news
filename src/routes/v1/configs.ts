@@ -2532,8 +2532,9 @@ router.get('/:id/schedule', requireAuth, requireConfigOwner, async (req: Authent
     // Check if BullMQ is available
     const queueAvailable = isWorkerAvailable();
 
-    // If there's an active schedule, get next run info from BullMQ
+    // If there's an active schedule, get next run info and last error from BullMQ
     let nextRun: string | null = null;
+    let lastError: string | null = null;
     if (schedule.cronExpression && queueAvailable) {
       try {
         const queue = getAggregationQueue();
@@ -2541,6 +2542,13 @@ router.get('/:id/schedule', requireAuth, requireConfigOwner, async (req: Authent
         const thisJob = repeatableJobs.find(j => j.name === `scheduled:${configId}`);
         if (thisJob && thisJob.next) {
           nextRun = new Date(thisJob.next).toISOString();
+        }
+
+        // Check for recent failed jobs to surface errors to the user
+        const failedJobs = await queue.getFailed(0, 10);
+        const recentFailure = failedJobs.find(j => j.name === `scheduled:${configId}`);
+        if (recentFailure?.failedReason) {
+          lastError = recentFailure.failedReason;
         }
       } catch {
         // Queue may not be available
@@ -2553,6 +2561,7 @@ router.get('/:id/schedule', requireAuth, requireConfigOwner, async (req: Authent
       timezone: schedule.timezone,
       presets: CRON_PRESETS,
       nextRun,
+      lastError,
       queueAvailable,
     });
   } catch (error: any) {
@@ -2639,7 +2648,7 @@ router.post('/:id/schedule', requireAuth, requireConfigOwner, async (req: Authen
     await userService.updateConfigSchedule(configId, cronExpression, timezone);
 
     // Schedule in BullMQ
-    await scheduleRecurringAggregation(configId, req.user.id, cronExpression);
+    await scheduleRecurringAggregation(configId, req.user.id, cronExpression, timezone);
 
     logger.info(`API: Scheduled config ${configId} with cron "${cronExpression}" (${timezone})`);
 

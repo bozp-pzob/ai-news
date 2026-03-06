@@ -151,7 +151,8 @@ export async function addAggregationJob(
 export async function scheduleRecurringAggregation(
   configId: string,
   userId: string,
-  cronExpression: string
+  cronExpression: string,
+  timezone: string = 'UTC'
 ): Promise<void> {
   const queue = getAggregationQueue();
   
@@ -168,12 +169,14 @@ export async function scheduleRecurringAggregation(
     `scheduled:${configId}`,
     { configId, userId, runType: 'scheduled' },
     {
-      repeat: { pattern: cronExpression },
+      repeat: { pattern: cronExpression, tz: timezone },
       jobId: `scheduled:${configId}`,
+      removeOnComplete: { age: 24 * 60 * 60, count: 100 },
+      removeOnFail: { age: 7 * 24 * 60 * 60, count: 200 },
     }
   );
   
-  logger.info(`QueueService: Scheduled recurring aggregation for config ${configId}: ${cronExpression}`);
+  logger.info(`QueueService: Scheduled recurring aggregation for config ${configId}: ${cronExpression} (${timezone})`);
 }
 
 /**

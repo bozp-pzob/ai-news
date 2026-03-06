@@ -214,8 +214,8 @@ async function restoreScheduledJobs() {
 
     for (const config of scheduledConfigs) {
       try {
-        await scheduleRecurringAggregation(config.id, config.userId, config.cronExpression);
-        logger.info(`Startup: Restored schedule for config ${config.name} (${config.cronExpression})`);
+        await scheduleRecurringAggregation(config.id, config.userId, config.cronExpression, config.timezone || 'UTC');
+        logger.info(`Startup: Restored schedule for config ${config.name} (${config.cronExpression}, ${config.timezone || 'UTC'})`);
       } catch (error) {
         logger.error(`Startup: Failed to restore schedule for config ${config.id}`, error);
       }

@@ -2200,6 +2200,7 @@ export interface ScheduleInfo {
   timezone: string;
   presets: Array<{ label: string; cron: string }>;
   nextRun: string | null;
+  lastError: string | null;
   queueAvailable: boolean;
 }
 
