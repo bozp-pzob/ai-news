@@ -36,18 +36,19 @@ export const Hero: React.FC = () => {
         </ErrorBoundary>
       </div>
 
+      {/* Full-bleed glossy scrim — shows on < lg (where static flower fallback is visible) */}
+      <div className="absolute inset-0 z-[5] lg:hidden bg-gradient-to-b from-white/80 via-white/70 to-white/55 backdrop-blur-md" />
+
       {/* Content overlay */}
       <div className="relative flex items-center min-h-[70vh] md:min-h-screen z-10">
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-16">
           <div className="relative max-w-xl">
-            {/* Readability scrim — full-bleed glossy on mobile, frosted panel on desktop */}
-            {/* Mobile: covers entire hero, no rounded corners, glossy glass look */}
-            <div className="absolute -z-10 hidden sm:block -inset-8 rounded-3xl bg-white/70 backdrop-blur-sm" />
-            <div className="absolute -z-10 sm:hidden inset-0 -mx-4 -my-[35vh] bg-gradient-to-b from-white/80 via-white/70 to-white/55 backdrop-blur-md border-t border-white/40" style={{ width: '100vw', left: '50%', transform: 'translateX(-50%)' }} />
+            {/* Readability scrim — frosted panel on desktop (lg+) where canvas animation plays */}
+            <div className="absolute -z-10 hidden lg:block -inset-8 rounded-3xl bg-white/70 backdrop-blur-sm" />
 
             {/* Headline */}
             <div className="animate-fadeIn" style={{ animationDelay: '0.2s', opacity: 0 }}>
-              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.08] mb-4 sm:mb-5">
+              <h1 className="text-5xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.08] mb-4 sm:mb-5">
                 <span className="block text-stone-800">Digital</span>
                 <span className="block bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 bg-clip-text text-transparent">
                   Gardener
