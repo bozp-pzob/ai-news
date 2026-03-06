@@ -37,11 +37,13 @@ export const Hero: React.FC = () => {
       </div>
 
       {/* Content overlay */}
-      <div className="relative flex items-start md:items-center min-h-[70vh] md:min-h-screen z-10 pt-20 md:pt-0">
+      <div className="relative flex items-center min-h-[70vh] md:min-h-screen z-10">
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-16">
           <div className="relative max-w-xl">
-            {/* Readability scrim — soft frosted panel */}
-            <div className="absolute -inset-4 sm:-inset-8 -z-10 rounded-2xl sm:rounded-3xl bg-white/70 backdrop-blur-sm" />
+            {/* Readability scrim — full-bleed glossy on mobile, frosted panel on desktop */}
+            {/* Mobile: covers entire hero, no rounded corners, glossy glass look */}
+            <div className="absolute -z-10 hidden sm:block -inset-8 rounded-3xl bg-white/70 backdrop-blur-sm" />
+            <div className="absolute -z-10 sm:hidden inset-0 -mx-4 -my-[35vh] bg-gradient-to-b from-white/80 via-white/70 to-white/55 backdrop-blur-md border-t border-white/40" style={{ width: '100vw', left: '50%', transform: 'translateX(-50%)' }} />
 
             {/* Headline */}
             <div className="animate-fadeIn" style={{ animationDelay: '0.2s', opacity: 0 }}>

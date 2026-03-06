@@ -654,6 +654,139 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ mouseX, mouseY }) => {
         <div className="absolute inset-0" style={{
           background: 'radial-gradient(circle 80px at 30% 55%, rgba(253,230,138,0.12) 0%, transparent 70%), radial-gradient(circle 60px at 65% 45%, rgba(254,215,170,0.1) 0%, transparent 70%), radial-gradient(circle 50px at 45% 65%, rgba(187,247,208,0.08) 0%, transparent 70%)',
         }} />
+
+        {/* Static flower & plant silhouettes */}
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 600" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+          {/* ── Grass blades ─────────────────────────── */}
+          {/* Far-left grass cluster */}
+          <path d="M30,510 Q28,470 35,430 Q32,470 38,510" fill="#4ade80" opacity="0.5" />
+          <path d="M40,510 Q35,460 42,420 Q38,460 48,510" fill="#22c55e" opacity="0.45" />
+          <path d="M22,510 Q25,475 20,440 Q27,475 30,510" fill="#34d399" opacity="0.4" />
+
+          {/* Mid-left grass */}
+          <path d="M95,510 Q90,465 98,415 Q93,465 103,510" fill="#16a34a" opacity="0.55" />
+          <path d="M105,510 Q100,450 110,400 Q103,450 115,510" fill="#4ade80" opacity="0.45" />
+
+          {/* Center-right grass */}
+          <path d="M280,510 Q275,460 285,410 Q278,460 290,510" fill="#22c55e" opacity="0.5" />
+          <path d="M290,510 Q293,470 287,430 Q296,470 298,510" fill="#34d399" opacity="0.4" />
+
+          {/* Far-right grass cluster */}
+          <path d="M355,510 Q350,455 358,400 Q353,455 365,510" fill="#4ade80" opacity="0.5" />
+          <path d="M365,510 Q368,470 362,425 Q371,470 375,510" fill="#059669" opacity="0.45" />
+          <path d="M375,510 Q372,465 380,420 Q375,465 385,510" fill="#22c55e" opacity="0.4" />
+
+          {/* ── Flower 1 — pink, left side ──────────── */}
+          <g transform="translate(65,510)" opacity="0.75">
+            {/* stem */}
+            <line x1="0" y1="0" x2="-3" y2="-90" stroke="#2d5a27" strokeWidth="2.5" />
+            {/* leaves */}
+            <ellipse cx="-12" cy="-40" rx="8" ry="4" fill="#4ade80" transform="rotate(-30 -12 -40)" />
+            <ellipse cx="10" cy="-60" rx="7" ry="3.5" fill="#22c55e" transform="rotate(25 10 -60)" />
+            {/* petals */}
+            <g transform="translate(-3,-90)">
+              <ellipse cx="0" cy="-10" rx="5.5" ry="9" fill="#f472b6" />
+              <ellipse cx="0" cy="-10" rx="5.5" ry="9" fill="#f472b6" transform="rotate(60)" />
+              <ellipse cx="0" cy="-10" rx="5.5" ry="9" fill="#f472b6" transform="rotate(120)" />
+              <ellipse cx="0" cy="-10" rx="5.5" ry="9" fill="#f472b6" transform="rotate(180)" />
+              <ellipse cx="0" cy="-10" rx="5.5" ry="9" fill="#f472b6" transform="rotate(240)" />
+              <ellipse cx="0" cy="-10" rx="5.5" ry="9" fill="#f472b6" transform="rotate(300)" />
+              <circle cx="0" cy="0" r="4" fill="#fda4af" />
+            </g>
+          </g>
+
+          {/* ── Flower 2 — orange/gold, left-center ── */}
+          <g transform="translate(145,510)" opacity="0.7">
+            <line x1="0" y1="0" x2="4" y2="-110" stroke="#2d5a27" strokeWidth="2.5" />
+            <ellipse cx="14" cy="-50" rx="9" ry="4" fill="#34d399" transform="rotate(20 14 -50)" />
+            <ellipse cx="-8" cy="-75" rx="7" ry="3.5" fill="#4ade80" transform="rotate(-35 -8 -75)" />
+            <g transform="translate(4,-110)">
+              <ellipse cx="0" cy="-9" rx="6" ry="10" fill="#f59e0b" />
+              <ellipse cx="0" cy="-9" rx="6" ry="10" fill="#f59e0b" transform="rotate(72)" />
+              <ellipse cx="0" cy="-9" rx="6" ry="10" fill="#f59e0b" transform="rotate(144)" />
+              <ellipse cx="0" cy="-9" rx="6" ry="10" fill="#f59e0b" transform="rotate(216)" />
+              <ellipse cx="0" cy="-9" rx="6" ry="10" fill="#f59e0b" transform="rotate(288)" />
+              <circle cx="0" cy="0" r="4.5" fill="#fbbf24" />
+            </g>
+          </g>
+
+          {/* ── Flower 3 — purple, center (tallest) ── */}
+          <g transform="translate(220,510)" opacity="0.65">
+            <line x1="0" y1="0" x2="-2" y2="-125" stroke="#2d5a27" strokeWidth="3" />
+            <ellipse cx="-14" cy="-55" rx="10" ry="4.5" fill="#22c55e" transform="rotate(-25 -14 -55)" />
+            <ellipse cx="12" cy="-80" rx="8" ry="4" fill="#4ade80" transform="rotate(30 12 -80)" />
+            <ellipse cx="-8" cy="-100" rx="7" ry="3" fill="#34d399" transform="rotate(-20 -8 -100)" />
+            <g transform="translate(-2,-125)">
+              <ellipse cx="0" cy="-11" rx="6.5" ry="11" fill="#c084fc" />
+              <ellipse cx="0" cy="-11" rx="6.5" ry="11" fill="#c084fc" transform="rotate(51.4)" />
+              <ellipse cx="0" cy="-11" rx="6.5" ry="11" fill="#c084fc" transform="rotate(102.8)" />
+              <ellipse cx="0" cy="-11" rx="6.5" ry="11" fill="#c084fc" transform="rotate(154.3)" />
+              <ellipse cx="0" cy="-11" rx="6.5" ry="11" fill="#c084fc" transform="rotate(205.7)" />
+              <ellipse cx="0" cy="-11" rx="6.5" ry="11" fill="#c084fc" transform="rotate(257.1)" />
+              <ellipse cx="0" cy="-11" rx="6.5" ry="11" fill="#c084fc" transform="rotate(308.6)" />
+              <circle cx="0" cy="0" r="5" fill="#e9d5ff" />
+            </g>
+          </g>
+
+          {/* ── Flower 4 — red/coral, right-center ── */}
+          <g transform="translate(310,510)" opacity="0.7">
+            <line x1="0" y1="0" x2="2" y2="-95" stroke="#2d5a27" strokeWidth="2.5" />
+            <ellipse cx="11" cy="-42" rx="8" ry="3.5" fill="#4ade80" transform="rotate(25 11 -42)" />
+            <ellipse cx="-10" cy="-65" rx="7" ry="3" fill="#22c55e" transform="rotate(-30 -10 -65)" />
+            <g transform="translate(2,-95)">
+              <ellipse cx="0" cy="-9" rx="5" ry="8.5" fill="#f87171" />
+              <ellipse cx="0" cy="-9" rx="5" ry="8.5" fill="#f87171" transform="rotate(60)" />
+              <ellipse cx="0" cy="-9" rx="5" ry="8.5" fill="#f87171" transform="rotate(120)" />
+              <ellipse cx="0" cy="-9" rx="5" ry="8.5" fill="#f87171" transform="rotate(180)" />
+              <ellipse cx="0" cy="-9" rx="5" ry="8.5" fill="#f87171" transform="rotate(240)" />
+              <ellipse cx="0" cy="-9" rx="5" ry="8.5" fill="#f87171" transform="rotate(300)" />
+              <circle cx="0" cy="0" r="3.5" fill="#fca5a5" />
+            </g>
+          </g>
+
+          {/* ── Flower 5 — blue, far right ─────────── */}
+          <g transform="translate(380,510) scale(0.8)" opacity="0.55">
+            <line x1="0" y1="0" x2="-3" y2="-85" stroke="#2d5a27" strokeWidth="2.5" />
+            <ellipse cx="-12" cy="-38" rx="7" ry="3.5" fill="#34d399" transform="rotate(-30 -12 -38)" />
+            <g transform="translate(-3,-85)">
+              <ellipse cx="0" cy="-8" rx="5" ry="8" fill="#60a5fa" />
+              <ellipse cx="0" cy="-8" rx="5" ry="8" fill="#60a5fa" transform="rotate(72)" />
+              <ellipse cx="0" cy="-8" rx="5" ry="8" fill="#60a5fa" transform="rotate(144)" />
+              <ellipse cx="0" cy="-8" rx="5" ry="8" fill="#60a5fa" transform="rotate(216)" />
+              <ellipse cx="0" cy="-8" rx="5" ry="8" fill="#60a5fa" transform="rotate(288)" />
+              <circle cx="0" cy="0" r="3.5" fill="#93c5fd" />
+            </g>
+          </g>
+
+          {/* ── Small flower 6 — yellow, far left (depth) ── */}
+          <g transform="translate(15,510) scale(0.6)" opacity="0.4">
+            <line x1="0" y1="0" x2="2" y2="-70" stroke="#2d5a27" strokeWidth="2.5" />
+            <ellipse cx="8" cy="-30" rx="6" ry="3" fill="#4ade80" transform="rotate(20 8 -30)" />
+            <g transform="translate(2,-70)">
+              <ellipse cx="0" cy="-7" rx="4.5" ry="7" fill="#fbbf24" />
+              <ellipse cx="0" cy="-7" rx="4.5" ry="7" fill="#fbbf24" transform="rotate(60)" />
+              <ellipse cx="0" cy="-7" rx="4.5" ry="7" fill="#fbbf24" transform="rotate(120)" />
+              <ellipse cx="0" cy="-7" rx="4.5" ry="7" fill="#fbbf24" transform="rotate(180)" />
+              <ellipse cx="0" cy="-7" rx="4.5" ry="7" fill="#fbbf24" transform="rotate(240)" />
+              <ellipse cx="0" cy="-7" rx="4.5" ry="7" fill="#fbbf24" transform="rotate(300)" />
+              <circle cx="0" cy="0" r="3" fill="#fef08a" />
+            </g>
+          </g>
+
+          {/* ── Small flower 7 — magenta, mid-right (depth) ── */}
+          <g transform="translate(250,510) scale(0.55)" opacity="0.4">
+            <line x1="0" y1="0" x2="-2" y2="-75" stroke="#2d5a27" strokeWidth="2.5" />
+            <ellipse cx="-9" cy="-35" rx="6" ry="3" fill="#22c55e" transform="rotate(-25 -9 -35)" />
+            <g transform="translate(-2,-75)">
+              <ellipse cx="0" cy="-7" rx="4.5" ry="7.5" fill="#e879f9" />
+              <ellipse cx="0" cy="-7" rx="4.5" ry="7.5" fill="#e879f9" transform="rotate(72)" />
+              <ellipse cx="0" cy="-7" rx="4.5" ry="7.5" fill="#e879f9" transform="rotate(144)" />
+              <ellipse cx="0" cy="-7" rx="4.5" ry="7.5" fill="#e879f9" transform="rotate(216)" />
+              <ellipse cx="0" cy="-7" rx="4.5" ry="7.5" fill="#e879f9" transform="rotate(288)" />
+              <circle cx="0" cy="0" r="3" fill="#f0abfc" />
+            </g>
+          </g>
+        </svg>
       </div>
     </div>
   );
