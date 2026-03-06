@@ -36,9 +36,10 @@ export function PrivyProvider({ children }: PrivyWrapperProps) {
         
         // Appearance configuration
         appearance: {
-          theme: 'dark',
-          accentColor: '#f59e0b', // Amber to match the app
-          logo: '/logo.png', // Add logo if available
+          theme: 'light',
+          accentColor: '#059669', // Emerald to match the app theme
+          logo: '/logo.png',
+          landingHeader: 'Digital Gardener',
           showWalletLoginFirst: false,
         },
         
