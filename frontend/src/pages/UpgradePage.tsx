@@ -194,14 +194,14 @@ export default function UpgradePage() {
   // Fetch USDC balance when wallet is connected
   useEffect(() => {
     const fetchBalance = async () => {
-      if (!connectedWallet?.address) {
+      if (!connectedWallet?.address || !authToken) {
         setUsdcBalance(null);
         return;
       }
       
       setIsLoadingBalance(true);
       try {
-        const balance = await solanaPayment.getUSDCBalance(connectedWallet.address);
+        const balance = await solanaPayment.getUSDCBalance(connectedWallet.address, authToken);
         setUsdcBalance(balance);
       } catch (error) {
         console.error('[UpgradePage] Error fetching USDC balance:', error);
@@ -215,7 +215,7 @@ export default function UpgradePage() {
     // Refresh balance every 30 seconds
     const interval = setInterval(fetchBalance, 30000);
     return () => clearInterval(interval);
-  }, [connectedWallet?.address]);
+  }, [connectedWallet?.address, authToken]);
 
   // Handle funding wallet - try Privy's fundWallet first, fallback to manual info
   const handleFundWallet = async () => {

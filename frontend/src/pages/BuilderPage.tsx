@@ -12,6 +12,110 @@ import { configApi, localConfigApi, userApi, UserLimits, PlatformConfig } from '
 import { localConfigStorage, LocalConfig } from '../services/localConfigStorage';
 import { useToast } from '../components/ToastProvider';
 
+/** Hook to detect mobile screens (< md breakpoint = 768px) */
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => 
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 767px)');
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener('change', handler);
+    setIsMobile(mql.matches);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
+
+  return isMobile;
+}
+
+/** Mobile JSON editor for the builder page */
+function MobileJsonEditor({ 
+  configJson, 
+  onSave, 
+  isSaving,
+  configName 
+}: { 
+  configJson: any; 
+  onSave: (json: any) => Promise<boolean>; 
+  isSaving: boolean;
+  configName: string;
+}) {
+  const [jsonText, setJsonText] = useState(() => 
+    JSON.stringify(configJson, null, 2)
+  );
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  // Update text when configJson changes externally
+  useEffect(() => {
+    setJsonText(JSON.stringify(configJson, null, 2));
+  }, [configJson]);
+
+  const handleSave = async () => {
+    try {
+      const parsed = JSON.parse(jsonText);
+      setParseError(null);
+      await onSave(parsed);
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : 'Invalid JSON');
+    }
+  };
+
+  const handleFormat = () => {
+    try {
+      const parsed = JSON.parse(jsonText);
+      setJsonText(JSON.stringify(parsed, null, 2));
+      setParseError(null);
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : 'Invalid JSON');
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-3 py-2 bg-stone-100 border-b border-stone-200">
+        <span className="text-xs text-stone-500 font-mono">config.json</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleFormat}
+            className="px-2 py-1 text-xs text-stone-500 hover:text-stone-800 hover:bg-stone-200 rounded transition-colors"
+          >
+            Format
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="px-3 py-1 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded font-medium transition-colors disabled:opacity-50"
+          >
+            {isSaving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+
+      {/* Error bar */}
+      {parseError && (
+        <div className="px-3 py-2 bg-red-50 border-b border-red-200 text-red-600 text-xs font-mono">
+          {parseError}
+        </div>
+      )}
+
+      {/* Editor */}
+      <textarea
+        value={jsonText}
+        onChange={(e) => {
+          setJsonText(e.target.value);
+          setParseError(null);
+        }}
+        className="flex-1 w-full p-3 font-mono text-xs text-stone-800 bg-white resize-none focus:outline-none"
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+      />
+    </div>
+  );
+}
+
 /**
  * BuilderPage - Integrated config creation and editing interface
  * 
@@ -25,6 +129,7 @@ const BuilderPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const isMobile = useIsMobile();
   const { 
     isAuthenticated, 
     isPrivyReady, 
@@ -351,16 +456,25 @@ const BuilderPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Visual Builder for local mode - use platformMode=true for clean UI (Plugins tab, no config selector) */}
+        {/* Builder area - JSON editor on mobile, visual builder on desktop */}
         <div className="fixed left-0 right-0 bottom-0 bg-stone-50" style={{ top: '48px' }}>
-          <App 
-            platformMode={true}
-            platformConfigJson={localConfig.configJson}
-            onPlatformSave={handleLocalSave}
-            onOpenConfigSettings={() => setShowConfigPanel(true)}
-            isSaving={isSaving}
-            configName={localConfig.name}
-          />
+          {isMobile ? (
+            <MobileJsonEditor
+              configJson={localConfig.configJson}
+              onSave={handleLocalSave}
+              isSaving={isSaving}
+              configName={localConfig.name}
+            />
+          ) : (
+            <App 
+              platformMode={true}
+              platformConfigJson={localConfig.configJson}
+              onPlatformSave={handleLocalSave}
+              onOpenConfigSettings={() => setShowConfigPanel(true)}
+              isSaving={isSaving}
+              configName={localConfig.name}
+            />
+          )}
         </div>
 
         {/* Config Info Panel for local mode */}
@@ -529,21 +643,30 @@ const BuilderPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Visual Builder - positioned below header */}
+      {/* Builder area - JSON editor on mobile, visual builder on desktop */}
       <div 
         className="fixed left-0 right-0 bottom-0 bg-stone-50"
         style={{ top: '48px' }}
       >
-        <App 
-          platformMode={true}
-          platformConfigId={platformConfig?.id}
-          platformConfigJson={platformConfig?.configJson}
-          onPlatformSave={handleBuilderSave}
-          onOpenConfigSettings={() => setShowConfigPanel(true)}
-          isSaving={isSaving}
-          configName={configInfo?.name || platformConfig?.name}
-          isPlatformPro={limits?.tier !== 'free'}
-        />
+        {isMobile ? (
+          <MobileJsonEditor
+            configJson={platformConfig?.configJson || {}}
+            onSave={handleBuilderSave}
+            isSaving={isSaving}
+            configName={configInfo?.name || platformConfig?.name || 'Config'}
+          />
+        ) : (
+          <App 
+            platformMode={true}
+            platformConfigId={platformConfig?.id}
+            platformConfigJson={platformConfig?.configJson}
+            onPlatformSave={handleBuilderSave}
+            onOpenConfigSettings={() => setShowConfigPanel(true)}
+            isSaving={isSaving}
+            configName={configInfo?.name || platformConfig?.name}
+            isPlatformPro={limits?.tier !== 'free'}
+          />
+        )}
       </div>
 
       {/* Config Info Panel */}

@@ -1,6 +1,7 @@
 import React, { ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
+import { MobileBottomNav } from './MobileBottomNav';
 
 interface LayoutProps {
   children: ReactNode;
@@ -17,11 +18,12 @@ const Layout: React.FC<LayoutProps> = ({ children, showNavbar = true }) => {
   return (
     <div className={`min-h-screen flex flex-col ${bgClass} relative overflow-hidden`}>
       {showNavbar && <Navbar />}
-      <main className="flex-grow relative z-10">
+      <main className="flex-grow relative z-10 pb-16 md:pb-0">
         {children}
       </main>
+      {showNavbar && <MobileBottomNav />}
     </div>
   );
 };
 
-export default Layout; 
+export default Layout;

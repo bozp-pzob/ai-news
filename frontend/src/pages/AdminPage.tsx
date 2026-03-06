@@ -103,7 +103,7 @@ function AdminContent() {
  */
 export default function AdminPage() {
   return (
-    <div className="min-h-screen bg-stone-50">
+    <div className="min-h-screen bg-stone-50 pb-16 md:pb-0">
       <AppHeader adminBadge maxWidth="max-w-7xl" />
 
       {/* Main content with auth guard - requires admin tier */}

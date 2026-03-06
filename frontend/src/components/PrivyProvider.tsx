@@ -3,6 +3,7 @@
 import React, { ReactNode } from 'react';
 // @ts-ignore - Privy types resolved after npm install
 import { PrivyProvider as BasePrivyProvider } from '@privy-io/react-auth';
+import logo from '../assets/logo.png';
 
 interface PrivyWrapperProps {
   children: ReactNode;
@@ -32,13 +33,13 @@ export function PrivyProvider({ children }: PrivyWrapperProps) {
       config={{
         // Login methods to support
         // Note: Discord login provides identity only; bot authorization uses separate OAuth flow
-        loginMethods: ['email', 'wallet', 'google', 'twitter', 'github', 'discord'],
+        loginMethods: ['email', 'wallet'],
         
         // Appearance configuration
         appearance: {
           theme: 'light',
           accentColor: '#059669', // Emerald to match the app theme
-          logo: '/logo.png',
+          logo: logo,
           landingHeader: 'Digital Gardener',
           showWalletLoginFirst: false,
         },

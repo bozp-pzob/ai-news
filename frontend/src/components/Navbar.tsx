@@ -55,7 +55,7 @@ const Navbar: React.FC = () => {
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
               <Link to="/" className="flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" className="h-8 w-8" aria-label="Digital Gardener" role="img">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" className="h-10 w-10" aria-label="Digital Gardener" role="img">
                   <g transform="translate(32,32)">
                     <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#CF70FF" transform="rotate(0)" />
                     <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#DD98FF" transform="rotate(60)" />
@@ -69,14 +69,14 @@ const Navbar: React.FC = () => {
               </Link>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* GitHub Stars Button — visible on landing page */}
             {isLandingPage && (
               <a
                 href={`https://github.com/${REPO_OWNER}/${REPO_NAME}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-stone-300 text-stone-600 hover:border-stone-400 hover:text-stone-900 transition-colors"
+                className="inline-flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-md text-sm font-medium border border-stone-300 text-stone-600 hover:border-stone-400 hover:text-stone-900 transition-colors"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"></path>
@@ -105,13 +105,13 @@ const Navbar: React.FC = () => {
               <>
                 <Link
                   to="/explore"
-                  className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors text-stone-600 hover:text-emerald-700"
+                  className="hidden sm:inline-flex px-3 py-1.5 rounded-md text-sm font-medium transition-colors text-stone-600 hover:text-emerald-700"
                 >
                   Explore
                 </Link>
                 <Link
                   to="/builder"
-                  className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors text-stone-600 hover:text-emerald-700"
+                  className="hidden sm:inline-flex px-3 py-1.5 rounded-md text-sm font-medium transition-colors text-stone-600 hover:text-emerald-700"
                 >
                   Builder
                 </Link>

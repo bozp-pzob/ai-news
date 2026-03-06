@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { UserLimits } from '../services/api';
 import { ProfileDropdown } from './ProfileDropdown';
 import { CreateConfigDialog } from './CreateConfigDialog';
+import { MobileBottomNav } from './MobileBottomNav';
 
 interface AppHeaderProps {
   /** Show admin badge next to logo */
@@ -42,7 +43,7 @@ export function AppHeader({ adminBadge, maxWidth = 'max-w-6xl', limits, children
           {/* Left: Logo */}
           <div className="flex items-center gap-3">
             <a href="/" className="flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" className="h-8 w-8" aria-label="Digital Gardener" role="img">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" className="h-10 w-10" aria-label="Digital Gardener" role="img">
                 <g transform="translate(32,32)">
                   <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#CF70FF" transform="rotate(0)" />
                   <ellipse cx="0" cy="-14" rx="7" ry="12" fill="#DD98FF" transform="rotate(60)" />
@@ -62,10 +63,10 @@ export function AppHeader({ adminBadge, maxWidth = 'max-w-6xl', limits, children
           </div>
 
           {/* Right: Nav */}
-          <nav className="flex items-center gap-4">
+          <nav className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={() => navigate('/explore')}
-              className={`text-sm transition-colors ${
+              className={`hidden md:inline-flex text-sm transition-colors ${
                 location.pathname === '/explore'
                   ? 'text-emerald-600 font-medium'
                   : 'text-stone-500 hover:text-stone-800'
@@ -76,13 +77,13 @@ export function AppHeader({ adminBadge, maxWidth = 'max-w-6xl', limits, children
             {!isOnDashboard && (
               <button
                 onClick={() => navigate('/dashboard')}
-                className="text-stone-500 hover:text-stone-800 text-sm transition-colors"
+                className="hidden md:inline-flex text-stone-500 hover:text-stone-800 text-sm transition-colors"
               >
                 Dashboard
               </button>
             )}
 
-            {/* New Config button */}
+            {/* New Config button - hidden on mobile (available in bottom nav) */}
             <button
               onClick={() => {
                 if (!isAuthenticated) {
@@ -91,7 +92,7 @@ export function AppHeader({ adminBadge, maxWidth = 'max-w-6xl', limits, children
                   setShowCreateDialog(true);
                 }
               }}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg font-medium transition-colors flex items-center gap-1.5"
+              className="hidden md:flex px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg font-medium transition-colors items-center gap-1.5"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -124,6 +125,9 @@ export function AppHeader({ adminBadge, maxWidth = 'max-w-6xl', limits, children
         onSuccess={handleCreateSuccess}
         limits={limits}
       />
+
+      {/* Mobile bottom tab bar */}
+      <MobileBottomNav />
     </>
   );
 }

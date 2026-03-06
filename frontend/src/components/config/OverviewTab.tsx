@@ -68,7 +68,7 @@ export function OverviewTab({ config, stats }: OverviewTabProps) {
           <h3 className="font-medium text-stone-800 mb-4">Sources</h3>
           <div className="space-y-2">
             {stats.sources.map((source, i) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-stone-200 last:border-0">
+              <div key={i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 py-2 border-b border-stone-200 last:border-0">
                 <span className="text-stone-600">{source.source}</span>
                 <div className="flex items-center gap-4">
                   <span className="text-stone-500 text-sm">{source.count.toLocaleString()} items</span>

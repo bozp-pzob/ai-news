@@ -208,7 +208,7 @@ function SortDropdown({ value, onChange }: { value: SortOption; onChange: (v: So
 
 function SearchInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <div className="relative flex-1 max-w-md">
+    <div className="relative flex-1 sm:max-w-md">
       <svg
         className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500"
         fill="none"
@@ -407,7 +407,7 @@ function ExploreContent() {
       )}
 
       {/* Search + Sort Controls */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
         <SearchInput value={search} onChange={setSearch} />
         <SortDropdown value={sort} onChange={v => { setSort(v); setPage(1); }} />
       </div>
@@ -499,7 +499,7 @@ function ExploreContent() {
  */
 export default function ExplorePage() {
   return (
-    <div className="min-h-screen bg-stone-50">
+    <div className="min-h-screen bg-stone-50 pb-16 md:pb-0">
       <AppHeader />
       <ExploreContent />
     </div>

@@ -52,7 +52,7 @@ function ConfigCard({ config, onRun }: { config: PlatformConfig; onRun: (id: str
         </div>
       </div>
       
-      <div className="flex items-center justify-between mt-4 pt-3 border-t border-stone-200">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-4 pt-3 border-t border-stone-200">
         <div className="flex items-center gap-4 text-sm text-stone-500">
           <span>{config.totalItems.toLocaleString()} items</span>
           <span>{config.totalQueries.toLocaleString()} queries</span>
@@ -312,7 +312,7 @@ function DashboardContent() {
       {/* Tier Info Banner */}
       {limits && limits.tier === 'free' && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mb-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h3 className="font-medium text-stone-800">Free Tier</h3>
               <p className="text-stone-500 text-sm mt-1">
@@ -323,7 +323,7 @@ function DashboardContent() {
             </div>
             <a
               href="/upgrade"
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors text-center"
             >
               Upgrade to Pro
             </a>
@@ -361,7 +361,7 @@ function DashboardContent() {
  */
 export default function DashboardPage() {
   return (
-    <div className="min-h-screen bg-stone-50">
+    <div className="min-h-screen bg-stone-50 pb-16 md:pb-0">
       <AppHeader />
 
       {/* Main content with auth guard */}

@@ -18,12 +18,12 @@ interface TabsProps {
  */
 export function Tabs({ tabs, activeTab, onChange }: TabsProps) {
   return (
-    <div className="flex gap-1 p-1 bg-stone-100 rounded-lg">
+    <div className="flex gap-1 p-1 bg-stone-100 rounded-lg overflow-x-auto scrollbar-hide" style={{ WebkitOverflowScrolling: 'touch' }}>
       {tabs.map(tab => (
         <button
           key={tab.id}
           onClick={() => onChange(tab.id)}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${
+          className={`flex-shrink-0 whitespace-nowrap px-2.5 sm:px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${
             activeTab === tab.id
               ? 'bg-white text-emerald-700 shadow-sm'
               : 'text-stone-500 hover:text-stone-800'

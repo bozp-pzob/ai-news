@@ -10,7 +10,7 @@ import { solanaPayment } from '../services/solanaPayment';
  * Shared profile dropdown component - light theme, minimal design.
  */
 export function ProfileDropdown() {
-  const { user, logout } = useAuth();
+  const { user, logout, authToken } = useAuth();
   const navigate = useNavigate();
   const { wallets: solanaWallets } = useSolanaWallets();
   const [isOpen, setIsOpen] = useState(false);
@@ -33,12 +33,10 @@ export function ProfileDropdown() {
 
   useEffect(() => {
     const fetchBalance = async () => {
-      if (!connectedWallet?.address || !isOpen) return;
+      if (!connectedWallet?.address || !isOpen || !authToken) return;
       setIsLoadingBalance(true);
       try {
-        // Returns a number (including 0) on success, or null when the RPC
-        // call fails so we can display "--" instead of a misleading "$0.00".
-        const balance = await solanaPayment.getUSDCBalance(connectedWallet.address);
+        const balance = await solanaPayment.getUSDCBalance(connectedWallet.address, authToken);
         setUsdcBalance(balance); // null → "--", 0 → "$0.00", >0 → "$X.XX"
       } catch (error) {
         // Unexpected error — show "--" not "$0.00"
@@ -48,7 +46,7 @@ export function ProfileDropdown() {
       }
     };
     if (isOpen) fetchBalance();
-  }, [connectedWallet?.address, isOpen]);
+  }, [connectedWallet?.address, isOpen, authToken]);
 
   const copyAddress = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -81,7 +79,7 @@ export function ProfileDropdown() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-3 w-72 bg-white/95 backdrop-blur-xl border border-stone-200 rounded-2xl shadow-2xl shadow-black/10 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="absolute right-0 mt-3 w-72 max-w-[calc(100vw-2rem)] bg-white/95 backdrop-blur-xl border border-stone-200 rounded-2xl shadow-2xl shadow-black/10 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
           {/* Header */}
           <div className="px-4 py-4">
             <div className="flex items-center gap-3">

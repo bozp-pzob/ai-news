@@ -243,7 +243,7 @@ function ConfigPageContent() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <button
@@ -254,7 +254,7 @@ function ConfigPageContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <h1 className="text-2xl font-bold text-stone-800">{config.name}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-stone-800">{config.name}</h1>
             {/* Public badge for non-owners */}
             {!isOwner && (
               <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded font-medium">
@@ -277,7 +277,7 @@ function ConfigPageContent() {
 
         {/* Owner actions — Edit (builder) + Run Actions */}
         {isOwner && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => navigate(`/builder/${config.id}`)}
               className="px-4 py-2 rounded-lg font-medium transition-colors bg-stone-100 hover:bg-stone-200 text-stone-700"
@@ -340,7 +340,7 @@ function ConfigPageContent() {
  */
 export default function ConfigPage() {
   return (
-    <div className="min-h-screen bg-stone-50">
+    <div className="min-h-screen bg-stone-50 pb-16 md:pb-0">
       <AppHeader />
       <ConfigPageContent />
     </div>

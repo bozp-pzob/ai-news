@@ -226,6 +226,81 @@ router.get('/limits', requireAuth, async (req: AuthenticatedRequest, res: Respon
 });
 
 // ============================================================================
+// WALLET ROUTES
+// ============================================================================
+
+// USDC mint address on Solana mainnet
+const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+// Solana RPC — works fine server-side (the 403 only affects browser CORS requests)
+const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+
+/**
+ * GET /api/v1/me/wallet/balance - Get USDC balance for a Solana wallet
+ * 
+ * Proxies the Solana RPC call server-side to avoid browser CORS restrictions
+ * from public RPC endpoints.
+ */
+router.get('/wallet/balance', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const address = req.query.address as string;
+    if (!address || !isValidSolanaAddress(address)) {
+      return res.status(400).json({ error: 'Valid Solana address required' });
+    }
+
+    // Use getTokenAccountsByOwner with USDC mint filter — no PDA derivation needed
+    const rpcResponse = await fetch(SOLANA_RPC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getTokenAccountsByOwner',
+        params: [
+          address,
+          { mint: USDC_MINT },
+          { encoding: 'jsonParsed', commitment: 'confirmed' },
+        ],
+      }),
+    });
+
+    if (!rpcResponse.ok) {
+      logger.error(`Wallet balance: Solana RPC HTTP ${rpcResponse.status}`);
+      return res.json({ balance: null });
+    }
+
+    const json = await rpcResponse.json() as any;
+
+    if (json.error) {
+      logger.error('Wallet balance: Solana RPC error', json.error);
+      return res.json({ balance: null });
+    }
+
+    const accounts = json.result?.value;
+    if (!accounts || accounts.length === 0) {
+      return res.json({ balance: 0 });
+    }
+
+    // Sum balances across all USDC token accounts (usually just one ATA)
+    let balance = 0;
+    for (const account of accounts) {
+      const uiAmount = account.account?.data?.parsed?.info?.tokenAmount?.uiAmount;
+      if (typeof uiAmount === 'number') {
+        balance += uiAmount;
+      }
+    }
+
+    return res.json({ balance });
+  } catch (error: any) {
+    logger.error('Wallet balance: Error', error?.message || error);
+    return res.json({ balance: null });
+  }
+});
+
+// ============================================================================
 // LICENSE ROUTES
 // ============================================================================
 

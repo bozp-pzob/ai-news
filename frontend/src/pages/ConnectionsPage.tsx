@@ -93,7 +93,7 @@ function ConnectionsContent() {
  */
 export default function ConnectionsPage() {
   return (
-    <div className="min-h-screen bg-stone-50">
+    <div className="min-h-screen bg-stone-50 pb-16 md:pb-0">
       <AppHeader />
 
       {/* Main content with auth guard */}

@@ -5,6 +5,7 @@
  * Based on pop402-gallery reference implementation.
  */
 
+import { API_BASE } from './api';
 import {
   Connection,
   PublicKey,
@@ -178,46 +179,42 @@ export function addSignatureAndSerialize(
 /**
  * Get USDC balance for a wallet.
  *
+ * Calls the backend API which proxies the Solana RPC call server-side,
+ * avoiding browser CORS restrictions from public RPC endpoints.
+ *
  * Returns:
  *   - A number >= 0 when the call succeeds (0 means the USDC token account
  *     genuinely does not exist for this wallet yet).
- *   - null when the RPC call fails (network error, rate-limit, etc.) so the
- *     caller can show "--" rather than a misleading "$0.00".
+ *   - null when the call fails so the caller can show "--" rather than
+ *     a misleading "$0.00".
  *
  * @param walletAddress - Wallet public key (base58 string)
+ * @param authToken - JWT auth token for the backend API
  */
-export async function getUSDCBalance(walletAddress: string): Promise<number | null> {
-  const connection = new Connection(RPC_ENDPOINT, 'confirmed');
-  const pubkey = new PublicKey(walletAddress);
-
+export async function getUSDCBalance(walletAddress: string, authToken: string): Promise<number | null> {
   try {
-    // Use getParsedTokenAccountsByOwner — more robust than getAccount:
-    // - No need to derive ATA address first
-    // - Returns empty array (not an error) when wallet has no USDC
-    // - Returns pre-parsed balance data (no manual decimal math)
-    // - Catches USDC in any token account, not just the ATA
-    const response = await connection.getParsedTokenAccountsByOwner(pubkey, {
-      mint: USDC_MINT,
-    });
+    const response = await fetch(
+      `${API_BASE}/api/v1/me/wallet/balance?address=${encodeURIComponent(walletAddress)}`,
+      { headers: { Authorization: `Bearer ${authToken}` } },
+    );
 
-    if (response.value.length === 0) {
-      console.log('[SolanaPayment] No USDC token account found — balance is $0.00');
-      return 0;
+    if (!response.ok) {
+      console.error('[SolanaPayment] Balance API error:', response.status, response.statusText);
+      return null;
     }
 
-    // Sum balances across all USDC token accounts (usually just one ATA)
-    let totalBalance = 0;
-    for (const account of response.value) {
-      const uiAmount = account.account.data.parsed?.info?.tokenAmount?.uiAmount;
-      if (typeof uiAmount === 'number') {
-        totalBalance += uiAmount;
-      }
+    const data = await response.json();
+    const balance = data.balance;
+
+    if (typeof balance === 'number') {
+      console.log('[SolanaPayment] USDC balance:', balance);
+      return balance;
     }
 
-    console.log('[SolanaPayment] USDC balance:', totalBalance);
-    return totalBalance;
+    console.warn('[SolanaPayment] Balance API returned null (RPC error)');
+    return null;
   } catch (error: any) {
-    console.error('[SolanaPayment] RPC error fetching USDC balance:', error);
+    console.error('[SolanaPayment] Error fetching USDC balance:', error?.message || error);
     return null;
   }
 }

@@ -628,11 +628,32 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ mouseX, mouseY }) => {
   return (
     <div className="absolute inset-0 overflow-hidden">
       <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
-      {/* CSS fallback for mobile */}
-      <div className="absolute inset-0 lg:hidden" style={{
-        background: `linear-gradient(to top, ${GROUND_DARK}33 0%, rgba(74,222,128,0.08) 30%, rgba(245,240,232,0.95) 70%)`,
-      }}>
-        <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-amber-900/20 to-transparent" />
+      {/* CSS fallback — rich garden scene for mobile / non-canvas browsers */}
+      <div className="absolute inset-0 lg:hidden">
+        {/* Sky gradient matching canvas SKY_TOP → SKY_MID → SKY_BOT */}
+        <div className="absolute inset-0" style={{
+          background: 'linear-gradient(to bottom, rgb(220,230,240) 0%, rgb(245,240,232) 45%, rgb(250,245,235) 70%, rgb(168,144,112) 85%, rgb(107,80,64) 92%, rgb(74,52,40) 100%)',
+        }} />
+        {/* Warm sunlight glow — upper right, matching canvas sun */}
+        <div className="absolute inset-0" style={{
+          background: 'radial-gradient(ellipse 60% 50% at 82% 8%, rgba(255,248,220,0.45) 0%, rgba(255,240,200,0.2) 30%, rgba(255,235,190,0.08) 55%, transparent 75%)',
+        }} />
+        {/* Green plant glow — near ground left */}
+        <div className="absolute inset-0" style={{
+          background: 'radial-gradient(ellipse 40% 20% at 25% 78%, rgba(74,222,128,0.15) 0%, rgba(34,197,94,0.08) 40%, transparent 70%)',
+        }} />
+        {/* Green plant glow — near ground right */}
+        <div className="absolute inset-0" style={{
+          background: 'radial-gradient(ellipse 35% 18% at 70% 80%, rgba(52,211,153,0.12) 0%, rgba(22,163,74,0.06) 45%, transparent 70%)',
+        }} />
+        {/* Subtle warm haze at the horizon line */}
+        <div className="absolute inset-0" style={{
+          background: 'radial-gradient(ellipse 80% 15% at 50% 82%, rgba(149,120,88,0.25) 0%, transparent 60%)',
+        }} />
+        {/* Pollen-like warm particles glow — scattered */}
+        <div className="absolute inset-0" style={{
+          background: 'radial-gradient(circle 80px at 30% 55%, rgba(253,230,138,0.12) 0%, transparent 70%), radial-gradient(circle 60px at 65% 45%, rgba(254,215,170,0.1) 0%, transparent 70%), radial-gradient(circle 50px at 45% 65%, rgba(187,247,208,0.08) 0%, transparent 70%)',
+        }} />
       </div>
     </div>
   );
