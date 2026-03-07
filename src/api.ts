@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
+import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import crypto from 'crypto';
@@ -230,18 +231,35 @@ async function restoreScheduledJobs() {
 // Initialize database and start server
 async function start() {
   try {
-    // Generate or load local server key for encrypted config execution
-    _localServerKey = process.env.LOCAL_SERVER_KEY || crypto.randomBytes(32).toString('base64');
-    if (!process.env.LOCAL_SERVER_KEY) {
-      logger.info('');
-      logger.info('  Local Server Key (paste this into the platform UI):');
-      logger.info(`  ${_localServerKey}`);
-      logger.info('');
-      logger.info('  Set LOCAL_SERVER_KEY env var to use a fixed key.');
-      logger.info('');
-    } else {
+    // Load or generate the local server key for encrypted config execution.
+    // Precedence: 1) LOCAL_SERVER_KEY env var  2) persisted key file  3) generate new
+    const keyFile = path.join(process.cwd(), 'data', '.local-server-key');
+
+    if (process.env.LOCAL_SERVER_KEY) {
+      // Explicit env var takes priority
+      _localServerKey = process.env.LOCAL_SERVER_KEY;
       logger.info('Local server key loaded from LOCAL_SERVER_KEY env var');
+    } else if (fs.existsSync(keyFile)) {
+      // Reuse the previously persisted key
+      _localServerKey = fs.readFileSync(keyFile, 'utf-8').trim();
+      logger.info(`Local server key loaded from ${keyFile}`);
+    } else {
+      // First run — generate a new key and persist it
+      _localServerKey = crypto.randomBytes(32).toString('base64');
+      const keyDir = path.dirname(keyFile);
+      if (!fs.existsSync(keyDir)) {
+        fs.mkdirSync(keyDir, { recursive: true });
+      }
+      fs.writeFileSync(keyFile, _localServerKey, { mode: 0o600 });
+      logger.info(`Local server key generated and saved to ${keyFile}`);
+      logger.info('  Delete that file or set LOCAL_SERVER_KEY env var to use a different key.');
     }
+
+    // Always log the key on startup so the user can find it
+    logger.info('');
+    logger.info('  Local Server Key (paste this into the platform UI):');
+    logger.info(`  ${_localServerKey}`);
+    logger.info('');
 
     // Initialize platform database if DATABASE_URL is set
     if (process.env.DATABASE_URL) {

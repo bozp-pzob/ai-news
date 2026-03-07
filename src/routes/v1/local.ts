@@ -23,6 +23,32 @@ import { logger } from '../../helpers/cliHelper';
 const router = Router();
 const aggregatorService = AggregatorService.getInstance();
 
+// ─── In-Memory Job Tracking ────────────────────────────────────────────────────
+// runAggregationOnce creates short (non-UUID) job IDs and uses event emitters,
+// but getJobStatus only handles UUID-length IDs. We track short-ID jobs here
+// so the /status/:jobId endpoint can return their status to the platform.
+
+interface LocalJobStatus {
+  jobId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress?: number;
+  error?: string;
+  startedAt: string;
+  completedAt?: string;
+}
+
+const localJobs = new Map<string, LocalJobStatus>();
+
+// Clean up old jobs after 1 hour
+setInterval(() => {
+  const oneHourAgo = Date.now() - 3600000;
+  for (const [id, job] of localJobs) {
+    if (new Date(job.startedAt).getTime() < oneHourAgo) {
+      localJobs.delete(id);
+    }
+  }
+}, 600000); // Clean every 10 minutes
+
 // ─── Token Storage ─────────────────────────────────────────────────────────────
 
 /** Ensure the platform_tokens table exists in the local database */
@@ -252,6 +278,84 @@ router.post('/execute', async (req: Request, res: Response) => {
       });
     }
 
+    // Resolve platform AI references against local environment.
+    // On the platform, configs with usePlatformAI get the platform's OPENAI_API_KEY
+    // injected before execution. On a standalone backend, we inject the local
+    // server's own key from process.env instead.
+    if (configJson.ai && Array.isArray(configJson.ai)) {
+      const localApiKey = process.env.OPENAI_API_KEY;
+      const useOpenRouter = process.env.USE_OPENROUTER === 'true';
+
+      configJson.ai = configJson.ai.map((ai: any) => {
+        if (ai.params?.usePlatformAI || ai.params?.apiKey === 'platform-injected') {
+          if (!localApiKey) {
+            logger.warn('Local Execute: Config uses platform AI but OPENAI_API_KEY is not set in local .env');
+          }
+          return {
+            ...ai,
+            params: {
+              ...ai.params,
+              apiKey: localApiKey,
+              usePlatformAI: false,
+              useOpenRouter: useOpenRouter || ai.params?.useOpenRouter,
+            },
+          };
+        }
+        return ai;
+      });
+    }
+
+    // Resolve platform storage references against local environment.
+    // On the platform, configs with usePlatformStorage get the platform's DATABASE_URL
+    // injected along with a configId for multi-tenant isolation.
+    // On a standalone backend, we inject the local DATABASE_URL and use the
+    // platform configId sent by the frontend (_configId) for consistent storage partitioning.
+    if (configJson.storage && Array.isArray(configJson.storage)) {
+      const localDbUrl = process.env.DATABASE_URL;
+
+      // Use the platform configId sent by the frontend, or fall back to a
+      // deterministic hash of the config name for backward compatibility.
+      const platformConfigId = (configJson as any)._configId;
+      const fallbackConfigId = (() => {
+        const name = (configJson as any).name || 'local-config';
+        const hash = crypto.createHash('sha256').update(name).digest('hex');
+        return [hash.slice(0, 8), hash.slice(8, 12), hash.slice(12, 16),
+                hash.slice(16, 20), hash.slice(20, 32)].join('-');
+      })();
+      const storageConfigId = platformConfigId || fallbackConfigId;
+
+      configJson.storage = configJson.storage.map((storage: any) => {
+        // Convert SQLiteStorage to PostgresStorage if we have a DATABASE_URL
+        if (storage.type === 'SQLiteStorage' && localDbUrl) {
+          return {
+            ...storage,
+            type: 'PostgresStorage',
+            params: {
+              ...storage.params,
+              configId: storage.params?.configId || storageConfigId,
+              connectionString: localDbUrl,
+              usePlatformStorage: false,
+            },
+          };
+        }
+        if (storage.params?.usePlatformStorage || !storage.params?.configId) {
+          if (!localDbUrl) {
+            logger.warn('Local Execute: Config uses platform storage but DATABASE_URL is not set in local .env');
+          }
+          return {
+            ...storage,
+            params: {
+              ...storage.params,
+              configId: storage.params?.configId || storageConfigId,
+              connectionString: localDbUrl || storage.params?.connectionString,
+              usePlatformStorage: false,
+            },
+          };
+        }
+        return storage;
+      });
+    }
+
     // Extract runtime settings
     const configName = (configJson as any).name || 'local-run';
     const runOnce = configJson.settings?.runOnce !== false; // Default to true for local runs
@@ -271,6 +375,33 @@ router.post('/execute', async (req: Request, res: Response) => {
       runtimeSettings,
       secrets
     );
+
+    // Track the job in memory so /status/:jobId can report on it
+    localJobs.set(jobId, {
+      jobId,
+      status: 'running',
+      startedAt: new Date().toISOString(),
+    });
+
+    // Listen for job completion/failure events from the aggregator
+    const onJobUpdate = (jobStatus: any) => {
+      const tracked = localJobs.get(jobId);
+      if (!tracked) return;
+
+      if (jobStatus.status === 'completed' || jobStatus.status === 'complete') {
+        tracked.status = 'completed';
+        tracked.completedAt = new Date().toISOString();
+        tracked.progress = 100;
+      } else if (jobStatus.status === 'failed' || jobStatus.status === 'error') {
+        tracked.status = 'failed';
+        tracked.completedAt = new Date().toISOString();
+        tracked.error = jobStatus.error || jobStatus.errorMessage;
+      } else {
+        tracked.status = 'running';
+        tracked.progress = jobStatus.progress;
+      }
+    };
+    aggregatorService.on(`job:${jobId}`, onJobUpdate);
 
     res.json({
       jobId,
@@ -293,10 +424,20 @@ router.post('/execute', async (req: Request, res: Response) => {
 /**
  * GET /api/v1/local/status/:jobId
  * Get the status of a running or completed job.
+ * Checks the in-memory localJobs map first (for short-ID jobs from runAggregationOnce),
+ * then falls back to the aggregator service (for UUID-based DB jobs).
  */
-router.get('/status/:jobId', (req: Request, res: Response) => {
+router.get('/status/:jobId', async (req: Request, res: Response) => {
   const jobId = req.params.jobId;
-  const jobStatus = aggregatorService.getJobStatus(jobId);
+
+  // Check in-memory tracking first (short-ID jobs)
+  const localJob = localJobs.get(jobId);
+  if (localJob) {
+    return res.json(localJob);
+  }
+
+  // Fall back to aggregator service (UUID-based DB jobs)
+  const jobStatus = await aggregatorService.getJobStatus(jobId);
 
   if (!jobStatus) {
     return res.status(404).json({

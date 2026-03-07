@@ -7,10 +7,12 @@ import { AppHeader } from '../components/AppHeader';
 import { 
   configApi,
   runsApi,
+  relayApi,
   PlatformConfig, 
   ConfigStats,
   AggregationRun,
 } from '../services/api';
+import { localServerSettings } from '../services/localConfigStorage';
 import { Tabs } from '../components/config/Tabs';
 import { OverviewTab } from '../components/config/OverviewTab';
 import { TopicsTab } from '../components/config/TopicsTab';
@@ -152,30 +154,52 @@ function ConfigPageContent() {
       createdAt: new Date().toISOString(),
     });
     
-    // Poll for job completion
+    // Poll for job completion — route to standalone backend for local configs
+    const isLocal = config?.isLocalExecution;
+    const localSettings = isLocal ? localServerSettings.get(id) : null;
+
     const pollInterval = setInterval(async () => {
       try {
-        const job = await runsApi.get(authToken, id, jobId);
-        if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
-          clearInterval(pollInterval);
-          pollIntervalsRef.current.delete(pollInterval);
-          setActiveJob(null);
-          setConfig(prev => prev ? { 
-            ...prev, 
-            status: job.status === 'completed' || job.status === 'cancelled' ? 'idle' : 'error' 
-          } : prev);
-          
-          // Notify user if their continuous run was stopped due to license expiration
-          if (job.status === 'cancelled' && jobType === 'continuous') {
-            const hasLicenseLog = job.logs?.some(
-              (log: any) => log.message?.includes('Pro license expired')
-            );
-            if (hasLicenseLog) {
-              showToast('Your continuous run was stopped because your Pro subscription expired. Renew to restart.', 'warning');
-            }
+        if (isLocal && localSettings?.url) {
+          // Poll the standalone backend via relay
+          const status = await relayApi.status(authToken, localSettings.url, jobId);
+          const jobStatus = status.status;
+
+          if (jobStatus === 'completed' || jobStatus === 'failed' || jobStatus === 'cancelled') {
+            clearInterval(pollInterval);
+            pollIntervalsRef.current.delete(pollInterval);
+            setActiveJob(null);
+            setConfig(prev => prev ? { 
+              ...prev, 
+              status: jobStatus === 'completed' || jobStatus === 'cancelled' ? 'idle' : 'error' 
+            } : prev);
+          } else {
+            setActiveJob(prev => prev ? { ...prev, status: jobStatus } : prev);
           }
         } else {
-          setActiveJob({ ...job, jobType: jobType });
+          // Poll the platform API
+          const job = await runsApi.get(authToken, id, jobId);
+          if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+            clearInterval(pollInterval);
+            pollIntervalsRef.current.delete(pollInterval);
+            setActiveJob(null);
+            setConfig(prev => prev ? { 
+              ...prev, 
+              status: job.status === 'completed' || job.status === 'cancelled' ? 'idle' : 'error' 
+            } : prev);
+            
+            // Notify user if their continuous run was stopped due to license expiration
+            if (job.status === 'cancelled' && jobType === 'continuous') {
+              const hasLicenseLog = job.logs?.some(
+                (log: any) => log.message?.includes('Pro license expired')
+              );
+              if (hasLicenseLog) {
+                showToast('Your continuous run was stopped because your Pro subscription expired. Renew to restart.', 'warning');
+              }
+            }
+          } else {
+            setActiveJob({ ...job, jobType: jobType });
+          }
         }
       } catch (err) {
         clearInterval(pollInterval);

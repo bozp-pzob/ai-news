@@ -64,10 +64,12 @@ export function useLocalExecution(): UseLocalExecutionReturn {
     setLocalError(null);
 
     try {
-      // If configJson is provided, encrypt it. Otherwise send a minimal
-      // payload — the standalone backend can load the config itself when
-      // it receives the execute request.
-      const dataToEncrypt = configJson ?? { configId };
+      // If configJson is provided, encrypt it with the configId included.
+      // Otherwise send a minimal payload with just the configId.
+      // The standalone backend uses _configId for storage isolation.
+      const dataToEncrypt = configJson
+        ? { ...configJson, _configId: configId }
+        : { configId, _configId: configId };
       const encrypted = await encryptConfig(dataToEncrypt, settings.key);
 
       const result = await relayApi.execute(authToken, {

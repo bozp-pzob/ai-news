@@ -288,7 +288,8 @@ async function refreshToken(): Promise<string | null> {
 async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {},
-  authToken?: string | null
+  authToken?: string | null,
+  skipAuthRefresh?: boolean
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -305,7 +306,9 @@ async function apiRequest<T>(
   });
 
   // --- Transparent token refresh on 401 ---
-  if (response.status === 401 && _getTokenFn) {
+  // Skip for relay/proxy calls — a 401 there means the standalone backend's
+  // data access token is invalid, not that the platform session expired.
+  if (response.status === 401 && _getTokenFn && !skipAuthRefresh) {
     const freshToken = await refreshToken();
     if (freshToken) {
       // Sync the new token back to React state so subsequent calls use it
@@ -2154,7 +2157,8 @@ export const relayApi = {
         method: 'POST',
         body: JSON.stringify(payload),
       },
-      authToken
+      authToken,
+      true // skipAuthRefresh — 401 here is a backend issue, not a platform session issue
     );
   },
 
@@ -2188,7 +2192,8 @@ export const relayApi = {
         method: 'POST',
         body: JSON.stringify({ targetUrl, ...(challenge || {}) }),
       },
-      authToken
+      authToken,
+      true // skipAuthRefresh — 401 here is a backend key mismatch, not a platform session issue
     );
   },
 
@@ -2206,7 +2211,8 @@ export const relayApi = {
         method: 'POST',
         body: JSON.stringify({ targetUrl, jobId }),
       },
-      authToken
+      authToken,
+      true // skipAuthRefresh — 401 here is a backend token issue, not a platform session issue
     );
   },
 };

@@ -312,8 +312,12 @@ export function RunActions({
         return;
       }
 
+      // Include the platform configId so the standalone backend can use it
+      // for storage isolation (PostgresStorage requires a configId).
+      const payload = { ...resolved, _configId: configId };
+
       // Encrypt the resolved config with the local server's key
-      const encrypted = await encryptConfig(resolved, settings.key);
+      const encrypted = await encryptConfig(payload, settings.key);
 
       // Send via relay
       const result = await relayApi.execute(authToken, {

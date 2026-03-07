@@ -1,6 +1,7 @@
 /node_modules/
 .env
 data/discord-raw.sqlite
+data/.local-server-key
 */node_modules/
 dist/
 frontend/build/

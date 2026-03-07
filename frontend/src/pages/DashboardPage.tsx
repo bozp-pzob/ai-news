@@ -4,8 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { AuthGuard } from '../components/auth/AuthGuard';
-import { userApi, configApi, runsApi, PlatformConfig, UserLimits, RevenueStats } from '../services/api';
+import { userApi, configApi, runsApi, relayApi, PlatformConfig, UserLimits, RevenueStats } from '../services/api';
 import { useLocalExecution } from '../hooks/useLocalExecution';
+import { localServerSettings } from '../services/localConfigStorage';
 import { AppHeader } from '../components/AppHeader';
 import { StatCard } from '../components/shared/StatCard';
 
@@ -217,17 +218,31 @@ function DashboardContent() {
         c.id === configId ? { ...c, status: 'running' as const } : c
       ));
       
-      // Poll for job completion using platform API
+      // Poll for job completion — route to standalone backend for local configs
+      const isLocal = targetConfig?.isLocalExecution;
+      const localSettings = isLocal ? localServerSettings.get(configId) : null;
+
       const pollInterval = setInterval(async () => {
         try {
-          const job = await runsApi.get(authToken, configId, jobId);
-          if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+          let jobStatus: string;
+
+          if (isLocal && localSettings?.url) {
+            // Poll the standalone backend via relay
+            const status = await relayApi.status(authToken, localSettings.url, jobId);
+            jobStatus = status.status;
+          } else {
+            // Poll the platform API
+            const job = await runsApi.get(authToken, configId, jobId);
+            jobStatus = job.status;
+          }
+
+          if (jobStatus === 'completed' || jobStatus === 'failed' || jobStatus === 'cancelled') {
             clearInterval(pollInterval);
             pollIntervalsRef.current.delete(pollInterval);
             setConfigs(prev => prev.map(c => 
               c.id === configId ? { 
                 ...c, 
-                status: job.status === 'completed' ? 'idle' as const : 'error' as const 
+                status: jobStatus === 'completed' ? 'idle' as const : 'error' as const 
               } : c
             ));
           }

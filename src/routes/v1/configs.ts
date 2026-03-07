@@ -83,6 +83,16 @@ async function proxyToBackend(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Backend error' }));
+      // Don't forward 401/403 from the standalone backend as-is — the frontend
+      // interprets 401 as a platform auth failure and triggers logout.
+      // Translate to 502 with a descriptive error instead.
+      if (response.status === 401 || response.status === 403) {
+        res.status(502).json({
+          error: 'backend_auth_failed',
+          message: 'Data access token rejected by standalone backend. Re-test your backend connection to generate a new token.',
+        });
+        return true;
+      }
       res.status(response.status).json(errorData);
       return true;
     }
