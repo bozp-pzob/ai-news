@@ -150,7 +150,15 @@ router.post('/health', async (req: Request, res: Response) => {
   // Attempt to decrypt the challenge nonce
   let nonce: string;
   try {
-    nonce = decryptPayload({ encrypted, iv, tag }, key);
+    const decrypted = decryptPayload({ encrypted, iv, tag }, key);
+    // The client encrypts JSON.stringify({ nonce }), so we need to parse it
+    try {
+      const parsed = JSON.parse(decrypted);
+      nonce = parsed.nonce ?? decrypted;
+    } catch {
+      // If parsing fails, the client may have sent the raw nonce string
+      nonce = decrypted;
+    }
   } catch {
     return res.status(401).json({
       status: 'error',
@@ -166,8 +174,8 @@ router.post('/health', async (req: Request, res: Response) => {
   let encryptedToken: EncryptedPayload | undefined;
   try {
     await storeDataAccessTokenHash(tokenHash);
-    // Encrypt the token so only the key-holder can read it
-    encryptedToken = encryptPayload(dataAccessToken, key);
+    // Encrypt the token as JSON so the key-holder can parse it
+    encryptedToken = encryptPayload(JSON.stringify({ token: dataAccessToken }), key);
   } catch (err) {
     logger.warn('POST /local/health: Failed to store/encrypt data access token', err);
     // Non-fatal — health check still valid, token exchange failed
