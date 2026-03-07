@@ -31,7 +31,14 @@ export function ItemsTab({ configId, authToken }: ItemsTabProps) {
         type: typeFilter || undefined,
       });
       setItems(result.items);
-      setPagination(result.pagination);
+      // Handle both pagination wrapper and flat response (standalone backend compat)
+      const pg = result.pagination || (result as any);
+      setPagination({
+        total: pg.total ?? 0,
+        limit: pg.limit ?? 20,
+        offset: pg.offset ?? 0,
+        hasMore: pg.hasMore ?? false,
+      });
       // Check for preview mode in response
       const r = result as any;
       if (r.preview) {

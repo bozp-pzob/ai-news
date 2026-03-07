@@ -159,11 +159,11 @@ function RunDetailsModal({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-stone-50 rounded-lg p-3">
               <p className="text-stone-500 text-xs">Items Fetched</p>
-              <p className="text-stone-800 text-lg font-medium">{run.itemsFetched.toLocaleString()}</p>
+              <p className="text-stone-800 text-lg font-medium">{(run.itemsFetched ?? 0).toLocaleString()}</p>
             </div>
             <div className="bg-stone-50 rounded-lg p-3">
               <p className="text-stone-500 text-xs">Items Processed</p>
-              <p className="text-stone-800 text-lg font-medium">{run.itemsProcessed.toLocaleString()}</p>
+              <p className="text-stone-800 text-lg font-medium">{(run.itemsProcessed ?? 0).toLocaleString()}</p>
             </div>
             <div className="bg-stone-50 rounded-lg p-3">
               <p className="text-stone-500 text-xs">Run Count</p>
@@ -293,7 +293,7 @@ export function RunsTab({ configId }: RunsTabProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-stone-400 text-sm">
-          {pagination.total.toLocaleString()} total runs
+          {(pagination?.total ?? 0).toLocaleString()} total runs
         </p>
         <button
           onClick={refresh}
@@ -324,7 +324,7 @@ export function RunsTab({ configId }: RunsTabProps) {
               
               <div className="mt-2 flex items-center gap-4 text-sm">
                 <span className="text-stone-500">
-                  <span className="text-stone-800">{run.itemsFetched.toLocaleString()}</span> items
+                   <span className="text-stone-800">{(run.itemsFetched ?? 0).toLocaleString()}</span> items
                 </span>
                 {run.jobType === 'continuous' && (
                   <span className="text-stone-500">

@@ -49,6 +49,43 @@ setInterval(() => {
   }
 }, 600000); // Clean every 10 minutes
 
+// ─── Local Config Record ────────────────────────────────────────────────────────
+// The items/summaries tables have FK constraints on configs.id, and configs has
+// a FK on users.id. When a config is relayed from the platform, those records
+// don't exist in the local DB. This function creates placeholder rows so the
+// FK constraints are satisfied.
+
+const LOCAL_USER_ID = '00000000-0000-0000-0000-000000000000';
+
+async function ensureLocalConfigRecord(configId: string, configName: string, configJson: any): Promise<void> {
+  // Check if config already exists
+  const existing = await databaseService.query(
+    'SELECT id FROM configs WHERE id = $1',
+    [configId]
+  );
+  if (existing.rows.length > 0) return;
+
+  // Ensure a placeholder user exists for the FK
+  await databaseService.query(`
+    INSERT INTO users (id, privy_id, tier)
+    VALUES ($1, 'local-standalone', 'admin')
+    ON CONFLICT (id) DO NOTHING
+  `, [LOCAL_USER_ID]);
+
+  // Derive a unique slug from the config name + configId prefix
+  const baseSlug = configName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'local';
+  const slug = `${baseSlug}-${configId.slice(0, 8)}`;
+
+  // Insert the config record
+  await databaseService.query(`
+    INSERT INTO configs (id, user_id, name, slug, config_json, visibility, storage_type)
+    VALUES ($1, $2, $3, $4, $5, 'private', 'external')
+    ON CONFLICT (id) DO NOTHING
+  `, [configId, LOCAL_USER_ID, configName, slug, JSON.stringify(configJson)]);
+
+  logger.info(`Local Execute: Created placeholder config record for ${configId} (${configName})`);
+}
+
 // ─── Token Storage ─────────────────────────────────────────────────────────────
 
 /** Ensure the platform_tokens table exists in the local database */
@@ -366,6 +403,18 @@ router.post('/execute', async (req: Request, res: Response) => {
       onlyFetch: configJson.settings?.onlyFetch === true,
     };
 
+    // Ensure the config record exists in the local DB so FK constraints
+    // on items/summaries are satisfied.
+    const storageConfigId = (configJson as any)._configId;
+    if (storageConfigId) {
+      try {
+        await ensureLocalConfigRecord(storageConfigId, configName, configJson);
+      } catch (err: any) {
+        logger.warn('Local Execute: Could not create placeholder config record:', err.message);
+        // Non-fatal — storage may still work if config already exists or FKs are disabled
+      }
+    }
+
     // Run the aggregation
     // Secrets are already resolved (the UI injected them before encrypting)
     const secrets = {};
@@ -499,7 +548,15 @@ router.get('/data/:configId/items', requireDataAccessToken, async (req: Request,
     const offsetNum = parseInt(offsetStr as string, 10) || 0;
     const paged = filtered.slice(offsetNum, offsetNum + limitNum);
 
-    res.json({ items: paged, total, limit: limitNum, offset: offsetNum });
+    res.json({
+      items: paged,
+      pagination: {
+        total,
+        limit: limitNum,
+        offset: offsetNum,
+        hasMore: offsetNum + limitNum < total,
+      },
+    });
   } catch (error: any) {
     logger.error('Local Data: Failed to fetch items', error.message);
     res.status(500).json({ error: 'Failed to fetch items', message: error.message });
@@ -531,7 +588,15 @@ router.get('/data/:configId/content', requireDataAccessToken, async (req: Reques
     const offsetNum = parseInt(offsetStr as string, 10) || 0;
     const paged = summaries.slice(offsetNum, offsetNum + limitNum);
 
-    res.json({ content: paged, total, limit: limitNum, offset: offsetNum });
+    res.json({
+      content: paged,
+      pagination: {
+        total,
+        limit: limitNum,
+        offset: offsetNum,
+        hasMore: offsetNum + limitNum < total,
+      },
+    });
   } catch (error: any) {
     logger.error('Local Data: Failed to fetch content', error.message);
     res.status(500).json({ error: 'Failed to fetch content', message: error.message });
@@ -609,21 +674,43 @@ router.get('/data/:configId/stats', requireDataAccessToken, async (req: Request,
 
     const now = Math.floor(Date.now() / 1000);
     const items = await storage.getContentItemsBetweenEpoch(0, now);
-    const summaries = await storage.getSummaryBetweenEpoch(0, now);
 
-    const sources = [...new Set(items.map((i: any) => i.source))];
+    // Group items by source with counts and latest dates (matches ConfigStats shape)
+    const sourcesMap = new Map<string, { count: number; latestDate: number }>();
+    for (const item of items) {
+      const src = (item as any).source || 'unknown';
+      const itemDate = (item as any).date || 0;
+      const existing = sourcesMap.get(src);
+      if (existing) {
+        existing.count++;
+        if (itemDate > existing.latestDate) existing.latestDate = itemDate;
+      } else {
+        sourcesMap.set(src, { count: 1, latestDate: itemDate });
+      }
+    }
+
+    const sources = Array.from(sourcesMap.entries()).map(([source, data]) => ({
+      source,
+      count: data.count,
+      latestDate: new Date(data.latestDate * 1000).toISOString(),
+    }));
+
     const dateRange = items.length > 0
       ? {
-          earliest: Math.min(...items.map((i: any) => i.date || 0)),
-          latest: Math.max(...items.map((i: any) => i.date || 0)),
+          from: new Date(Math.min(...items.map((i: any) => (i.date || 0)) as number[]) * 1000).toISOString(),
+          to: new Date(Math.max(...items.map((i: any) => (i.date || 0)) as number[]) * 1000).toISOString(),
         }
       : null;
 
+    // Response matches the frontend ConfigStats interface
     res.json({
       totalItems: items.length,
-      totalSummaries: summaries.length,
-      sources,
+      totalQueries: 0,
+      totalRevenue: 0,
+      totalCost: 0,
       dateRange,
+      lastUpdated: dateRange ? dateRange.to : null,
+      sources,
     });
   } catch (error: any) {
     logger.error('Local Data: Failed to fetch stats', error.message);

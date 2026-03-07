@@ -17,13 +17,13 @@ export function OverviewTab({ config, stats }: OverviewTabProps) {
         <div className="bg-white rounded-lg p-4 border border-stone-200">
           <p className="text-stone-500 text-sm">Total Items</p>
           <p className="text-2xl font-bold text-stone-800 mt-1">
-            {config.totalItems.toLocaleString()}
+            {(config.totalItems ?? 0).toLocaleString()}
           </p>
         </div>
         <div className="bg-white rounded-lg p-4 border border-stone-200">
           <p className="text-stone-500 text-sm">Total Queries</p>
           <p className="text-2xl font-bold text-stone-800 mt-1">
-            {config.totalQueries.toLocaleString()}
+            {(config.totalQueries ?? 0).toLocaleString()}
           </p>
         </div>
         <div className="bg-white rounded-lg p-4 border border-stone-200">

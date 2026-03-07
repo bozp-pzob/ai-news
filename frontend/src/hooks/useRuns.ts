@@ -35,8 +35,15 @@ export function useRuns(configId: string, autoFetch = true) {
     
     try {
       const result = await runsApi.list(authToken, configId, { limit: 20, offset });
-      setRuns(result.runs);
-      setPagination(result.pagination);
+      setRuns(result.runs || []);
+      // Handle missing pagination gracefully (standalone backend compat)
+      const pg = result.pagination || (result as any);
+      setPagination({
+        total: pg?.total ?? 0,
+        limit: pg?.limit ?? 20,
+        offset: pg?.offset ?? 0,
+        hasMore: pg?.hasMore ?? false,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch runs');
     } finally {

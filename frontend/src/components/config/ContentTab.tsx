@@ -27,7 +27,14 @@ export function ContentTab({ configId, authToken }: ContentTabProps) {
         offset,
       });
       setEntries(result.content);
-      setPagination(result.pagination);
+      // Handle both pagination wrapper and flat response (standalone backend compat)
+      const pg = result.pagination || (result as any);
+      setPagination({
+        total: pg.total ?? 0,
+        limit: pg.limit ?? 10,
+        offset: pg.offset ?? 0,
+        hasMore: pg.hasMore ?? false,
+      });
       // Check for preview mode in response
       const r = result as any;
       if (r.preview) {
