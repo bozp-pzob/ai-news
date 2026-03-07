@@ -1,8 +1,9 @@
 // frontend/src/components/ConfigInfoPanel.tsx
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ConfigVisibility, UserLimits, relayApi } from '../services/api';
+import { ConfigVisibility, UserLimits, relayApi, configApi } from '../services/api';
 import { localServerSettings, LocalServerSettings } from '../services/localConfigStorage';
+import { encryptConfig, decryptConfig } from '../services/configEncryption';
 import { useAuth } from '../context/AuthContext';
 
 export interface ConfigInfo {
@@ -85,25 +86,108 @@ export function ConfigInfoPanel({
     }
   }, [configId, serverUrl, serverKey]);
 
-  // Test connection to local server via relay
+  // Test connection to local server via relay with crypto challenge + auto key exchange
   const handleTestConnection = async () => {
     if (!authToken || !serverUrl.trim()) return;
 
+    // If no key is entered, do a basic connectivity check (GET health)
+    if (!serverKey.trim()) {
+      setConnectionTestStatus('testing');
+      setConnectionTestMessage('');
+      try {
+        const result = await relayApi.health(authToken, serverUrl.trim());
+        if (result.status === 'ok') {
+          setConnectionTestStatus('success');
+          setConnectionTestMessage(`Connected! v${result.version} | Key: ${result.hasKey ? 'configured' : 'missing'}. Enter your encryption key to verify it.`);
+        } else {
+          setConnectionTestStatus('error');
+          setConnectionTestMessage('Server responded but status is not ok');
+        }
+      } catch (err: any) {
+        setConnectionTestStatus('error');
+        setConnectionTestMessage(err?.message || 'Connection failed');
+      }
+      return;
+    }
+
+    // Full crypto challenge: verify key + exchange data access token
     setConnectionTestStatus('testing');
-    setConnectionTestMessage('');
+    setConnectionTestMessage('Verifying encryption key...');
 
     try {
-      const result = await relayApi.health(authToken, serverUrl.trim());
-      if (result.status === 'ok') {
-        setConnectionTestStatus('success');
-        setConnectionTestMessage(`Connected! v${result.version} | Key: ${result.hasKey ? 'configured' : 'missing'}`);
-      } else {
+      // 1. Generate a random nonce
+      const nonceBytes = crypto.getRandomValues(new Uint8Array(16));
+      const nonce = Array.from(nonceBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      // 2. Encrypt the nonce with the user's key
+      const challenge = await encryptConfig(JSON.stringify({ nonce }), serverKey.trim());
+
+      // 3. Send the challenge via relay
+      const result = await relayApi.health(authToken, serverUrl.trim(), challenge);
+
+      // 4. Verify the server echoed back the correct nonce
+      if (!result.nonce) {
         setConnectionTestStatus('error');
-        setConnectionTestMessage('Server responded but status is not ok');
+        setConnectionTestMessage('Server did not return a nonce. It may not support key verification yet.');
+        return;
       }
+
+      if (result.nonce !== nonce) {
+        setConnectionTestStatus('error');
+        setConnectionTestMessage('Key mismatch! The server decrypted a different nonce. Check that the encryption key matches LOCAL_SERVER_KEY on your server.');
+        return;
+      }
+
+      // 5. Decrypt the data access token from the response
+      if (!result.encryptedToken) {
+        setConnectionTestStatus('error');
+        setConnectionTestMessage('Key verified but server did not return a data access token. Upgrade your local server.');
+        return;
+      }
+
+      let dataAccessToken: string;
+      try {
+        const tokenJson = await decryptConfig(result.encryptedToken, serverKey.trim());
+        const parsed = JSON.parse(tokenJson);
+        dataAccessToken = parsed.token;
+      } catch {
+        setConnectionTestStatus('error');
+        setConnectionTestMessage('Failed to decrypt data access token. Key may have changed between challenge and response.');
+        return;
+      }
+
+      if (!dataAccessToken) {
+        setConnectionTestStatus('error');
+        setConnectionTestMessage('Data access token was empty in the server response.');
+        return;
+      }
+
+      // 6. Save backendUrl + dataAccessToken to the platform via PATCH
+      if (configId) {
+        try {
+          await configApi.update(authToken, configId, {
+            backendUrl: serverUrl.trim(),
+            dataAccessToken,
+          });
+        } catch (err: any) {
+          setConnectionTestStatus('error');
+          setConnectionTestMessage(`Key verified but failed to save to platform: ${err?.message || 'Unknown error'}`);
+          return;
+        }
+      }
+
+      setConnectionTestStatus('success');
+      setConnectionTestMessage(
+        `Connected & verified! v${result.version} | Encryption key confirmed | Data access token saved`
+      );
     } catch (err: any) {
       setConnectionTestStatus('error');
-      setConnectionTestMessage(err?.message || 'Connection failed');
+      const msg = err?.message || 'Connection failed';
+      if (msg.includes('KEY_MISMATCH') || msg.includes('Unsupported state')) {
+        setConnectionTestMessage('Encryption key does not match the server. Check that the key matches LOCAL_SERVER_KEY on your server.');
+      } else {
+        setConnectionTestMessage(msg);
+      }
     }
   };
 
@@ -332,7 +416,7 @@ export function ConfigInfoPanel({
 
                   {/* Security note */}
                   <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-600">
-                    Your server URL and encryption key are stored only in this browser's localStorage. They are never saved to our database.
+                    Your encryption key is stored only in this browser's localStorage and is never sent to our servers. The server URL is saved to your config so we can proxy data requests. When you test the connection, a secure key exchange creates a data access token stored server-side (encrypted).
                   </div>
                 </div>
               )}

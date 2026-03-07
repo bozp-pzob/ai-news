@@ -126,6 +126,8 @@ export const configs = pgTable('configs', {
   totalRevenue: decimal('total_revenue', { precision: 12, scale: 6 }).default('0'),
   // Local execution
   isLocalExecution: boolean('is_local_execution').default(false),
+  backendUrl: text('backend_url'),
+  dataAccessToken: text('data_access_token'),
   // Data access
   hideItems: boolean('hide_items').default(false),
   // Admin: featured

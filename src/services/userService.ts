@@ -44,6 +44,8 @@ export interface Config {
   totalQueries: number;
   totalRevenue: number;
   isLocalExecution: boolean;
+  backendUrl?: string;
+  dataAccessToken?: string;
   hideItems: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -79,6 +81,8 @@ export interface UpdateConfigParams {
   secrets?: Record<string, string>;
   status?: 'idle' | 'running' | 'error' | 'paused';
   isLocalExecution?: boolean;
+  backendUrl?: string;
+  dataAccessToken?: string;
   hideItems?: boolean;
 }
 
@@ -183,6 +187,8 @@ function rowToConfig(row: any): Config {
     totalQueries: row.total_queries,
     totalRevenue: row.total_revenue ? parseFloat(row.total_revenue) : 0,
     isLocalExecution: row.is_local_execution || false,
+    backendUrl: row.backend_url || undefined,
+    dataAccessToken: row.data_access_token || undefined,
     hideItems: row.hide_items || false,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at)
@@ -434,6 +440,17 @@ export async function updateConfig(configId: string, params: UpdateConfigParams)
   if (params.isLocalExecution !== undefined) {
     updates.push(`is_local_execution = $${paramIndex++}`);
     values.push(params.isLocalExecution);
+  }
+
+  if (params.backendUrl !== undefined) {
+    updates.push(`backend_url = $${paramIndex++}`);
+    values.push(params.backendUrl || null);
+  }
+
+  if (params.dataAccessToken !== undefined) {
+    // Encrypt the token before storing
+    updates.push(`data_access_token = $${paramIndex++}`);
+    values.push(params.dataAccessToken ? encryptionService.encrypt(params.dataAccessToken, configId) : null);
   }
 
   if (params.hideItems !== undefined) {

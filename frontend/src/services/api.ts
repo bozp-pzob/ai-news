@@ -58,6 +58,8 @@ export interface PlatformConfig {
   globalInterval?: number;
   activeJobId?: string;
   isLocalExecution?: boolean;
+  /** Backend URL for standalone backend execution (owner-only, never exposed publicly) */
+  backendUrl?: string;
   /** Whether the current user is the owner (or admin) of this config */
   isOwner?: boolean;
   /** Access type: 'owner' | 'admin' | 'public' | 'shared' | 'unlisted' */
@@ -544,6 +546,8 @@ export const configApi = {
       configJson?: any;
       secrets?: Record<string, string>;
       isLocalExecution?: boolean;
+      backendUrl?: string;
+      dataAccessToken?: string;
     }
   ): Promise<PlatformConfig> {
     return apiRequest<PlatformConfig>(
@@ -2155,17 +2159,34 @@ export const relayApi = {
   },
 
   /**
-   * Check health of a local server via the relay
+   * Check health of a local server via the relay.
+   * If a crypto challenge is provided (encrypted, iv, tag), the relay forwards
+   * it as a POST to the local server for key verification + data access token exchange.
    */
   async health(
     authToken: string,
-    targetUrl: string
-  ): Promise<{ status: string; version: string; hasKey: boolean; mode: string }> {
-    return apiRequest<{ status: string; version: string; hasKey: boolean; mode: string }>(
+    targetUrl: string,
+    challenge?: { encrypted: string; iv: string; tag: string }
+  ): Promise<{
+    status: string;
+    version: string;
+    hasKey: boolean;
+    mode: string;
+    nonce?: string;
+    encryptedToken?: { encrypted: string; iv: string; tag: string };
+  }> {
+    return apiRequest<{
+      status: string;
+      version: string;
+      hasKey: boolean;
+      mode: string;
+      nonce?: string;
+      encryptedToken?: { encrypted: string; iv: string; tag: string };
+    }>(
       '/api/v1/relay/health',
       {
         method: 'POST',
-        body: JSON.stringify({ targetUrl }),
+        body: JSON.stringify({ targetUrl, ...(challenge || {}) }),
       },
       authToken
     );

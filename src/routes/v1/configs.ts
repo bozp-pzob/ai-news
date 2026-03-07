@@ -18,7 +18,107 @@ import { licenseService, RUN_PAYMENT } from '../../services/licenseService';
 import { requirePayment } from '../../middleware/x402Middleware';
 import { dataRateLimiter, runRateLimiter, configMutationRateLimiter } from '../../middleware/rateLimitMiddleware';
 import { verifyPop402Payment, buildPaymentRequiredResponse } from '../../helpers/pop402Helper';
+import { encryptionService } from '../../services/encryptionService';
+import { isValidRelayTarget } from '../../helpers/ssrf';
 import { logger } from '../../helpers/cliHelper';
+
+// ============================================
+// BACKEND DATA PROXY — relay data requests to standalone backends
+// ============================================
+
+/** In-memory cache for proxied data from standalone backends */
+const proxyCache = new Map<string, { data: any; expiresAt: number }>();
+const PROXY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Periodic cache cleanup (every 10 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of proxyCache) {
+    if (entry.expiresAt < now) proxyCache.delete(key);
+  }
+}, 10 * 60 * 1000).unref();
+
+/**
+ * Proxy a data request to a standalone backend.
+ * Includes X-Data-Access-Token header for authentication.
+ * Caches successful responses for PROXY_CACHE_TTL.
+ *
+ * @returns true if the request was proxied, false if it should fall through to local handling
+ */
+async function proxyToBackend(
+  backendUrl: string,
+  path: string,
+  dataAccessTokenEncrypted: string,
+  configId: string,
+  cacheKey: string,
+  res: Response
+): Promise<boolean> {
+  // Check cache first
+  const cached = proxyCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    res.json(cached.data);
+    return true;
+  }
+
+  // Decrypt the data access token
+  let token: string;
+  try {
+    token = encryptionService.decrypt<string>(dataAccessTokenEncrypted, configId);
+  } catch {
+    logger.error(`proxyToBackend: Failed to decrypt data access token for config ${configId}`);
+    res.status(500).json({ error: 'Failed to decrypt data access token. Re-test your backend connection.' });
+    return true;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch(`${backendUrl}${path}`, {
+      headers: { 'X-Data-Access-Token': token },
+      signal: controller.signal,
+      redirect: 'error',
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Backend error' }));
+      res.status(response.status).json(errorData);
+      return true;
+    }
+
+    const data = await response.json();
+    proxyCache.set(cacheKey, { data, expiresAt: Date.now() + PROXY_CACHE_TTL });
+    res.json(data);
+    return true;
+  } catch (err: any) {
+    clearTimeout(timeout);
+    if (err.name === 'AbortError') {
+      res.status(504).json({ error: 'Backend timeout', message: 'Standalone backend did not respond within 30 seconds.' });
+    } else {
+      res.status(502).json({ error: 'Backend unavailable', message: 'Could not connect to the standalone backend.' });
+    }
+    return true;
+  }
+}
+
+/**
+ * Check if a config uses a standalone backend and proxy the request if so.
+ * Returns true if proxied, false if the request should continue with platform DB.
+ */
+async function maybeProxyToBackend(
+  config: any,
+  endpoint: string,
+  queryString: string,
+  res: Response
+): Promise<boolean> {
+  if (!config.is_local_execution || !config.backend_url || !config.data_access_token) {
+    return false;
+  }
+  const path = `/api/v1/local/data/${config.id}/${endpoint}${queryString ? '?' + queryString : ''}`;
+  const cacheKey = `${config.id}:${endpoint}:${queryString}`;
+  return proxyToBackend(config.backend_url, path, config.data_access_token, config.id, cacheKey, res);
+}
 
 // ============================================
 // ACCESS GRANTS — 24-hour purchasable data access
@@ -427,6 +527,8 @@ router.get('/:id', optionalAuth, requireConfigAccess, async (req: AuthenticatedR
     // Only include sensitive info for owners/admins
     if (isOwner) {
       response.storageType = config.storage_type;
+      response.isLocalExecution = config.is_local_execution || false;
+      response.backendUrl = config.backend_url || undefined;
       response.externalDbValid = config.external_db_valid;
       response.externalDbError = config.external_db_error;
       response.totalRevenue = config.total_revenue ? parseFloat(config.total_revenue) : 0;
@@ -463,6 +565,8 @@ router.patch('/:id', requireAuth, requireConfigOwner, async (req: AuthenticatedR
       configJson,
       secrets,
       isLocalExecution,
+      backendUrl,
+      dataAccessToken,
       hideItems,
     } = req.body;
 
@@ -480,6 +584,8 @@ router.patch('/:id', requireAuth, requireConfigOwner, async (req: AuthenticatedR
     if (configJson !== undefined) updates.configJson = configJson;
     if (secrets !== undefined) updates.secrets = secrets;
     if (isLocalExecution !== undefined) updates.isLocalExecution = isLocalExecution;
+    if (backendUrl !== undefined) updates.backendUrl = backendUrl;
+    if (dataAccessToken !== undefined) updates.dataAccessToken = dataAccessToken;
     if (hideItems !== undefined) updates.hideItems = hideItems;
 
     // Check monetization permission
@@ -571,6 +677,12 @@ router.delete('/:id', requireAuth, requireConfigOwner, async (req: Authenticated
 router.get('/:id/summary/json', dataRateLimiter, optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
+    const config = (req as any).config;
+
+    // Proxy to standalone backend if applicable
+    const qs = new URLSearchParams(req.query as any).toString();
+    if (await maybeProxyToBackend(config, 'summary', qs, res)) return;
+
     const { date, type } = req.query;
 
     const summary = await contextService.getSummary(configId, date as string, type as string);
@@ -598,6 +710,12 @@ router.get('/:id/summary/json', dataRateLimiter, optionalAuth, requireConfigAcce
 router.get('/:id/summary/md', dataRateLimiter, optionalAuth, requireConfigAccess, requirePayment, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
+    const config = (req as any).config;
+
+    // Proxy to standalone backend if applicable
+    const qs = new URLSearchParams(req.query as any).toString();
+    if (await maybeProxyToBackend(config, 'summary', qs, res)) return;
+
     const { date, type } = req.query;
 
     const summary = await contextService.getSummary(configId, date as string, type as string);
@@ -621,6 +739,12 @@ router.get('/:id/summary/md', dataRateLimiter, optionalAuth, requireConfigAccess
 router.get('/:id/topics', dataRateLimiter, optionalAuth, requireConfigAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
+    const config = (req as any).config;
+
+    // Proxy to standalone backend if applicable
+    const qs = new URLSearchParams(req.query as any).toString();
+    if (await maybeProxyToBackend(config, 'topics', qs, res)) return;
+
     const { limit = '50', afterDate, beforeDate } = req.query;
 
     const topics = await contextService.getTopics(configId, {
@@ -644,6 +768,12 @@ router.get('/:id/topics', dataRateLimiter, optionalAuth, requireConfigAccess, as
 router.get('/:id/stats', dataRateLimiter, optionalAuth, requireConfigAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
+    const config = (req as any).config;
+
+    // Proxy to standalone backend if applicable
+    const qs = new URLSearchParams(req.query as any).toString();
+    if (await maybeProxyToBackend(config, 'stats', qs, res)) return;
+
     const accessType = (req as any).accessType;
     const isOwner = accessType === 'owner' || accessType === 'admin';
 
@@ -1108,6 +1238,10 @@ router.get('/:id/items/json', dataRateLimiter, optionalAuth, requireConfigAccess
     const accessType = (req as any).accessType;
     const isOwner = accessType === 'owner' || accessType === 'admin';
 
+    // Proxy to standalone backend if applicable
+    const qs = new URLSearchParams(req.query as any).toString();
+    if (await maybeProxyToBackend(config, 'items', qs, res)) return;
+
     if (!isOwner && config?.hide_items) {
       return res.status(403).json({
         error: 'Items are not publicly available for this config',
@@ -1177,6 +1311,10 @@ router.get('/:id/items/md', dataRateLimiter, optionalAuth, requireConfigAccess, 
     const config = (req as any).config;
     const accessType = (req as any).accessType;
     const isOwner = accessType === 'owner' || accessType === 'admin';
+
+    // Proxy to standalone backend if applicable
+    const qs = new URLSearchParams(req.query as any).toString();
+    if (await maybeProxyToBackend(config, 'items', qs, res)) return;
 
     if (!isOwner && config?.hide_items) {
       return res.status(403).json({
@@ -1291,6 +1429,11 @@ router.get('/:id/content/json', dataRateLimiter, optionalAuth, requireConfigAcce
   try {
     const configId = req.params.id;
     const config = (req as any).config;
+
+    // Proxy to standalone backend if applicable
+    const qs = new URLSearchParams(req.query as any).toString();
+    if (await maybeProxyToBackend(config, 'content', qs, res)) return;
+
     const preview = isPreviewMode(req);
 
     const limit = preview ? PREVIEW_ITEM_LIMIT : (parseInt(req.query.limit as string) || 20);
@@ -1349,6 +1492,12 @@ router.get('/:id/content/json', dataRateLimiter, optionalAuth, requireConfigAcce
 router.get('/:id/content/md', dataRateLimiter, optionalAuth, requireConfigAccess, checkDataAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const configId = req.params.id;
+    const config = (req as any).config;
+
+    // Proxy to standalone backend if applicable
+    const qs = new URLSearchParams(req.query as any).toString();
+    if (await maybeProxyToBackend(config, 'content', qs, res)) return;
+
     const preview = isPreviewMode(req);
 
     const limit = preview ? PREVIEW_ITEM_LIMIT : (parseInt(req.query.limit as string) || 20);

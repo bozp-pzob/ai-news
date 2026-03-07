@@ -11,6 +11,7 @@
 
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/authMiddleware';
+import { isValidRelayTarget } from '../../helpers/ssrf';
 
 const router = Router();
 
@@ -33,19 +34,6 @@ function checkRateLimit(userId: string): boolean {
 
   entry.count++;
   return true;
-}
-
-/**
- * Validate that a URL is safe to relay to.
- * Blocks file://, data://, javascript:, and other non-http schemes.
- */
-function isValidRelayTarget(urlStr: string): boolean {
-  try {
-    const url = new URL(urlStr);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -85,11 +73,11 @@ router.post('/execute', requireAuth, async (req: AuthenticatedRequest, res: Resp
       });
     }
 
-    // Validate target URL
-    if (!isValidRelayTarget(targetUrl)) {
+    // Validate target URL (SSRF protection)
+    if (!await isValidRelayTarget(targetUrl)) {
       return res.status(400).json({
         error: 'Invalid target URL',
-        message: 'Target URL must use http:// or https:// protocol.',
+        message: 'Target URL must use http:// or https:// protocol and must not point to internal networks.',
       });
     }
 
@@ -140,9 +128,12 @@ router.post('/execute', requireAuth, async (req: AuthenticatedRequest, res: Resp
 /**
  * POST /api/v1/relay/health
  *
- * Forwards a health check to the local server to verify connectivity.
+ * Forwards a health check (with optional crypto challenge) to the local server.
+ * If the request body includes { encrypted, iv, tag }, these are forwarded as a
+ * POST to the local server for key verification. Otherwise a basic GET health
+ * check is performed.
  *
- * Request body: { targetUrl: string }
+ * Request body: { targetUrl: string, encrypted?: string, iv?: string, tag?: string }
  */
 router.post('/health', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -150,21 +141,28 @@ router.post('/health', requireAuth, async (req: AuthenticatedRequest, res: Respo
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { targetUrl } = req.body;
+    const { targetUrl, encrypted, iv, tag } = req.body;
 
-    if (!targetUrl || !isValidRelayTarget(targetUrl)) {
+    if (!targetUrl || !await isValidRelayTarget(targetUrl)) {
       return res.status(400).json({
         error: 'Invalid target URL',
-        message: 'Target URL must use http:// or https:// protocol.',
+        message: 'Target URL must use http:// or https:// protocol and must not point to internal networks.',
       });
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout for health check
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
     try {
+      // If a crypto challenge is included, use POST to forward it
+      const hasChallenge = encrypted && iv && tag;
+
       const response = await fetch(`${targetUrl}/api/v1/local/health`, {
-        method: 'GET',
+        method: hasChallenge ? 'POST' : 'GET',
+        ...(hasChallenge ? {
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ encrypted, iv, tag }),
+        } : {}),
         signal: controller.signal,
         redirect: 'error',
       });
@@ -211,7 +209,7 @@ router.post('/status', requireAuth, async (req: AuthenticatedRequest, res: Respo
 
     const { targetUrl, jobId } = req.body;
 
-    if (!targetUrl || !isValidRelayTarget(targetUrl)) {
+    if (!targetUrl || !await isValidRelayTarget(targetUrl)) {
       return res.status(400).json({ error: 'Invalid target URL' });
     }
 

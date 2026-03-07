@@ -128,6 +128,7 @@ router.get('/configs', requireAuth, async (req: AuthenticatedRequest, res: Respo
         totalRevenue: config.totalRevenue,
         lastRunAt: config.lastRunAt,
         createdAt: config.createdAt,
+        isLocalExecution: config.isLocalExecution || false,
       })),
       total: configs.length,
     });
