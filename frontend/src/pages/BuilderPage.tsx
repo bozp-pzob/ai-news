@@ -580,6 +580,7 @@ const BuilderPage: React.FC = () => {
             isSaving={isSaving}
             configName={configInfo?.name || platformConfig?.name}
             isPlatformPro={limits?.tier !== 'free'}
+            isLocalExecution={platformConfig?.isLocalExecution || false}
           />
         )}
       </div>

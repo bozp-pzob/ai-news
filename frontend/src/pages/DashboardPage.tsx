@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { AuthGuard } from '../components/auth/AuthGuard';
 import { userApi, configApi, runsApi, PlatformConfig, UserLimits, RevenueStats } from '../services/api';
+import { useLocalExecution } from '../hooks/useLocalExecution';
 import { AppHeader } from '../components/AppHeader';
 import { StatCard } from '../components/shared/StatCard';
 
@@ -37,6 +38,11 @@ function ConfigCard({ config, onRun }: { config: PlatformConfig; onRun: (id: str
           </p>
         </div>
         <div className="flex items-center gap-2 ml-4">
+          {config.isLocalExecution && (
+            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded" title="Runs on your standalone backend">
+              Local
+            </span>
+          )}
           {config.monetizationEnabled && (
             <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs rounded">
               ${config.pricePerQuery?.toFixed(4)}/query
@@ -82,7 +88,7 @@ function ConfigCard({ config, onRun }: { config: PlatformConfig; onRun: (id: str
                 : 'bg-emerald-600 hover:bg-emerald-700 text-white'
             }`}
           >
-            {config.status === 'running' ? 'Running...' : 'Run'}
+            {config.status === 'running' ? 'Running...' : config.isLocalExecution ? 'Run Local' : 'Run'}
           </button>
         </div>
       </div>
@@ -144,6 +150,7 @@ function DashboardContent() {
   const [revenue, setRevenue] = useState<RevenueStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { executeLocal } = useLocalExecution();
   
   // Track polling intervals for cleanup on unmount
   const pollIntervalsRef = React.useRef<Set<NodeJS.Timeout>>(new Set());
@@ -185,12 +192,26 @@ function DashboardContent() {
     loadData();
   }, [authToken]);
 
-  // Handle run aggregation
+  // Handle run aggregation — routes to local backend when isLocalExecution is true
   const handleRunConfig = async (configId: string) => {
     if (!authToken) return;
     
+    // Find the config to check if it's a local-execution config
+    const targetConfig = configs.find(c => c.id === configId);
+    
     try {
-      const result = await configApi.run(authToken, configId);
+      let jobId: string;
+
+      if (targetConfig?.isLocalExecution) {
+        // Route to standalone backend via relay
+        const result = await executeLocal(authToken, configId);
+        jobId = result.jobId;
+      } else {
+        // Run on the platform as usual
+        const result = await configApi.run(authToken, configId);
+        jobId = result.jobId;
+      }
+
       // Update config status in UI
       setConfigs(prev => prev.map(c => 
         c.id === configId ? { ...c, status: 'running' as const } : c
@@ -199,7 +220,7 @@ function DashboardContent() {
       // Poll for job completion using platform API
       const pollInterval = setInterval(async () => {
         try {
-          const job = await runsApi.get(authToken, configId, result.jobId);
+          const job = await runsApi.get(authToken, configId, jobId);
           if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
             clearInterval(pollInterval);
             pollIntervalsRef.current.delete(pollInterval);

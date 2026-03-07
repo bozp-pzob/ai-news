@@ -34,6 +34,8 @@ interface AppProps {
   configName?: string;
   // Whether user is a pro user (for platform storage option)
   isPlatformPro?: boolean;
+  // Whether this config should run on the user's standalone backend
+  isLocalExecution?: boolean;
 }
 
 function App({
@@ -45,6 +47,7 @@ function App({
   isSaving: externalIsSaving = false,
   configName: externalConfigName,
   isPlatformPro = false,
+  isLocalExecution = false,
 }: AppProps = {}) {
   const [configs, setConfigs] = useState<string[]>([]);
   const [selectedConfig, setSelectedConfig] = useState<string | null>(null);
@@ -619,6 +622,7 @@ function App({
             platformMode={platformMode}
             isPlatformPro={isPlatformPro}
             platformConfigId={platformConfigId}
+            isLocalExecution={isLocalExecution}
           />
         </div>
       </div>

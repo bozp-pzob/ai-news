@@ -19,6 +19,7 @@ import { secretManager } from '../services/SecretManager';
 import { ConfigJsonEditor } from './ConfigJsonEditor';
 import { useRunOptions } from '../hooks/useRunOptions';
 import { useJobStatus } from '../hooks/useJobStatus';
+import { useLocalExecution } from '../hooks/useLocalExecution';
 import { RunControls } from './RunControls';
 
 // Add type constants to represent the pipeline flow steps
@@ -37,12 +38,14 @@ interface NodeGraphProps {
   platformMode?: boolean;
   isPlatformPro?: boolean;
   platformConfigId?: string;
+  // Whether this config should run on the user's standalone backend
+  isLocalExecution?: boolean;
 }
 
 export const NodeGraph = forwardRef<
   { handleDragPlugin: (plugin: PluginInfo, clientX: number, clientY: number) => void },
   NodeGraphProps
->(({ config, onConfigUpdate, saveConfiguration, runAggregation, viewMode = 'graph', hasUnsavedChanges = false, platformMode = false, isPlatformPro = false, platformConfigId }, ref) => {
+>(({ config, onConfigUpdate, saveConfiguration, runAggregation, viewMode = 'graph', hasUnsavedChanges = false, platformMode = false, isPlatformPro = false, platformConfigId, isLocalExecution = false }, ref) => {
   const { showToast } = useToast();
   const { authToken } = useAuth();
   
@@ -83,6 +86,9 @@ export const NodeGraph = forwardRef<
     currentJobIdRef, jobTypesRef, completedJobsRef,
     resetForNewRun, startJob, markCompleted,
   } = jobState;
+
+  // Local execution for standalone backend
+  const { executeLocal, isLocalRunning, localError: localExecError } = useLocalExecution();
 
   // Run options state (extracted to hook)
   const runOptions = useRunOptions();
@@ -2161,9 +2167,15 @@ export const NodeGraph = forwardRef<
       
       // Use v1 API for platform mode, legacy endpoint for local mode
       if (platformMode && platformConfigId && authToken) {
-        // Platform mode: Use v1 API which handles free tier AI/storage injection
-        const result = await configApi.run(authToken, platformConfigId);
-        jobId = result.jobId;
+        if (isLocalExecution) {
+          // Local execution: encrypt config and send via relay to standalone backend
+          const result = await executeLocal(authToken, platformConfigId);
+          jobId = result.jobId;
+        } else {
+          // Platform mode: Use v1 API which handles free tier AI/storage injection
+          const result = await configApi.run(authToken, platformConfigId);
+          jobId = result.jobId;
+        }
       } else {
         // Local mode: Use legacy /aggregate endpoint with full config
         // Get the latest config from the state manager
@@ -2360,9 +2372,15 @@ export const NodeGraph = forwardRef<
       let jobId: string;
       
       if (platformMode && platformConfigId && authToken) {
-        // Platform mode: Use v1 API which handles configId injection for storage
-        const result = await runsApi.runContinuous(authToken, platformConfigId);
-        jobId = result.jobId;
+        if (isLocalExecution) {
+          // Local execution: continuous runs also go through the relay
+          const result = await executeLocal(authToken, platformConfigId);
+          jobId = result.jobId;
+        } else {
+          // Platform mode: Use v1 API which handles configId injection for storage
+          const result = await runsApi.runContinuous(authToken, platformConfigId);
+          jobId = result.jobId;
+        }
       } else {
         // Local mode: Use legacy /aggregate endpoint with full config
         const currentConfig = configStateManager.getConfig();
