@@ -186,6 +186,276 @@ async function runCustomSQL(pool: Pool): Promise<void> {
       ON site_parsers(domain, path_pattern, COALESCE(object_type_string, ''))
     `);
 
+    // ── Functions ───────────────────────────────────────────────────
+    // All use CREATE OR REPLACE — safe to run on every startup.
+
+    await client.query(`
+      CREATE OR REPLACE FUNCTION update_updated_at()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        NEW.updated_at = NOW();
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE FUNCTION reset_daily_runs()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF NEW.runs_today_reset_at < CURRENT_DATE THEN
+          NEW.runs_today = 0;
+          NEW.runs_today_reset_at = CURRENT_DATE;
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE FUNCTION reset_daily_ai_calls()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF NEW.ai_calls_today_reset_at < CURRENT_DATE THEN
+          NEW.ai_calls_today = 0;
+          NEW.ai_calls_today_reset_at = CURRENT_DATE;
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE FUNCTION reset_daily_token_usage()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF NEW.tokens_used_today_reset_at < CURRENT_DATE THEN
+          NEW.tokens_used_today = 0;
+          NEW.estimated_cost_today_cents = 0;
+          NEW.tokens_used_today_reset_at = CURRENT_DATE;
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE FUNCTION update_config_item_count()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF TG_OP = 'INSERT' THEN
+          UPDATE configs SET total_items = total_items + 1 WHERE id = NEW.config_id;
+        ELSIF TG_OP = 'DELETE' THEN
+          UPDATE configs SET total_items = total_items - 1 WHERE id = OLD.config_id;
+        END IF;
+        RETURN NULL;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE FUNCTION update_config_revenue()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF NEW.status = 'settled' AND (OLD.status IS NULL OR OLD.status != 'settled') THEN
+          UPDATE configs
+          SET total_revenue = total_revenue + NEW.owner_revenue,
+              total_queries = total_queries + 1
+          WHERE id = NEW.config_id;
+        END IF;
+        RETURN NULL;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE FUNCTION generate_slug(name TEXT)
+      RETURNS TEXT AS $$
+      BEGIN
+        RETURN lower(regexp_replace(regexp_replace(name, '[^a-zA-Z0-9\\s-]', '', 'g'), '\\s+', '-', 'g'));
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE FUNCTION reset_free_run_used()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF NEW.free_run_used_at IS NOT NULL AND NEW.free_run_used_at < CURRENT_DATE THEN
+          NEW.free_run_used_at = NULL;
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE FUNCTION mark_inactive_discord_connections(guild_ids TEXT[])
+      RETURNS INTEGER AS $$
+      DECLARE
+        updated_count INTEGER;
+      BEGIN
+        UPDATE discord_guild_connections
+        SET is_active = FALSE, updated_at = NOW()
+        WHERE guild_id = ANY(guild_ids) AND is_active = TRUE;
+        GET DIAGNOSTICS updated_count = ROW_COUNT;
+        RETURN updated_count;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    // ── Cleanup functions ───────────────────────────────────────────
+
+    await client.query(`
+      CREATE OR REPLACE FUNCTION cleanup_expired_temp_retention()
+      RETURNS INTEGER AS $$
+      DECLARE
+        deleted_count INTEGER;
+      BEGIN
+        DELETE FROM temp_retention WHERE expires_at < NOW();
+        GET DIAGNOSTICS deleted_count = ROW_COUNT;
+        RETURN deleted_count;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE FUNCTION cleanup_old_api_usage()
+      RETURNS INTEGER AS $$
+      DECLARE
+        deleted_count INTEGER;
+      BEGIN
+        DELETE FROM api_usage WHERE created_at < NOW() - INTERVAL '90 days';
+        GET DIAGNOSTICS deleted_count = ROW_COUNT;
+        RETURN deleted_count;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE FUNCTION cleanup_expired_discord_oauth_states()
+      RETURNS INTEGER AS $$
+      DECLARE
+        deleted_count INTEGER;
+      BEGIN
+        DELETE FROM discord_oauth_states WHERE expires_at < NOW();
+        GET DIAGNOSTICS deleted_count = ROW_COUNT;
+        RETURN deleted_count;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE FUNCTION cleanup_old_aggregation_jobs(retention_days INTEGER DEFAULT 90)
+      RETURNS INTEGER AS $$
+      DECLARE
+        deleted_count INTEGER;
+      BEGIN
+        DELETE FROM aggregation_jobs
+        WHERE created_at < NOW() - (retention_days || ' days')::INTERVAL
+          AND status != 'running';
+        GET DIAGNOSTICS deleted_count = ROW_COUNT;
+        RETURN deleted_count;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    // ── Triggers ────────────────────────────────────────────────────
+    // DROP IF EXISTS + CREATE ensures idempotency.
+
+    // updated_at triggers
+    await client.query(`DROP TRIGGER IF EXISTS users_updated_at ON users`);
+    await client.query(`CREATE TRIGGER users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at()`);
+
+    await client.query(`DROP TRIGGER IF EXISTS configs_updated_at ON configs`);
+    await client.query(`CREATE TRIGGER configs_updated_at BEFORE UPDATE ON configs FOR EACH ROW EXECUTE FUNCTION update_updated_at()`);
+
+    await client.query(`DROP TRIGGER IF EXISTS cursors_updated_at ON cursors`);
+    await client.query(`CREATE TRIGGER cursors_updated_at BEFORE UPDATE ON cursors FOR EACH ROW EXECUTE FUNCTION update_updated_at()`);
+
+    await client.query(`DROP TRIGGER IF EXISTS discord_guild_connections_updated_at ON discord_guild_connections`);
+    await client.query(`CREATE TRIGGER discord_guild_connections_updated_at BEFORE UPDATE ON discord_guild_connections FOR EACH ROW EXECUTE FUNCTION update_updated_at()`);
+
+    // Daily reset triggers
+    await client.query(`DROP TRIGGER IF EXISTS configs_reset_runs ON configs`);
+    await client.query(`CREATE TRIGGER configs_reset_runs BEFORE UPDATE ON configs FOR EACH ROW EXECUTE FUNCTION reset_daily_runs()`);
+
+    await client.query(`DROP TRIGGER IF EXISTS users_reset_ai_calls ON users`);
+    await client.query(`CREATE TRIGGER users_reset_ai_calls BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION reset_daily_ai_calls()`);
+
+    await client.query(`DROP TRIGGER IF EXISTS users_reset_token_usage ON users`);
+    await client.query(`CREATE TRIGGER users_reset_token_usage BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION reset_daily_token_usage()`);
+
+    await client.query(`DROP TRIGGER IF EXISTS users_reset_free_run ON users`);
+    await client.query(`CREATE TRIGGER users_reset_free_run BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION reset_free_run_used()`);
+
+    // Stats triggers
+    await client.query(`DROP TRIGGER IF EXISTS items_update_count ON items`);
+    await client.query(`CREATE TRIGGER items_update_count AFTER INSERT OR DELETE ON items FOR EACH ROW EXECUTE FUNCTION update_config_item_count()`);
+
+    await client.query(`DROP TRIGGER IF EXISTS payments_update_revenue ON payments`);
+    await client.query(`CREATE TRIGGER payments_update_revenue AFTER INSERT OR UPDATE ON payments FOR EACH ROW EXECUTE FUNCTION update_config_revenue()`);
+
+    // ── Views ───────────────────────────────────────────────────────
+    // All use CREATE OR REPLACE — safe to run on every startup.
+
+    await client.query(`
+      CREATE OR REPLACE VIEW public_configs AS
+      SELECT
+        c.id,
+        c.slug,
+        c.name,
+        c.description,
+        c.monetization_enabled,
+        c.price_per_query,
+        c.total_items,
+        c.total_queries,
+        c.last_run_at,
+        c.created_at,
+        u.wallet_address as owner_wallet,
+        (SELECT COUNT(*) FROM items WHERE config_id = c.id AND date > EXTRACT(EPOCH FROM NOW() - INTERVAL '24 hours')) as items_last_24h
+      FROM configs c
+      JOIN users u ON c.user_id = u.id
+      WHERE c.visibility = 'public'
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE VIEW featured_configs AS
+      SELECT
+        c.id,
+        c.slug,
+        c.name,
+        c.description,
+        c.monetization_enabled,
+        c.price_per_query,
+        c.total_items,
+        c.total_queries,
+        c.last_run_at,
+        c.featured_at,
+        c.created_at,
+        u.wallet_address as owner_wallet
+      FROM configs c
+      JOIN users u ON c.user_id = u.id
+      WHERE c.is_featured = TRUE
+        AND c.visibility IN ('public', 'unlisted')
+      ORDER BY c.featured_at DESC
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE VIEW user_revenue_summary AS
+      SELECT
+        c.user_id,
+        SUM(p.amount) as total_volume,
+        SUM(p.owner_revenue) as total_revenue,
+        SUM(p.platform_fee) as total_platform_fees,
+        COUNT(p.id) as total_transactions,
+        COUNT(DISTINCT p.payer_wallet) as unique_payers
+      FROM payments p
+      JOIN configs c ON p.config_id = c.id
+      WHERE p.status = 'settled'
+      GROUP BY c.user_id
+    `);
+
     logger.info('DatabaseService: Custom SQL completed successfully');
   } catch (error) {
     logger.error('DatabaseService: Custom SQL error (non-fatal)', error);
