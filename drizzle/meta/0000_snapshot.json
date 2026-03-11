@@ -1,5 +1,5 @@
 {
-  "id": "f77d1eac-c05e-4a80-9617-4e7b2cc0c79b",
+  "id": "e708160b-0f7b-4888-9a55-9ebe3ae4f2b5",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -702,6 +702,18 @@
           "primaryKey": false,
           "notNull": false,
           "default": false
+        },
+        "backend_url": {
+          "name": "backend_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data_access_token": {
+          "name": "data_access_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "hide_items": {
           "name": "hide_items",

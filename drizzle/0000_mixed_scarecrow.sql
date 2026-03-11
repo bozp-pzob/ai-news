@@ -76,6 +76,8 @@ CREATE TABLE "configs" (
 	"total_queries" integer DEFAULT 0,
 	"total_revenue" numeric(12, 6) DEFAULT '0',
 	"is_local_execution" boolean DEFAULT false,
+	"backend_url" text,
+	"data_access_token" text,
 	"hide_items" boolean DEFAULT false,
 	"is_featured" boolean DEFAULT false,
 	"featured_at" timestamp with time zone,
